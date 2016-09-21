@@ -1437,7 +1437,7 @@ int main(int argc, char* argv[]){
         
         {ARGS_OPTION_STRING,  'm', "model",        "substmodel.type", &model_string_user, "Susbtitution model"},
         {ARGS_OPTION_STRING,  0,   "states",       "substmodel.states", &markov_states, "State space of Markov process. For nucleotide --states A,C,G,T"},
-        {ARGS_OPTION_STRING,  'f', "frequencies",  "substmodel.freqs", &frequencies_string_user, "Frequencies as an array. For nucleotide -f 0.2,0.3,0.4,0.1"},
+        {ARGS_OPTION_STRING,  'f', "frequencies",  "substmodel.freqs", &frequencies_string_user, "Frequencies as an array or 'e' for equal frequencies. For nucleotide -f 0.2,0.3,0.4,0.1"},
         {ARGS_OPTION_STRING,  'r', "rates",        "substmodel.rates", &rates_user, "Relative rates of the susbtitution matrix"},
         {ARGS_OPTION_BOOLEAN, 0,   "q-normalize",  "substmodel.matrix.normalize", &normalize_q, "Normalize rate matrix"},
         {ARGS_OPTION_FLAG,    0,   "f-unknown",    "substmodel.root.freqs.unknown", &frequencies_unknown, "Set frequencies to 1.0"},
@@ -1733,7 +1733,7 @@ int main(int argc, char* argv[]){
                 
             }
             else {
-                model_string = model_string_user;
+                model_string = String_clone(model_string_user);
             }
         }
         else{
@@ -1867,9 +1867,17 @@ int main(int argc, char* argv[]){
     
     double *frequencies_user = NULL;
     if ( frequencies_string_user != NULL ) {
-        unsigned nfreqs = 0;
-        frequencies_user = String_to_double_array( frequencies_string_user, ',', &nfreqs);
-        assert(nfreqs==dataType->stateCount);
+        if(strlen(frequencies_string_user) == 1 && tolower(frequencies_string_user[0]) == 'e'){
+            frequencies_user = dvector(matrixDimension);
+            for (int i = 0; i < matrixDimension; i ++) {
+                frequencies_user[i] = 1.0/matrixDimension;
+            }
+        }
+        else{
+            unsigned nfreqs = 0;
+            frequencies_user = String_to_double_array( frequencies_string_user, ',', &nfreqs);
+            assert(nfreqs==matrixDimension);
+        }
     }
     
     if ( dataType->type == DATA_TYPE_NUCLEOTIDE ) {
@@ -2091,10 +2099,7 @@ int main(int argc, char* argv[]){
         StringBuffer_append_string(info, "Model: Generic\n\n");
         
         // empirical
-        double *freqs = dvector(matrixDimension);
         unsigned *rateIndexes = NULL;
-        
-        //empirical_generic_frequencies(seqs, freqs);
         
         if( strcasecmp(model_string,"ER") == 0 ){
             rateIndexes = uivector(matrixDimension*matrixDimension);
@@ -2122,11 +2127,12 @@ int main(int argc, char* argv[]){
         
         free(rateIndexes);
         
-        
-        memcpy(mod->_freqs, freqs, matrixDimension*sizeof(double));
-
-        free(freqs);
-        
+        if(frequencies_user != NULL){
+            memcpy(mod->_freqs, frequencies_user, sizeof(double)*matrixDimension);
+        }
+        else if(!frequencies_unknown){
+            empirical_generic_frequencies(seqs, mod->_freqs);
+        }
         if(!normalize_q){
             mod->normalize = false;
             mod->need_update = true;
