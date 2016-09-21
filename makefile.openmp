@@ -1,0 +1,63 @@
+CC = gcc
+
+CFLAGS = -std=c99 -DNDEBUG #-g
+#CFLAGS += -Wall -pedantic
+
+CFLAGS += -DOPENMP_ENABLED
+
+CFLAGS += -DDISABLED_CONFIG_HEADER
+
+CFLAGS += -O3
+
+SRCDIR = src
+
+PHYCDIR = $(SRCDIR)/phyc
+
+INCLUDES = -I$(SRCDIR)
+
+OBJDIR = obj
+BINDIR = bin
+
+ifeq ($(OS),Windows_NT)
+    CFLAGS += -D__WIN32__
+else
+	ARCH := $(shell uname -s)
+	ifeq ($(ARCH),Linux)
+		CFLAGS += -D__LINUX__ -D_XOPEN_SOURCE=600
+	endif
+	ifeq ($(ARCH),Darwin)
+		CFLAGS += -D__MACH__
+	endif
+endif
+
+OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
+
+LIBS = -fopenmp
+
+
+MKDIR_P = mkdir -p
+
+.PHONY: directories
+
+all: clean directories physher-openmp
+
+directories: ${OBJDIR} ${BINDIR}
+
+${OBJDIR}:
+	${MKDIR_P} ${OBJDIR}
+${BINDIR}:
+	${MKDIR_P} ${BINDIR}
+
+
+$(OBJDIR)/%.o: $(PHYCDIR)/%.c
+	$(CC) -c -o $@ $< $(CFLAGS)
+	
+physher-openmp: ${OBJFILES}
+	$(CC) $(CFLAGS) $(INCLUDES) -lm -o ${BINDIR}/physher-openmp physher.c $(SRCDIR)/$(OBJFILES) $(LIBS)
+
+clean:
+	rm -f ${BINDIR}/physher-openmp
+	rm -f $(OBJDIR)/*.o
+
+	
+

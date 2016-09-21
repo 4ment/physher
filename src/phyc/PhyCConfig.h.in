@@ -1,0 +1,31 @@
+//
+//  PhyCConfig.h.in.h
+//  PhyC
+//
+//  Created by Mathieu Fourment on 18/12/12.
+//  Copyright (c) 2012 __MyCompanyName__. All rights reserved.
+//
+
+#ifndef PhyC_PhyCConfig_h_in
+#define PhyC_PhyCConfig_h_in
+
+#define PHYC_BUILD_TYPE "@CMAKE_BUILD_TYPE@"
+
+// CMAKE_C_FLAGS                @CMAKE_C_FLAGS@
+// CMAKE_C_FLAGS_DEBUG          @CMAKE_C_FLAGS_DEBUG@
+// CMAKE_C_FLAGS_RELEASE        @CMAKE_C_FLAGS_RELEASE@
+// CMAKE_C_FLAGS_RELWITHDEBINFO @CMAKE_C_FLAGS_RELWITHDEBINFO@
+
+#define PHYC_VERSION_MAJOR @PHYC_MAJOR_VERSION@
+#define PHYC_VERSION_MINOR @PHYC_MINOR_VERSION@
+
+#define PHYC_OPENMP_ENABLED @PHYC_OPENMP_ENABLED@
+#define PHYC_PTHREAD_ENABLED @PHYC_PTHREAD_ENABLED@
+
+#define PHYC_SSE_ENABLED @PHYC_SSE_ENABLED@
+#define PHYC_SSE_LEVEL "@PHYC_SSE_LEVEL@"
+
+
+#define PHYC_AVX_ENABLED @PHYC_AVX_ENABLED@
+
+#endif
