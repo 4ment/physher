@@ -31,6 +31,7 @@ static int  _nucleotide_encoding( DataType *datatype, char nuc);
 static char _nucleotide_state( DataType *datatype, int encoding);
 static int _nucleotide_encoding_string( DataType *datatype, const char *nuc);
 static const char * _nucleotide_state_string( DataType *datatype, int encoding);
+static void _nucleotide_state_vector( DataType *datatype, int encoding, double* out);
 
 static int  _aa_encoding( DataType *datatype, char nuc);
 static char _aa_state( DataType *datatype, int encoding);
@@ -42,9 +43,11 @@ static char _codon_state( DataType *datatype, int encoding);
 static int _codon_encoding_string( DataType *datatype, const char *codon);
 static const char * _codon_state_string( DataType *datatype, int encoding);
 
-static DataType SINGLETON_DATATYPE_NUCLEOTIDE = {"Nucleotide", DATA_TYPE_NUCLEOTIDE,  4, 1, 0, _nucleotide_encoding, _nucleotide_state, _nucleotide_encoding_string, _nucleotide_state_string, _state_count, 0};
-static DataType SINGLETON_DATATYPE_AMINO_ACID = {"Amino Acid", DATA_TYPE_AMINO_ACID, 20, 1, 0, _aa_encoding,         _aa_state,         _aa_encoding_string,         _aa_state_string        , _state_count, 0};
-static DataType SINGLETON_DATATYPE_CODON      = {"Codon",      DATA_TYPE_CODON,      60, 3, 0, _codon_encoding,      _codon_state,      _codon_encoding_string,      _codon_state_string     , _state_count,  0};
+static void _default_state_vector( DataType *datatype, int encoding, double* out);
+
+static DataType SINGLETON_DATATYPE_NUCLEOTIDE = {"Nucleotide", DATA_TYPE_NUCLEOTIDE,  4, 1, 0, _nucleotide_encoding, _nucleotide_state, _nucleotide_encoding_string, _nucleotide_state_string, _nucleotide_state_vector, _state_count, 0};
+static DataType SINGLETON_DATATYPE_AMINO_ACID = {"Amino Acid", DATA_TYPE_AMINO_ACID, 20, 1, 0, _aa_encoding,         _aa_state,         _aa_encoding_string,         _aa_state_string        , _default_state_vector, _state_count, 0};
+static DataType SINGLETON_DATATYPE_CODON      = {"Codon",      DATA_TYPE_CODON,      60, 3, 0, _codon_encoding,      _codon_state,      _codon_encoding_string,      _codon_state_string     , _default_state_vector, _state_count,  0};
 
 static char AMINO_ACIDS[26] = "ACDEFGHIKLMNPQRSTVWYBZX*?-";
 static const char *AMINO_ACIDS_STRING[26] = {"A","C","D","E","F","G","H","I","K","L","M","N","P","Q","R","S","T","V","W","Y","B","Z","X","*","?","-"};
@@ -95,6 +98,10 @@ const char * _state_string( DataType *datatype, int encoding){
     return "?";
 }
 
+void _default_state_vector( DataType *datatype, int encoding, double* out){
+    error("Not yet implemented: _default_state_vector\n");
+}
+
 DataType * clone_DataType(const DataType *dataType){
     DataType *newDataType = malloc(sizeof(DataType));
     assert(dataType);
@@ -113,6 +120,7 @@ DataType * clone_DataType(const DataType *dataType){
     
     newDataType->encoding_string = dataType->encoding_string;
     newDataType->state_string    = dataType->state_string;
+    newDataType->state_vector    = dataType->state_vector;
     newDataType->state_count = dataType->state_count;
     
     return newDataType;
@@ -160,6 +168,7 @@ DataType *new_GenericDataType( int count, const char **states){
     
     dataType->encoding_string = _encoding_string;
     dataType->state_string    = _state_string;
+    dataType->state_vector = _default_state_vector;
     
     dataType->state_count = _state_count;
     
@@ -201,6 +210,7 @@ DataType *new_NucleotideDataType(){
     
     dataType->encoding_string = _nucleotide_encoding_string;
     dataType->state_string    = _state_string;
+    dataType->state_vector  = _nucleotide_state_vector;
     
     dataType->state_count = _state_count;
     
@@ -227,6 +237,10 @@ const char * _nucleotide_state_string( DataType *datatype, int encoding){
     return NUCLEOTIDES_STRING[encoding];
 }
 
+void _nucleotide_state_vector( DataType *datatype, int encoding, double* out){
+    memcpy(out, NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[encoding], 4*sizeof(double));
+}
+
 
 #pragma mark-
 #pragma mark Amino acid
@@ -249,6 +263,7 @@ DataType *new_AminoAcidDataType(){
     
     dataType->encoding_string = _aa_encoding_string;
     dataType->state_string    = _state_string;
+    dataType->state_vector = _default_state_vector;
     
     dataType->state_count = _state_count;
     
@@ -296,6 +311,7 @@ DataType *new_CodonDataType( int genetic_code ){
     
     dataType->encoding_string = _codon_encoding_string;
     dataType->state_string    = _codon_state_string;
+    dataType->state_vector = _default_state_vector;
     
     dataType->state_count = _state_count;
     

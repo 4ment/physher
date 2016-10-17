@@ -78,10 +78,68 @@ void update_partials_4( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex
                                          tlk->partials[nodeIndex3]);
         }
     }
-	
-	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
-	}
+    
+    if ( tlk->scale ) {
+        SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+    }
+}
+
+void update_partials_uncertainty_4( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
+    
+    if( tlk->mapping[nodeIndex1] == -1 ){
+        if(  tlk->mapping[nodeIndex2] == -1 ){
+            partials_undefined_and_undefined_4(tlk,
+                                               tlk->partials[nodeIndex1],
+                                               tlk->matrices[nodeIndex1],
+                                               tlk->partials[nodeIndex2],
+                                               tlk->matrices[nodeIndex2],
+                                               tlk->partials[nodeIndex3]);
+        }
+        else {
+            partials_states_and_undefined_uncertainty_4(tlk,
+                                            tlk->mapping[nodeIndex2],
+                                            tlk->matrices[nodeIndex2],
+                                            tlk->partials[nodeIndex1],
+                                            tlk->matrices[nodeIndex1],
+                                            tlk->partials[nodeIndex3]);
+        }
+        
+    }
+    else{
+        if(  tlk->mapping[nodeIndex2] == -1 ){
+            partials_states_and_undefined_uncertainty_4(tlk,
+                                            tlk->mapping[nodeIndex1],
+                                            tlk->matrices[nodeIndex1],
+                                            tlk->partials[nodeIndex2],
+                                            tlk->matrices[nodeIndex2],
+                                            tlk->partials[nodeIndex3]);
+            
+        }
+        else{
+            partials_states_and_states_uncertainty_4(tlk,
+                                         tlk->mapping[nodeIndex1],
+                                         tlk->matrices[nodeIndex1],
+                                         tlk->mapping[nodeIndex2],
+                                         tlk->matrices[nodeIndex2],
+                                         tlk->partials[nodeIndex3]);
+        }
+    }
+    if ( tlk->scale ) {
+        SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+    }
+}
+
+void update_partials_uncertainty2_4( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
+    
+    partials_undefined_and_undefined_4(tlk,
+                                       tlk->partials[nodeIndex1],
+                                       tlk->matrices[nodeIndex1],
+                                       tlk->partials[nodeIndex2],
+                                       tlk->matrices[nodeIndex2],
+                                       tlk->partials[nodeIndex3]);
+    if ( tlk->scale ) {
+        SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+    }
 }
 
 void update_partials_noexp_integrate_4( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
@@ -211,53 +269,219 @@ void node_log_likelihoods_4( const SingleTreeLikelihood *tlk, const double * RES
 
 
 void partials_states_and_states_4( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT matrices1, int idx2, const double * RESTRICT matrices2, double * RESTRICT partials ){
-	int k,w;
-	int u = 0;
-	int state1, state2;
-	double *pPartials = partials;
-	
-	for ( int l = 0; l < tlk->sm->cat_count; l++ ) {
-		
-		for ( k = 0; k < tlk->sp->count; k++ ) {
-			
-			state1 = tlk->sp->patterns[k][idx1];
-			state2 = tlk->sp->patterns[k][idx2];
-			
-			//w = l * tlk->matrix_size;
-			w = u;
-			
-			if (state1 < 4 && state2 < 4) {
-				*pPartials++ = matrices1[w + state1] * matrices2[w + state2]; w += 4;
-				*pPartials++ = matrices1[w + state1] * matrices2[w + state2]; w += 4;
-				*pPartials++ = matrices1[w + state1] * matrices2[w + state2]; w += 4;
-				*pPartials++ = matrices1[w + state1] * matrices2[w + state2];
-				
-			}
-			else if (state1 < 4 ) {
-				// child 1 has a gap or unknown state so treat it as unknown
-				*pPartials++ = matrices1[w + state1]; w += 4;
-				*pPartials++ = matrices1[w + state1]; w += 4;
-				*pPartials++ = matrices1[w + state1]; w += 4;
-				*pPartials++ = matrices1[w + state1];
-			}
-			else if (state2 < 4 ) {
-				// child 2 has a gap or unknown state so treat it as unknown
-				*pPartials++ = matrices2[w + state2]; w += 4;
-				*pPartials++ = matrices2[w + state2]; w += 4;
-				*pPartials++ = matrices2[w + state2]; w += 4;
-				*pPartials++ = matrices2[w + state2];
-				
-			}
-			else {
-				// both children have a gap or unknown state so set partials to 1
-				*pPartials++ = 1.0;
-				*pPartials++ = 1.0;
-				*pPartials++ = 1.0;
-				*pPartials++ = 1.0;
-			}
-		}
-		u += 16;
-	}
+    int k,w;
+    int u = 0;
+    int state1, state2;
+    double *pPartials = partials;
+    
+    for ( int l = 0; l < tlk->sm->cat_count; l++ ) {
+        
+        for ( k = 0; k < tlk->sp->count; k++ ) {
+            
+            state1 = tlk->sp->patterns[k][idx1];
+            state2 = tlk->sp->patterns[k][idx2];
+            
+            //w = l * tlk->matrix_size;
+            w = u;
+            
+            if (state1 < 4 && state2 < 4) {
+                *pPartials++ = matrices1[w + state1] * matrices2[w + state2]; w += 4;
+                *pPartials++ = matrices1[w + state1] * matrices2[w + state2]; w += 4;
+                *pPartials++ = matrices1[w + state1] * matrices2[w + state2]; w += 4;
+                *pPartials++ = matrices1[w + state1] * matrices2[w + state2];
+                
+            }
+            else if (state1 < 4 ) {
+                // child 1 has a gap or unknown state so treat it as unknown
+                *pPartials++ = matrices1[w + state1]; w += 4;
+                *pPartials++ = matrices1[w + state1]; w += 4;
+                *pPartials++ = matrices1[w + state1]; w += 4;
+                *pPartials++ = matrices1[w + state1];
+            }
+            else if (state2 < 4 ) {
+                // child 2 has a gap or unknown state so treat it as unknown
+                *pPartials++ = matrices2[w + state2]; w += 4;
+                *pPartials++ = matrices2[w + state2]; w += 4;
+                *pPartials++ = matrices2[w + state2]; w += 4;
+                *pPartials++ = matrices2[w + state2];
+                
+            }
+            else {
+                // both children have a gap or unknown state so set partials to 1
+                *pPartials++ = 1.0;
+                *pPartials++ = 1.0;
+                *pPartials++ = 1.0;
+                *pPartials++ = 1.0;
+            }
+        }
+        u += 16;
+    }
+}
+
+void partials_states_and_states_uncertainty_4( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT matrices1, int idx2, const double * RESTRICT matrices2, double * RESTRICT partials ){
+    int k,w;
+    int u = 0;
+    int state1, state2;
+    double *pPartials = partials;
+    double sum;
+    
+    
+    for ( int l = 0; l < tlk->sm->cat_count; l++ ) {
+        
+        for ( k = 0; k < tlk->sp->count; k++ ) {
+            
+            state1 = tlk->sp->patterns[k][idx1];
+            state2 = tlk->sp->patterns[k][idx2];
+            w = u;
+            
+            if (state1 < 4 && state2 < 4) {
+                *pPartials++ = matrices1[w + state1] * matrices2[w + state2]; w += 4;
+                *pPartials++ = matrices1[w + state1] * matrices2[w + state2]; w += 4;
+                *pPartials++ = matrices1[w + state1] * matrices2[w + state2]; w += 4;
+                *pPartials++ = matrices1[w + state1] * matrices2[w + state2];
+                
+            }
+            else if (state1 < 4 && state2 < 15 ) {
+                const double *partials2 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state2];
+                sum  = matrices2[w]     * partials2[0];
+                sum += matrices2[w + 1] * partials2[1];
+                sum += matrices2[w + 2] * partials2[2];
+                sum += matrices2[w + 3] * partials2[3];
+                
+                *pPartials++ = matrices1[w + state1] * sum;
+                
+                
+                sum  = matrices2[w + 4] * partials2[0];
+                sum += matrices2[w + 5] * partials2[1];
+                sum += matrices2[w + 6] * partials2[2];
+                sum += matrices2[w + 7] * partials2[3];
+                
+                *pPartials++ = matrices1[w + 4 + state1] * sum;
+                
+                
+                sum  = matrices2[w + 8]  * partials2[0];
+                sum += matrices2[w + 9]  * partials2[1];
+                sum += matrices2[w + 10] * partials2[2];
+                sum += matrices2[w + 11] * partials2[3];
+                
+                *pPartials++ = matrices1[w + 8 + state1] * sum;
+                
+                
+                sum  = matrices2[w + 12] * partials2[0];
+                sum += matrices2[w + 13] * partials2[1];
+                sum += matrices2[w + 14] * partials2[2];
+                sum += matrices2[w + 15] * partials2[3];
+                
+                *pPartials++ = matrices1[w + 12 + state1] * sum;
+            }
+            else if (state2 < 4 && state1 < 15 ) {
+                const double *partials1 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state1];
+                sum  = matrices1[w]     * partials1[0];
+                sum += matrices1[w + 1] * partials1[1];
+                sum += matrices1[w + 2] * partials1[2];
+                sum += matrices1[w + 3] * partials1[3];
+                
+                *pPartials++ = matrices2[w + state2] * sum;
+                
+                
+                sum  = matrices1[w + 4] * partials1[0];
+                sum += matrices1[w + 5] * partials1[1];
+                sum += matrices1[w + 6] * partials1[2];
+                sum += matrices1[w + 7] * partials1[3];
+                
+                *pPartials++ = matrices2[w + 4 + state2] * sum;
+                
+                
+                sum  = matrices1[w + 8]  * partials1[0];
+                sum += matrices1[w + 9]  * partials1[1];
+                sum += matrices1[w + 10] * partials1[2];
+                sum += matrices1[w + 11] * partials1[3];
+                
+                *pPartials++ = matrices2[w + 8 + state2] * sum;
+                
+                
+                sum  = matrices1[w + 12] * partials1[0];
+                sum += matrices1[w + 13] * partials1[1];
+                sum += matrices1[w + 14] * partials1[2];
+                sum += matrices1[w + 15] * partials1[3];
+                
+                *pPartials++ = matrices2[w + 12 + state2] * sum;
+                
+            }
+            else if (state1 < 15 && state2 < 15 ) {
+                const double *partials1 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state1];
+                const double *partials2 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state2];
+                double sum1 = 0;
+                double sum2 = 0;
+                sum1  = matrices1[w]   * partials1[0];
+                sum2  = matrices2[w]   * partials2[0];
+                
+                sum1 += matrices1[w+1] * partials1[1];
+                sum2 += matrices2[w+1] * partials2[1];
+                
+                sum1 += matrices1[w+2] * partials1[2];
+                sum2 += matrices2[w+2] * partials2[2];
+                
+                sum1 += matrices1[w+3] * partials1[3];
+                sum2 += matrices2[w+3] * partials2[3];
+                
+                *pPartials++ = sum1 * sum2;
+                
+                
+                sum1  = matrices1[w+4] * partials1[0];
+                sum2  = matrices2[w+4] * partials2[0];
+                
+                sum1 += matrices1[w+5] * partials1[1];
+                sum2 += matrices2[w+5] * partials2[1];
+                
+                sum1 += matrices1[w+6] * partials1[2];
+                sum2 += matrices2[w+6] * partials2[2];
+                
+                sum1 += matrices1[w+7] * partials1[3];
+                sum2 += matrices2[w+7] * partials2[3];
+                
+                *pPartials++ = sum1 * sum2;
+                
+                
+                sum1  = matrices1[w+8]  * partials1[0];
+                sum2  = matrices2[w+8]  * partials2[0];
+                
+                sum1 += matrices1[w+9]  * partials1[1];
+                sum2 += matrices2[w+9]  * partials2[1];
+                
+                sum1 += matrices1[w+10] * partials1[2];
+                sum2 += matrices2[w+10] * partials2[2];
+                
+                sum1 += matrices1[w+11] * partials1[3];
+                sum2 += matrices2[w+11] * partials2[3];
+                
+                *pPartials++ = sum1 * sum2;
+                
+                
+                sum1  = matrices1[w+12] * partials1[0];
+                sum2  = matrices2[w+12] * partials2[0];
+                
+                sum1 += matrices1[w+13] * partials1[1];
+                sum2 += matrices2[w+13] * partials2[1];
+                
+                sum1 += matrices1[w+14] * partials1[2];
+                sum2 += matrices2[w+14] * partials2[2];
+                
+                sum1 += matrices1[w+15] * partials1[3];
+                sum2 += matrices2[w+15] * partials2[3];
+                
+                *pPartials++ = sum1 * sum2;
+            }
+            else {
+                // both children have a gap or unknown state so set partials to 1
+                *pPartials++ = 1.0;
+                *pPartials++ = 1.0;
+                *pPartials++ = 1.0;
+                *pPartials++ = 1.0;
+            }
+        }
+        u += 16;
+    }
 }
 
 void partials_states_and_states_noexp_integrate_4( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT exps1, int idx2, const double * RESTRICT exps2, double * RESTRICT partials ){
@@ -469,6 +693,168 @@ void partials_states_and_undefined_4( const SingleTreeLikelihood *tlk, int idx1,
 	}
 }
 
+    // Auto-vectorization
+#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
+    void partials_states_and_undefined_uncertainty_4( const SingleTreeLikelihood *tlk, int idx1, const double * restrict amatrices1, const double * restrict apartials2, const double * restrict amatrices2, double *partials3){
+#else
+    void partials_states_and_undefined_uncertainty_4( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT matrices1, const double * RESTRICT partials2, const double * RESTRICT matrices2, double * RESTRICT partials3){
+#endif
+        double sum1,sum2;
+        int v = 0;
+        int k;
+        int w = 0;
+        int state1;
+        
+        
+#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
+        const double *partials2 = __builtin_assume_aligned(apartials2, 16);
+        
+        const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
+        const double *matrices2 = __builtin_assume_aligned(amatrices2, 16);
+#endif
+        
+        double *pPartials = partials3;
+        
+        for ( int l = 0; l < tlk->sm->cat_count; l++ ) {
+            
+            for ( k = 0; k < tlk->sp->count; k++ ) {
+                
+                state1 = tlk->sp->patterns[k][idx1];
+                
+                if ( state1 < 4) {
+                    
+                    sum1  = matrices2[w]     * partials2[v];
+                    sum1 += matrices2[w + 1] * partials2[v + 1];
+                    sum1 += matrices2[w + 2] * partials2[v + 2];
+                    sum1 += matrices2[w + 3] * partials2[v + 3];
+                    
+                    *pPartials++ = matrices1[w + state1] * sum1;
+                    
+                    
+                    sum1  = matrices2[w + 4] * partials2[v];
+                    sum1 += matrices2[w + 5] * partials2[v + 1];
+                    sum1 += matrices2[w + 6] * partials2[v + 2];
+                    sum1 += matrices2[w + 7] * partials2[v + 3];
+                    
+                    *pPartials++ = matrices1[w + 4 + state1] * sum1;
+                    
+                    
+                    sum1  = matrices2[w + 8]  * partials2[v];
+                    sum1 += matrices2[w + 9]  * partials2[v + 1];
+                    sum1 += matrices2[w + 10] * partials2[v + 2];
+                    sum1 += matrices2[w + 11] * partials2[v + 3];
+                    
+                    *pPartials++ = matrices1[w + 8 + state1] * sum1;
+                    
+                    
+                    sum1  = matrices2[w + 12] * partials2[v];
+                    sum1 += matrices2[w + 13] * partials2[v + 1];
+                    sum1 += matrices2[w + 14] * partials2[v + 2];
+                    sum1 += matrices2[w + 15] * partials2[v + 3];
+                    
+                    *pPartials++ = matrices1[w + 12 + state1] * sum1;
+                    
+                }
+                else if ( state1 < 15) {
+                    const double *partials1 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state1];
+                    sum1  = matrices1[w]   * partials1[0];
+                    sum2  = matrices2[w]   * partials2[v];
+                    
+                    sum1 += matrices1[w+1] * partials1[1];
+                    sum2 += matrices2[w+1] * partials2[v + 1];
+                    
+                    sum1 += matrices1[w+2] * partials1[2];
+                    sum2 += matrices2[w+2] * partials2[v + 2];
+                    
+                    sum1 += matrices1[w+3] * partials1[3];
+                    sum2 += matrices2[w+3] * partials2[v + 3];
+                    
+                    *pPartials++ = sum1 * sum2;
+                    
+                    
+                    sum1  = matrices1[w+4] * partials1[0];
+                    sum2  = matrices2[w+4] * partials2[v];
+                    
+                    sum1 += matrices1[w+5] * partials1[1];
+                    sum2 += matrices2[w+5] * partials2[v + 1];
+                    
+                    sum1 += matrices1[w+6] * partials1[2];
+                    sum2 += matrices2[w+6] * partials2[v + 2];
+                    
+                    sum1 += matrices1[w+7] * partials1[3];
+                    sum2 += matrices2[w+7] * partials2[v + 3];
+                    
+                    *pPartials++ = sum1 * sum2;
+                    
+                    
+                    sum1  = matrices1[w+8]  * partials1[0];
+                    sum2  = matrices2[w+8]  * partials2[v];
+                    
+                    sum1 += matrices1[w+9]  * partials1[1];
+                    sum2 += matrices2[w+9]  * partials2[v + 1];
+                    
+                    sum1 += matrices1[w+10] * partials1[2];
+                    sum2 += matrices2[w+10] * partials2[v + 2];
+                    
+                    sum1 += matrices1[w+11] * partials1[3];
+                    sum2 += matrices2[w+11] * partials2[v + 3];
+                    
+                    *pPartials++ = sum1 * sum2;
+                    
+                    
+                    sum1  = matrices1[w+12] * partials1[0];
+                    sum2  = matrices2[w+12] * partials2[v];
+                    
+                    sum1 += matrices1[w+13] * partials1[1];
+                    sum2 += matrices2[w+13] * partials2[v + 1];
+                    
+                    sum1 += matrices1[w+14] * partials1[2];
+                    sum2 += matrices2[w+14] * partials2[v + 2];
+                    
+                    sum1 += matrices1[w+15] * partials1[3];
+                    sum2 += matrices2[w+15] * partials2[v + 3];
+                    
+                    *pPartials++ = sum1 * sum2;
+                    
+                }
+                else {
+                    // Child 1 has a gap or unknown state so don't use it
+                    
+                    *pPartials  = matrices2[w]     * partials2[v];
+                    *pPartials += matrices2[w + 1] * partials2[v + 1];
+                    *pPartials += matrices2[w + 2] * partials2[v + 2];
+                    *pPartials += matrices2[w + 3] * partials2[v + 3];
+                    
+                    pPartials++;
+                    
+                    *pPartials  = matrices2[w + 4] * partials2[v];
+                    *pPartials += matrices2[w + 5] * partials2[v + 1];
+                    *pPartials += matrices2[w + 6] * partials2[v + 2];
+                    *pPartials += matrices2[w + 7] * partials2[v + 3];
+                    
+                    pPartials++;
+                    
+                    *pPartials  = matrices2[w + 8]  * partials2[v];
+                    *pPartials += matrices2[w + 9]  * partials2[v + 1];
+                    *pPartials += matrices2[w + 10] * partials2[v + 2];
+                    *pPartials += matrices2[w + 11] * partials2[v + 3];
+                    
+                    pPartials++;
+                    
+                    *pPartials  = matrices2[w + 12] * partials2[v];
+                    *pPartials += matrices2[w + 13] * partials2[v + 1];
+                    *pPartials += matrices2[w + 14] * partials2[v + 2];
+                    *pPartials += matrices2[w + 15] * partials2[v + 3];
+                    
+                    pPartials++;
+                    
+                }
+                v += 4;
+            }
+            w += 16;
+        }
+    }
+        
 #if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
 void partials_states_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, int idx1, const double * exps1, const double * restrict apartials2, const double * exps2, double *partials3){
 #else
@@ -926,6 +1312,21 @@ void update_partials_4_openmp( SingleTreeLikelihood *tlk, int nodeIndex1, int no
 		SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
 	}
 }
+    
+    
+void update_partials_uncertainty_4_openmp( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
+    
+    partials_undefined_and_undefined_4_openmp(tlk,
+                                              tlk->partials[nodeIndex1],
+                                              tlk->matrices[nodeIndex1],
+                                              tlk->partials[nodeIndex2],
+                                              tlk->matrices[nodeIndex2],
+                                              tlk->partials[nodeIndex3]);
+    
+    if ( tlk->scale ) {
+        SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+    }
+}
 
 void partials_states_and_states_4_openmp( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, int idx2, const double *matrices2, double *partials ){
 	
@@ -1322,7 +1723,305 @@ void partials_states_and_states_4_SSE( const SingleTreeLikelihood *tlk, int idx1
 		u += 16;
 	}
 }
+    
+    
+#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
+void partials_states_and_states_uncertainty_4_SSE( const SingleTreeLikelihood *tlk, int idx1, const double * restrict amatrices1, int idx2, const double * restrict amatrices2, double *partials ){
+#else
+void partials_states_and_states_uncertainty_4_SSE( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, int idx2, const double *matrices2, double *partials ){
+#endif
+    
+    int k;
+    int state1, state2;
+    int w=0;
+    
+#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
+    const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
+    const double *matrices2 = __builtin_assume_aligned(amatrices2, 16);
+#endif
+    
+    const double *m1 = matrices1;
+    const double *m2 = matrices2;
+    double *pPartials = partials;
+    
+    __m128d p1v0, p1v2, p2v0, p2v2, m1v0, m1v2,m2v0, m2v2;
+    double temp[2] __attribute__ ((aligned (16)));
+    
+    for ( int l = 0; l < tlk->sm->cat_count; l++ ) {
+        
+        for ( k = 0; k < tlk->sp->count; k++ ) {
+            
+            state1 = tlk->sp->patterns[k][idx1];
+            state2 = tlk->sp->patterns[k][idx2];
+            
+            if (state1 < 4 && state2 < 4) {
+                
+                m1 = &matrices1[w+4*state1];
+                m2 = &matrices2[w+4*state2];
+                
+                m1v0 = _mm_load_pd(&m1[0]);
+                m1v2 = _mm_load_pd(&m1[2]);
+                
+                m2v0 = _mm_load_pd(&m2[0]);
+                m2v2 = _mm_load_pd(&m2[2]);
+                
+                _mm_store_pd(pPartials, _mm_mul_pd(m1v0, m2v0));
+                pPartials += 2;
+                _mm_store_pd(pPartials, _mm_mul_pd(m1v2, m2v2));
+                pPartials += 2;
+                
+            }
+            else if (state1 < 4 && state2 < 15) {
+                const double *partials2 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state2];
+                m1 = &matrices1[w + state1*4];
+                
+                p2v0 = _mm_load_pd(&partials2[0]);
+                p2v2 = _mm_load_pd(&partials2[2]);
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w]);
+                m2v2 = _mm_load_pd(&matrices2[w+2]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = *m1 * (temp[0]+temp[1]);
+                m1++;
+                
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w+4]);
+                m2v2 = _mm_load_pd(&matrices2[w+6]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = *m1 * (temp[0]+temp[1]);
+                m1++;
+                
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w+8]);
+                m2v2 = _mm_load_pd(&matrices2[w+10]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = *m1 *  (temp[0]+temp[1]);
+                m1++;
+                
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w+12]);
+                m2v2 = _mm_load_pd(&matrices2[w+14]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = *m1 * (temp[0]+temp[1]);
+                m1++;
+            }
+            else if (state2 < 4 && state1 < 15 ) {
+                const double *partials1 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state1];
+                m2 = &matrices2[w + state2*4];
+                
+                p1v0 = _mm_load_pd(&partials1[0]);
+                p1v2 = _mm_load_pd(&partials1[2]);
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w]);
+                m1v2 = _mm_load_pd(&matrices1[w+2]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = *m2 * (temp[0]+temp[1]);
+                m2++;
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w+4]);
+                m1v2 = _mm_load_pd(&matrices1[w+6]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = *m2 * (temp[0]+temp[1]);
+                m2++;
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w+8]);
+                m1v2 = _mm_load_pd(&matrices1[w+10]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = *m2 *  (temp[0]+temp[1]);
+                m2++;
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w+12]);
+                m1v2 = _mm_load_pd(&matrices1[w+14]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = *m2 * (temp[0]+temp[1]);
+                m2++;
+                
+            }
+            else if (state1 < 15 && state2 < 15) {
+                const double *partials1 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state1];
+                const double *partials2 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state2];
+                
+                p1v0 = _mm_load_pd(&partials1[0]);
+                p1v2 = _mm_load_pd(&partials1[2]);
+                
+                p2v0 = _mm_load_pd(&partials2[0]);
+                p2v2 = _mm_load_pd(&partials2[2]);
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w]);
+                m1v2 = _mm_load_pd(&matrices1[w+2]);
+                
+                m2v0 = _mm_load_pd(&matrices2[w]);
+                m2v2 = _mm_load_pd(&matrices2[w+2]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                m1v0 = _mm_hadd_pd(m1v0, m2v0);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = temp[0]*temp[1];
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w+4]);
+                m1v2 = _mm_load_pd(&matrices1[w+6]);
+                
+                m2v0 = _mm_load_pd(&matrices2[w+4]);
+                m2v2 = _mm_load_pd(&matrices2[w+6]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                m1v0 = _mm_hadd_pd(m1v0, m2v0);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = temp[0]*temp[1];
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w+8]);
+                m1v2 = _mm_load_pd(&matrices1[w+10]);
+                
+                m2v0 = _mm_load_pd(&matrices2[w+8]);
+                m2v2 = _mm_load_pd(&matrices2[w+10]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                m1v0 = _mm_hadd_pd(m1v0, m2v0);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = temp[0]*temp[1];
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w+12]);
+                m1v2 = _mm_load_pd(&matrices1[w+14]);
+                
+                m2v0 = _mm_load_pd(&matrices2[w+12]);
+                m2v2 = _mm_load_pd(&matrices2[w+14]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                m1v0 = _mm_hadd_pd(m1v0, m2v0);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = temp[0]*temp[1];
 
+            }
+            else {
+                // both children have a gap or unknown state so set partials to 1
+                *pPartials++ = 1.0;
+                *pPartials++ = 1.0;
+                *pPartials++ = 1.0;
+                *pPartials++ = 1.0;
+            }
+        }
+        w += 16;
+    }
+}
         
 #if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
 void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int idx1, const double * restrict amatrices1, const double * restrict apartials2, const double * restrict amatrices2, double *partials3 ){
@@ -1486,6 +2185,270 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 	}
 }
 
+#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
+void partials_states_and_undefined_uncertainty_4_SSE( const SingleTreeLikelihood *tlk, int idx1, const double * restrict amatrices1, const double * restrict apartials2, const double * restrict amatrices2, double *partials3 ){
+#else
+void partials_states_and_undefined_uncertainty_4_SSE( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 ){
+#endif
+    
+    int v = 0;
+    int k;
+    int w = 0;
+    int state1;
+    
+#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
+    const double *partials2 = __builtin_assume_aligned(apartials2, 16);
+    
+    const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
+    const double *matrices2 = __builtin_assume_aligned(amatrices2, 16);
+#endif
+    
+    double *pPartials = partials3;
+    const double *m1 = matrices1;
+    
+    __m128d p1v0, p1v2, m1v0, m1v2, p2v0, p2v2, m2v0, m2v2;
+    double temp[2] __attribute__ ((aligned (16)));
+    
+    for ( int l = 0; l < tlk->sm->cat_count; l++ ) {
+        
+        for ( k = 0; k < tlk->sp->count; k++ ) {
+            
+            state1 = tlk->sp->patterns[k][idx1];
+            
+            
+            p2v0 = _mm_load_pd(&partials2[v]);
+            p2v2 = _mm_load_pd(&partials2[v+2]);
+            
+            if ( state1 < 4) {
+                
+                m1 = &matrices1[w + state1*4];
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w]);
+                m2v2 = _mm_load_pd(&matrices2[w+2]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = *m1 * (temp[0]+temp[1]);
+                m1++;
+                
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w+4]);
+                m2v2 = _mm_load_pd(&matrices2[w+6]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = *m1 * (temp[0]+temp[1]);
+                m1++;
+                
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w+8]);
+                m2v2 = _mm_load_pd(&matrices2[w+10]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = *m1 *  (temp[0]+temp[1]);
+                m1++;
+                
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w+12]);
+                m2v2 = _mm_load_pd(&matrices2[w+14]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = *m1 * (temp[0]+temp[1]);
+                m1++;
+                
+            }
+            if ( state1 < 15) {
+                const double *partials1 = NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[state1];
+                
+                p1v0 = _mm_load_pd(&partials1[0]);
+                p1v2 = _mm_load_pd(&partials1[2]);
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w]);
+                m1v2 = _mm_load_pd(&matrices1[w+2]);
+                
+                m2v0 = _mm_load_pd(&matrices2[w]);
+                m2v2 = _mm_load_pd(&matrices2[w+2]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                m1v0 = _mm_hadd_pd(m1v0, m2v0);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = temp[0]*temp[1];
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w+4]);
+                m1v2 = _mm_load_pd(&matrices1[w+6]);
+                
+                m2v0 = _mm_load_pd(&matrices2[w+4]);
+                m2v2 = _mm_load_pd(&matrices2[w+6]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                m1v0 = _mm_hadd_pd(m1v0, m2v0);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = temp[0]*temp[1];
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w+8]);
+                m1v2 = _mm_load_pd(&matrices1[w+10]);
+                
+                m2v0 = _mm_load_pd(&matrices2[w+8]);
+                m2v2 = _mm_load_pd(&matrices2[w+10]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                m1v0 = _mm_hadd_pd(m1v0, m2v0);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = temp[0]*temp[1];
+                
+                
+                
+                m1v0 = _mm_load_pd(&matrices1[w+12]);
+                m1v2 = _mm_load_pd(&matrices1[w+14]);
+                
+                m2v0 = _mm_load_pd(&matrices2[w+12]);
+                m2v2 = _mm_load_pd(&matrices2[w+14]);
+                
+                m1v0 = _mm_mul_pd(m1v0, p1v0);
+                m1v2 = _mm_mul_pd(m1v2, p1v2);
+                
+                m1v0 = _mm_add_pd(m1v0, m1v2);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                m1v0 = _mm_hadd_pd(m1v0, m2v0);
+                
+                _mm_store_pd(temp, m1v0);
+                
+                *pPartials++ = temp[0]*temp[1];
+                
+            }
+            else {
+                // Child 1 has a gap or unknown state so don't use it
+                
+                m2v0 = _mm_load_pd(&matrices2[w]);
+                m2v2 = _mm_load_pd(&matrices2[w+2]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = temp[0]+temp[1];
+                
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w+4]);
+                m2v2 = _mm_load_pd(&matrices2[w+6]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = temp[0]+temp[1];
+                
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w+8]);
+                m2v2 = _mm_load_pd(&matrices2[w+10]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = temp[0]+temp[1];
+                
+                
+                
+                m2v0 = _mm_load_pd(&matrices2[w+12]);
+                m2v2 = _mm_load_pd(&matrices2[w+14]);
+                
+                m2v0 = _mm_mul_pd(m2v0, p2v0);
+                m2v2 = _mm_mul_pd(m2v2, p2v2);
+                
+                m2v0 = _mm_add_pd(m2v0, m2v2);
+                
+                _mm_store_pd(temp, m2v0);
+                
+                *pPartials++ = temp[0]+temp[1];
+                
+            }
+            v += 4;
+        }
+        w += 16;
+    }
+}
+
             // Auto-vectorization
 #if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
 void partials_undefined_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, const double * restrict apartials1, const double * restrict amatrices1, const double * restrict apartials2, const double * restrict amatrices2, double *partials3 ){
@@ -1622,10 +2585,71 @@ void partials_undefined_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, co
 		w += 16;
 	}
 }
+    
+    
+    void update_partials_4_SSE( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
+        
+        if( tlk->mapping[nodeIndex1] == -1 ){
+            if(  tlk->mapping[nodeIndex2] == -1 ){
+                partials_undefined_and_undefined_4_SSE(tlk,
+                                                       tlk->partials[nodeIndex1],
+                                                       tlk->matrices[nodeIndex1],
+                                                       tlk->partials[nodeIndex2],
+                                                       tlk->matrices[nodeIndex2],
+                                                       tlk->partials[nodeIndex3]);
+            }
+            else {
+                partials_states_and_undefined_4_SSE(tlk,
+                                                    tlk->mapping[nodeIndex2],
+                                                    tlk->matrices[nodeIndex2],
+                                                    tlk->partials[nodeIndex1],
+                                                    tlk->matrices[nodeIndex1],
+                                                    tlk->partials[nodeIndex3]);
+            }
+            
+        }
+        else{
+            if(  tlk->mapping[nodeIndex2] == -1 ){
+                partials_states_and_undefined_4_SSE(tlk,
+                                                    tlk->mapping[nodeIndex1],
+                                                    tlk->matrices[nodeIndex1],
+                                                    tlk->partials[nodeIndex2],
+                                                    tlk->matrices[nodeIndex2],
+                                                    tlk->partials[nodeIndex3]);
+                
+            }
+            else{
+                partials_states_and_states_4_SSE(tlk,
+                                                 tlk->mapping[nodeIndex1],
+                                                 tlk->matrices[nodeIndex1],
+                                                 tlk->mapping[nodeIndex2],
+                                                 tlk->matrices[nodeIndex2],
+                                                 tlk->partials[nodeIndex3]);
+            }
+        }
+        
+        if ( tlk->scale ) {
+            SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+        }
+    }
+    
+    
+void update_partials_uncertainty2_4_SSE( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
+    
+    partials_undefined_and_undefined_4_SSE(tlk,
+                                           tlk->partials[nodeIndex1],
+                                           tlk->matrices[nodeIndex1],
+                                           tlk->partials[nodeIndex2],
+                                           tlk->matrices[nodeIndex2],
+                                           tlk->partials[nodeIndex3]);
+    
+    if ( tlk->scale ) {
+        SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+    }
+}
 
-
-void update_partials_4_SSE( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
-
+    
+void update_partials_uncertainty_4_SSE( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
     if( tlk->mapping[nodeIndex1] == -1 ){
         if(  tlk->mapping[nodeIndex2] == -1 ){
             partials_undefined_and_undefined_4_SSE(tlk,
@@ -1636,40 +2660,51 @@ void update_partials_4_SSE( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeI
                                                    tlk->partials[nodeIndex3]);
         }
         else {
-            partials_states_and_undefined_4_SSE(tlk,
+            partials_states_and_undefined_uncertainty_4_SSE(tlk,
                                                 tlk->mapping[nodeIndex2],
                                                 tlk->matrices[nodeIndex2],
                                                 tlk->partials[nodeIndex1],
                                                 tlk->matrices[nodeIndex1],
                                                 tlk->partials[nodeIndex3]);
+//            partials_undefined_and_undefined_4_SSE(tlk,
+//                                                   tlk->partials[nodeIndex1],
+//                                                   tlk->matrices[nodeIndex1],
+//                                                   tlk->partials[nodeIndex2],
+//                                                   tlk->matrices[nodeIndex2],
+//                                                   tlk->partials[nodeIndex3]);
         }
         
     }
     else{
         if(  tlk->mapping[nodeIndex2] == -1 ){
-            partials_states_and_undefined_4_SSE(tlk,
+            partials_states_and_undefined_uncertainty_4_SSE(tlk,
                                                 tlk->mapping[nodeIndex1],
                                                 tlk->matrices[nodeIndex1],
                                                 tlk->partials[nodeIndex2],
                                                 tlk->matrices[nodeIndex2],
                                                 tlk->partials[nodeIndex3]);
-            
+//            partials_undefined_and_undefined_4_SSE(tlk,
+//                                                   tlk->partials[nodeIndex1],
+//                                                   tlk->matrices[nodeIndex1],
+//                                                   tlk->partials[nodeIndex2],
+//                                                   tlk->matrices[nodeIndex2],
+//                                                   tlk->partials[nodeIndex3]);
         }
         else{
-            partials_states_and_states_4_SSE(tlk,
+            partials_states_and_states_uncertainty_4_SSE(tlk,
                                              tlk->mapping[nodeIndex1],
                                              tlk->matrices[nodeIndex1],
-                                             tlk->mapping[nodeIndex2], 
+                                             tlk->mapping[nodeIndex2],
                                              tlk->matrices[nodeIndex2],
                                              tlk->partials[nodeIndex3]);
         }
     }
-	
-	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
-	}
+    
+    if ( tlk->scale ) {
+        SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+    }
 }
-
+    
 #endif
 
 #pragma mark -
@@ -2502,6 +3537,21 @@ void update_partials_4_AVX( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeI
 	}
 }
 
+    
+void update_partials_uncertainty_4_AVX( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
+    
+    partials_undefined_and_undefined_4_AVX(tlk,
+                                           tlk->partials[nodeIndex1],
+                                           tlk->matrices[nodeIndex1],
+                                           tlk->partials[nodeIndex2],
+                                           tlk->matrices[nodeIndex2],
+                                           tlk->partials[nodeIndex3]);
+
+    
+    if ( tlk->scale ) {
+        SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+    }
+}
 #endif
 
 
@@ -2829,7 +3879,20 @@ void update_partials_upper_4( SingleTreeLikelihood *tlk, Node *node ){
         _update_upper_partials_undefined(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials_upper[ Node_id(parent) ], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials_upper[ Node_id(node) ]);
     }
 }
-
+    
+    
+void update_partials_uncertainty_upper_4( SingleTreeLikelihood *tlk, Node *node ){
+    Node *parent = Node_parent(node);
+    Node *sibling = Node_sibling(node);
+    
+    if( Node_isroot(parent) ){
+        _update_upper_partials_root_and_undefined(tlk, tlk->partials[ Node_id(sibling) ],  tlk->matrices[ Node_id(sibling) ],  tlk->sm->m->_freqs, tlk->partials_upper[ Node_id(node) ] );
+        
+    }
+    else {
+        _update_upper_partials_undefined(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials_upper[ Node_id(parent) ], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials_upper[ Node_id(node) ]);
+    }
+}
     
 #if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
 static void _partial_lower_upper( const SingleTreeLikelihood *tlk, const double * restrict apartials_upper, const double * restrict apartials_lower, const double * restrict amatrix_lower, const double * restrict proportions, double *pattern_lk ){
@@ -3341,6 +4404,20 @@ void update_partials_upper_sse_4( SingleTreeLikelihood *tlk, Node *node ){
     // The pparent node cannot be leaf
     else if( Node_isleaf(sibling) ){
         _update_upper_partials_state_sse(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials_upper[ Node_id(parent) ], tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->partials_upper[ Node_id(node) ]);
+    }
+    else {
+        _update_upper_partials_undefined_sse(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials_upper[ Node_id(parent) ], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials_upper[ Node_id(node) ]);
+    }
+}
+
+    
+    
+void update_partials_uncertainty_upper_sse_4( SingleTreeLikelihood *tlk, Node *node ){
+    Node *parent = Node_parent(node);
+    Node *sibling = Node_sibling(node);
+    
+    if( Node_isroot(parent) ){
+        _update_upper_partials_root_and_undefined_sse(tlk, tlk->partials[Node_id(sibling) ],  tlk->matrices[Node_id(sibling) ],  tlk->sm->m->_freqs, tlk->partials_upper[Node_id(node) ] );
     }
     else {
         _update_upper_partials_undefined_sse(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials_upper[ Node_id(parent) ], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials_upper[ Node_id(node) ]);

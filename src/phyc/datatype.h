@@ -64,6 +64,49 @@ static const int8_t NUCLEOTIDE_AMBIGUITY_STATES[18][4] = {
 };
 
 
+static const double NUCLEOTIDE_AMBIGUITY_STATES_DOUBLE[18][4] = {
+    // A
+    {1.0,0.0,0.0,0.0},
+    // C
+    {0.0,1.0,0.0,0.0},
+    // G
+    {0.0,0.0,1.0,0.0},
+    // T
+    {0.0,0.0,0.0,1.0},
+    // U
+    {0.0,0.0,0.0,1.0},
+    // R
+    {1.0,0.0,1.0,0.0},
+    // Y
+    {0.0,1.0,0.0,1.0},
+    // M
+    {1.0,1.0,0.0,0.0},
+    // W
+    {1.0,0.0,0.0,1.0},
+    // S
+    {0.0,1.0,1.0,0.0},
+    // K
+    {0.0,0.0,1.0,1.0},
+    
+    //"A", "C", "G", "T", "T", "AG", "CT", "AC", "AT", "CG", "GT",
+    
+    // B
+    {0.0,1.0,1.0,1.0},
+    // D
+    {1.0,0.0,1.0,1.0},
+    // H
+    {1.0,1.0,0.0,1.0},
+    // V
+    {1.0,1.0,1.0,0.0},
+    // N
+    {1.0,1.0,1.0,1.0},
+    // ?
+    {1.0,1.0,1.0,1.0},
+    // -
+    {1.0,1.0,1.0,1.0},
+    //"CGT", "AGT", "ACT", "ACG", "ACGT", "ACGT", "ACGT"
+};
+
 typedef struct DataType{
     char *desc;
     datatype type;
@@ -75,6 +118,7 @@ typedef struct DataType{
     
     int (*encoding_string)( struct DataType *, const char *);
     const char * (*state_string)( struct DataType *, int  );
+    void (*state_vector)( struct DataType *, int, double*  );
     
     int (*state_count)( struct DataType *  );
     int8_t genetic_code;

@@ -134,7 +134,7 @@ struct _SingleTreeLikelihood{
 	void   (*update_partials_upper)( SingleTreeLikelihood *, Node * );
     calculate_upper_t calculate_upper;
 	void   (*node_log_likelihoods_upper)( const SingleTreeLikelihood *, Node * );
-    
+    bool use_uncertainty;
 };
 
 
@@ -171,7 +171,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_share( SingleTreeLikelihood *t
 SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tlk, SitePattern *sp, SiteModel *sm );
 
 
-
+void SingleTreeLikelihood_use_uncertainty(SingleTreeLikelihood *tlk);
 
 void SingleTreeLikelihood_set_BranchModel( SingleTreeLikelihood *stlk, BranchModel *bm, bool removeTree );
 
