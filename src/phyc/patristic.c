@@ -55,7 +55,7 @@ double ** calculate_patristic( Tree *tree ){
 					b = Node_parent(b);
 				}
 			}
-			matrix[i][j] = d;
+			matrix[Node_class_id(nodes[i])][Node_class_id(nodes[j])] = matrix[Node_class_id(nodes[j])][Node_class_id(nodes[i])] = d;
 		}
 	}
 	return matrix;

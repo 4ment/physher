@@ -113,8 +113,7 @@ ClockSearch * new_ClockSearch( SingleTreeLikelihood *tlk, unsigned nThreads ){
     
     search->ic = INFORMATION_CRITERION_AICc;
     search->IC = ClockSearch_IC;
-    //search->ic_sample_size = search->pool->tlks[0]->sp->count;
-    search->ic_sample_size = search->pool->tlks[0]->sp->nsites;
+    search->ic_sample_size = search->pool->tlks[0]->sp->count;
     
     return search;
 }

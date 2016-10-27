@@ -1542,7 +1542,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
                 // Scaling of root height and its children if they have short branches and rate at the same time
                 // Works very well when a child of the root is stuck to the root and the root cannot descrease its height
                 
-                if( !isCalibrated ){
+                if( !isCalibrated && false){
                     if( !Node_isleaf( Node_left(Tree_root(stlk->tree)) ) && !Node_isleaf( Node_right(Tree_root(stlk->tree)) ) ){
                         opt_set_objective_function(opt_scale_height_rate, _brent_optimize_scale_root_height_rate);
                         

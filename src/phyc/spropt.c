@@ -33,7 +33,7 @@
 #include <omp.h>
 #endif
 
-#define DEBUG_TOPOLOGY_SPR 1
+//#define DEBUG_TOPOLOGY_SPR 1
 
 
 void compare_trees(Node *node1, Node *node2 ){
@@ -251,16 +251,18 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
     double lnl = stlk->calculate(stlk);
     double lnl2 = lnl+10;
     data->index_param = -1;
+#ifdef DEBUG_TOPOLOGY_SPR
     printf("-- lnl %f\n",lnl);
-    
+#endif
     
     if( Node_isroot(node1) ){
         printf("Cannot be called on the root\n%s\n%s: %d\n", __func__, __FILE__, __LINE__);
         exit(1);
     }
     
-    
+#ifdef DEBUG_TOPOLOGY_SPR
     printf("%f %f %f %f\n", Node_distance(node1), Node_distance(node1->left), Node_distance(node1->right), Node_distance(node2));
+#endif
     while ( 1 ) {
         
         SingleTreeLikelihood_update_all_nodes(stlk);
@@ -272,8 +274,9 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         
         Node_set_distance( node1->left, Parameters_value(param, 0) );
-        
+#ifdef DEBUG_TOPOLOGY_SPR
         printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->left->name, Parameters_value(param, 0) );
+#endif
         
         
         
@@ -286,9 +289,9 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         
         Node_set_distance( node1->right, Parameters_value(param, 0) );
-        
+#ifdef DEBUG_TOPOLOGY_SPR
         printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->right->name, Parameters_value(param, 0) );
-        
+#endif
         
         SingleTreeLikelihood_update_all_nodes(stlk);
         data->index_param = node1->postorder_idx;
@@ -299,9 +302,9 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         
         Node_set_distance( node1, Parameters_value(param, 0) );
-        
+#ifdef DEBUG_TOPOLOGY_SPR
         printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->name, Parameters_value(param, 0) );
-        
+#endif
         
         
         SingleTreeLikelihood_update_all_nodes(stlk);
@@ -313,9 +316,9 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         
         Node_set_distance( node2, Parameters_value(param, 0) );
-        
+#ifdef DEBUG_TOPOLOGY_SPR
         printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
-        
+#endif
         if ( -lnl2 - lnl < 0.01 ){
             lnl = -lnl2;
             break;
@@ -324,8 +327,9 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
     }
     
     SingleTreeLikelihood_update_all_nodes(stlk);
-	
+#ifdef DEBUG_TOPOLOGY_SPR
     printf("%f %f %f %f\n", Node_distance(node1), Node_distance(node1->left), Node_distance(node1->right), Node_distance(node2));
+#endif
     //return stlk->calculate(stlk);
     return lnl;
 }
@@ -422,9 +426,9 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
     
     Parsimony *parsimony = new_Parsimony(tlk2->sp, tlk2->tree);
     double score = parsimony->calculate(parsimony);
-    
-    printf("\nParsimony score: %f\n\n", score);
-    
+    if(tlk->opt.verbosity > 0){
+        printf("\nParsimony score: %f\n\n", score);
+    }
     
 	Optimizer *opt_bl = new_Optimizer(OPT_BRENT);
     BrentData *data_brent = new_BrentData( tlk2 );
@@ -809,7 +813,6 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
 //#define SPR_THREAD 1
 //#define _OPENMP 1
 
-#define DEBUG_TOPOLOGY_SPR 1
 
 // neighborhood size 2(n − 3)(2n − 7)
 double spr_optimize_bl_parsimony_only( struct TopologyOptimizer * opt ){
@@ -826,9 +829,10 @@ double spr_optimize_bl_parsimony_only( struct TopologyOptimizer * opt ){
     
     int max_distance = 20;//5;
     
-    printf("\nParsimony score: %f (%i)\n\n", score, total);
-    printf("Maximum radius %d\n\n", max_distance);
-    
+    if(tlk->opt.verbosity > 0){
+        printf("\nParsimony score: %f (%i)\n\n", score, total);
+        printf("Maximum radius %d\n\n", max_distance);
+    }
     
     int nNodes = Tree_node_count(tlk->tree);
     bool failed = false;
@@ -1110,9 +1114,9 @@ double spr_optimize_bl_parsimony_only( struct TopologyOptimizer * opt ){
                 Parsimony_update_all_nodes(parsimony);
 
                 spr_score = parsimony->calculate(parsimony);
-
-                printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], score);
-                
+                if(tlk->opt.verbosity > 0){
+                    printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], score);
+                }
                 // skip moves that increase the score
                 if ( spr_score >= score ) {
                     
@@ -1139,7 +1143,9 @@ double spr_optimize_bl_parsimony_only( struct TopologyOptimizer * opt ){
                     opt->moves++;
                 }
             }
-            printf("Parsimony score: %f #SPR: %d\n\n", score, accepted);
+            if(tlk->opt.verbosity > 0){
+                printf("Parsimony score: %f #SPR: %d\n\n", score, accepted);
+            }
         }
         else {
             failed = true;
@@ -1183,8 +1189,9 @@ double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
     
     int total = (Tree_tip_count(tlk->tree)-3)*2*(2*Tree_tip_count(tlk->tree)-7);
     
-    printf("\nParsimony score: %f (%i)\n\n", score, total);
-    
+    if(tlk->opt.verbosity > 0){
+        printf("\nParsimony score: %f (%i)\n\n", score, total);
+    }
     
     int nNodes = Tree_node_count(tlk->tree);
     bool failed = false;
@@ -1510,7 +1517,7 @@ double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
                     //break;
                 }
                 else {
-#ifndef DEBUG_TOPOLOGY_SPR
+#ifdef DEBUG_TOPOLOGY_SPR
                     printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], score);
 #endif
                     
@@ -1526,7 +1533,9 @@ double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
                     opt->moves++;
                 }
             }
-            printf("Parsimony score: %f #SPR: %d\n\n", score, accepted);
+            if(tlk->opt.verbosity > 0){
+                printf("Parsimony score: %f #SPR: %d\n\n", score, accepted);
+            }
         }
         else {
             failed = true;
@@ -1789,9 +1798,9 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                 free_Parameters_soft(oneparameter);
                 
                 
-                //if(spr_score > lnl){
+#ifdef DEBUG_TOPOLOGY_SPR
                     printf("%s %s lnl %f (%f) %s\n\n",graft->name, prune->name, spr_score, lnl, (spr_score > lnl ? "*" : ""));
-                //}
+#endif
                 
                 //spr_score = tlk->calculate(tlk);
                 
@@ -1914,9 +1923,9 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                 SingleTreeLikelihood_update_all_nodes(tlk);
                 
                 spr_score = tlk->calculate(tlk);
-                
+#ifdef DEBUG_TOPOLOGY_SPR
                 printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], lnl);
-                
+#endif
                 // skip moves that increase the score
                 if ( spr_score >= lnl ) {
                     
@@ -1937,7 +1946,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                     //break;
                 }
                 else {
-#ifndef DEBUG_TOPOLOGY_SPR
+#ifdef DEBUG_TOPOLOGY_SPR
                     printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], score);
 #endif
                     SingleTreeLikelihood_update_all_nodes(pool[0]);
@@ -1949,7 +1958,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                     lnl = spr_score;
                 }
                 
-#ifndef DEBUG_TOPOLOGY_SPR
+#ifdef DEBUG_TOPOLOGY_SPR
                 printf("Parsimony %f\n", score);
 #endif
                 opt->moves++;

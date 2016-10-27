@@ -393,7 +393,6 @@ void SingleTreeLikelihood_resampling_openmp( const SingleTreeLikelihood *tlk, re
         
         SingleTreeLikelihood *tlk2 = new_SingleTreeLikelihood(tree, sm, sp, bm);
 		OptConfig_copy(&tlk->opt, &tlk2->opt);
-        tlk2->opt.verbosity = 1;
         
         if( tlk2->opt.topology_optimize ){
             TopologyOptimizer *topology = new_TopologyOptimizer( tlk2, TREE_SEARCH_PARSIMONY_SPR );            

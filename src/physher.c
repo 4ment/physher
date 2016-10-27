@@ -320,10 +320,11 @@ void run_bootstrap( SingleTreeLikelihood *tlk, const char *output_stem, int nthr
     Node **nodes = NULL;
     Tree *tree = tlk->tree;
     double ci_alpha = 0.05; // should be an option
-    bool save_patterns = true; // should be an option
+    bool save_patterns = false; // should be an option
     char *jackfile_trees = NULL;
     char *jackfile_params = NULL;
     
+    int verbosity = tlk->opt.verbosity;
     tlk->opt.verbosity = 0;
     
     if( tlk->bm != NULL ){
@@ -428,7 +429,7 @@ void run_bootstrap( SingleTreeLikelihood *tlk, const char *output_stem, int nthr
     if( file_exists(buffer->c) ){
         Phyboot_confidence_intervals(buffer->c, 1-ci_alpha, jackfile_params);
     }
-    
+    tlk->opt.verbosity = verbosity;
     
     free_StringBuffer(buffer);
     if(jackfile_params != NULL )free(jackfile_params);
@@ -569,6 +570,10 @@ void run_local_greedy_likelihood( SingleTreeLikelihood *tlk, const char* output_
     
     if ( sample_size > 0 ) {
         ClockSearch_set_ic_sample_size(greedy_local, sample_size );
+        fprintf(stdout, "Sample size: %d (custom)\n", greedy_local->ic_sample_size);
+    }
+    else{
+        fprintf(stdout, "Sample size: %d (number of site patterns)\n", greedy_local->ic_sample_size);
     }
     
     
@@ -1459,7 +1464,7 @@ int main(int argc, char* argv[]){
         {ARGS_OPTION_FLAG,    'U', "unrooted",     "tree.unrooted", &tree_unrooted, "Input tree is rooted"},
         {ARGS_OPTION_DOUBLE,  's', "scaler",       "tree.scaler", &tree_scaler, "Scale input tree"},
         {ARGS_OPTION_STRING,  'O', "treeopt",      "tree.topolology.optimize", &topology_optimization_algorithm, "Optimize topology nni or spr (experimental)"},
-        {ARGS_OPTION_FLAG,    0,   "parsimony",    "tree.topolology.optimize.parsimony", &use_parsimony, "Quick optimizaton of tree topology using parsimony before ML optimization"},
+        {ARGS_OPTION_BOOLEAN,  0,  "parsimony",    "tree.topolology.optimize.parsimony", &use_parsimony, "Quick optimizaton of tree topology using parsimony before ML optimization"},
         
         {ARGS_OPTION_STRING,  'C', "clock",        "clock", &clock, "Clock type: strict, local, discrete"},
         {ARGS_OPTION_FLAG,    0,   "forward",      "clock.forward", &forward, "Time is forward"},
@@ -2280,10 +2285,10 @@ int main(int argc, char* argv[]){
     tlk->opt.bl.tolx = 0.00000001;
     //tlk->opt.bl.tolx = 0.0001;
     //tlk->opt.bl.method = OPT_CG_PR;
-	tlk->opt.freqs.optimize          = !frequencies_fixed;
+	tlk->opt.freqs.optimize          = !frequencies_fixed && sm->m->freqs != NULL;
 	//tlk->opt.freqs.method  = OPT_CG_PR;
     //if( Parameters_count(mod->rates) > 1 ) tlk->opt.relative_rates.method = OPT_CG_PR; //Brent optmize better in the flub simulated data
-    tlk->opt.relative_rates.optimize = !rates_fixed;
+    tlk->opt.relative_rates.optimize = !rates_fixed && sm->m->rates != NULL;
 	tlk->opt.pinv.optimize           = use_pinv && !pinv_fixed;
 	tlk->opt.gamma.optimize          = use_gamma && !alpha_fixed;
     tlk->opt.topology_optimize       = false;
