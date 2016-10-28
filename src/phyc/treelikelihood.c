@@ -299,7 +299,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 
     tlk->nthreads = 1;
     
-    tlk->use_uncertainty = false;
+    tlk->use_ambiguity = false;
     
 	return tlk;
 }
@@ -545,11 +545,11 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	newtlk->partials = (double**)malloc( Tree_node_count(tlk->tree)*sizeof(double*) );
     assert(newtlk->partials);
     for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        if(Node_isleaf(nodes[i]) && tlk->use_uncertainty){
-            newtlk->partials[Node_id( nodes[i] )] = aligned16_malloc( tlk->partials_size * sizeof(double) );
-            assert(newtlk->partials[Node_id( nodes[i] )]);
-            memcpy(newtlk->partials[Node_id( nodes[i] )], tlk->partials[Node_id( nodes[i] )], tlk->partials_size * sizeof(double));
-        }
+//        if(Node_isleaf(nodes[i]) && tlk->use_ambiguity){
+//            newtlk->partials[Node_id( nodes[i] )] = aligned16_malloc( tlk->partials_size * sizeof(double) );
+//            assert(newtlk->partials[Node_id( nodes[i] )]);
+//            memcpy(newtlk->partials[Node_id( nodes[i] )], tlk->partials[Node_id( nodes[i] )], tlk->partials_size * sizeof(double));
+//        }
         if(!Node_isleaf(nodes[i])){
             newtlk->partials[Node_id( nodes[i] )] = aligned16_malloc( tlk->partials_size * sizeof(double) );
             assert(newtlk->partials[Node_id( nodes[i] )]);
@@ -584,10 +584,10 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	newtlk->partials = (double**)malloc( Tree_node_count(tlk->tree)*sizeof(double*) );
     assert(newtlk->partials);
 	for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        if(Node_isleaf(nodes[i]) && tlk->use_uncertainty){
-            newtlk->partials[Node_id( nodes[i] )] = clone_dvector(tlk->partials[Node_id( nodes[i] )], tlk->partials_size);
-        }
-        else if(!Node_isleaf(nodes[i])){
+//        if(Node_isleaf(nodes[i]) && tlk->use_ambiguity){
+//            newtlk->partials[Node_id( nodes[i] )] = clone_dvector(tlk->partials[Node_id( nodes[i] )], tlk->partials_size);
+//        }
+        if(!Node_isleaf(nodes[i])){
             newtlk->partials[Node_id( nodes[i] )] = clone_dvector(tlk->partials[Node_id( nodes[i] )], tlk->partials_size);
         }
         else{
@@ -606,7 +606,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
     }
     
 #endif
-    newtlk->use_uncertainty = tlk->use_uncertainty;
+    newtlk->use_ambiguity = tlk->use_ambiguity;
 	return newtlk;
 }
 
@@ -713,59 +713,65 @@ int SingleTreeLikelihood_df_count( const SingleTreeLikelihood *stlk ){
 	return df;
 }
 
-void SingleTreeLikelihood_use_uncertainty(SingleTreeLikelihood *tlk){
-    if(tlk->use_uncertainty) return;
+void SingleTreeLikelihood_use_ambiguity(SingleTreeLikelihood *tlk){
+    if(tlk->use_ambiguity) return;
     
-#if defined (SSE3_ENABLED) || (AVX_ENABLED) || (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-    
-    for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        if( Node_isleaf( Tree_node(tlk->tree, i) ) ){
-            tlk->partials[Node_id( Tree_node(tlk->tree, i) )] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
-            assert(tlk->partials[Node_id( Tree_node(tlk->tree, i) )]);
-        }
-    }
-#else
-    for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        if( Node_isleaf( Tree_node(tlk->tree, i) ) ){
-            tlk->partials[Node_id( Tree_node(tlk->tree, i) )] = dvector( tlk->partials_size );
-        }
-    }
-#endif
-    // Initialize partials
-    for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        if( Node_isleaf( Tree_node(tlk->tree, i) ) ){
-            int index = get_sequence_index(tlk->sp, Tree_node(tlk->tree, i)->name);
-            for(int k = 0; k < tlk->sp->count; k++){
-                int state = tlk->sp->patterns[k][index];
-                tlk->sp->datatype->state_vector(tlk->sp->datatype, state, &tlk->partials[Node_id( Tree_node(tlk->tree, i) )][4*k] );
-            }
-            for(int c = 1; c < tlk->sm->cat_count; c++){
-                memcpy(tlk->partials[Node_id( Tree_node(tlk->tree, i) )]+tlk->sp->count*4*c, tlk->partials[Node_id( Tree_node(tlk->tree, i) )], tlk->sp->count*4*sizeof(double));
-            }
-        }
-    }
+//#if defined (SSE3_ENABLED) || (AVX_ENABLED) || (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
+//    
+//    for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
+//        if( Node_isleaf( Tree_node(tlk->tree, i) ) ){
+//            tlk->partials[Node_id( Tree_node(tlk->tree, i) )] = (double*)aligned16_malloc( sizeof(double) * tlk->partials_size );
+//            assert(tlk->partials[Node_id( Tree_node(tlk->tree, i) )]);
+//        }
+//    }
+//#else
+//    for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
+//        if( Node_isleaf( Tree_node(tlk->tree, i) ) ){
+//            tlk->partials[Node_id( Tree_node(tlk->tree, i) )] = dvector( tlk->partials_size );
+//        }
+//    }
+//#endif
+//    // Initialize partials
+//    for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
+//        if( Node_isleaf( Tree_node(tlk->tree, i) ) ){
+//            int index = get_sequence_index(tlk->sp, Tree_node(tlk->tree, i)->name);
+//            for(int k = 0; k < tlk->sp->count; k++){
+//                int state = tlk->sp->patterns[k][index];
+//                tlk->sp->datatype->state_vector(tlk->sp->datatype, state, &tlk->partials[Node_id( Tree_node(tlk->tree, i) )][4*k] );
+//            }
+//            for(int c = 1; c < tlk->sm->cat_count; c++){
+//                memcpy(tlk->partials[Node_id( Tree_node(tlk->tree, i) )]+tlk->sp->count*4*c, tlk->partials[Node_id( Tree_node(tlk->tree, i) )], sizeof(double)*tlk->sp->count*4);
+//            }
+//        }
+//    }
+//TODO: this also should be done when swithc on/off use_SIMD
 #ifdef SSE3_ENABLED
     if(tlk->use_SIMD){
         if ( tlk->sm->nstate == 4 ) {
-            tlk->update_partials      = update_partials_uncertainty_4_SSE;
+            tlk->update_partials      = update_partials_ambiguity_4_SSE;
         }
     }
     else{
         if ( tlk->sm->nstate == 4 ) {
-            tlk->update_partials      = update_partials_uncertainty_4;
+            tlk->update_partials      = update_partials_ambiguity_4;
+            tlk->update_partials_upper = update_partials_upper_ambiguity_4;
+            tlk->node_log_likelihoods_upper = node_log_likelihoods_upper_ambiguity_4;
         }
     }
 #elif AVX_ENABLED
     if ( tlk->sm->nstate == 4 ) {
-        tlk->update_partials      = update_partials_uncertainty_4_AVX;
+        tlk->update_partials      = update_partials_ambiguity_4_AVX;
     }
 #else
     if ( tlk->sm->nstate == 4 ) {
-        tlk->update_partials      = update_partials_uncertainty_4;
+        tlk->update_partials      = update_partials_ambiguity_4;
+        tlk->update_partials_upper = update_partials_upper_ambiguity_4;
+        tlk->node_log_likelihoods_upper = node_log_likelihoods_upper_ambiguity_4;
     }
 #endif
-    
-    tlk->use_uncertainty = true;
+    if ( tlk->sm->nstate == 4 ) {
+        tlk->use_ambiguity = true;
+    }
 }
 
 
@@ -1506,10 +1512,11 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
                     exit(1);
                 }
 			}
-			
+            
 			for (int i = 0; i < tlk->sm->cat_count; i++) {
+#ifndef NO_TRANSPOSE
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
-                if( tlk->use_SIMD && Node_isleaf(n) /*&& !tlk->use_uncertainty*/ ){
+                if( tlk->use_SIMD && Node_isleaf(n) /*&& !tlk->use_ambiguity*/ ){
                     tlk->sm->m->p_t_transpose(tlk->sm->m,
                                               bl * tlk->sm->get_rate(tlk->sm, i),
                                               &tlk->matrices[Node_id(n)][i*tlk->matrix_size]);
@@ -1523,6 +1530,12 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
 				tlk->sm->m->p_t(tlk->sm->m,
 								bl * tlk->sm->get_rate(tlk->sm, i),
 								&tlk->matrices[Node_id(n)][i*tlk->matrix_size]);
+#endif
+
+#else
+                tlk->sm->m->p_t(tlk->sm->m,
+                                bl * tlk->sm->get_rate(tlk->sm, i),
+                                &tlk->matrices[Node_id(n)][i*tlk->matrix_size]);
 #endif
 			}
 			
@@ -2100,7 +2113,7 @@ double _calculate_uppper_height_sse( SingleTreeLikelihood *tlk, Node *node ){
     }
     
     // Calculate probability matrix of left child
-    if( Node_isleaf(node->left) && !tlk->use_uncertainty ){
+    if( Node_isleaf(node->left)/* && !tlk->use_ambiguity*/ ){
         for (int i = 0; i < tlk->sm->cat_count; i++) {
             bl = tlk->bm->get(tlk->bm, node->left) * Node_time_elapsed(node->left);
             if(bl < 0 )
@@ -2125,7 +2138,7 @@ double _calculate_uppper_height_sse( SingleTreeLikelihood *tlk, Node *node ){
     
     
     // Calculate probability matrix of right child
-    if( Node_isleaf(node->right) && !tlk->use_uncertainty ){
+    if( Node_isleaf(node->right)/* && !tlk->use_ambiguity*/ ){
         for (int i = 0; i < tlk->sm->cat_count; i++) {
             bl = tlk->bm->get(tlk->bm, node->right) * Node_time_elapsed(node->right);
             if(bl < 0 )
@@ -2174,7 +2187,7 @@ double _calculate_uppper_height_sse( SingleTreeLikelihood *tlk, Node *node ){
                                 &tlk->matrices[Node_id(n)][i*tlk->matrix_size]);
             }
             
-            if( Node_isleaf(n->left) && !tlk->use_uncertainty){
+            if( Node_isleaf(n->left)/* && !tlk->use_ambiguity*/){
                 for (int i = 0; i < tlk->sm->cat_count; i++) {
                     
                     bl = tlk->bm->get(tlk->bm, n->left) * (Node_height(n) - Node_height(n->left) );
@@ -2201,7 +2214,7 @@ double _calculate_uppper_height_sse( SingleTreeLikelihood *tlk, Node *node ){
             }
             
             
-            if( Node_isleaf(n->right) && !tlk->use_uncertainty){
+            if( Node_isleaf(n->right)/* && !tlk->use_ambiguity*/){
                 
                 for (int i = 0; i < tlk->sm->cat_count; i++) {
                     bl = tlk->bm->get(tlk->bm, n->right) * (Node_height(n) - Node_height(n->right) );
@@ -2319,9 +2332,9 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 //            }
             
             Node *n = tlk->node_upper;
-            
+#ifndef NO_TRANSPOSE
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
-            if( tlk->use_SIMD && Node_isleaf(n) && !tlk->use_uncertainty ){
+            if( tlk->use_SIMD && Node_isleaf(n)/* && !tlk->use_ambiguity*/ ){
                 for (int i = 0; i < tlk->sm->cat_count; i++) {
                     tlk->sm->m->p_t_transpose(tlk->sm->m,
                                               Node_distance(n) * tlk->sm->get_rate(tlk->sm, i),
@@ -2342,6 +2355,13 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
                                 &tlk->matrices[Node_id(n)][i*tlk->matrix_size]);
             }
 #endif
+#else
+            for (int i = 0; i < tlk->sm->cat_count; i++) {
+                tlk->sm->m->p_t(tlk->sm->m,
+                                Node_distance(n) * tlk->sm->get_rate(tlk->sm, i),
+                                &tlk->matrices[Node_id(n)][i*tlk->matrix_size]);
+            }
+#endif
             
             // update lower partials of the parent
             tlk->update_partials(tlk, Node_id(n), Node_id(Node_sibling(n)), Node_id(Node_parent(n)) );
@@ -2352,9 +2372,9 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
         }
     }
     
-    
+#ifndef NO_TRANSPOSE
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
-    if( tlk->use_SIMD && Node_isleaf(node) && !tlk->use_uncertainty ){
+    if( tlk->use_SIMD && Node_isleaf(node)/* && !tlk->use_ambiguity*/ ){
         for (int i = 0; i < tlk->sm->cat_count; i++) {
             tlk->sm->m->p_t_transpose(tlk->sm->m,
                                       Node_distance(node) * tlk->sm->get_rate(tlk->sm, i),
@@ -2368,6 +2388,13 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
                             &tlk->matrices[Node_id(node)][i*tlk->matrix_size]);
         }
     }
+#else
+    for (int i = 0; i < tlk->sm->cat_count; i++) {
+        tlk->sm->m->p_t(tlk->sm->m,
+                        Node_distance(node) * tlk->sm->get_rate(tlk->sm, i),
+                        &tlk->matrices[Node_id(node)][i*tlk->matrix_size]);
+    }
+#endif
 #else
     for (int i = 0; i < tlk->sm->cat_count; i++) {
         tlk->sm->m->p_t(tlk->sm->m,
@@ -2437,7 +2464,7 @@ double calculate_uppper_2nodes( SingleTreeLikelihood *tlk, Node *node ){
             Node *n = tlk->node_upper;
             
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
-            if( tlk->use_SIMD && !tlk->use_uncertainty ){
+            if( tlk->use_SIMD/* && !tlk->use_ambiguity*/ ){
                 if( Node_isleaf(n) ){
                     for (int i = 0; i < tlk->sm->cat_count; i++) {
                         tlk->sm->m->p_t_transpose(tlk->sm->m,
@@ -2530,7 +2557,7 @@ double calculate_uppper_2nodes( SingleTreeLikelihood *tlk, Node *node ){
     Node *parent  = Node_parent(node);
     
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
-    if( tlk->use_SIMD && !tlk->use_uncertainty ){
+    if( tlk->use_SIMD/* && !tlk->use_ambiguity*/ ){
         if( Node_isleaf(node) ){
             for (int i = 0; i < tlk->sm->cat_count; i++) {
                 tlk->sm->m->p_t_transpose(tlk->sm->m,

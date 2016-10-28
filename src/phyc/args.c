@@ -104,13 +104,44 @@ void argsparser_check(args_parser* args, char* argv[], int argc){
     hashtable_set_key_ownership( hash, false );
     hashtable_set_value_ownership( hash, false );
     char* a = "a";
-    for(int i = 1; i < argc; i++){
-        if (Hashtable_exists(hash, argv[i])){
-            fprintf(stderr, "Duplicate option %s\n", argv[i]);
+//    for(int i = 1; i < argc; i++){
+//        if (argv[i][0] == '-' && Hashtable_exists(hash, argv[i])){
+//            fprintf(stderr, "Duplicate option %s\n", argv[i]);
+//            exit(1);
+//        }
+//        Hashtable_add(hash, argv[i], a);
+//    }
+    
+    int i = 0;
+    for ( ; i < argc; i++) {
+        int j = 0;
+        bool option_flag = false;
+        for(; j < args->option_count; j++){
+            if(argv[i][0] == '-') option_flag = true;
+            if ( strlen(argv[i]) > 2 && argv[i][0] == '-' && argv[i][1] == '-' && strcmp(argv[i]+2, args->options[j].long_name) == 0 ) {
+                break;
+            }
+            else if (strlen(argv[i]) == 2 && argv[i][0] == '-' && args->options[j].short_name == argv[i][1]){
+                break;
+            }
+        }
+        
+        if(j != args->option_count && option_flag == true){
+            if (Hashtable_exists(hash, argv[i])){
+                fprintf(stderr, "Duplicate option %s\n", argv[i]);
+                exit(1);
+            }
+            if (args->options[j].type != ARGS_OPTION_FLAG) {
+                i++;
+            }
+            Hashtable_add(hash, argv[i], a);
+        }
+        else if(option_flag == true){
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
             exit(1);
         }
-        Hashtable_add(hash, argv[i], a);
     }
+    
     free_Hashtable(hash);
 }
 

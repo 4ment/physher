@@ -1362,6 +1362,7 @@ int main(int argc, char* argv[]){
     char* clock_algorithm = NULL;
     int nexus_index = -1;
     int genetic_code = 0;
+    bool ambiguity = false;
     long seed = time(NULL);
     
     char* markov_states = NULL;
@@ -1449,6 +1450,8 @@ int main(int argc, char* argv[]){
         {ARGS_OPTION_FLAG,    'I', "invariant",    "sitemodel.heterogeneity.pinv", &use_pinv, "Switch on a proportion of invariant sites"},
         {ARGS_OPTION_DOUBLE,  0,   "I-value",      "sitemodel.heterogeneity.pinv.value", &pinv, "Value of the proportion sites"},
         {ARGS_OPTION_FLAG,    0,   "ps",           "sitemodel.heterogeneity.posterior", &posterior_sites, "Caclulate posterior estimates of rates at each site"},
+        
+        {ARGS_OPTION_FLAG,    0,   "ambiguity",    "sequences.ambiguity", &ambiguity, "Use ambiguity for likelihood calculation"},
         
         {ARGS_OPTION_STRING,  'F', "fix",          "treelikelihood.fix", &fix, "Fix d: branch length, i: invariant, a: alpha, f: frequencies, r: rates"},
         {ARGS_OPTION_BOOLEAN, 0,   "sse",          "treelikelihood.sse", &use_sse, "Use SSE [default true]"},
@@ -2323,6 +2326,10 @@ int main(int argc, char* argv[]){
     
     if( SingleTreeLikelihood_SSE(tlk) ){
         fprintf(stdout, "Use SSE for likelihood calculation\n");
+    }
+    
+    if(ambiguity){
+        SingleTreeLikelihood_use_ambiguity(tlk);
     }
     
     fprintf(stdout, "\nNot optimized LnL = %f\n\n", tlk->calculate(tlk) );

@@ -220,6 +220,8 @@ configure_file (
 
 add_definitions("-std=c99")
 
+add_definitions(-DNO_TRANSPOSE)
+
 link_libraries(m)
 
 file(GLOB SRC_FILES src/phyc/*.c)
