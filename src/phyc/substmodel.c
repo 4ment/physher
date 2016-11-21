@@ -608,6 +608,7 @@ SubstitutionModel * clone_substitution_model_share(SubstitutionModel *m, bool sh
     
     clone->gen_code = m->gen_code;
     clone->reversible = m->reversible;
+    clone->normalize = m->normalize;
     
     // Functions
     clone->pij_t = m->pij_t;
