@@ -1507,13 +1507,26 @@ int main(int argc, char* argv[]){
     
     args_parser* argsparser = argsparser_init(options, sizeof(options)/sizeof(struct argsparser_option));
     
-    
     if (argc > 1 && argc <= 3) {
-        if(!file_exists(argv[argc-1])){
-            fprintf(stderr, "Cannot read input file: %s\n", argv[argc-1]);
-            exit(1);
+        if (argc == 2){
+            if(strcasecmp(argv[1], "-h") == 0 || strcasecmp(argv[1], "--help") == 0){
+                help  = true;
+            }
+            else if(strcasecmp(argv[1], "--hh") == 0){
+                help2 = true;
+            }
         }
-        argsparser_parse_file(argsparser, argv[argc-1]);
+        
+        if(!help && !help2){
+            if(!file_exists(argv[argc-1])){
+                fprintf(stderr, "Cannot read input file: %s\n", argv[argc-1]);
+                exit(1);
+            }
+            argsparser_parse_file(argsparser, argv[argc-1]);
+        }
+        else{
+            argsparser_parse(argsparser, argv, argc);
+        }
     }
     else{
         argsparser_parse(argsparser, argv, argc);
