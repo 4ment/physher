@@ -35,6 +35,7 @@
 #define real_t double
 #endif
 
+double logaddexp(double x, double y);
 
 #pragma mark -
 #pragma mark double

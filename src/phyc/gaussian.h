@@ -28,4 +28,7 @@ double pnorm( const double x, const double mu, const double sigma );
 // Inverse CDF
 double qnorm( const double p, const double mu, const double sigma );
 
+// Generate a Gaussian random variable
+double rnorm();
+ 
 #endif

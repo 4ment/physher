@@ -42,6 +42,8 @@ typedef struct __matrix{
 } Matrix;
 
 
+void cholesky(long N, double *A, double *diag);
+
 #pragma mark -
 // MARK: Vector
 
@@ -214,5 +216,7 @@ unsigned int row_index( unsigned int i, unsigned int M );
 unsigned int column_index( unsigned int i, unsigned int M);
 
 double * Matrix_mult( const double *A, const double *B, size_t Am, size_t An, size_t Bm, size_t Bn );
+
+void cov2cor(double* cov, int dim);
 
 #endif

@@ -26,6 +26,21 @@
 #include "mathconstant.h"
 #include "hessenberg.h" // for det
 
+void cholesky(long N, double *A, double *diag){
+    long i,j,k;
+    for(j = 0; j < N; j++)
+        diag[j] = A[N*j+j];
+    for(j = 0; j < N; j++){
+        for(k = 0; k < j; k++)
+            diag[j] -= A[N*k+j]*A[N*k+j];
+        diag[j] = sqrt(diag[j]);
+        for(i = j+1; i < N;i++){
+            for(k = 0; k < j; k++)
+                A[N*j+i] -= A[N*k+i]*A[N*k+j];
+            A[N*j+i]/=diag[j];
+        }
+    }
+}
 
 
 #pragma mark -
@@ -915,4 +930,17 @@ double normal_approximation( double *a, double *x, double *cov, size_t dim ){
 	free(temp);
 	free(diff);
 	return d;
+}
+
+void cov2cor(double* cov, int dim){
+	double* d = dvector(dim);
+	for(int i = 0; i < dim; i++){
+		d[i] = 1.0/sqrt(cov[i*dim+i]);
+	}
+	for(int i = 0; i < dim; i++){
+		for(int j = 0; j < dim; j++){
+			cov[j*dim+i] *= d[i] * d[j];
+		}
+	}
+	free(d);
 }
