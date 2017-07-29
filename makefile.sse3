@@ -30,7 +30,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS =
+LIBS = -lm
 MKDIR_P = mkdir -p
 
 .PHONY: directories
