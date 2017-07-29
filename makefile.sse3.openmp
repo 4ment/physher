@@ -34,7 +34,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -fopenmp
+LIBS = -fopenmp -lm
 
 
 MKDIR_P = mkdir -p
