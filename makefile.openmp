@@ -32,7 +32,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -fopenmp
+LIBS = -fopenmp -lm
 
 
 MKDIR_P = mkdir -p
@@ -53,7 +53,7 @@ $(OBJDIR)/%.o: $(PHYCDIR)/%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 	
 physher-openmp: ${OBJFILES}
-	$(CC) $(CFLAGS) $(INCLUDES) -lm -o ${BINDIR}/physher-openmp physher.c $(SRCDIR)/$(OBJFILES) $(LIBS)
+	$(CC) $(CFLAGS) $(INCLUDES) -o ${BINDIR}/physher-openmp $(SRCDIR)/physher.c $(OBJFILES) $(LIBS)
 
 clean:
 	rm -f ${BINDIR}/physher-openmp
