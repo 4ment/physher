@@ -76,11 +76,9 @@ SubstitutionModel * new_ReversibleNucleotideModel( const char model[5] ){
 void ReversibleNucleotideModel_estimate_freqs( SubstitutionModel *m ){
     if ( m->freqs == NULL ) {
         m->freqs = new_Parameters( 3 );
-        double aux1 = m->_freqs[1] /   (1 - m->_freqs[0]);
-        double aux2 = m->_freqs[2] / ( (1 - m->_freqs[0]) * (1 - aux1) );
-        Parameters_add(m->freqs, new_Parameter_with_postfix("nuc.piA", "model", m->_freqs[0], new_Constraint(0.001, 0.999) ) );
-        Parameters_add(m->freqs, new_Parameter_with_postfix("nuc.piC", "model", aux1,     new_Constraint(0.001, 0.999) ) );
-        Parameters_add(m->freqs, new_Parameter_with_postfix("nuc.piT", "model", aux2,     new_Constraint(0.001, 0.999) ) );
+        Parameters_add(m->freqs, new_Parameter_with_postfix("nuc.piA", "model", m->_freqs[0]/m->_freqs[3], new_Constraint(0.001, 0.999) ) );
+        Parameters_add(m->freqs, new_Parameter_with_postfix("nuc.piC", "model", m->_freqs[1]/m->_freqs[3],     new_Constraint(0.001, 0.999) ) );
+        Parameters_add(m->freqs, new_Parameter_with_postfix("nuc.piG", "model", m->_freqs[2]/m->_freqs[3],     new_Constraint(0.001, 0.999) ) );
         
         m->update_frequencies = nucleotide_update_freqs;
         m->need_update = true;

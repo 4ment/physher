@@ -193,8 +193,17 @@ void calculate_posteriors_sites( SingleTreeLikelihood *tlk, const char *filename
     double conditionalMean,best_prob;
 	FILE *file = fopen(filename, "w");
     
-	if( tlk->sm->shape != NULL ) fprintf(file, "Alpha %e\n", Parameter_value(tlk->sm->shape));
-    if( tlk->sm->pinv  != NULL ) fprintf(file, "Pinv %e\n", Parameter_value(tlk->sm->pinv));
+    for(int i = 0; i < Parameters_count(tlk->sm->rates); i++){
+        if(strcmp(Parameters_name(tlk->sm->rates, i), "sitemodel.alpha") == 0){
+            fprintf(file, "Alpha %e\n", Parameters_value(tlk->sm->rates, i));
+        }
+        else if(strcmp(Parameters_name(tlk->sm->rates, i), "sitemodel.pinv") == 0){
+            fprintf(file, "Pinv %e\n", Parameters_value(tlk->sm->rates, i));
+        }
+        else{
+            fprintf(file, "%s %e\n", Parameters_name(tlk->sm->rates, i), Parameters_value(tlk->sm->rates, i));
+        }
+    }
     
     fprintf(file, "Proportions\n");
 	for ( i = 0; i < tlk->sm->cat_count; i++ ) {
@@ -1017,12 +1026,22 @@ void append_simultron( SingleTreeLikelihood* tlk, const char* model_string, cons
             }
             StringBuffer_chop(info);
         }
-        if(tlk->sm->shape != NULL ){
-            int cat = tlk->sm->cat_count;
-            if ( tlk->sm->pinv != NULL ) {
-                cat--;
-            }
-            StringBuffer_append_format(info, " -a %f -c %d",  Parameter_value(tlk->sm->shape), cat);
+
+        // no rate variation
+        if(tlk->sm->cat_count == 1){
+            
+        }
+        // invariant
+        else if(tlk->sm->cat_count == 2 && Parameters_count(tlk->sm->rates) == 1){
+            StringBuffer_append_format(info, " -I %f", Parameters_value(tlk->sm->rates, 0));
+        }
+        // gamma
+        else if(Parameters_count(tlk->sm->rates) == 1){
+            StringBuffer_append_format(info, " -a %f -c %d", Parameters_value(tlk->sm->rates, 0), tlk->sm->cat_count);
+        }
+        // gamma + invariant
+        else {
+            StringBuffer_append_format(info, " -a %f -c %d -I %f",  Parameters_value(tlk->sm->rates, 0), tlk->sm->cat_count-1, Parameters_value(tlk->sm->rates, 1));
         }
         StringBuffer_append_format(info, " -l %d", tlk->sp->nsites);
         StringBuffer_append_format(info, " -s %f", Parameters_value( tlk->bm->rates, 0) );
@@ -1449,7 +1468,7 @@ int main(int argc, char* argv[]){
         {ARGS_OPTION_STRING,  0,   "q-search",     "substmodel.qsearch", &qsearch, "Find best rate matrix (ga)"},
         
         {ARGS_OPTION_INTEGER, 'c', "cat",          "sitemodel.heterogeneity.gamma.cat", &rate_category_count, "Number of rate categories for gamma distribution"},
-        {ARGS_OPTION_STRING,  'H', "het",          "sitemodel.heterogeneity.type", &sitemodel_string, "discrete or gammaquad"},
+        {ARGS_OPTION_STRING,  'H', "het",          "sitemodel.heterogeneity.type", &sitemodel_string, "gammaquant, discrete or gammaquad"},
         {ARGS_OPTION_DOUBLE,  'a', "alpha",        "sitemodel.heterogeneity.gamma.alpha", &alpha, "Value of the alpha parameter of the gamma distribution"},
         {ARGS_OPTION_FLAG,    'I', "invariant",    "sitemodel.heterogeneity.pinv", &use_pinv, "Switch on a proportion of invariant sites"},
         {ARGS_OPTION_DOUBLE,  0,   "I-value",      "sitemodel.heterogeneity.pinv.value", &pinv, "Value of the proportion sites"},
@@ -1975,9 +1994,15 @@ int main(int argc, char* argv[]){
          */
         if(frequencies_user != NULL){
             memcpy(mod->_freqs, frequencies_user, sizeof(double)*4);
+            Parameters_set_value(mod->freqs, 0, mod->_freqs[0]/mod->_freqs[3]);
+            Parameters_set_value(mod->freqs, 1, mod->_freqs[1]/mod->_freqs[3]);
+            Parameters_set_value(mod->freqs, 2, mod->_freqs[2]/mod->_freqs[3]);
         }
         else if(strcasecmp("JC69", model_string) != 0 && strcasecmp("K80", model_string) != 0 && strcasecmp("NONSTAT", model_string) != 0 ){
             empirical_frequencies(seqs, mod->_freqs);
+            Parameters_set_value(mod->freqs, 0, mod->_freqs[0]/mod->_freqs[3]);
+            Parameters_set_value(mod->freqs, 1, mod->_freqs[1]/mod->_freqs[3]);
+            Parameters_set_value(mod->freqs, 2, mod->_freqs[2]/mod->_freqs[3]);
         }
         
         /*
@@ -2206,8 +2231,12 @@ int main(int argc, char* argv[]){
             else if(strcasecmp(sitemodel_string, "discrete") == 0){
                 sm = new_DiscreteSiteModel( mod, rate_category_count );
             }
+            else if(strcasecmp(sitemodel_string, "gammaquant") == 0){
+                sm = new_GammaSiteModel(mod, alpha, rate_category_count);
+                use_gamma = true;
+            }
             else{
-                error("Rate heterogeneity not valid (discrete or gammaquad)\n");
+                error("Rate heterogeneity not valid (gammaquant, discrete or gammaquad)\n");
             }
         }
         else{
@@ -2258,13 +2287,18 @@ int main(int argc, char* argv[]){
         }
     }
 	
-	if ( sm->pinv != NULL ) {
-		fprintf(stdout, "\nProportion of invariant sites: pinv = %f\n", Parameter_value(sm->pinv) );
-	}
-	
-	if ( sm->shape != NULL ) {
-		fprintf(stdout, "\nGamma model: shape = %f (%d categories)\n\n", Parameter_value(sm->shape), (sm->pinv == NULL ? sm->cat_count : sm->cat_count-1) );
-	}
+    for(int i = 0; i < Parameters_count(sm->rates); i++){
+        if(strcmp(Parameters_name(sm->rates, i), "sitemodel.alpha") == 0){
+            fprintf(stdout, "\nGamma model: shape = %f (%d categories)\n\n", Parameters_value(sm->rates, i), rate_category_count);
+        }
+        else if(strcmp(Parameters_name(sm->rates, i), "sitemodel.pinv") == 0){
+            fprintf(stdout, "\nProportion of invariant sites: pinv = %f", Parameters_value(sm->rates, i));
+        }
+        else{
+            fprintf(stdout, "%s %e\n", Parameters_name(sm->rates, i), Parameters_value(sm->rates, i));
+        }
+    }
+    printf("\n");
 	
     
     if(approximation > 0) printf("approximation %d\n", approximation);
@@ -2487,15 +2521,42 @@ int main(int argc, char* argv[]){
 //        }
     }
 	
-	if ( sm->pinv != NULL ) {
-		fprintf(stdout, "\nProportion of invariant sites: pinv = %f\n", Parameter_value(sm->pinv) );
-		StringBuffer_append_format(info, "P-inv: %f\n", Parameter_value(sm->pinv));
-	}
-	
-	if ( sm->shape != NULL ) {
-		fprintf(stdout, "\nGamma model: shape = %f (%d categories)\n\n", Parameter_value(sm->shape), (sm->pinv == NULL ? sm->cat_count : sm->cat_count-1) );
-		StringBuffer_append_format(info, "Gamma model: shape = %f (%d categories)\n", Parameter_value(sm->shape), (sm->pinv == NULL ? sm->cat_count : sm->cat_count-1) );
-	}
+    if(sitemodel_string == NULL || strcasecmp(sitemodel_string, "gammaquant") == 0){
+        for(int i = 0; i < Parameters_count(sm->rates); i++){
+            if(strcmp(Parameters_name(sm->rates, i), "sitemodel.alpha") == 0){
+                fprintf(stdout, "\nGamma model: shape = %f (%d categories)\n\n", Parameters_value(sm->rates, i), rate_category_count);
+                StringBuffer_append_format(info, "Gamma model: shape = %f (%d categories)\n", Parameters_value(sm->rates, i), rate_category_count );
+            }
+            else if(strcmp(Parameters_name(sm->rates, i), "sitemodel.pinv") == 0){
+                fprintf(stdout, "\nProportion of invariant sites: pinv = %f", Parameters_value(sm->rates, i));
+                StringBuffer_append_format(info, "P-inv: %f\n", Parameters_value(sm->rates, i));
+            }
+            else{
+                fprintf(stdout, "%s %e\n", Parameters_name(sm->rates, i), Parameters_value(sm->rates, i));
+                StringBuffer_append_format(info, "%s = %f\n", Parameters_name(sm->rates, i) );
+            }
+        }
+        fprintf(stdout, "Rates: ");
+        for(int i = 0; i < sm->cat_count; i++){
+            fprintf(stdout, " %f", sm->get_rate(sm, i));
+        }
+        printf("\n");
+    }
+    printf("\n");
+    
+    if(sitemodel_string != NULL && (strcasecmp(sitemodel_string, "gammaquad") == 0 || strcasecmp(sitemodel_string, "discrete") == 0)){
+        fprintf(stdout, "Rates: ");
+        for(int i = 0; i < sm->cat_count; i++){
+            fprintf(stdout, " %f", sm->get_rate(sm, i));
+        }
+        printf("\n");
+        fprintf(stdout, "Proportions: ");
+        for(int i = 0; i < sm->cat_count; i++){
+            fprintf(stdout, " %f", sm->get_proportion(sm, i));
+        }
+        printf("\n");
+    }
+    printf("\n");
 	
 	
 	FILE *freerarte_file = fopen(freerate_filename,"w");

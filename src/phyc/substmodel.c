@@ -48,6 +48,7 @@ static void foo_update( SubstitutionModel *m ){} // does not nothing
 static void _substitution_model_handle_change( Model *self, Model *model, int index ){
 	SubstitutionModel * sm = (SubstitutionModel*)self->obj;
 	sm->need_update = true;
+    sm->dQ_need_update = true;
 	ListenerList_fire( model->listeners, model, index );
 }
 
@@ -76,13 +77,25 @@ Model * new_SubstitutionModel2( SubstitutionModel *sm ){
 
 void nucleotide_update_freqs( SubstitutionModel *model ){
     model->need_update = true;
-    model->_freqs[0] =       Parameters_value(model->freqs, 0);
-    model->_freqs[1] = (1 -  Parameters_value(model->freqs, 0)) *      Parameters_value(model->freqs, 1);
-    model->_freqs[2] = (1 -  Parameters_value(model->freqs, 0)) * (1 - Parameters_value(model->freqs, 1)) *      Parameters_value(model->freqs, 2);
-    model->_freqs[3] = (1 -  Parameters_value(model->freqs, 0)) * (1 - Parameters_value(model->freqs, 1)) * (1 - Parameters_value(model->freqs, 2));
+    model->dQ_need_update = true;
+    model->_freqs[3] = 1.0/(1.0+Parameters_value(model->freqs, 0)+Parameters_value(model->freqs, 1)+Parameters_value(model->freqs, 2));
+    model->_freqs[0] = Parameters_value(model->freqs, 0) * model->_freqs[3];
+    model->_freqs[1] = Parameters_value(model->freqs, 1) * model->_freqs[3];
+    model->_freqs[2] = Parameters_value(model->freqs, 2) * model->_freqs[3];
 }
 
-
+void general_update_freqs( SubstitutionModel *model ){
+    model->need_update = true;
+    model->dQ_need_update = true;
+    model->_freqs[model->nstate-1] = 0;
+    for(int i = 0; i < Parameters_count(model->freqs); i++){
+        model->_freqs[model->nstate-1] += Parameters_value(model->freqs, i);
+    }
+    model->_freqs[model->nstate-1] = 1.0/(1.0+model->_freqs[model->nstate-1]);
+    for(int i = 0; i < Parameters_count(model->freqs); i++){
+        model->_freqs[i] = Parameters_value(model->freqs, i) * model->_freqs[model->nstate-1];
+    }
+}
 
 double get_frequency( SubstitutionModel *m, int base ){
 	return m->_freqs[base];
@@ -95,14 +108,11 @@ double * get_frequencies( SubstitutionModel *m ){
 void set_frequencies( SubstitutionModel *m, const double *freqs ){
 	if( m->nstate != 4 ) error("set_frequencies: only works for nucleotide models!\n");
     memcpy(m->_freqs, freqs, sizeof(double)*4);
-	Parameters_set_value( m->freqs, 0, freqs[0] );
-	double aux1 = freqs[1] /   (1 - freqs[0]);
-	double aux2 = freqs[2] / ( (1 - freqs[0]) * (1 - aux1) );
-	
-	Parameters_set_value( m->freqs, 1, aux1 );
-	Parameters_set_value( m->freqs, 2, aux2 );
+	Parameters_set_value( m->freqs, 0, freqs[0]/freqs[3] );	
+	Parameters_set_value( m->freqs, 1, freqs[1]/freqs[3] );
+	Parameters_set_value( m->freqs, 2, freqs[2]/freqs[3] );
 	m->need_update = true;
-	
+	m->dQ_need_update = true;
 }
 
 void SubstitutionModel_set_rates( SubstitutionModel *m, const double *rates ){
@@ -110,6 +120,7 @@ void SubstitutionModel_set_rates( SubstitutionModel *m, const double *rates ){
 		Parameters_set_value(m->rates,i, rates[i]);
 	}
 	m->need_update = true;
+    m->dQ_need_update = true;
 }
 
 // Set the relative frequency (ie. Parameter)!!
@@ -117,11 +128,13 @@ static void _set_frequency( SubstitutionModel *m, const double freq, const int i
 	Parameters_set_value(m->freqs,index, freq);
 	m->update_frequencies(m);
 	m->need_update = true;
+    m->dQ_need_update = true;
 }
 
 static void _set_rate( SubstitutionModel *m, const double rate, const int index ){
 	Parameters_set_value(m->rates,index, rate);
 	m->need_update = true;
+    m->dQ_need_update = true;
 }
 
 // row major
@@ -499,6 +512,7 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     m->eigendcmp = NULL;
     
     m->need_update = true;
+    m->dQ_need_update = true;
     
     // Functions
     m->set_frequency = _set_frequency;
@@ -514,6 +528,9 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     
     m->d2p_d2t   = _d2p_d2t;
     m->d2p_d2t_transpose   = _d2p_d2t_transpose;
+    
+    m->dPdp  = NULL;
+    m->dQ = NULL;
     
     m->free = free_SubstitutionModel;
     
@@ -575,6 +592,7 @@ void free_SubstitutionModel( SubstitutionModel *m){
 	if( m->rates != NULL ) free_Parameters(m->rates);
 	if( m->freqs != NULL ) free_Parameters(m->freqs);
     if( m->model != NULL ) free(m->model);
+    if( m->dQ != NULL ) free(m->dQ);
 	free(m);
 }
 
@@ -587,6 +605,7 @@ void free_SubstitutionModel_share( SubstitutionModel *m, bool share_freqs, bool 
 	if( m->rates != NULL && !share_rates ) free_Parameters(m->rates);
 	if( m->freqs != NULL && !share_freqs ) free_Parameters(m->freqs);
     if( m->model != NULL ) free(m->model);
+    if( m->dQ != NULL ) free(m->dQ);
 	free(m);
 }
 
@@ -621,6 +640,9 @@ SubstitutionModel * clone_substitution_model_share(SubstitutionModel *m, bool sh
     clone->d2p_d2t   = m->d2p_d2t;
     clone->d2p_d2t_transpose   = m->d2p_d2t_transpose;
     
+    clone->dPdp = m->dPdp;
+    if( m->dQ != NULL ) clone->dQ = clone_dvector(m->dQ, m->nstate*m->nstate);
+    
     clone->update_frequencies = m->update_frequencies;
     clone->update_Q = m->update_Q;
     clone->set_rate = m->set_rate;
@@ -652,6 +674,7 @@ SubstitutionModel * clone_substitution_model_share(SubstitutionModel *m, bool sh
     if( m->model != NULL ) clone->model = clone_uivector(m->model, m->nstate*m->nstate);
     
     clone->need_update = false;
+    clone->dQ_need_update = false;
     
     return clone;
 }

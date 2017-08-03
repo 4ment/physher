@@ -612,8 +612,23 @@ int main( int argc, char *argv[] ){
     StringBuffer_append_string(buffer, "\nRelative rates:\n");
     bufferize_rates(buffer, m);
     
-    if( sm->pinv != NULL ) StringBuffer_append_format(buffer, "\nP-inv: %f\n", Parameter_value(sm->pinv));
-    if( sm->shape != NULL ) StringBuffer_append_format(buffer, "\nGamma model: shape = %f (%d categories)\n", Parameter_value(sm->shape), sm->cat_count );
+    // no rate variation
+    if(sm->cat_count == 1){
+        
+    }
+    // invariant
+    else if(sm->cat_count == 2 && Parameters_count(sm->rates) == 1){
+        StringBuffer_append_format(buffer, "\nP-inv: %f\n", Parameters_value(sm->rates, 0));
+    }
+    // gamma
+    else if(Parameters_count(sm->rates) == 1){
+        StringBuffer_append_format(buffer, "\nGamma model: shape = %f (%d categories)\n", Parameters_value(sm->rates, 0), sm->cat_count );
+    }
+    // gamma + invariant
+    else {
+        StringBuffer_append_format(buffer, "\nP-inv: %f\n", Parameters_value(sm->rates, 0));
+        StringBuffer_append_format(buffer, "\nGamma model: shape = %f (%d categories)\n", Parameters_value(sm->rates, 1), sm->cat_count );
+    }
     
     Sequences *sim = Sequence_simulate(tree, sm, NULL, dataType, length, ancestral);
     

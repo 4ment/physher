@@ -35,11 +35,9 @@ SubstitutionModel * new_NONSTATNucleotideModel_with_values( const double *freqs 
     m->_freqs = clone_dvector(freqs, 4);
     
     m->freqs = new_Parameters( 3 );
-    double aux1 = m->_freqs[1] /   (1 - m->_freqs[0]);
-    double aux2 = m->_freqs[2] / ( (1 - m->_freqs[0]) * (1 - aux1) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("gtr.piA", "model", m->_freqs[0], new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("gtr.piC", "model", aux1,     new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("gtr.piT", "model", aux2,     new_Constraint(0.001, 0.999) ) );
+    Parameters_add(m->freqs, new_Parameter_with_postfix("gtr.piA", "model", freqs[0]/freqs[3], new_Constraint(0.001, 0.999) ) );
+    Parameters_add(m->freqs, new_Parameter_with_postfix("gtr.piC", "model", freqs[1]/freqs[3],     new_Constraint(0.001, 0.999) ) );
+    Parameters_add(m->freqs, new_Parameter_with_postfix("gtr.piG", "model", freqs[2]/freqs[3],     new_Constraint(0.001, 0.999) ) );
     
     m->rates = new_Parameters( 11 );
     Parameters_add(m->rates, new_Parameter_with_postfix("unres.r1",  "model", 1, new_Constraint(0.001, 100) ) );

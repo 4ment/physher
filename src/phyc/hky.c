@@ -75,11 +75,9 @@ SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa
     Parameters_add(m->rates, new_Parameter_with_postfix("hky.kappa", "model", kappa, new_Constraint(0.0001, 100) ) );
     
     m->freqs = new_Parameters( 3 );
-    double aux1 = freqs[1] / (  1 - freqs[0]);
-    double aux2 = freqs[2] / ( (1 - freqs[0]) * (1 - aux1) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piA", "model", freqs[0], new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piC", "model", aux1,     new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piT", "model", aux2,     new_Constraint(0.001, 0.999) ) );
+    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piA", "model", freqs[0]/freqs[3], new_Constraint(0.001, 0.999) ) );
+    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piC", "model", freqs[1]/freqs[3],     new_Constraint(0.001, 0.999) ) );
+    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piG", "model", freqs[2]/freqs[3],     new_Constraint(0.001, 0.999) ) );
     return m;
 }
 
@@ -125,8 +123,8 @@ void hky_update_Q2( SubstitutionModel *m ){
     
     double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + kappa * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
     
-    for ( int i = 0; i < m->nstate; i++ )  {
-        for ( int j = i + 1; j < m->nstate; j++ ) {
+    for ( int i = 0; i < 4; i++ )  {
+        for ( int j = i + 1; j < 4; j++ ) {
             m->Q[i][j] *= r;
         }
     }

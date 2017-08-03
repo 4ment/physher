@@ -60,6 +60,9 @@ typedef struct SubstitutionModel{
 	EigenDecomposition *eigendcmp;
 	double **Q;
     unsigned *model; // nstate * nstate
+    
+    double *dQ;
+    bool dQ_need_update;
 	
 	bool need_update;
 	
@@ -91,6 +94,8 @@ typedef struct SubstitutionModel{
 	void (*d2p_d2t)( struct SubstitutionModel *, const double, double * );
 	void (*d2p_d2t_transpose)( struct SubstitutionModel *, const double, double * );
     
+    void (*dPdp)(struct SubstitutionModel *m, int index, double* mat, double t);//derivative of P with respect to a parameter
+    
     struct SubstitutionModel * (*clone)( struct SubstitutionModel * );
     
     void (*free)( struct SubstitutionModel * );
@@ -98,6 +103,8 @@ typedef struct SubstitutionModel{
 }SubstitutionModel;
 
 void nucleotide_update_freqs( SubstitutionModel *model );
+
+void generale_update_freqs( SubstitutionModel *model );
 
 void update_eigen_system( SubstitutionModel *m );
 

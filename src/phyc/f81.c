@@ -33,15 +33,14 @@ SubstitutionModel * new_F81(){
     SubstitutionModel *m = create_substitution_model("F81", JC69, DATA_TYPE_NUCLEOTIDE);
     m->nstate = 4;
     m->_freqs = dvector(4);
+    m->_freqs[0] = m->_freqs[1] = m->_freqs[2] = m->_freqs[3] = 0.25;
     for ( int i = 0; i < 4; i++ ) m->_freqs[i] = 0.25;
     
     m->freqs = new_Parameters( 3 );
     m->update_frequencies = nucleotide_update_freqs;
-    double aux1 = m->_freqs[1] / (  1 - m->_freqs[0]);
-    double aux2 = m->_freqs[2] / ( (1 - m->_freqs[0]) * (1 - aux1) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piA", "model", m->_freqs[0], new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piC", "model", aux1,     new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piT", "model", aux2,     new_Constraint(0.001, 0.999) ) );
+    Parameters_add(m->freqs, new_Parameter_with_postfix("f81.piA", "model", 1.0, new_Constraint(0.001, 0.999) ) );
+    Parameters_add(m->freqs, new_Parameter_with_postfix("f81.piC", "model", 1.0, new_Constraint(0.001, 0.999) ) );
+    Parameters_add(m->freqs, new_Parameter_with_postfix("f81.piG", "model", 1.0, new_Constraint(0.001, 0.999) ) );
     
     m->pij_t = f81_pij_t;
     m->p_t = f81_p_t;

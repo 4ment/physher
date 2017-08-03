@@ -50,8 +50,6 @@ static double _brent_optimize_height_threshold( Parameters *params, double *grad
 
 static double _brent_optimize_frequency( Parameters *params, double *grad, void *data );
 static double _brent_optimize_relative_rate( Parameters *params, double *grad, void *data );
-static double _brent_optimize_pinv( Parameters *params, double *grad, void *data );
-static double _brent_optimize_gamma( Parameters *params, double *grad, void *data );
 static double _brent_optimize_sm_rates( Parameters *params, double *grad, void *data );
 static double _brent_optimize_rate( Parameters *params, double *grad, void *data );
 static double _brent_optimize_height( Parameters *params, double *grad, void *data );
@@ -474,9 +472,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
     
     Optimizer *opt_all = NULL;
 	
-	Optimizer *opt_pinv = NULL;
-	
-	Optimizer *opt_gamma = NULL;
+	Optimizer *opt_sm = NULL;
 	
 	Optimizer *opt_bl = NULL;
 	
@@ -653,52 +649,23 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
         
 	}
     
-	// Init rate heterogeneity
-	if ( opt.gamma.optimize ) {
-		if(stlk->sm->shape != NULL ){
-            //Parameters_add(all_params, stlk->sm->shape);
-            
-			opt_gamma = new_Optimizer( OPT_BRENT );
-			opt_set_data(opt_gamma, data_brent);
-			opt_set_objective_function(opt_gamma, _brent_optimize_gamma );
-			//opt_set_max_iteration(opt_gamma, opt.gamma.max_iteration);
-			//opt_set_tolx( opt_gamma, opt.gamma.tolx);
-		}
-		else {
-			opt.gamma.optimize = false;
-		}
-	}
-    
-    // Init proportion invariant
-	if ( opt.pinv.optimize ) {
-		if(stlk->sm->pinv != NULL ){
-            //Parameters_add(all_params, stlk->sm->pinv);
-            
-			opt_pinv = new_Optimizer( OPT_BRENT );
-			opt_set_data(opt_pinv, data_brent );
-			opt_set_objective_function(opt_pinv, _brent_optimize_pinv );
-			//opt_set_max_iteration(opt_pinv, opt.pinv.max_iteration);
-			//opt_set_tolx(opt_pinv, opt.pinv.tolx);
-		}
-		else {
-			opt.pinv.optimize = false;
-		}
-        
-	}
-	opt_algorithm algo = OPT_BRENT;
+    // Init rate heterogeneity
+    opt_algorithm algo = OPT_BRENT;
     //opt_algorithm algo = OPT_CG_PR;
-    
-    if( stlk->sm->rates != NULL ){
-        opt_gamma = new_Optimizer( algo );
+    if(Parameters_count(stlk->sm->rates) > 0){
+        
+        //Parameters_add(all_params, stlk->sm->rates);
+        opt_sm = new_Optimizer( algo );
+        
         if(algo == OPT_BRENT ){
-            opt_set_data(opt_gamma, data_brent );
-            opt_set_objective_function(opt_gamma, _brent_optimize_sm_rates);
+            opt_set_data(opt_sm, data_brent );
+            opt_set_objective_function(opt_sm, _brent_optimize_sm_rates);
         }
         else {
             if( data_multivariate == NULL ) data_multivariate = new_MultivariateData( stlk, NULL);
-            opt_set_data(opt_gamma, data_multivariate);
-            opt_set_objective_function(opt_gamma, _cg_optimize_sm_rates);
-            opt_set_tolfx(opt_gamma, opt.relative_rates.tolfx);
+            opt_set_data(opt_sm, data_multivariate);
+            opt_set_objective_function(opt_sm, _cg_optimize_sm_rates);
+            opt_set_tolfx(opt_sm, opt.relative_rates.tolfx);
             
         }
         
@@ -1237,86 +1204,34 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
 //            }
 //		}
         
-		// Gamma distributed rate heterogeneity
-		if ( opt.gamma.optimize ) {
-            double lower = Parameter_lower(stlk->sm->shape);
-            double upper = Parameter_upper(stlk->sm->shape);
-            double value = Parameter_value(stlk->sm->shape);
-            
-			//Parameter_set_lower(stlk->sm->shape, dmax(SITEMODEL_ALPHA_MIN, value/2) );
-			//Parameter_set_upper(stlk->sm->shape, dmin(SITEMODEL_ALPHA_MAX, value*2) );
-            
-            Parameters_set( oneparameter, 0,  stlk->sm->shape );
-            
-			double status= opt_optimize( opt_gamma, oneparameter, &fret);
-			if( status == OPT_ERROR ) error("OPT.GAMMA No SUCCESS!!!!!!!!!!!!\n");
-			
-			SiteModel_set_alpha( stlk->sm, Parameters_value(oneparameter, 0) );
-			SingleTreeLikelihood_update_all_nodes(stlk);
-			
-            fret = -fret;
-            
-			if ( stlk->opt.verbosity > 0 ) {
-				fprintf(stdout, "Gamma          LnL: %f shape: %f  {%f}", fret, Parameter_value(stlk->sm->shape), fret-lnl );
-                
-                if( stlk->opt.verbosity > 1 ){
-                    time(&end_time);
-                    printf(" %f", difftime(end_time, start_time));
-                }
-                printf("\n");
-			}
-			
-            Parameter_set_bounds(stlk->sm->shape, lower, upper);
-            
-            if( rounds > 2 && fabs(Parameters_value(oneparameter, 0)-value) < 0.001 ){
-                //opt.gamma.optimize = false;
-            }
-		}
-		
-		// Proportion of invariant sites
-		if ( opt.pinv.optimize ) {
-            Parameters_set( oneparameter, 0,  stlk->sm->pinv );
-            
-			double status= opt_optimize( opt_pinv, oneparameter, &fret);
-			if( status == OPT_ERROR ) error("OPT.PINV No SUCCESS!!!!!!!!!!!!\n");
-			
-			SiteModel_set_pinv( stlk->sm, Parameters_value(oneparameter, 0) );
-			SingleTreeLikelihood_update_all_nodes(stlk);
-			
-            fret = -fret;
-            
-			if ( stlk->opt.verbosity > 0 ) {
-				fprintf(stdout, "Prop invariant LnL: %f p: %f  {%f}", fret, Parameter_value(stlk->sm->pinv), fret-lnl );
-                
-                if( stlk->opt.verbosity > 1 ){
-                    time(&end_time);
-                    printf(" %f", difftime(end_time, start_time));
-                }
-                printf("\n");
-			}
-		}
-        
-        if( stlk->sm->rates != NULL ){
+		// Rate heterogeneity
+        if( Parameters_count(stlk->sm->rates) > 0 ){
             if(algo == OPT_BRENT){
-                fret = optimize_brent_sm_rates_all(stlk, opt_gamma, data_brent, oneparameter);
+                fret = optimize_brent_sm_rates_all(stlk, opt_sm, data_brent, oneparameter);
             }
             else{
-                double status= opt_optimize( opt_gamma, stlk->sm->rates, &fret);
+                double status= opt_optimize( opt_sm, stlk->sm->rates, &fret);
                 
                 if( status == OPT_ERROR ) error("OPT.SM.RATES No SUCCESS!!!!!!!!!!!!\n");
                 fret = -fret;
-                if( status != OPT_SUCCESS ){
-                    stlk->sm->need_update = true;
-                    SingleTreeLikelihood_update_all_nodes(stlk);
-                }
             }
             
+            bool flaggy = false;
             if ( stlk->opt.verbosity > 0 ) {
-                fprintf(stdout, "Rate sites    LnL: %f [", fret);
-                for ( int i = 0; i < stlk->sm->cat_count; i++ ) {
-                    fprintf( stdout, "%s%f (%f)", (i==0?"":","), stlk->sm->get_rate(stlk->sm, i), stlk->sm->get_proportion(stlk->sm, i) );
+                for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
+                    if(strcmp(Parameters_name(stlk->sm->rates, i), "sitemodel.alpha") == 0){
+                        fprintf(stdout, "Gamma          LnL: %f shape: %f  {%f}%s", fret, Parameters_value(stlk->sm->rates, i), fret-lnl, (i == Parameters_count(stlk->sm->rates)-1 ? "": "\n") );
+                    }
+                    else if(strcmp(Parameters_name(stlk->sm->rates, i), "sitemodel.pinv") == 0){
+                        fprintf(stdout, "Prop invariant LnL: %f p: %f  {%f}%s", fret, Parameters_value(stlk->sm->rates, i), fret-lnl, (i == Parameters_count(stlk->sm->rates)-1 ? "": "\n") );
+                    }
+                    else{
+                        flaggy = true;
+                    }
                 }
-                fprintf(stdout, "]  {%f}", fret-lnl );
+                if(flaggy){
+                    fprintf(stdout,     "SiteModel      LnL: %f  {%f}", fret, fret-lnl );
+                }
                 
                 if( stlk->opt.verbosity > 1 ){
                     time(&end_time);
@@ -1898,14 +1813,9 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
     }
     
     
-	
-	if ( opt.pinv.optimize ) {
-		free_Optimizer( opt_pinv );
-	}
-	
-	if ( opt.gamma.optimize ) {
-		free_Optimizer( opt_gamma );
-	}
+    if( opt_sm != NULL ){
+        free_Optimizer(opt_sm);
+    }
 	
 	if ( opt.bl.optimize ){
 		free_Optimizer( opt_bl );
@@ -1999,18 +1909,8 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
         }
     }
     
-	// Init rate heterogeneity
-	if ( opt.gamma.optimize ) {
-		if(stlk->sm->shape != NULL ){
-            Parameters_add(all_params, stlk->sm->shape);
-		}
-	}
-    
-    // Init proportion invariant
-	if ( opt.pinv.optimize ) {
-		if(stlk->sm->pinv != NULL ){
-            Parameters_add(all_params, stlk->sm->pinv);
-		}
+    for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
+        Parameters_add_parameters(all_params, stlk->sm->rates);
         
 	}
 	
@@ -2189,8 +2089,7 @@ double optimize_brent_sm_rates_all( SingleTreeLikelihood *stlk, Optimizer *opt, 
         status = opt_optimize( opt, param, &lnl);
         if( status == OPT_ERROR ) error("OPT.SM.RATES No SUCCESS!!!!!!!!!!!!\n");
         
-        Parameters_set_value(stlk->sm->rates, i, Parameters_value(param, 0));
-        stlk->sm->need_update = true;
+        stlk->sm->set_rate(stlk->sm, i, Parameters_value(param, 0));
         SingleTreeLikelihood_update_all_nodes(stlk);
     }
 	return -lnl;
@@ -2231,7 +2130,7 @@ double optimize_brent_branch_length_all( SingleTreeLikelihood *stlk, Optimizer *
 //	opt_result status = OPT_NEED_CHECK;
 //    Node **nodes = Tree_nodes(stlk->tree);
     
-    double lnl = stlk->calculate(stlk);
+    double lnl = data->f(data); //stlk->calculate(stlk);
     double lnl_orginal = lnl;
     
     data->index_param = -1;
@@ -2709,7 +2608,7 @@ double optimize_brent_heights_strict_local( SingleTreeLikelihood *stlk, Optimize
         //int previous_node = stlk->node_id;
         if( Node_isroot(nodes[i]) ) TreeLikelihood_set_calculate(stlk, NULL);
         else TreeLikelihood_set_calculate(stlk, nodes[i]);
-        double lnl2 = stlk->calculate(stlk);
+        double lnl2 = data->f(data);//stlk->calculate(stlk);
         //double temp = lnl2;
         
 //        fprintf(stderr, "LnL at node %s %f ", Node_name(nodes[i]), lnl2);
@@ -2787,34 +2686,12 @@ double _brent_optimize_relative_rate( Parameters *params, double *grad, void *da
     return fabs(lnl);
 }
 
-double _brent_optimize_pinv( Parameters *params, double *grad, void *data ){
-	BrentData *mydata = (BrentData*)data;
-	SingleTreeLikelihood *stlk = mydata->tlk;
-	
-	SiteModel_set_pinv( stlk->sm, Parameters_value(params, 0) ); // does not check
-	SingleTreeLikelihood_update_all_nodes(stlk);
-	
-    return fabs(mydata->f(mydata));
-}
-
-double _brent_optimize_gamma( Parameters *params, double *grad, void *data ){
-	BrentData *mydata = (BrentData*)data;
-	SingleTreeLikelihood *stlk = mydata->tlk;
-    
-	SiteModel_set_alpha( stlk->sm, Parameters_value(params, 0) ); // does not check
-	SingleTreeLikelihood_update_all_nodes(stlk);
-    
-    return fabs(mydata->f(mydata));
-}
-
 double _brent_optimize_sm_rates( Parameters *params, double *grad, void *data ){
 	BrentData *mydata = (BrentData*)data;
 	SingleTreeLikelihood *stlk = mydata->tlk;
     
-    Parameters_set_value(stlk->sm->rates, mydata->index_param, Parameters_value(params, 0));
-    stlk->sm->need_update = true;
+    stlk->sm->set_rate(stlk->sm, mydata->index_param, Parameters_value(params, 0));
 	SingleTreeLikelihood_update_all_nodes(stlk);
-    
     return fabs(mydata->f(mydata));
 }
 
