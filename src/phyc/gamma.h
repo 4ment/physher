@@ -23,6 +23,11 @@
  * x ~ Gamma(alpha,beta)
  *****************************************************/
 
+// Probality density distribution function of Gamma function
+double dgamma(const double x, const double alpha, const double beta);
+
+double dloggamma(const double x, const double alpha, const double beta);
+
 // Cumulative distribution function of Gamma function
 double pgamma( const double x, const double alpha, const double beta );
 
