@@ -831,6 +831,44 @@ double * Matrix_mult( const double *A, const double *B, size_t Am, size_t An, si
 	return m;
 }
 
+void Matrix_mult2( double* m, const double *A, const double *B, size_t Am, size_t An, size_t Bm, size_t Bn ){
+	if( An != Bm ) error("Matrix_mult: incompatible size\n");
+	memset(m, 0, sizeof(double)*Am*Bn);
+	
+	size_t i,j,k;
+	for( i = 0; i < Am; i++ ){
+		for( j = 0; j < Bn; j++ ){
+			for( k = 0; k < Bm; k++ )
+				m[i*Bn+j] += A[i*An+k] * B[k*Bn+j];
+		}
+	}
+}
+
+void Matrix_mult3( double* m, const double **A, const double *B, size_t Am, size_t An, size_t Bm, size_t Bn ){
+	if( An != Bm ) error("Matrix_mult: incompatible size\n");
+	memset(m, 0, sizeof(double)*Am*Bn);
+	
+	size_t i,j,k;
+	for( i = 0; i < Am; i++ ){
+		for( j = 0; j < Bn; j++ ){
+			for( k = 0; k < Bm; k++ )
+				m[i*Bn+j] += A[i][k] * B[k*Bn+j];
+		}
+	}
+}
+
+void Matrix_mult4( double* m, const double *A, const double **B, size_t Am, size_t An, size_t Bm, size_t Bn ){
+	if( An != Bm ) error("Matrix_mult: incompatible size\n");
+	memset(m, 0, sizeof(double)*Am*Bn);
+	
+	size_t i,j,k;
+	for( i = 0; i < Am; i++ ){
+		for( j = 0; j < Bn; j++ ){
+			for( k = 0; k < Bm; k++ )
+				m[i*Bn+j] += A[i*An+k] * B[k][j];
+		}
+	}
+}
 #pragma mark -
 #pragma mark print functions
 
