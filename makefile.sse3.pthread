@@ -33,7 +33,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -pthread
+LIBS = -pthread -lm
 
 
 MKDIR_P = mkdir -p
@@ -54,7 +54,7 @@ $(OBJDIR)/%.o: $(PHYCDIR)/%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 	
 physher-sse-pthread: ${OBJFILES}
-	$(CC) $(CFLAGS) $(INCLUDES) -lm -o $(BINDIR)/physher-sse-pthread $(SRCDIR)/physher.c $(OBJFILES) $(LIBS)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(BINDIR)/physher-sse-pthread $(SRCDIR)/physher.c $(OBJFILES) $(LIBS)
 
 clean:
 	rm -f $(BINDIR)/physher-sse-pthread

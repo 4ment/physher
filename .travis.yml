@@ -1,0 +1,11 @@
+language: c
+compiler:
+  - clang
+  - gcc
+script:
+  - make
+  - make -f makefile.pthread
+  - make -f makefile.sse3.pthread
+  - make -f makefile.sse3.openmp
+  - make -f makefile.openmp
+  - make -f makefile.sse3
