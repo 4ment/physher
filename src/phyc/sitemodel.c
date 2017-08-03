@@ -31,6 +31,7 @@
 #include "model.h"
 
 static void _gamma_approx_quantile( SiteModel *sm );
+static void _invariant( SiteModel *sm );
 static void _calculate_rates_discrete( SiteModel *sm );
 
 static double _get_rate( SiteModel *sm, const int index );
@@ -40,6 +41,10 @@ static double *_get_proportions( SiteModel *sm );
 static double _get_rate_gamma( SiteModel *sm, const int index );
 static double _get_proportion_gamma( SiteModel *sm, const int index );
 static double *_get_proportions_gamma( SiteModel *sm );
+
+static double _get_rate_invariant( SiteModel *sm, const int index );
+static double _get_proportion_invariant( SiteModel *sm, const int index );
+static double *_get_proportions_invariant( SiteModel *sm );
 
 static double _get_rate_laguerre( SiteModel *sm, const int index );
 static double _get_proportion_laguerre( SiteModel *sm, const int index );
@@ -65,12 +70,6 @@ static void _site_model_handle_change( Model *self, Model *model, int index ){
 Model * new_SiteModel2( SiteModel *sm, Model *substmodel ){
 	Model *model = new_Model("substmodel", sm, 1); // at least the sitemodel will listen to it
 
-	if ( sm->pinv != NULL ) {
-		ListenerList_add( sm->pinv->listeners, model );
-	}
-	if ( sm->shape != NULL ) {
-		ListenerList_add( sm->shape->listeners, model );
-	}
 	if ( sm->rates != NULL ) {
 		for ( int i = 0; i < Parameters_count(sm->rates); i++ ) {
 			ListenerList_add( Parameters_at(sm->rates, i)->listeners, model );
@@ -141,6 +140,11 @@ SiteModel * new_GammaLaguerreSiteModel( SubstitutionModel *m, const double shape
 	return _new_SiteModel_with_parameters( m, params, cat_count, SITEMODEL_GAMMA_LAGUERRE );
 }
 
+static void _set_rate(SiteModel* sm, const int index, const double value){
+    Parameters_set_value(sm->rates, index, value);
+    sm->need_update = true;
+}
+
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
 SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, Parameters *params, const unsigned int cat_count, sitemodel_heterogeneity type ){
@@ -157,13 +161,13 @@ SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, Parameters *pa
 	sm->cat_rates       = NULL;
 	sm->cat_proportions = NULL;
     
-	sm->pinv  = NULL;
-	sm->shape = NULL;
 	sm->rates = NULL;
 	sm->mu    = NULL;
 	
     sm->cat_assignment = NULL;
     sm->cat_assignment_length = 0;
+    
+    sm->set_rate = _set_rate;
     
 	switch ( type) {
 		case SITEMODEL_NONE:			
@@ -175,39 +179,43 @@ SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, Parameters *pa
             sm->cat_rates[0] = sm->cat_proportions[0] = 1;
 			break;
 		case SITEMODEL_GAMMA:
+            sm->rates = new_Parameters(1);
+            Parameters_set(sm->rates, 0, Parameters_at(params, 0));
 			sm->cat_count       = cat_count;
 			sm->get_rate        = _get_rate_gamma;
 			sm->get_proportion  = _get_proportion_gamma;
 			sm->get_proportions = _get_proportions_gamma;
-			sm->shape           = Parameters_at(params, 0);
             sm->cat_rates       = dvector(sm->cat_count);
             sm->cat_proportions = dvector(sm->cat_count);
 			break;
 		case SITEMODEL_GAMMAINV:
-			sm->cat_count       = cat_count+1;
+            sm->rates = new_Parameters(2);
+            Parameters_set(sm->rates, 0, Parameters_at(params, 0));
+            Parameters_set(sm->rates, 1, Parameters_at(params, 1));
+            sm->cat_count       = cat_count+1;
 			sm->get_rate        = _get_rate_gamma;
 			sm->get_proportion  = _get_proportion_gamma;
 			sm->get_proportions = _get_proportions_gamma;
-			sm->shape           = Parameters_at(params, 0);
-			sm->pinv            = Parameters_at(params, 1);
             sm->cat_rates       = dvector(sm->cat_count);
             sm->cat_proportions = dvector(sm->cat_count);
 			break;
-		case SITEMODEL_INV:
+        case SITEMODEL_INV:
+            sm->rates = new_Parameters(1);
+            Parameters_set(sm->rates, 0, Parameters_at(params, 0));
 			sm->cat_count       = 2;
-			sm->get_rate        = _get_rate_gamma;
-			sm->get_proportion  = _get_proportion_gamma;
-			sm->get_proportions = _get_proportions_gamma;
-			sm->pinv            = Parameters_at(params, 0);
+			sm->get_rate        = _get_rate_invariant;
+			sm->get_proportion  = _get_proportion_invariant;
+			sm->get_proportions = _get_proportions_invariant;
             sm->cat_rates       = dvector(sm->cat_count);
             sm->cat_proportions = dvector(sm->cat_count);
 			break;
-		case SITEMODEL_GAMMA_LAGUERRE:
+        case SITEMODEL_GAMMA_LAGUERRE:
+            sm->rates = new_Parameters(1);
+            Parameters_set(sm->rates, 0, Parameters_at(params, 0));
 			sm->cat_count       = cat_count;
 			sm->get_rate        = _get_rate_laguerre;
 			sm->get_proportion  = _get_proportion_laguerre;
 			sm->get_proportions = _get_proportions_laguerre;
-			sm->shape           = Parameters_at(params, 0);
             sm->cat_rates       = dvector(sm->cat_count);
             sm->cat_proportions = dvector(sm->cat_count);
 			break;
@@ -241,75 +249,105 @@ double *_get_proportions( SiteModel *sm ){
 	return sm->cat_proportions;
 }
 
+double _get_rate_invariant( SiteModel *sm, const int index ){
+    if ( sm->need_update ) {
+        _invariant(sm);
+    }
+    return sm->cat_rates[index] * (sm->mu == NULL ? 1.0 : Parameter_value(sm->mu));
+}
+
 double _get_rate_gamma( SiteModel *sm, const int index ){
-	if ( sm->need_update ) {
-		_gamma_approx_quantile(sm);
-	}
-	return sm->cat_rates[index] * (sm->mu == NULL ? 1.0 : Parameter_value(sm->mu));
+    if ( sm->need_update ) {
+        _gamma_approx_quantile(sm);
+    }
+    return sm->cat_rates[index] * (sm->mu == NULL ? 1.0 : Parameter_value(sm->mu));
 }
 
 double _get_proportion_gamma( SiteModel *sm, const int index ){
-	if ( sm->need_update ) {
-		_gamma_approx_quantile(sm);
-	}
-	return sm->cat_proportions[index];
+    if ( sm->need_update ) {
+        _gamma_approx_quantile(sm);
+    }
+    return sm->cat_proportions[index];
 }
 
 double *_get_proportions_gamma( SiteModel *sm ){
-	if ( sm->need_update ) {
-		_gamma_approx_quantile(sm);
-	}
-	return sm->cat_proportions;
+    if ( sm->need_update ) {
+        _gamma_approx_quantile(sm);
+    }
+    return sm->cat_proportions;
+}
+
+double _get_proportion_invariant( SiteModel *sm, const int index ){
+    if ( sm->need_update ) {
+        _invariant(sm);
+    }
+    return sm->cat_proportions[index];
+}
+
+double *_get_proportions_invariant( SiteModel *sm ){
+    if ( sm->need_update ) {
+        _invariant(sm);
+    }
+    return sm->cat_proportions;
 }
 
 void _gamma_approx_quantile( SiteModel *sm ) {
-	
-	double propVariable = 1.0;
-	int cat = 0;
-	
-	if ( sm->pinv != NULL ) {
-		sm->cat_rates[0] = 0.0;
-		sm->cat_proportions[0] = sm->pinv->value;
-		
-		propVariable = 1.0 - sm->cat_proportions[0];
-		cat = 1;
-	}
-	
-	if (sm->shape != NULL) {
-		
-		double mean = 0.0;
-		const int nCat = sm->cat_count - cat;
-		
-		for (int i = 0; i < nCat; i++) {
-			sm->cat_rates[i + cat] = qgamma( (2.0 * i + 1.0) / (2.0 * nCat), sm->shape->value, 1.0 / sm->shape->value );
-            //sm->cat_rates[i + cat] = qnorm( (2.0 * i + 1.0) / (2.0 * nCat), 1, sm->shape->value );
-			mean += sm->cat_rates[i + cat];
-			
-			sm->cat_proportions[i + cat] = propVariable / nCat;
-		}
-		
-		mean = (propVariable * mean) / nCat;
-		
-		for (int i = 0; i < nCat; i++) {			
-			sm->cat_rates[i + cat] /= mean;
-		}
-	} else {
-		sm->cat_rates[cat] = 1.0 / propVariable;
-		sm->cat_proportions[cat] = propVariable;
-	}
-	
-	sm->need_update = false;
+    
+    double propVariable = 1.0;
+    int cat = 0;
+    
+    // there is also invariant sites
+    if ( Parameters_count(sm->rates) > 1 ) {
+        sm->cat_rates[0] = 0.0;
+        sm->cat_proportions[0] = Parameters_value(sm->rates, 1);
+        
+        propVariable = 1.0 - sm->cat_proportions[0];
+        cat = 1;
+    }
+    
+    double mean = 0.0;
+    const int nCat = sm->cat_count - cat;
+    
+    const double alpha = Parameters_value(sm->rates, 0);
+    for (int i = 0; i < nCat; i++) {
+        sm->cat_rates[i + cat] = qgamma( (2.0 * i + 1.0) / (2.0 * nCat),alpha, 1.0 / alpha );
+        //sm->cat_rates[i + cat] = qnorm( (2.0 * i + 1.0) / (2.0 * nCat), 1, alpha );
+        mean += sm->cat_rates[i + cat];
+        
+        sm->cat_proportions[i + cat] = propVariable / nCat;
+    }
+    
+    mean = (propVariable * mean) / nCat;
+    
+    for (int i = 0; i < nCat; i++) {
+        sm->cat_rates[i + cat] /= mean;
+    }
+    
+    sm->need_update = false;
+}
+
+void _invariant( SiteModel *sm ) {
+    
+    sm->cat_rates[0] = 0.0;
+    sm->cat_proportions[0] = Parameters_value(sm->rates, 0);
+    double propVariable = propVariable = 1.0 - sm->cat_proportions[0];
+    
+    sm->cat_rates[1] = 1.0 / propVariable;
+    sm->cat_proportions[1] = propVariable;
+    sm->need_update = false;
 }
 
 // Gamma distribution approximated using Laguerre quadrature
 void _gamma_approx_laguerre( SiteModel *sm ){
+    const double alpha = Parameters_value(sm->rates, 0);
+    
 	// calculate using alpha -1
-	gaulag(sm->cat_rates, sm->cat_proportions, sm->cat_count, sm->shape->value-1);
+	gaulag(sm->cat_rates, sm->cat_proportions, sm->cat_count, alpha-1);
 	
 	double sum = 0.0;
-	double gamalpha = gamm(sm->shape->value+1);
+	double gamalpha = gamm(alpha+1);
 	for ( int i = 0; i < sm->cat_count; i++ ) {
-		sm->cat_rates[i] /= sm->shape->value+1;
+		sm->cat_rates[i] /= alpha+1;
 		sm->cat_proportions[i] *= gamalpha;
 		sum += sm->cat_proportions[i];
 	}
@@ -345,24 +383,6 @@ double *_get_proportions_laguerre( SiteModel *sm ){
 	return sm->cat_proportions;
 }
 
-void SiteModel_set_alpha( SiteModel *sm, const double alpha ){
-	sm->shape->value = alpha;
-	sm->need_update = true;	
-}
-
-void SiteModel_set_pinv( SiteModel *sm, const double pinv ){
-	sm->pinv->value = pinv;
-	sm->need_update = true;
-}
-
-double SiteModel_get_alpha( const SiteModel *sm ){
-	return sm->shape->value;
-}
-
-double SiteModel_get_pinv( const SiteModel *sm){
-	return sm->pinv->value;
-}
-
 void SiteModel_set_mu( SiteModel *sm, double mu ){
     sm->mu->value = mu;
 	sm->need_update = true;
@@ -383,12 +403,11 @@ SiteModel * new_DiscreteSiteModel( SubstitutionModel *m, int cat_count ){
 	sm->m = m;
 	sm->nstate = m->nstate;
 	
+    sm->set_rate        = _set_rate;
 	sm->get_rate        = _get_rate_discrete;
 	sm->get_proportion  = _get_proportion_discrete;
 	sm->get_proportions = _get_proportions_discrete;
 	
-	sm->pinv  = NULL;
-	sm->shape = NULL;
 	sm->mu    = NULL;
 	sm->cat_count = cat_count;
 	
@@ -396,7 +415,7 @@ SiteModel * new_DiscreteSiteModel( SubstitutionModel *m, int cat_count ){
 	sm->cat_proportions = dvector(sm->cat_count);
     sm->cat_assignment = NULL;
 	
-	sm->rates = new_Parameters( (cat_count * 2) -1 );
+	sm->rates = new_Parameters( (cat_count * 2) -2 );
 	
 	StringBuffer *buffer = new_StringBuffer(20);
 	double prop = 1.0/cat_count;
@@ -405,9 +424,9 @@ SiteModel * new_DiscreteSiteModel( SubstitutionModel *m, int cat_count ){
 	}
 	
     StringBuffer_set_string(buffer, "sitemodel.p0");
-	Parameters_add(sm->rates, new_Parameter(buffer->c, prop, new_Constraint(0.00001, 0.999)) );
-	
-	for ( int i = 1; i < cat_count-1; i++ ) {
+	Parameters_set(sm->rates, 0, new_Parameter(buffer->c, prop, new_Constraint(0.00001, 0.999)) );
+    int i = 1;
+	for ( ; i < cat_count-1; i++ ) {
 		StringBuffer_set_string(buffer, "sitemodel.p");
 		StringBuffer_append_format(buffer, "%d", i);
 		double denom = 1;
@@ -415,17 +434,15 @@ SiteModel * new_DiscreteSiteModel( SubstitutionModel *m, int cat_count ){
 			denom *= 1 - Parameters_value(sm->rates, j);
 		}
 		double r = sm->cat_proportions[i] / denom;
-		Parameters_add(sm->rates, new_Parameter(buffer->c, r, new_Constraint(0.00001, 0.999)) );
+		Parameters_set(sm->rates, i, new_Parameter(buffer->c, r, new_Constraint(0.00001, 0.999)) );
 	}
 	
-    for ( int i = 0; i < cat_count-1; i++ ) {
+    for (int j = 0 ; j < cat_count-1; j++, i++ ) {
 		StringBuffer_set_string(buffer, "sitemodel.r");
-		StringBuffer_append_format(buffer, "%d", i);
-		Parameters_add(sm->rates, new_Parameter(buffer->c, 1.0, new_Constraint(0.00001, 10)) );
+		StringBuffer_append_format(buffer, "%d", j);
+		Parameters_set(sm->rates, i, new_Parameter(buffer->c, 1.0, new_Constraint(0.00001, 10)) );
 	}
-    
-	Parameters_print(sm->rates);
-    
+
 	free_StringBuffer(buffer);
 	
 	sm->integrate   = true;
@@ -532,8 +549,6 @@ SiteModel * new_CATSiteModel( SubstitutionModel *m, size_t cat_count, const unsi
 	sm->cat_rates       = dvector(cat_count);
 	sm->cat_proportions = NULL;
     
-	sm->pinv  = NULL;
-	sm->shape = NULL;
 	sm->rates = NULL;
 	sm->mu    = NULL;
     
@@ -574,8 +589,6 @@ SiteModel * new_UnrestrictedSiteModel( SubstitutionModel *m, size_t npatterns ){
 	sm->cat_rates       = dvector(npatterns);
 	sm->cat_proportions = NULL;
     
-	sm->pinv  = NULL;
-	sm->shape = NULL;
 	sm->rates = new_Parameters(npatterns);
 	sm->mu    = NULL;
     
@@ -609,20 +622,10 @@ SiteModel * clone_SiteModel( const SiteModel *sm ){
 	newsm->id = sm->id;
 	newsm->nstate = sm->nstate;
 	
-	newsm->pinv  = NULL;
-	newsm->shape = NULL;
 	newsm->rates = NULL;
 	
     newsm->cat_count = sm->cat_count;
     
-	if( sm->pinv != NULL ){
-		newsm->pinv = clone_Parameter(sm->pinv, true);
-	}
-	
-	if( sm->shape != NULL ){
-		newsm->shape = clone_Parameter(sm->shape, true);
-	}
-	
 	if ( sm->rates != NULL ){
 		newsm->rates = clone_Parameters(sm->rates, true);
 	}
@@ -648,6 +651,8 @@ SiteModel * clone_SiteModel( const SiteModel *sm ){
 	newsm->integrate = sm->integrate;
 	newsm->need_update = false;
 	
+    newsm->set_rate = sm->set_rate;
+    
 	newsm->get_rate        = sm->get_rate;
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
@@ -663,29 +668,7 @@ SiteModel * clone_SiteModel_share( const SiteModel *sm, bool share_gamma, bool s
 	newsm->m = clone_substitution_model_share(sm->m, share_freqs, share_rates);
 	newsm->id = sm->id;
 	newsm->nstate = sm->nstate;
-	
-	newsm->pinv  = NULL;
-	newsm->shape = NULL;
-	newsm->rates = NULL;
-	
-	if( sm->pinv != NULL ){
-        if( !share_pinv ){
-            newsm->pinv = clone_Parameter(sm->pinv, true);
-        }
-        else {
-            newsm->pinv = sm->pinv;
-        }
-	}
-	
-	if( sm->shape != NULL ){
-        if( !share_gamma ){
-            newsm->shape = clone_Parameter(sm->shape, true);
-        }
-        else {
-            newsm->shape = sm->shape;
-        }
-	}
-	
+    
 	if ( sm->rates != NULL ){
         newsm->rates = clone_Parameters(sm->rates, true);		
 	}
@@ -705,6 +688,8 @@ SiteModel * clone_SiteModel_share( const SiteModel *sm, bool share_gamma, bool s
 	newsm->integrate = sm->integrate;
 	newsm->need_update = false;
 	
+    newsm->set_rate = sm->set_rate;
+    
 	newsm->get_rate        = sm->get_rate;
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
@@ -716,8 +701,6 @@ SiteModel * clone_SiteModel_share( const SiteModel *sm, bool share_gamma, bool s
 
 
 void free_SiteModel( SiteModel *sm ){
-	if( sm->shape != NULL ) free_Parameter(sm->shape);
-	if( sm->pinv != NULL ) free_Parameter(sm->pinv);
 	if ( sm->rates != NULL ) free_Parameters(sm->rates);
 	if ( sm->mu != NULL ) free_Parameter(sm->mu);
 	if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
@@ -728,8 +711,6 @@ void free_SiteModel( SiteModel *sm ){
 }
 
 void free_SiteModel_share( SiteModel *sm, bool share_gamma, bool share_pinv, bool share_freqs, bool share_rates ){
-	if( sm->shape != NULL && !share_gamma ) free_Parameter(sm->shape);
-	if( sm->pinv != NULL && !share_pinv ) free_Parameter(sm->pinv);
 	if ( sm->rates != NULL ) free_Parameters(sm->rates);
 	if ( sm->mu != NULL ) free_Parameter(sm->mu);
 	if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
@@ -814,14 +795,7 @@ void compare_sitemodel( const SiteModel *sm1, const SiteModel *sm2){
 	
 	//compare_model( sm1->m, sm2->m );
 	
-	assert( sm1->cat_count == sm2->cat_count );
-	
-	if( sm1->shape != NULL && sm2->shape != NULL ) compare_parameter( sm1->shape, sm2->shape );
-	else assert( sm1->shape == NULL && sm2->shape == NULL );
-
-	if( sm1->pinv != NULL && sm2->pinv != NULL ) compare_parameter( sm1->pinv, sm2->pinv );
-	else assert( sm1->pinv == NULL && sm2->pinv == NULL );
-	
+	assert( sm1->cat_count == sm2->cat_count );	
 	assert( memcmp( sm1->cat_rates, sm2->cat_rates, sm1->cat_count *sizeof(double) ) == 0);
 	assert( memcmp( sm1->cat_proportions, sm2->cat_proportions, sm1->cat_count *sizeof(double) ) == 0);
 }

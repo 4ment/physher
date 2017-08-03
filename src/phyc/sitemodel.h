@@ -44,16 +44,13 @@ typedef struct SiteModel{
 	sitemodel_heterogeneity type;
 	
 	bool need_update;
-	
-	double   (*get_rate)( struct SiteModel *, const int );
+    
+    void     (*set_rate)( struct SiteModel *, const int, const double );
+    
+    double   (*get_rate)( struct SiteModel *, const int );
 	double   (*get_proportion)( struct SiteModel *, const int );
 	double * (*get_proportions)( struct SiteModel * );
-	
-	// Proportion of invariant sites
-	Parameter *pinv;
-	
-	// Gamma distributed rate heterogeneity
-	Parameter *shape;
+
 	unsigned cat_count;
 	double *cat_rates;
 	double *cat_proportions;
@@ -87,12 +84,6 @@ SiteModel * new_GammaPinvSiteModel( SubstitutionModel *m, const double pinv, con
 
 SiteModel * new_GammaLaguerreSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count );
 
-
-void SiteModel_set_alpha( SiteModel *sm, const double alpha );
-double SiteModel_get_alpha( const SiteModel *sm );
-
-void SiteModel_set_pinv( SiteModel *sm, const double pinv );
-double SiteModel_get_pinv( const SiteModel *sm );
 
 void SiteModel_set_mu( SiteModel *sm, double mu );
 double SiteModel_mu( const SiteModel *sm );
