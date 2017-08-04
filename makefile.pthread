@@ -1,4 +1,4 @@
-CC = gcc
+CC ?= gcc
 
 CFLAGS = -std=c99 -DNDEBUG #-g
 #CFLAGS += -Wall -pedantic

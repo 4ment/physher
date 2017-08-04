@@ -208,7 +208,14 @@ void SingleTreeLikelihood_resampling_threads( const SingleTreeLikelihood *tlk, r
     FILE *pfile_trees = fopen(buffer->c,"w");
     FILE *pfile_params = NULL;
     
-    if( tlk->opt.freqs.optimize || tlk->opt.relative_rates.optimize || tlk->opt.gamma.optimize || tlk->opt.pinv.optimize ){
+    bool optimize_sitemodel = false;
+    for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
+        if(!Parameters_fixed(tlk->sm->rates, i)){
+            optimize_sitemodel = true;
+        }
+    }
+    
+    if( tlk->opt.freqs.optimize || tlk->opt.relative_rates.optimize || optimize_sitemodel ){
         StringBuffer *buffer2 = new_StringBuffer(10);
         StringBuffer_empty(buffer);
         StringBuffer_append_string(buffer, output);
