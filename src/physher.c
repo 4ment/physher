@@ -2216,24 +2216,24 @@ int main(int argc, char* argv[]){
         pinv = fmax(0.01, 1.0 - ((double)polymorphisms/sp->nsites));
     }
 
-	bool use_gamma = false;
     
     if ( pinv > 0 && rate_category_count > 1 ) {
-        use_gamma = true;
         sm = new_GammaPinvSiteModel( mod, pinv, alpha, rate_category_count );
+        Parameters_set_fixed(sm->rates, alpha_fixed, 0);
+        Parameters_set_fixed(sm->rates, pinv_fixed, 1);
     }
     else if ( rate_category_count > 1 ) {
         if(sitemodel_string != NULL){
             if ( strcasecmp(sitemodel_string, "gammaquad") == 0 ) {
-                use_gamma = true;
                 sm = new_GammaLaguerreSiteModel(mod, alpha, rate_category_count);
+                Parameters_set_fixed(sm->rates, alpha_fixed, 0);
             }
             else if(strcasecmp(sitemodel_string, "discrete") == 0){
                 sm = new_DiscreteSiteModel( mod, rate_category_count );
             }
             else if(strcasecmp(sitemodel_string, "gammaquant") == 0){
                 sm = new_GammaSiteModel(mod, alpha, rate_category_count);
-                use_gamma = true;
+                Parameters_set_fixed(sm->rates, alpha_fixed, 0);
             }
             else{
                 error("Rate heterogeneity not valid (gammaquant, discrete or gammaquad)\n");
@@ -2241,12 +2241,12 @@ int main(int argc, char* argv[]){
         }
         else{
             sm = new_GammaSiteModel(mod, alpha, rate_category_count);
-            use_gamma = true;
+            Parameters_set_fixed(sm->rates, alpha_fixed, 0);
         }
     }
     else if ( pinv > 0 ) {
         sm = new_PinvSiteModel(mod, pinv);
-        use_pinv = true;
+        Parameters_set_fixed(sm->rates, pinv_fixed, 0);
     }
     else {
         sm = new_SiteModel(mod);
@@ -2336,8 +2336,6 @@ int main(int argc, char* argv[]){
 	//tlk->opt.freqs.method  = OPT_CG_PR;
     //if( Parameters_count(mod->rates) > 1 ) tlk->opt.relative_rates.method = OPT_CG_PR; //Brent optmize better in the flub simulated data
     tlk->opt.relative_rates.optimize = !rates_fixed && sm->m->rates != NULL;
-	tlk->opt.pinv.optimize           = use_pinv && !pinv_fixed;
-	tlk->opt.gamma.optimize          = use_gamma && !alpha_fixed;
     tlk->opt.topology_optimize       = false;
     tlk->opt.verbosity = verbosity;
 
@@ -2701,14 +2699,15 @@ int main(int argc, char* argv[]){
         tlk->opt.bl.optimize             = false;
         tlk->opt.freqs.optimize          = false;
         tlk->opt.relative_rates.optimize = false;
-        tlk->opt.pinv.optimize           = false;
-        tlk->opt.gamma.optimize          = false;
         tlk->opt.heights.optimize        = true;
         tlk->opt.rates.optimize          = true;
         tlk->opt.topology_optimize       = false;
         tlk->opt.verbosity = 1;
         tlk->opt.max_rounds = 1000;
         
+        for(int i = 0; i < Parameters_count(sm->rates); i++){
+            Parameters_set_fixed(sm->rates, true, i);
+        }
 
         rate_guess = init_times(tlk, forward, clock_rate_guess, tree_unrooted);
         

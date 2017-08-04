@@ -321,7 +321,15 @@ void SingleTreeLikelihood_resampling_openmp( const SingleTreeLikelihood *tlk, re
 	FILE *pfile_trees = fopen(buffer->c,"w");
     FILE *pfile_params = NULL;
     
-    if( tlk->opt.freqs.optimize || tlk->opt.relative_rates.optimize || tlk->opt.gamma.optimize || tlk->opt.pinv.optimize ){
+    bool optimize_sitemmodel = false;
+    for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
+        if(Parameters_fixed(tlk->sm->rates, i) == false){
+            optimize_sitemmodel = true;
+        }
+    }
+    
+    
+    if( tlk->opt.freqs.optimize || tlk->opt.relative_rates.optimize || optimize_sitemmodel ){
         StringBuffer *buffer2 = new_StringBuffer(10);
         StringBuffer_empty(buffer);
         StringBuffer_append_string(buffer, output);
@@ -873,8 +881,6 @@ void SingleTreeLikelihood_bootstrap_greedy( const SingleTreeLikelihood *tlk, int
 		tlk2->opt.bl.optimize              = true;
 		tlk2->opt.freqs.optimize           = true;
 		tlk2->opt.relative_rates.optimize  = true;
-		tlk2->opt.pinv.optimize            = true;
-		tlk2->opt.gamma.optimize           = true;
 		tlk2->opt.heights.optimize         = false;
 		tlk2->opt.rates.optimize           = false;
 		
@@ -886,11 +892,13 @@ void SingleTreeLikelihood_bootstrap_greedy( const SingleTreeLikelihood *tlk, int
 		tlk2->opt.bl.optimize             = false;
 		tlk2->opt.freqs.optimize          = false;
 		tlk2->opt.relative_rates.optimize = false;
-		tlk2->opt.pinv.optimize           = false;
-		tlk2->opt.gamma.optimize          = false;
 		tlk2->opt.heights.optimize        = true;
 		tlk2->opt.rates.optimize          = true;
 		
+        for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
+            Parameters_set_fixed(tlk->sm->rates, true, i);
+        }
+        
 		BranchModel *bm_strict = new_StrictClock( tlk->tree );
 		SingleTreeLikelihood_set_BranchModel(tlk2, bm_strict, false);
 		bm_strict->set( bm_strict, 0, rate_strict );		

@@ -652,27 +652,28 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
     // Init rate heterogeneity
     opt_algorithm algo = OPT_BRENT;
     //opt_algorithm algo = OPT_CG_PR;
+    bool optimize_sitemmodel = false;
     if(Parameters_count(stlk->sm->rates) > 0){
-        bool good = false;
-        for (; <#condition#>; <#increment#>) {
-            if(Parameters_fixed(stlk->sm->rates)){
-                good = true;
+        for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
+            if(Parameters_fixed(stlk->sm->rates, i) == false){
+                optimize_sitemmodel = true;
             }
         }
         
-        //Parameters_add(all_params, stlk->sm->rates);
-        opt_sm = new_Optimizer( algo );
-        
-        if(algo == OPT_BRENT ){
-            opt_set_data(opt_sm, data_brent );
-            opt_set_objective_function(opt_sm, _brent_optimize_sm_rates);
-        }
-        else {
-            if( data_multivariate == NULL ) data_multivariate = new_MultivariateData( stlk, NULL);
-            opt_set_data(opt_sm, data_multivariate);
-            opt_set_objective_function(opt_sm, _cg_optimize_sm_rates);
-            opt_set_tolfx(opt_sm, opt.relative_rates.tolfx);
+        if(optimize_sitemmodel){
+            opt_sm = new_Optimizer( algo );
             
+            if(algo == OPT_BRENT ){
+                opt_set_data(opt_sm, data_brent );
+                opt_set_objective_function(opt_sm, _brent_optimize_sm_rates);
+            }
+            else {
+                if( data_multivariate == NULL ) data_multivariate = new_MultivariateData( stlk, NULL);
+                opt_set_data(opt_sm, data_multivariate);
+                opt_set_objective_function(opt_sm, _cg_optimize_sm_rates);
+                opt_set_tolfx(opt_sm, opt.relative_rates.tolfx);
+                
+            }
         }
         
     }
@@ -861,7 +862,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
     double lnl = data_brent->f(data_brent);
     
 	
-	if( !opt.freqs.optimize && !opt.relative_rates.optimize && !opt.rates.optimize && !opt.heights.optimize && !opt.pinv.optimize && !opt.gamma.optimize && !opt.bl.optimize ){
+	if( !opt.freqs.optimize && !opt.relative_rates.optimize && !opt.rates.optimize && !opt.heights.optimize && !optimize_sitemmodel && !opt.bl.optimize ){
 		max_rounds = -1;
 	}
 	
@@ -882,7 +883,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
 	if ( opt.verbosity > 1 ) {
 		fprintf(stdout, "Optimize branch lengths %s\n", (opt.bl.optimize ? "yes" : "no"));
 		fprintf(stdout, "Optimize frequencies    %s\n", (opt.freqs.optimize ? "yes" : "no"));
-		fprintf(stdout, "Optimize sitemodel      %s\n", (Parameters_count(stlk->sm->rates) > 0 ? "yes" : "no"));
+		fprintf(stdout, "Optimize sitemodel      %s\n", (optimize_sitemmodel ? "yes" : "no"));
 		fprintf(stdout, "Optimize relative rates %s\n", (opt.relative_rates.optimize ? "yes" : "no"));
 		
 		fprintf(stdout, "Optimize heights        %s\n", (opt.heights.optimize ? "yes" : "no"));
@@ -1933,6 +1934,12 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
         topology = new_TopologyOptimizer( stlk, opt.topology_alogrithm );
     }
     
+    bool optimize_sitemmodel = false;
+    for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
+        if(Parameters_fixed(stlk->sm->rates, i) == false){
+            optimize_sitemmodel = true;
+        }
+    }
     
     
 	double fret = lnl;
@@ -1942,8 +1949,7 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
 	if ( opt.verbosity > 1 ) {
 		fprintf(stdout, "Optimize branch lengths %s\n", (opt.bl.optimize ? "yes" : "no"));
 		fprintf(stdout, "Optimize frequencies    %s\n", (opt.freqs.optimize ? "yes" : "no"));
-		fprintf(stdout, "Optimize gamma          %s\n", (opt.gamma.optimize ? "yes" : "no"));
-		fprintf(stdout, "Optimize pinv           %s\n", (opt.pinv.optimize ? "yes" : "no"));
+		fprintf(stdout, "Optimize sitemodel      %s\n", (optimize_sitemmodel ? "yes" : "no"));
 		fprintf(stdout, "Optimize relative rates %s\n", (opt.relative_rates.optimize ? "yes" : "no"));
 		fprintf(stdout, "\n");
 	}
