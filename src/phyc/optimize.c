@@ -1211,7 +1211,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
 //		}
         
 		// Rate heterogeneity
-        if( Parameters_count(stlk->sm->rates) > 0 ){
+        if( optimize_sitemmodel ){
             if(algo == OPT_BRENT){
                 fret = optimize_brent_sm_rates_all(stlk, opt_sm, data_brent, oneparameter);
             }
@@ -1915,10 +1915,7 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
         }
     }
     
-    for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
-        Parameters_add_parameters(all_params, stlk->sm->rates);
-        
-	}
+    
 	
     //Parameters_print(all_params);
 	
@@ -1938,6 +1935,7 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
     for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
         if(Parameters_fixed(stlk->sm->rates, i) == false){
             optimize_sitemmodel = true;
+            Parameters_add(all_params, Parameters_at(stlk->sm->rates, i));
         }
     }
     
