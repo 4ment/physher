@@ -84,7 +84,7 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
 			int indx_child1 = Node_id(Node_left(n));
 			int indx_child2 = Node_id(Node_right(n));
             
-			tlk->update_partials( tlk, indx_child1, indx_child2, Node_id(n));
+			tlk->update_partials( tlk, Node_id(n), indx_child1, indx_child1, indx_child2, indx_child2);
 			
 			if( Node_isroot(n) ){
 				tlk->integrate_partials(tlk, tlk->partials[Node_id(n)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );

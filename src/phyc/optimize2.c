@@ -433,9 +433,9 @@ double optimize_treelikelihoods( SingleTreeLikelihood **tlk, int nModels ){
 	//double lnl = stlk->calculate(stlk);
     double lnl = data_brent->f(data_brent);
 	
-	if( !opt.freqs.optimize && !opt.relative_rates.optimize && !opt.rates.optimize && !opt.heights.optimize && !opt.pinv.optimize && !opt.gamma.optimize && !opt.bl.optimize ){
-		max_rounds = -1;
-	}
+//	if( !opt.freqs.optimize && !opt.relative_rates.optimize && !opt.rates.optimize && !opt.heights.optimize && !opt.pinv.optimize && !opt.gamma.optimize && !opt.bl.optimize ){
+//		max_rounds = -1;
+//	}
 	
 
 	double fret = lnl;
@@ -445,8 +445,8 @@ double optimize_treelikelihoods( SingleTreeLikelihood **tlk, int nModels ){
 	if ( opt.verbosity > -1 ) {
 		fprintf(stderr, "Optimize branch lengths %s\n", (opt.bl.optimize ? "yes" : "no"));
 		fprintf(stderr, "Optimize frequencies    %s\n", (opt.freqs.optimize ? "yes" : "no"));
-		fprintf(stderr, "Optimize gamma          %s\n", (opt.gamma.optimize ? "yes" : "no"));
-		fprintf(stderr, "Optimize pinv           %s\n", (opt.pinv.optimize ? "yes" : "no"));
+		//fprintf(stderr, "Optimize gamma          %s\n", (opt.gamma.optimize ? "yes" : "no"));
+		//fprintf(stderr, "Optimize pinv           %s\n", (opt.pinv.optimize ? "yes" : "no"));
 		fprintf(stderr, "Optimize relative rates %s\n", (opt.relative_rates.optimize ? "yes" : "no"));
 		
 		fprintf(stderr, "Optimize heights        %s\n", (opt.heights.optimize ? "yes" : "no"));
@@ -699,13 +699,13 @@ double optimize_treelikelihoods( SingleTreeLikelihood **tlk, int nModels ){
 		free_Optimizer( opt_rel_rate );
 	}
 	
-	if ( opt.pinv.optimize ) {
-		free_Optimizer( opt_pinv );
-	}
-	
-	if ( opt.gamma.optimize ) {
-		free_Optimizer( opt_gamma );
-	}
+//	if ( opt.pinv.optimize ) {
+//		free_Optimizer( opt_pinv );
+//	}
+//	
+//	if ( opt.gamma.optimize ) {
+//		free_Optimizer( opt_gamma );
+//	}
 	
 	if ( opt.bl.optimize ){
 		free_Optimizer( opt_bl );

@@ -653,6 +653,12 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
     opt_algorithm algo = OPT_BRENT;
     //opt_algorithm algo = OPT_CG_PR;
     if(Parameters_count(stlk->sm->rates) > 0){
+        bool good = false;
+        for (; <#condition#>; <#increment#>) {
+            if(Parameters_fixed(stlk->sm->rates)){
+                good = true;
+            }
+        }
         
         //Parameters_add(all_params, stlk->sm->rates);
         opt_sm = new_Optimizer( algo );
@@ -876,8 +882,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
 	if ( opt.verbosity > 1 ) {
 		fprintf(stdout, "Optimize branch lengths %s\n", (opt.bl.optimize ? "yes" : "no"));
 		fprintf(stdout, "Optimize frequencies    %s\n", (opt.freqs.optimize ? "yes" : "no"));
-		fprintf(stdout, "Optimize gamma          %s\n", (opt.gamma.optimize ? "yes" : "no"));
-		fprintf(stdout, "Optimize pinv           %s\n", (opt.pinv.optimize ? "yes" : "no"));
+		fprintf(stdout, "Optimize sitemodel      %s\n", (Parameters_count(stlk->sm->rates) > 0 ? "yes" : "no"));
 		fprintf(stdout, "Optimize relative rates %s\n", (opt.relative_rates.optimize ? "yes" : "no"));
 		
 		fprintf(stdout, "Optimize heights        %s\n", (opt.heights.optimize ? "yes" : "no"));

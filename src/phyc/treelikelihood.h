@@ -57,8 +57,6 @@ typedef struct OptConfig{
 	Optimizable bl;
 	Optimizable freqs;
 	Optimizable relative_rates;
-	Optimizable gamma;
-	Optimizable pinv;
 	Optimizable rates;
 	Optimizable heights;
     tree_search_algorithm topology_alogrithm;
@@ -84,10 +82,14 @@ struct _SingleTreeLikelihood{
 	SitePattern *sp;
 	BranchModel *bm;
 	
+	int cat_count;
+	int pattern_count;
+	
 	int id;
 	int *mapping; // index of node to index of sequence (-1 if no sequence)
 	
-	int partials_size;
+	int partials_dim; // first dimension of partials
+	int partials_size; // second dimension of partials
 	double **partials;
 	
 	double **scaling_factors;
@@ -101,13 +103,15 @@ struct _SingleTreeLikelihood{
 	bool *update_nodes;
 	bool update;
 	
+	int root_partials_size;
+	int pattern_lk_size;
 	double *root_partials;
 	double *pattern_lk;
 	double lk;
 	
 	
 	double (*calculate)( SingleTreeLikelihood *);
-	void (*update_partials)( SingleTreeLikelihood *, int, int, int );
+	void (*update_partials)( SingleTreeLikelihood *, int, int, int, int, int );
 	void (*integrate_partials)( const SingleTreeLikelihood *, const double *, const double *, double * );
 	void (*node_log_likelihoods)( const SingleTreeLikelihood *, const double *, const double *, double * );
 
@@ -134,9 +138,12 @@ struct _SingleTreeLikelihood{
 	void   (*update_partials_upper)( SingleTreeLikelihood *, Node * );
     calculate_upper_t calculate_upper;
 	void   (*node_log_likelihoods_upper)( const SingleTreeLikelihood *, Node * );
-    
+	
+	void (*calculate_branch_likelihood)(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
+	
+	int* upper_partial_indexes;
+	bool update_upper;
 };
-
 
 #pragma mark -
 #pragma mark Optimizable
@@ -239,6 +246,8 @@ void calculate_all_d2lnl_d2t( SingleTreeLikelihood *tlk, double *d2lnl );
 
 void calculate_hessian_branches( SingleTreeLikelihood *tlk, double *d2lnl );
 
+double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pattern_likelihoods );
+
 #pragma mark -
 #pragma mark Second order Taylor series approximation
 
@@ -259,6 +268,16 @@ void SingleTreeLikelihood_dt( SingleTreeLikelihood *tlk, double *dlnls );
 #pragma mark -
 #pragma mark Upper Likelihood
 
+void calculate_upper(SingleTreeLikelihood *tlk, Node* node);
+
+void calculate_dldt_uppper( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods );
+
+double dlnldt_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pattern_likelihoods, const double* pattern_dlikelihoods );
+
+//double dlnldt_uppper( SingleTreeLikelihood *tlk, Node *node );
+
+double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pattern_likelihoods, const double* pattern_dlikelihoods);
+
 void SingleTreeLikelihood_set_upper_function( SingleTreeLikelihood *tlk, calculate_upper_t function );
 
 void SingleTreeLikelihood_use_upper( SingleTreeLikelihood *tlk, bool use_upper );
@@ -271,5 +290,8 @@ double calculate_uppper_2nodes( SingleTreeLikelihood *tlk, Node *node );
  StringBuffer * SingleTreeLikelihood_bufferize( StringBuffer *buffer, SingleTreeLikelihood *stlk );
  
  void * SingleTreeLikelihood_SML_to_object( ObjectStore *store, SMLNode node );*/
+
+double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
+
 
 #endif
