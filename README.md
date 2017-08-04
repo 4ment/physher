@@ -6,7 +6,7 @@ physher
 Introduction
 ------------
 
-Physher is a maximum likelihood-based method for estimating evolutionary rates and divergence times from genetic, amino acid, codon, and generic data. Phylogenetic trees should be open with Figtree from this  [website](http://tree.bio.ed.ac.uk/software/figtree/) or [Seqotron] (https://github.com/4ment/seqotron/).
+Physher is a maximum likelihood-based method for estimating evolutionary rates and divergence times from genetic, amino acid, codon, and generic data. Phylogenetic trees should be open with Figtree from this  [website](http://tree.bio.ed.ac.uk/software/figtree/) or [Seqotron](https://github.com/4ment/seqotron/).
 
 For more details about the configuration file and command line arguments see the [wiki](https://github.com/4ment/physher/wiki/Usage)
 
