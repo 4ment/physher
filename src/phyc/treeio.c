@@ -60,18 +60,33 @@ void Tree_print_nexus_header_figtree( FILE *pf, Tree *tree ){
 }
 
 // Taxlabels are in preorder
-void Tree_print_nexus_header_figtree_Taxa( FILE *pf, Tree *tree ){
-	
-	fprintf(pf, "#NEXUS\n\nBegin taxa;\n");
-	fprintf(pf, "\tDimensions ntax=%d;\n", Tree_tip_count(tree) );
-	fprintf(pf, "\tTaxlabels\n");
-	
-	Node **nodes  = get_tips( tree, PREORDER );
-	
+void Tree_print_nexus_taxa_block( FILE *pf, Tree *tree ){
+    
+    fprintf(pf, "Begin taxa;\n");
+    fprintf(pf, "\tDimensions ntax=%d;\n", Tree_tip_count(tree) );
+    fprintf(pf, "\tTaxlabels\n");
+    
+    Node **nodes  = get_tips( tree, PREORDER );
+    
     for ( int i = 0; i < Tree_tip_count(tree); i++) {
         if( Node_isleaf(nodes[i]) ) fprintf(pf, "\t\t%s\n", nodes[i]->name);
     }
-	fprintf(pf, "\t\t;\nEnd;\n\n");
+    fprintf(pf, "\t\t;\nEnd;\n\n");
+    free(nodes);
+}
+
+void Tree_print_nexus_header_figtree_Taxa( FILE *pf, Tree *tree ){
+    
+    fprintf(pf, "#NEXUS\n\nBegin taxa;\n");
+    fprintf(pf, "\tDimensions ntax=%d;\n", Tree_tip_count(tree) );
+    fprintf(pf, "\tTaxlabels\n");
+    
+    Node **nodes  = get_tips( tree, PREORDER );
+    
+    for ( int i = 0; i < Tree_tip_count(tree); i++) {
+        if( Node_isleaf(nodes[i]) ) fprintf(pf, "\t\t%s\n", nodes[i]->name);
+    }
+    fprintf(pf, "\t\t;\nEnd;\n\n");
     free(nodes);
 }
 
