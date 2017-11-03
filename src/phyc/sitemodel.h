@@ -44,16 +44,13 @@ typedef struct SiteModel{
 	sitemodel_heterogeneity type;
 	
 	bool need_update;
-	
-	double   (*get_rate)( struct SiteModel *, const int );
+    
+    void     (*set_rate)( struct SiteModel *, const int, const double );
+    
+    double   (*get_rate)( struct SiteModel *, const int );
 	double   (*get_proportion)( struct SiteModel *, const int );
 	double * (*get_proportions)( struct SiteModel * );
 	
-	// Proportion of invariant sites
-	Parameter *pinv;
-	
-	// Gamma distributed rate heterogeneity
-	Parameter *shape;
 	unsigned cat_count;
 	double *cat_rates;
 	double *cat_proportions;
@@ -72,6 +69,7 @@ typedef struct SiteModel{
 	// HMM?
 } SiteModel;
 
+Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel );
 
 #pragma mark -
 // MARK: Gamma SiteModel
@@ -81,18 +79,20 @@ SiteModel * new_SiteModel( SubstitutionModel *m );
 
 SiteModel * new_PinvSiteModel( SubstitutionModel *m, const double pinv );
 
+SiteModel * new_PinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* pinv );
+
 SiteModel * new_GammaSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count );
+
+SiteModel * new_GammaSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const unsigned int cat_count );
 
 SiteModel * new_GammaPinvSiteModel( SubstitutionModel *m, const double pinv, const double shape, const unsigned int cat_count );
 
+SiteModel * new_GammaPinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* params, const unsigned int cat_count );
+
 SiteModel * new_GammaLaguerreSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count );
 
+SiteModel * new_GammaLaguerreSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const unsigned int cat_count );
 
-void SiteModel_set_alpha( SiteModel *sm, const double alpha );
-double SiteModel_get_alpha( const SiteModel *sm );
-
-void SiteModel_set_pinv( SiteModel *sm, const double pinv );
-double SiteModel_get_pinv( const SiteModel *sm );
 
 void SiteModel_set_mu( SiteModel *sm, double mu );
 double SiteModel_mu( const SiteModel *sm );
@@ -112,6 +112,8 @@ void free_SiteModel( SiteModel *sm );
 void free_SiteModel_share( SiteModel *sm, bool share_gamma, bool share_pinv, bool share_freqs, bool share_rates );
 
 SiteModel * clone_SiteModel( const SiteModel *sm );
+
+SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m );
 
 SiteModel * clone_SiteModel_share( const SiteModel *sm, bool share_gamma, bool share_pinv, bool share_freqs, bool share_rates );
 

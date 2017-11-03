@@ -63,7 +63,7 @@ SubstitutionModel * new_ReversibleNucleotideModel( const char model[5] ){
         for ( int i = 0; i < max; i++ ) {
             StringBuffer_empty(buffer);
             StringBuffer_append_format(buffer, "nuc.%d", i);
-            Parameters_add(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1, new_Constraint(0.001, 100) ) );
+            Parameters_move(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1, new_Constraint(0.001, 100) ) );
         }
         free_StringBuffer(buffer);
         
@@ -76,13 +76,11 @@ SubstitutionModel * new_ReversibleNucleotideModel( const char model[5] ){
 void ReversibleNucleotideModel_estimate_freqs( SubstitutionModel *m ){
     if ( m->freqs == NULL ) {
         m->freqs = new_Parameters( 3 );
-        double aux1 = m->_freqs[1] /   (1 - m->_freqs[0]);
-        double aux2 = m->_freqs[2] / ( (1 - m->_freqs[0]) * (1 - aux1) );
-        Parameters_add(m->freqs, new_Parameter_with_postfix("nuc.piA", "model", m->_freqs[0], new_Constraint(0.001, 0.999) ) );
-        Parameters_add(m->freqs, new_Parameter_with_postfix("nuc.piC", "model", aux1,     new_Constraint(0.001, 0.999) ) );
-        Parameters_add(m->freqs, new_Parameter_with_postfix("nuc.piT", "model", aux2,     new_Constraint(0.001, 0.999) ) );
+        Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piA", "model", m->_freqs[0]/m->_freqs[3], new_Constraint(0.001, 0.999) ) );
+        Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piC", "model", m->_freqs[1]/m->_freqs[3],     new_Constraint(0.001, 0.999) ) );
+        Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piG", "model", m->_freqs[2]/m->_freqs[3],     new_Constraint(0.001, 0.999) ) );
         
-        m->update_frequencies = nucleotide_update_freqs;
+        m->update_frequencies = nucleotide_update_freqs_relative;
         m->need_update = true;
     }
 }
@@ -112,3 +110,21 @@ void nuc_sym_update_Q( SubstitutionModel *m ){
     m->need_update = false;
 }
 
+
+void nucleotide_update_freqs_relative( SubstitutionModel *model ){
+	model->need_update = true;
+	model->dQ_need_update = true;
+	model->_freqs[3] = 1.0/(1.0+Parameters_value(model->freqs, 0)+Parameters_value(model->freqs, 1)+Parameters_value(model->freqs, 2));
+	model->_freqs[0] = Parameters_value(model->freqs, 0) * model->_freqs[3];
+	model->_freqs[1] = Parameters_value(model->freqs, 1) * model->_freqs[3];
+	model->_freqs[2] = Parameters_value(model->freqs, 2) * model->_freqs[3];
+}
+
+void nucleotide_update_freqs( SubstitutionModel *model ){
+	model->need_update = true;
+	model->dQ_need_update = true;
+	model->_freqs[0] = Parameters_value(model->freqs, 0);
+	model->_freqs[1] = Parameters_value(model->freqs, 1);
+	model->_freqs[2] = Parameters_value(model->freqs, 2);
+	model->_freqs[3] = Parameters_value(model->freqs, 3);
+}

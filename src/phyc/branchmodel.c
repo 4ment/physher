@@ -49,7 +49,7 @@
 
 static void _free_BranchModel( BranchModel *bm, bool remove_tree  ){
 	if( bm->indicators != NULL ) free(bm->indicators);
-	if( bm->map != NULL ) free(bm->map);
+	if( bm->map != NULL ) free_DiscreteParameter(bm->map);
 	if( bm->unscaled_rates != NULL ) free(bm->unscaled_rates);
 	if( bm->rates != NULL ) free_Parameters(bm->rates);
 	if ( remove_tree && bm->tree != NULL ) {
@@ -114,17 +114,73 @@ BranchModel * new_BranchModel( Tree *tree, branchmodel type ){
 #ifdef LISTENERS
 static void _branchmodel_handle_change( Model *self, Model *model, int index ){
 	// from the index we can try to tell treelikelihood to update the right part of the tree
-	ListenerList_fire( model->listeners, model, index );
+	BranchModel *bm = (BranchModel*)self->obj;
+	if(bm->name == CLOCK_STRICT){
+		self->listeners->fire(self->listeners, self, -1 );
+	}
+	else if(bm->name == CLOCK_LOCAL){
+		self->listeners->fire(self->listeners, self, index );
+	}
+	else{
+		self->listeners->fire(self->listeners, self, -1 );
+	}
 }
 
+static void _branch_model_free( Model *self ){
+	if(self->ref_count == 1){
+		printf("Free branch model %s\n", self->name);
+		BranchModel *bm = (BranchModel*)self->obj;
+		Model* mm = (Model*)self->data;
+		mm->free(mm); // tree model
+		
+		//bm->free(bm, false);
+		if( bm->indicators != NULL ) free(bm->indicators);
+		free_DiscreteParameter(bm->map);
+		if( bm->unscaled_rates != NULL ) free(bm->unscaled_rates);
+		free_Parameters(bm->rates);
+		free(bm);
+		free_Model(self);
+	}
+	else{
+		self->ref_count--;
+	}
+}
+
+static Model* _branch_model_clone( Model* self, Hashtable *hash ){
+	if (Hashtable_exists(hash, self->name)) {
+		return Hashtable_get(hash, self->name);
+	}
+	Model* mtree = (Model*)self->data;
+	Model* mtreeclone = NULL;
+	// Tree may have been parsed already
+	if (Hashtable_exists(hash, mtree->name)) {
+		mtreeclone = Hashtable_get(hash, mtree->name);
+	}
+	else{
+		mtreeclone = mtree->clone(mtree, hash);
+		Hashtable_add(hash, mtree->name, mtreeclone);
+	}
+	BranchModel*bmclone = clone_BranchModel((BranchModel*)self->obj, (Tree*)mtreeclone->obj);
+	Model* clone = new_BranchModel2(self->name, bmclone, mtreeclone);
+	Hashtable_add(hash, clone->name, clone);
+	return clone;
+}
 
 // BranchModel2 listen to the rate parameters
-Model * new_BranchModel2( BranchModel *bm ){
-	Model *model = new_Model("branchmodel", bm, 1); // at least the treelikelihood will listen to it
+Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
+	Model *model = new_Model(name, bm);
 	for ( int i = 0; i < Parameters_count(bm->rates); i++ ) {
-		ListenerList_add( Parameters_at(bm->rates, i)->listeners, model );
+		Parameters_at(bm->rates, i)->listeners->add( Parameters_at(bm->rates, i)->listeners, model );
+	}
+	if(bm->map != NULL){
+		bm->map->listeners->add(bm->map->listeners, model);
 	}
 	model->update = _branchmodel_handle_change;
+	model->free = _branch_model_free;
+	model->clone = _branch_model_clone;
+	model->data = tree;
+	tree->ref_count++;
+	Parameters_add_parameters(model->parameters, bm->rates);
 	return model;
 }
 #endif
@@ -161,7 +217,7 @@ BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree ){
 	}
 	
 	if (bm->map != NULL ) {
-		newbm->map = clone_uivector( bm->map, Tree_node_count(tree) );
+		newbm->map = bm->map->clone(bm->map);
 	}
     if( bm->unscaled_rates != NULL ){
 		newbm->unscaled_rates = clone_dvector( bm->unscaled_rates, Tree_node_count(tree) );
@@ -284,17 +340,18 @@ static double _get_strict_clock( BranchModel *bm , Node *node );
 
 BranchModel * new_StrictClock( Tree *tree ){
 	Parameters *rates = new_Parameters(1);
-	Parameters_add(rates, new_Parameter_with_postfix("rate", STRICT_POSTFIX, 1., new_Constraint(BRANCHMODEL_RATE_MIN, BRANCHMODEL_RATE_MAX)));
+	Parameters_move(rates, new_Parameter_with_postfix("rate", STRICT_POSTFIX, 1., new_Constraint(BRANCHMODEL_RATE_MIN, BRANCHMODEL_RATE_MAX)));
 	return new_StrictClock_with_parameters(tree,rates);
 }
 
-BranchModel * new_StrictClock_with_parameters( Tree *tree, Parameters *rates ){
+BranchModel * new_StrictClock_with_parameters( Tree *tree, const Parameters *rates ){
 	BranchModel *bm = BranchModel_init(tree, CLOCK_STRICT);
 	
 	bm->get = _get_strict_clock;
 	bm->set = _set_strickclock;
 	
-	bm->rates = rates;
+	bm->rates = new_Parameters(1);
+	Parameters_add_parameters(bm->rates, rates);
 	
 	bm->need_update = false; // nothing to do
 	
@@ -335,12 +392,12 @@ BranchModel * new_LocalClock( Tree *tree, const int n ){
 	char name[50] = "rate";
 	for (int i = 0; i <= n; i++) {
 		sprintf(name+4, "%d", i);
-		Parameters_add(rates, new_Parameter_with_postfix_and_ownership(name, LOCAL_POSTFIX, 0.001, cnstr, false));
+		Parameters_move(rates, new_Parameter_with_postfix_and_ownership(name, LOCAL_POSTFIX, 0.001, cnstr, false));
 	}
 	return new_LocalClock_with_parameters( tree, rates );
 }
 
-BranchModel * new_LocalClock_with_parameters( Tree *tree, Parameters *rates ){
+BranchModel * new_LocalClock_with_parameters( Tree *tree, const Parameters *rates ){
 	BranchModel *bm = BranchModel_init(tree, CLOCK_LOCAL);
 		
 	bm->get = _get_local_clock;
@@ -349,7 +406,8 @@ BranchModel * new_LocalClock_with_parameters( Tree *tree, Parameters *rates ){
 	bm->indicators = bvector(Tree_node_count(tree));
 	bm->unscaled_rates = dvector(Tree_node_count(tree));
 	
-	bm->rates = rates;
+	bm->rates = new_Parameters(Parameters_count(rates));
+	Parameters_add_parameters(bm->rates, rates);
 	
 	for (int i = 0; i < Tree_node_count(tree); i++) {
 		bm->indicators[i]     = false;
@@ -358,7 +416,7 @@ BranchModel * new_LocalClock_with_parameters( Tree *tree, Parameters *rates ){
 	
 	localclock_set_random_clock_indicators( bm, Parameters_count(rates)-1);
 	
-	bm->map = uivector( Tree_node_count(tree) );
+	bm->map = new_DiscreteParameter_with_postfix("map", LOCAL_POSTFIX, Tree_node_count(tree) );
 	localclock_rebuild_map( bm );
 	
 	bm->need_update = false;
@@ -435,8 +493,7 @@ void LocalClock_set_number_of_clocks( BranchModel *bm, const int nLocalClocks ){
 			sprintf(name+4, "%d", (i+1) );
 			double rate = Parameters_value(bm->rates, count);
 			Parameter *p = new_Parameter_with_postfix_and_ownership(name, LOCAL_POSTFIX, rate, Parameters_constraint(bm->rates, 0), false); // getting the common constraint from Parameters not Parameter
-			
-			Parameters_add(bm->rates, p);
+			Parameters_move(bm->rates, p);
 		}
 	}
 	
@@ -540,7 +597,7 @@ void LocalClock_indicator_to_map_not_inheritable( const bool *indicators, unsign
 
 void localclock_rebuild_map( BranchModel *bm ){
 	int index = 0;
-	LocalClock_indicator_to_map( bm->indicators, bm->map, Tree_root(bm->tree), &index);
+	LocalClock_indicator_to_map( bm->indicators, bm->map->values, Tree_root(bm->tree), &index);
 }
 
 /**
@@ -548,7 +605,7 @@ void localclock_rebuild_map( BranchModel *bm ){
  */
 double _get_local_clock( BranchModel *bm , Node *node ){
 	//if( index == Tree_node_count(bm->tree)-1 ) error("_get_local_clock: should not be called on the root\n");
-	return Parameters_value( bm->rates, bm->map[ Node_id(node) ] );
+	return Parameters_value( bm->rates, bm->map->values[ Node_id(node) ] );
 }
 
 /**
@@ -585,7 +642,7 @@ BranchModel * new_DiscreteClock2( Tree *tree, const int n ){
 	char name[50] = "rate";
 	for (int i = 0; i < n; i++) {
 		sprintf(name+4, "%d", i);
-		Parameters_add(rates, new_Parameter_with_postfix_and_ownership(name, DISCRETE_POSTFIX, .01, cnstr, false));
+		Parameters_move(rates, new_Parameter_with_postfix_and_ownership(name, DISCRETE_POSTFIX, .01, cnstr, false));
 	}
     BranchModel *bm = new_DiscreteClock_with_parameters( tree, rates );
     bm->get = _get_DiscreteClock2;
@@ -598,20 +655,21 @@ BranchModel * new_DiscreteClock( Tree *tree, const int n ){
 	char name[50] = "rate";
 	for (int i = 0; i < n; i++) {
 		sprintf(name+4, "%d", i);
-		Parameters_add(rates, new_Parameter_with_postfix_and_ownership(name, DISCRETE_POSTFIX, .01, cnstr, false));
+		Parameters_move(rates, new_Parameter_with_postfix_and_ownership(name, DISCRETE_POSTFIX, .01, cnstr, false));
 	}
 	return new_DiscreteClock_with_parameters( tree, rates );
 }
 
-BranchModel * new_DiscreteClock_with_parameters( Tree *tree, Parameters *rates ){
+BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *rates ){
 	BranchModel *bm = BranchModel_init(tree, CLOCK_DISCRETE);
 		
 	bm->get = _get_DiscreteClock;
 	bm->set = _set_DiscreteClock;
 	
-	bm->rates = rates;
+	bm->rates = new_Parameters(Parameters_count(rates));
+	Parameters_add_parameters(bm->rates, rates);
 	
-	bm->map = uivector(Tree_node_count(bm->tree));
+	bm->map = new_DiscreteParameter_with_postfix("map", DISCRETE_POSTFIX, Tree_node_count(tree) );
 	
 	DiscreteClock_set_random_branch_assigment( bm );
 	
@@ -753,7 +811,7 @@ BranchModel * new_DiscreteClock_from_LocalClock( const BranchModel *localBm ){
 	Parameters *newRates = clone_Parameters(localBm->rates, true);
 	
 	BranchModel *bm = new_DiscreteClock_with_parameters( localBm->tree, newRates);
-	DiscreteClock_set_classes(bm, localBm->map);
+	DiscreteClock_set_classes(bm, localBm->map->values);
 	bm->id = localBm->id+1;
 	return bm;
 }
@@ -772,7 +830,7 @@ void DiscreteClock_set_number_of_rate_classes( BranchModel *bm, const int nClass
 		//fprintf(stderr, "Add rates before %d after %d\n",count,n);
 		for (int i = count; i < nClasses; i++) {
 			sprintf(name+4, "%d", i );
-			Parameters_add(bm->rates, new_Parameter_with_postfix_and_ownership(name, DISCRETE_POSTFIX, rate, Parameters_constraint(bm->rates, -1), false));
+			Parameters_move(bm->rates, new_Parameter_with_postfix_and_ownership(name, DISCRETE_POSTFIX, rate, Parameters_constraint(bm->rates, -1), false));
 		}
 		//fprintf(stderr, "Real number %d\n", Parameters_count(bm->rates)-1);
 	}
@@ -789,7 +847,7 @@ void DiscreteClock_set_number_of_rate_classes( BranchModel *bm, const int nClass
 
 void DiscreteClock_set_random_branch_assigment( BranchModel *bm ){
 	for ( int i = 0; i < Tree_node_count(bm->tree); i++) {
-		bm->map[i] = random_int(Parameters_count(bm->rates)-1);
+		bm->map->values[i] = random_int(Parameters_count(bm->rates)-1);
 	}
 }
 
@@ -802,7 +860,7 @@ static double calculateScaleFactor( BranchModel *bm ) {
         if( Node_isroot(nodes[i]) ) continue;
         
         double times = Node_time_elapsed(nodes[i]);
-        double distances = times * Parameters_value(bm->rates, bm->map[i]);
+        double distances = times * Parameters_value(bm->rates, bm->map->values[i]);
         
         sumTime     += times;
         sumDistance += distances;
@@ -815,7 +873,7 @@ static double calculateScaleFactor( BranchModel *bm ) {
  * @param index id of the node
  */
 double _get_DiscreteClock( BranchModel *bm , Node *node ){
-    return Parameters_value(bm->rates, bm->map[ Node_id(node) ] );
+    return Parameters_value(bm->rates, bm->map->values[ Node_id(node) ] );
 }
 
 /**
@@ -825,7 +883,7 @@ double _get_DiscreteClock2( BranchModel *bm , Node *node ){
     bm->scalefactor = calculateScaleFactor(bm);
     
     //printf("scaleFactor %f\n", scaleFactor);
-	return Parameters_value(bm->rates, bm->map[ Node_id(node) ] )*bm->scalefactor*Parameters_value(bm->rates, Parameters_count(bm->rates)-1);
+	return Parameters_value(bm->rates, bm->map->values[ Node_id(node) ] )*bm->scalefactor*Parameters_value(bm->rates, Parameters_count(bm->rates)-1);
 }
 
 void _set_DiscreteClock( BranchModel *bm, const int index, const double value ){
@@ -837,33 +895,6 @@ void _set_DiscreteClock( BranchModel *bm, const int index, const double value ){
 void DiscreteClock_set_classes( BranchModel *bm, const unsigned int *classes ){
 	memcpy(bm->map, classes, Tree_node_count(bm->tree) * sizeof(unsigned int) );
 }
-
-// if more than 1 class point to a rate equal to ~0 then these classes are merged
-void DiscreteClock_pack( BranchModel *bm ){
-    int index = -1;
-    
-    for( int i = 0; i < BranchModel_n_rate(bm); i++ ){
-        if( Parameters_value(bm->rates, i) <= BRANCHMODEL_RATE_MIN*1.01 ){
-            if( index == -1 ){
-                index = i;
-            }
-            else {
-                Parameters_remove(bm->rates, i);
-                for ( int j = 0; j < Tree_node_count(bm->tree); j++ ) {
-                    if( bm->map[j] == i ){
-                        bm->map[j] = index;
-                    }
-                    else if( bm->map[j] > i ){
-                        bm->map[j]--;
-                    }
-                }
-                i--;
-            }
-        }
-    }
-    
-}
-
 
 #pragma mark -
 // MARK: Relaxed Clock
@@ -908,7 +939,7 @@ BranchModel * new_RelaxedClock( Tree *tree, const relaxed_clock type, const int 
 	return new_RelaxedClock_with_parameters( tree, ps, type );
 }
 
-BranchModel * new_RelaxedClock_with_parameters( Tree *tree, Parameters *params, const relaxed_clock type ){
+BranchModel * new_RelaxedClock_with_parameters( Tree *tree, const Parameters *params, const relaxed_clock type ){
 	BranchModel *bm = BranchModel_init(tree, CLOCK_RELAXED);
 	
 	bm->type = type;
@@ -916,9 +947,10 @@ BranchModel * new_RelaxedClock_with_parameters( Tree *tree, Parameters *params, 
 	bm->get = _get_RelaxedClock;
 	bm->set = _set_RelaxedClock;
 	
-	bm->rates = params;
+	bm->rates = new_Parameters(Parameters_count(params));
+	Parameters_add_parameters(bm->rates, params);
 	
-	bm->map = uivector(Tree_node_count(bm->tree));
+	bm->map = new_DiscreteParameter_with_postfix("map", RELAXED_POSTFIX, Tree_node_count(tree) );
 	bm->unscaled_rates = dvector(Tree_node_count(bm->tree));
 	
 	
@@ -937,7 +969,7 @@ BranchModel * new_RelaxedClock_from_tree( Tree *tree, double center ){
     //FIXME: rate parameter
 	BranchModel *bm = new_RelaxedClock(tree, RELAXED_DISCRETE, 1, center);
 	for ( int i = 0; i < nNodes-1; i++ ) {
-		bm->map[i] = i;
+		bm->map->values[i] = i;
 		bm->unscaled_rates[i] = Node_get_double_from_info(nodes[i], "rate=");
 	}
 	bm->need_update = false;
@@ -947,20 +979,20 @@ BranchModel * new_RelaxedClock_from_tree( Tree *tree, double center ){
 
 Parameters * _lognormal_create_parameters( const double logmean, const double logsigma ){
 	Parameters *ps = new_Parameters(2);
-	Parameters_add(ps, new_Parameter_with_postfix("logmean", RELAXED_POSTFIX, logmean, new_Constraint(-INFINITY, INFINITY) ) );
-	Parameters_add(ps, new_Parameter_with_postfix("logsigma", RELAXED_POSTFIX, logsigma, new_Constraint(TINY, INFINITY) ) );
+	Parameters_move(ps, new_Parameter_with_postfix("logmean", RELAXED_POSTFIX, logmean, new_Constraint(-INFINITY, INFINITY) ) );
+	Parameters_move(ps, new_Parameter_with_postfix("logsigma", RELAXED_POSTFIX, logsigma, new_Constraint(TINY, INFINITY) ) );
 	return ps;
 }
 
 Parameters * _exponetial_create_parameters( const double lambda ){
 	Parameters *ps = new_Parameters(2);
-	Parameters_add(ps, new_Parameter_with_postfix("lambda", RELAXED_POSTFIX, lambda, new_Constraint(TINY, INFINITY) ) );
+	Parameters_move(ps, new_Parameter_with_postfix("lambda", RELAXED_POSTFIX, lambda, new_Constraint(TINY, INFINITY) ) );
 	return ps;
 }
 
 Parameters * _log_spaced_create_parameters( const double center ){
 	Parameters *ps = new_Parameters(1);
-	Parameters_add(ps, new_Parameter_with_postfix("center", RELAXED_POSTFIX, center, new_Constraint(BRANCHMODEL_RATE_MIN, BRANCHMODEL_RATE_MAX) ) );
+	Parameters_move(ps, new_Parameter_with_postfix("center", RELAXED_POSTFIX, center, new_Constraint(BRANCHMODEL_RATE_MIN, BRANCHMODEL_RATE_MAX) ) );
 	return ps;
 }
 
@@ -976,10 +1008,10 @@ void RelaxedClock_set_random_branch_assigment2( BranchModel *bm, const int cat_c
 		if ( cat == cat_count ) {
 			cat = 0;
 		}
-		bm->map[i] = cat;
+		bm->map->values[i] = cat;
 	}
 	
-	randomize_uivector( bm->map, Tree_node_count(bm->tree) );
+	randomize_uivector( bm->map->values, Tree_node_count(bm->tree) );
 }
 
 // array with 0 at the first element followed by exponentialy spaced, followed by log spaced
@@ -1033,7 +1065,7 @@ double _get_RelaxedClock( BranchModel *bm , Node *node ){
 		bm->need_update = false;
 		
 	}
-	return bm->unscaled_rates[ bm->map[ Node_id(node) ] ];
+	return bm->unscaled_rates[ bm->map->values[ Node_id(node) ] ];
 }
 
 // index is the index of the parameter of the relaxed clock (not the the postorder index)
@@ -1074,9 +1106,9 @@ void print_rate_map( BranchModel *bm ){
 	Node **nodes = Tree_get_nodes(bm->tree, POSTORDER);
 	fprintf(stderr, "\n--------------------------\n");
 	for (int i = 0; i < Tree_node_count(bm->tree)-1; i++) {
-		fprintf(stderr, "%s map:%d ", nodes[i]->name, bm->map[i]);
-		if(bm->indicators != NULL ) fprintf(stderr, "indicator:%d value:%f (param:%f; unscaled:%f)\n", bm->indicators[i], bm->get(bm, nodes[i]), Parameters_value(bm->rates, bm->map[ Node_id(nodes[i]) ]), bm->unscaled_rates[i]);
-		else fprintf(stderr, "value:%f param:%f\n", bm->get(bm, nodes[i]), Parameters_value(bm->rates, bm->map[ Node_id(nodes[i])] ));
+		fprintf(stderr, "%s map:%d ", nodes[i]->name, bm->map->values[i]);
+		if(bm->indicators != NULL ) fprintf(stderr, "indicator:%d value:%f (param:%f; unscaled:%f)\n", bm->indicators[i], bm->get(bm, nodes[i]), Parameters_value(bm->rates, bm->map->values[ Node_id(nodes[i]) ]), bm->unscaled_rates[i]);
+		else fprintf(stderr, "value:%f param:%f\n", bm->get(bm, nodes[i]), Parameters_value(bm->rates, bm->map->values[ Node_id(nodes[i])] ));
 	}
 	//fprintf(stderr, "%s map:%d indicator:%d value:- (param:%f; unscaled:%f)\n", nodes[bm->tree->nNodes-1]->name, bm->map[bm->tree->nNodes-1], bm->indicators[bm->tree->nNodes-1], bm->rates->list[bm->map[nodes[bm->tree->nNodes-1]->postorder_idx]]->value, bm->unscaled_rates[bm->tree->nNodes-1]);
 	fprintf(stderr, "\n==========================\n");
@@ -1092,8 +1124,8 @@ void print_compare_bms( const BranchModel *bm1, const BranchModel *bm2){
 	print_ivector( (int*)bm1->indicators, Tree_node_count(bm1->tree));
 	print_ivector( (int*)bm2->indicators, Tree_node_count(bm2->tree));
 	
-	print_uivector( bm1->map, Tree_node_count(bm1->tree));
-	print_uivector( bm2->map, Tree_node_count(bm2->tree));
+	print_uivector( bm1->map->values, Tree_node_count(bm1->tree));
+	print_uivector( bm2->map->values, Tree_node_count(bm2->tree));
 	
 	print_dvector( bm1->unscaled_rates, Tree_node_count(bm1->tree));
 	print_dvector( bm2->unscaled_rates, Tree_node_count(bm2->tree));

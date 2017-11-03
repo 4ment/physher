@@ -37,51 +37,76 @@
 #include "dayhoff.h"
 #include "lg.h"
 
+#include "hashtable.h"
 
-#pragma mark Private function definition
-
-static void foo_update( SubstitutionModel *m ){} // does not nothing
-
+#pragma mark Public function definition
 
 #ifdef LISTENERS
 
 static void _substitution_model_handle_change( Model *self, Model *model, int index ){
-	SubstitutionModel * sm = (SubstitutionModel*)self->obj;
-	sm->need_update = true;
-	ListenerList_fire( model->listeners, model, index );
+	SubstitutionModel* m = (SubstitutionModel*)self->obj;
+	m->need_update = true;
+	//TODO: should be smarter
+	m->update_frequencies(m);
+	m->dQ_need_update = true;
+	self->listeners->fire( self->listeners, self, index );
+}
+
+static void _substitution_model_free( Model *self ){
+	if(self->ref_count == 1){
+		printf("Free subsitution model %s\n", self->name);
+		SubstitutionModel* m = (SubstitutionModel*)self->obj;
+	//	free_SubstitutionModel(m);
+		free(m->name);
+		if( m->_freqs != NULL ) free(m->_freqs);
+		if( m->eigendcmp != NULL ) free_EigenDecomposition(m->eigendcmp);
+		if( m->Q != NULL ) free_dmatrix(m->Q, m->nstate);
+		if( m->PP != NULL ) free_dmatrix(m->PP, m->nstate);
+		free_Parameters(m->rates);
+		free_Parameters(m->freqs);
+		if( m->model != NULL ) free(m->model);
+		if( m->dQ != NULL ) free(m->dQ);
+		free(m);
+		
+		free_Model(self);
+	}
+	else{
+		self->ref_count--;
+	}
+}
+
+static Model* _substitution_model_clone(Model* self, Hashtable *hash){
+	if (Hashtable_exists(hash, self->name)) {
+		return Hashtable_get(hash, self->name);
+	}
+	SubstitutionModel* subst = (SubstitutionModel*)self->obj;
+	SubstitutionModel* mclone = clone_substitution_model(subst);
+	return new_SubstitutionModel2(self->name, mclone);
 }
 
 // SubstitutionModel2 listen to the rate and freq parameters
-Model * new_SubstitutionModel2( SubstitutionModel *sm ){
-	Model *model = new_Model("substmodel", sm, 1); // at least the sitemodel will listen to it
+Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm ){
+	Model *model = new_Model(name, sm);
 	int i = 0;
 	if ( sm->rates != NULL ) {
 		for ( i = 0; i < Parameters_count(sm->rates); i++ ) {
-			ListenerList_add( Parameters_at(sm->rates, i)->listeners, model );
+			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
 		}
+		Parameters_add_parameters(model->parameters, sm->rates);
 	}
 	if ( sm->freqs != NULL ) {
 		for ( i = 0; i < Parameters_count(sm->freqs); i++ ) {
-			ListenerList_add( Parameters_at(sm->freqs, i)->listeners, model );
+			Parameters_at(sm->freqs, i)->listeners->add( Parameters_at(sm->freqs, i)->listeners, model );
 		}
+		Parameters_add_parameters(model->parameters, sm->freqs);
 	}
 	
 	model->update = _substitution_model_handle_change;
+	model->free = _substitution_model_free;
+	model->clone = _substitution_model_clone;
 	return model;
 }
 #endif
-
-#pragma mark -
-#pragma mark Public functions
-
-void nucleotide_update_freqs( SubstitutionModel *model ){
-    model->need_update = true;
-    model->_freqs[0] =       Parameters_value(model->freqs, 0);
-    model->_freqs[1] = (1 -  Parameters_value(model->freqs, 0)) *      Parameters_value(model->freqs, 1);
-    model->_freqs[2] = (1 -  Parameters_value(model->freqs, 0)) * (1 - Parameters_value(model->freqs, 1)) *      Parameters_value(model->freqs, 2);
-    model->_freqs[3] = (1 -  Parameters_value(model->freqs, 0)) * (1 - Parameters_value(model->freqs, 1)) * (1 - Parameters_value(model->freqs, 2));
-}
-
 
 
 double get_frequency( SubstitutionModel *m, int base ){
@@ -92,36 +117,55 @@ double * get_frequencies( SubstitutionModel *m ){
 	return m->_freqs;
 }
 
-void set_frequencies( SubstitutionModel *m, const double *freqs ){
-	if( m->nstate != 4 ) error("set_frequencies: only works for nucleotide models!\n");
-    memcpy(m->_freqs, freqs, sizeof(double)*4);
-	Parameters_set_value( m->freqs, 0, freqs[0] );
-	double aux1 = freqs[1] /   (1 - freqs[0]);
-	double aux2 = freqs[2] / ( (1 - freqs[0]) * (1 - aux1) );
-	
-	Parameters_set_value( m->freqs, 1, aux1 );
-	Parameters_set_value( m->freqs, 2, aux2 );
-	m->need_update = true;
-	
+
+#pragma mark -
+#pragma mark Private functions
+
+static void foo_update( SubstitutionModel *m ){} // does not nothing
+
+void general_update_freqs( SubstitutionModel *model ){
+    model->need_update = true;
+    model->dQ_need_update = true;
+    model->_freqs[model->nstate-1] = 0;
+    for(int i = 0; i < Parameters_count(model->freqs); i++){
+        model->_freqs[model->nstate-1] += Parameters_value(model->freqs, i);
+    }
+    model->_freqs[model->nstate-1] = 1.0/(1.0+model->_freqs[model->nstate-1]);
+    for(int i = 0; i < Parameters_count(model->freqs); i++){
+        model->_freqs[i] = Parameters_value(model->freqs, i) * model->_freqs[model->nstate-1];
+    }
 }
 
-void SubstitutionModel_set_rates( SubstitutionModel *m, const double *rates ){
+static void _set_frequencies( SubstitutionModel *m, const double *freqs ){
+	memcpy(m->_freqs, freqs, sizeof(double)*m->nstate);
+	Parameters_set_value( m->freqs, 0, freqs[0]/freqs[m->nstate-1] ); // fire changes only once
+	for (int i = 1; i < m->nstate-1; i++) {
+		Parameters_at(m->freqs, i)->value = freqs[i]/freqs[m->nstate-1];
+	}
+	m->need_update = true;
+	m->dQ_need_update = true;
+}
+
+static void _set_rates( SubstitutionModel *m, const double *rates ){
 	for ( int i = 0; i < Parameters_count(m->rates); i++) {
 		Parameters_set_value(m->rates,i, rates[i]);
 	}
 	m->need_update = true;
+    m->dQ_need_update = true;
 }
 
 // Set the relative frequency (ie. Parameter)!!
-static void _set_frequency( SubstitutionModel *m, const double freq, const int index ){
+static void _set_relative_frequency( SubstitutionModel *m, const double freq, const int index ){
 	Parameters_set_value(m->freqs,index, freq);
 	m->update_frequencies(m);
 	m->need_update = true;
+    m->dQ_need_update = true;
 }
 
 static void _set_rate( SubstitutionModel *m, const double rate, const int index ){
 	Parameters_set_value(m->rates,index, rate);
 	m->need_update = true;
+    m->dQ_need_update = true;
 }
 
 // row major
@@ -499,9 +543,13 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     m->eigendcmp = NULL;
     
     m->need_update = true;
+    m->dQ_need_update = true;
     
-    // Functions
-    m->set_frequency = _set_frequency;
+	// Functions
+	m->set_frequencies = _set_frequencies; // real frequencies that sum to 1
+	m->set_rates = _set_rates;
+	
+	m->set_relative_frequency = _set_relative_frequency; // relative frequency with dimention nstate-1
     m->set_rate = _set_rate;
     m->update_frequencies = foo_update;
     m->update_Q = foo_update;
@@ -514,6 +562,9 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     
     m->d2p_d2t   = _d2p_d2t;
     m->d2p_d2t_transpose   = _d2p_d2t_transpose;
+    
+    m->dPdp  = NULL;
+    m->dQ = NULL;
     
     m->free = free_SubstitutionModel;
     
@@ -567,15 +618,7 @@ SubstitutionModel * create_general_model( const char *name, const modeltype mode
 }
 
 void free_SubstitutionModel( SubstitutionModel *m){
-	free(m->name);
-	if( m->_freqs != NULL ) free(m->_freqs);
-	if( m->eigendcmp != NULL ) free_EigenDecomposition(m->eigendcmp);
-	if( m->Q != NULL ) free_dmatrix(m->Q, m->nstate);
-	if( m->PP != NULL ) free_dmatrix(m->PP, m->nstate);
-	if( m->rates != NULL ) free_Parameters(m->rates);
-	if( m->freqs != NULL ) free_Parameters(m->freqs);
-    if( m->model != NULL ) free(m->model);
-	free(m);
+	free_SubstitutionModel_share(m, false, false);
 }
 
 void free_SubstitutionModel_share( SubstitutionModel *m, bool share_freqs, bool share_rates ){
@@ -587,6 +630,7 @@ void free_SubstitutionModel_share( SubstitutionModel *m, bool share_freqs, bool 
 	if( m->rates != NULL && !share_rates ) free_Parameters(m->rates);
 	if( m->freqs != NULL && !share_freqs ) free_Parameters(m->freqs);
     if( m->model != NULL ) free(m->model);
+    if( m->dQ != NULL ) free(m->dQ);
 	free(m);
 }
 
@@ -621,11 +665,16 @@ SubstitutionModel * clone_substitution_model_share(SubstitutionModel *m, bool sh
     clone->d2p_d2t   = m->d2p_d2t;
     clone->d2p_d2t_transpose   = m->d2p_d2t_transpose;
     
-    clone->update_frequencies = m->update_frequencies;
-    clone->update_Q = m->update_Q;
-    clone->set_rate = m->set_rate;
-    clone->set_frequency = m->set_frequency;
+    m->dPdp = m->dPdp;
+    if( m->dQ != NULL ) clone->dQ = clone_dvector(clone->dQ, m->nstate*m->nstate);
     
+    clone->update_frequencies = m->update_frequencies;
+	clone->update_Q = m->update_Q;
+	clone->set_frequencies = m->set_frequencies;
+	clone->set_rates = m->set_rates;
+	clone->set_relative_frequency = m->set_relative_frequency;
+	clone->set_rate = m->set_rate;
+	
     clone->free = m->free;
     clone->clone = m->clone;
     
@@ -652,6 +701,7 @@ SubstitutionModel * clone_substitution_model_share(SubstitutionModel *m, bool sh
     if( m->model != NULL ) clone->model = clone_uivector(m->model, m->nstate*m->nstate);
     
     clone->need_update = false;
+    clone->dQ_need_update = false;
     
     return clone;
 }
@@ -666,33 +716,35 @@ SubstitutionModel * clone_substitution_model_share(SubstitutionModel *m, bool sh
 	free_StringBuffer(buffer);
 	fprintf(stderr, "%d\n", (int)strlen(final));
 	return final;
-}
+}*/
 
 StringBuffer * SubstitutionModel_bufferize( StringBuffer *buffer, SubstitutionModel *m ){
 	int i = 0;
-	StringBuffer_append_strings(buffer, 3, "(Model:\n(id:\"m1\")\n(type:\"",m->name,"\")\n");
 	
+	StringBuffer_append_string(buffer, "{");
+	StringBuffer_append_strings(buffer, 2, "id:\"", m->id, "\",\n");
+	StringBuffer_append_strings(buffer, 2, "name:\"", m->name, "\",\n");
 	
-	buffer = StringBuffer_append_string(buffer, "(rates:");
-	
-	for ( i = 0; i < Parameters_count(m->rates); i++) {
-		StringBuffer_append_format(buffer," %f", Parameters_value(m->rates, i) );
+	if(Parameters_count(m->rates) > 0){
+		StringBuffer_append_string(buffer, "rates:[");
+		for ( i = 0; i < Parameters_count(m->rates); i++) {
+			StringBuffer_append_format(buffer," %f", Parameters_value(m->rates, i) );
+		}
+		StringBuffer_append_string(buffer, "]\n");
 	}
-	
-	buffer = StringBuffer_append_string(buffer,")\n");
-	
-	buffer = StringBuffer_append_string(buffer, "(freqs:");
-	for ( i = 0; i < m->nstate; i++) {
-		buffer = StringBuffer_append_format(buffer," %f", m->_freqs[i]);		
+	if(Parameters_count(m->rates) > 0){
+		StringBuffer_append_string(buffer, "freqs:[");
+		for ( i = 0; i < m->nstate; i++) {
+			buffer = StringBuffer_append_format(buffer," %f", m->_freqs[i]);		
+		}
+		StringBuffer_append_string(buffer, "]\n");
 	}
-	buffer = StringBuffer_append_string(buffer,")\n");
-	
-	buffer = StringBuffer_append_char(buffer,')');
-	
+	StringBuffer_append_string(buffer, "}");
+
 	return buffer;
 }
 
-void * SubstitutionModel_SML_to_object( ObjectStore *store, SMLNode node ){
+/*void * SubstitutionModel_SML_to_object( ObjectStore *store, SMLNode node ){
 	fprintf(stderr, "Model_SML_to_object\n");
 	SubstitutionModel *m = NULL;
 	
@@ -799,6 +851,16 @@ void check_frequencies( const double *freqs, const int dim ){
 	double sum = 0.;
 	for ( int i = 0; i < dim; i++)
 		sum += freqs[i];
+	if( fabs(sum - 1.0) > 0.0001 ){
+		fprintf(stderr, "Frequencies do not add up to 1:%f (diff = %f)\n",sum, fabs(sum - 1.0) );
+		exit(1);
+	}
+}
+
+void check_frequencies_parameters( const Parameters* freqs ){
+	double sum = 0.;
+	for ( int i = 0; i < Parameters_count(freqs); i++)
+		sum += Parameters_value(freqs, i);
 	if( fabs(sum - 1.0) > 0.0001 ){
 		fprintf(stderr, "Frequencies do not add up to 1:%f (diff = %f)\n",sum, fabs(sum - 1.0) );
 		exit(1);

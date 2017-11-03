@@ -34,7 +34,7 @@ typedef struct _Tree Tree;
 
 
 
-Model * new_TreeModel( Tree *tree );
+Model * new_TreeModel( const char* name, Tree *tree );
 
 Tree * new_Tree( const char *nexus, bool containBL );
 

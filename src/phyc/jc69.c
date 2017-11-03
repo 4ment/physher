@@ -81,3 +81,11 @@ void jc69_d2p_dt2( SubstitutionModel *m, const double t, double *P ){
     P[1] = P[2] = P[3] = P[4] = P[6] = P[7] = P[8] = P[9] = P[11] = P[12] = P[13] = P[14] = -temp*4.0/9.0;
 }
 
+StringBuffer * SubstitutionModel_JC69_bufferize( StringBuffer *buffer, SubstitutionModel *m ){
+	StringBuffer_append_string(buffer, "{");
+	StringBuffer_append_strings(buffer, 2, "id:\"", m->id, "\",\n");
+	StringBuffer_append_strings(buffer, 2, "name:\"", m->name, "\"\n");
+	StringBuffer_append_string(buffer, "}");
+	
+	return buffer;
+}

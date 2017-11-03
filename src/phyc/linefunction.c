@@ -37,7 +37,7 @@ LineFunction *new_LineFunction( Parameters *x, opt_func f, void *data ){
 	
 	linfunc->x = new_Parameters(Parameters_count(x));
 	for (int i = 0; i < Parameters_count(x); i++) {
-		Parameters_add(linfunc->x, new_Parameter(Parameters_name(x, i), 0, NULL) );
+		Parameters_move(linfunc->x, new_Parameter(Parameters_name(x, i), 0, NULL) );
 	}
 	
 	linfunc->s = dvector(Parameters_count(x));	

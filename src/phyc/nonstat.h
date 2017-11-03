@@ -24,4 +24,6 @@ SubstitutionModel * new_NONSTATNucleotideModel();
 
 SubstitutionModel * new_NONSTATNucleotideModel_with_values( const double *freqs );
 
+SubstitutionModel * new_NONSTATNucleotideModel_with_parameters( const Parameters *freqs, const Parameters *rates );
+
 #endif /* nonstat_h */

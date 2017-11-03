@@ -27,6 +27,7 @@
 #include "mstring.h"
 #include "utils.h"
 #include "parser.h"
+#include "matrix.h"
 
 #define STRINGIFY_PARAMETERS  "params"
 #define STRINGIFY_VALUE "value"
@@ -191,19 +192,11 @@ void compare_constraint( const Constraint *c1, const Constraint *c2 ){
 
 // Owns the constraint by default
 Parameter * new_Parameter( const char *name, const double value, Constraint *constr ){
-	Parameter *p =  new_Parameter_with_postfix( name, "", value, constr );
-#ifdef LISTENERS
-	p->listeners = new_ListenerList(1);
-#endif
-	return p;
+	return new_Parameter_with_postfix( name, "", value, constr );
 }
 
 Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, const double value, Constraint *constr ){
-	Parameter *p = new_Parameter_with_postfix_and_ownership( name, postfix, value, constr, true );
-#ifdef LISTENERS
-	p->listeners = new_ListenerList(1);
-#endif
-	return p;
+	return new_Parameter_with_postfix_and_ownership( name, postfix, value, constr, true );
 }
 
 Parameter * new_Parameter_with_postfix_and_ownership( const char *name, const char *postfix, const double value, Constraint *constr, bool owner ){
@@ -222,8 +215,10 @@ Parameter * new_Parameter_with_postfix_and_ownership( const char *name, const ch
 	p->value = value;
 	p->cnstr = constr;
 	p->ownconstraint = owner;
+	p->id = 0;
 #ifdef LISTENERS
 	p->listeners = new_ListenerList(1);
+	p->refCount = 1;
 #endif
 	return p;
 }
@@ -240,16 +235,28 @@ Parameter * clone_Parameter( Parameter *p, bool duplicateconstraint ){
 		cnstr = p->cnstr;
 	}
 	
-	pnew = new_Parameter( p->name, p->value,  cnstr );
+	pnew = new_Parameter( p->name, p->value,  cnstr );//pnew ref_count is reset to 1
 	pnew->ownconstraint = false;
+	pnew->id = p->id;
 	return pnew;
 }
 
 void free_Parameter( Parameter *p ){
-	free(p->name); p->name = NULL;
+#ifdef LISTENERS
+	if(p->refCount == 1){
+		free(p->name);
+		p->listeners->free(p->listeners);
+		if( p->ownconstraint && p->cnstr != NULL ) free_Constraint(p->cnstr);
+		free(p);
+	}
+	else{
+		p->refCount--;
+	}
+#else
+	free(p->name);
 	if( p->ownconstraint && p->cnstr != NULL ) free_Constraint(p->cnstr);
 	free(p);
-	p = NULL;
+#endif
 }
 
 char * Parameter_stringify( Parameter *p ){
@@ -340,7 +347,7 @@ char * Parameter_name( const Parameter *p ){
 void Parameter_set_value( Parameter *p, const double value ){
 	p->value = value;
 #ifdef LISTENERS
-	ListenerList_fire(p->listeners, NULL, 0);
+	p->listeners->fire(p->listeners, NULL, p->id);
 #endif
 }
 
@@ -462,6 +469,7 @@ void compare_parameter( const Parameter *p1, const Parameter *p2 ){
 #pragma mark Parameters
 
 Parameters * new_Parameters( const int n ){
+	if(n == 0) return NULL;
 	Parameters *ps = new_Parameters_with_contraint( n, NULL,NULL );
 	return ps;
 }
@@ -659,9 +667,22 @@ void Parameters_add( Parameters *ps, Parameter *p){
 		ps->capacity++;
 	}
 	ps->list[ps->count++] = p;
+	p->refCount++;
+}
+
+// add and do not increment refCount (move ownership)
+void Parameters_move( Parameters *ps, Parameter *p){
+	if( ps->count == ps->capacity ){
+		ps->list = realloc(ps->list, (ps->capacity+1) * sizeof(Parameter*) );
+		assert(ps->list);
+		ps->capacity++;
+	}
+	ps->list[ps->count++] = p;
+	//p->refCount++;
 }
 
 void Parameters_add_parameters(Parameters *dst, const Parameters *src){
+	if(Parameters_count(src) == 0) return;
 	if( dst->count+src->count == dst->capacity ){
 		dst->list = realloc(dst->list, (dst->count+src->count) * sizeof(Parameter*) );
 		assert(dst->list);
@@ -874,6 +895,13 @@ void Parameters_pop( Parameters *params ){
 	}
 }
 
+void Parameters_pop_soft( Parameters *params ){
+	if( params->count !=0 ){
+		params->list[params->count-1] = NULL;
+		params->count--;
+	}
+}
+
 void compare_parameters( const Parameters *p1, const Parameters *p2 ){
 	assert( p1->count    == p2->count );
 	assert( p1->capacity == p2->capacity );
@@ -915,4 +943,191 @@ void Parameters_sort_from_ivector( Parameters *p, int *s ){
 		size--;
 	}
 }
+
+#pragma mark -
+#pragma mark DiscreteParameter
+
+void free_DiscreteParameter( DiscreteParameter *p ){
+#ifdef LISTENERS
+	if(p->refCount == 1){
+		free(p->name);
+		p->listeners->free(p->listeners);
+		free(p);
+	}
+	else{
+		p->refCount--;
+	}
+#else
+	free(p->name);
+	free(p->values);
+	free(p);
+#endif
+}
+
+static DiscreteParameter * _clone_DiscreteParameter( DiscreteParameter *p ){
+	DiscreteParameter *pnew = new_DiscreteParameter( p->name, p->length);
+	pnew->id = p->id;
+	memcpy(pnew->values, p->values, sizeof(unsigned)*p->length);
+	return pnew;
+}
+
+static void _set_value_discrete(DiscreteParameter* p, int index, unsigned value){
+	assert(index < p->length);
+	p->values[index] = value;
+#ifdef LISTENERS
+	p->listeners->fire(p->listeners, NULL, index);
+#endif
+}
+
+static void _set_values_discrete(DiscreteParameter* p, const unsigned* values){
+	memcpy(p->values, values, p->length);
+#ifdef LISTENERS
+	p->listeners->fire(p->listeners, NULL, -1);
+#endif
+}
+
+DiscreteParameter * new_DiscreteParameter( const char *name, int dim ){
+	return new_DiscreteParameter_with_postfix(name, "", dim);
+}
+
+DiscreteParameter * new_DiscreteParameter_with_postfix( const char *name, const char *postfix, int dim ){
+	return new_DiscreteParameter_with_postfix_values(name, postfix, NULL, dim);
+}
+
+DiscreteParameter * new_DiscreteParameter_with_values( const char *name, const unsigned* values, int dim ){
+	return new_DiscreteParameter_with_postfix_values(name, "", values, dim);
+}
+
+DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name, const char *postfix, const unsigned* values, int dim ){
+	DiscreteParameter *p = (DiscreteParameter *)malloc( sizeof(DiscreteParameter) );
+	assert(p);
+	size_t name_len    = strlen(name);
+	size_t postfix_len = strlen(postfix);
+	
+	p->name = (char*)malloc( sizeof(char)*(name_len+postfix_len+2) );
+	assert(p->name);
+	strcpy(p->name, name);
+	if ( postfix_len > 0 ) {
+		p->name[name_len] = '.';
+		strcpy(p->name+name_len+1, postfix);
+	}
+	if(values != NULL){
+		p->values = clone_uivector(values, dim);
+	}
+	else{
+		p->values = uivector(dim);
+	}
+	p->set_value = _set_value_discrete;
+	p->set_values = _set_values_discrete;
+//	p->free = _free_DiscreteParameter;
+	p->clone = _clone_DiscreteParameter;
+	p->id = 0;
+#ifdef LISTENERS
+	p->listeners = new_ListenerList(1);
+	p->refCount = 1;
+#endif
+	return p;
+}
+
+static void dummyUpdate( Model *self, Model *model, int index ){}
+static double _logP(Model *model){return 0;}
+static double _dlogP(Model *model, const Parameter* p){return 0;}
+
+#pragma mark -
+
+
+Model * new_Model( const char *name, void *obj ){
+	Model *model = (Model*)malloc(sizeof(Model));
+	assert(model);
+	model->name = String_clone(name);
+	model->obj = obj;
+	model->logP = _logP;
+	model->dlogP = _dlogP;
+	model->update  = dummyUpdate;
+	model->free = free_Model;
+	model->data = NULL;
+	model->listeners = new_ListenerList(1);
+	model->clone = NULL;
+	model->ref_count = 1;
+	model->parameters = new_Parameters(1);
+	return model;
+}
+
+void free_Model( Model *model ){
+	assert(model->ref_count >= 1);
+	if(model->ref_count == 1){
+		free(model->name);
+		model->listeners->free(model->listeners);
+		free_Parameters(model->parameters);
+		free(model);
+	}
+	else{
+		model->ref_count--;
+	}
+	
+}
+
+#pragma mark -
+
+static void _free_ListenerList( ListenerList *listeners ){
+	free(listeners->models);
+	free(listeners);
+}
+
+static void _ListenerList_fire( ListenerList *listeners, Model* model, int index){
+	for ( int i = 0; i < listeners->count; i++ ) {
+		listeners->models[i]->update( listeners->models[i], model, index );
+	}
+}
+
+static void _ListenerList_remove( ListenerList *listeners, Model* model ){
+	int i = 0;
+	for ( ; i < listeners->count; i++ ) {
+		if ( listeners->models[i] == model ) {
+			break;
+		}
+	}
+	if ( i == listeners->count) {
+		return;
+	}
+	i++;
+	for ( ; i < listeners->count; i++ ) {
+		listeners->models[i-1] = listeners->models[i];
+	}
+	listeners->models[listeners->count-1] = NULL;
+	listeners->count--;
+}
+
+static void _ListenerList_remove_all( ListenerList *listeners ){
+	int i = 0;
+	for ( ; i < listeners->count; i++ ) {
+		listeners->models[i] = NULL;
+	}
+	listeners->count = 0;
+}
+
+static void _ListenerList_add( ListenerList *listeners, Model *model ){
+	if ( listeners->count == listeners->capacity) {
+		listeners->capacity++;
+		listeners->models = realloc(listeners->models, listeners->capacity*sizeof(Model*));
+	}
+	listeners->models[listeners->count] = model;
+	listeners->count++;
+}
+ListenerList * new_ListenerList( const unsigned capacity ){
+	ListenerList *listeners = (ListenerList*)malloc( sizeof(ListenerList));
+	assert(listeners);
+	listeners->capacity = (capacity == 0 ? 1 : capacity);
+	listeners->count = 0;
+	listeners->models = (Model**)malloc( listeners->capacity * sizeof(Model*));
+	assert(listeners->models);
+	listeners->free = _free_ListenerList;
+	listeners->add = _ListenerList_add;
+	listeners->remove = _ListenerList_remove;
+	listeners->removeAll = _ListenerList_remove_all;
+	listeners->fire = _ListenerList_fire;
+	return listeners;
+}
+
+
 

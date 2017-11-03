@@ -47,14 +47,34 @@ SubstitutionModel * new_MG94_with_values( const double *freqs, const double alph
     m->update_Q = _mg_update_Q;
     
     m->rates = new_Parameters( 3 );
-    Parameters_add(m->rates, new_Parameter_with_postfix("mg.kappa", "model", kappa, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("mg.alpha", "model", alpha, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("mg.beta", "model", beta, new_Constraint(0.001, 100) ) );
+    Parameters_move(m->rates, new_Parameter_with_postfix("mg.kappa", "model", kappa, new_Constraint(0.001, 100) ) );
+    Parameters_move(m->rates, new_Parameter_with_postfix("mg.alpha", "model", alpha, new_Constraint(0.001, 100) ) );
+    Parameters_move(m->rates, new_Parameter_with_postfix("mg.beta", "model", beta, new_Constraint(0.001, 100) ) );
     
     
     return m;
 }
 
+SubstitutionModel * new_MG94_with_parameters( const double *freqs, Parameter* alpha, Parameter* beta, Parameter* kappa, unsigned gen_code ){
+	
+	check_frequencies( freqs, NUMBER_OF_CODONS[gen_code] );
+	SubstitutionModel *m = create_codon_model("MG94", MG94, gen_code);
+	
+	
+	// Parameters and Q matrix
+	m->_freqs = clone_dvector( freqs, NUMBER_OF_CODONS[gen_code] );
+	
+	// Functions
+	m->update_Q = _mg_update_Q;
+	
+	m->rates = new_Parameters( 3 );
+	Parameters_add(m->rates, kappa);
+	Parameters_add(m->rates, alpha);
+	Parameters_add(m->rates, beta);
+	
+	
+	return m;
+}
 
 static void _mg_update_Q( SubstitutionModel *m ){
     int i = 0;

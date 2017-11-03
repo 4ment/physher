@@ -217,6 +217,12 @@ unsigned int column_index( unsigned int i, unsigned int M);
 
 double * Matrix_mult( const double *A, const double *B, size_t Am, size_t An, size_t Bm, size_t Bn );
 
+void Matrix_mult2( double* m, const double *A, const double *B, size_t Am, size_t An, size_t Bm, size_t Bn );
+
+void Matrix_mult3( double* m, const double **A, const double *B, size_t Am, size_t An, size_t Bm, size_t Bn );
+
+void Matrix_mult4( double* m, const double *A, const double **B, size_t Am, size_t An, size_t Bm, size_t Bn );
+
 void cov2cor(double* cov, int dim);
 
 #endif

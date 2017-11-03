@@ -58,13 +58,13 @@ typedef struct BranchModel{
 	// each element represents a node indexed by id
 	// Each value contains the index of the corresponding rate
 	// These indexes are set in PREORDER from indicators. This map is not necessarily ordered (e.g. 1203 instead of 0123)
-	unsigned int *map;
+	DiscreteParameter *map;
 } BranchModel;
 
 #pragma mark -
 #pragma mark BranchModel
 
-Model * new_BranchModel2( BranchModel *bm );
+Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree);
 
 BranchModel * new_BranchModel( Tree *tree, branchmodel type );
 
@@ -93,7 +93,7 @@ int BranchModel_n_rate( BranchModel *bm );
 
 BranchModel * new_StrictClock( Tree *tree );
 
-BranchModel * new_StrictClock_with_parameters( Tree *tree, Parameters *rates );
+BranchModel * new_StrictClock_with_parameters( Tree *tree, const Parameters *rates );
 
 
 
@@ -102,7 +102,7 @@ BranchModel * new_StrictClock_with_parameters( Tree *tree, Parameters *rates );
 
 BranchModel * new_LocalClock( Tree *tree, const int nLocalClocks );
 
-BranchModel * new_LocalClock_with_parameters( Tree *tree, Parameters *rates );
+BranchModel * new_LocalClock_with_parameters( Tree *tree, const Parameters *rates );
 
 BranchModel * new_LocalClock_from_tree( Tree *tree );
 
@@ -129,7 +129,7 @@ BranchModel * new_DiscreteClock2( Tree *tree, const int n );
 
 BranchModel * new_DiscreteClock( Tree *tree, const int n );
 
-BranchModel * new_DiscreteClock_with_parameters( Tree *tree, Parameters *rates );
+BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *rates );
 
 BranchModel * new_DiscreteClock_from_tree( Tree *tree );
 
@@ -143,15 +143,13 @@ void DiscreteClock_set_classes( BranchModel *bm, const unsigned int *classes );
 
 void DiscreteClock_set_random_branch_assigment( BranchModel *bm );
 
-void DiscreteClock_pack( BranchModel *bm );
-
 
 #pragma mark -
 #pragma mark RelaxedClock
 
 BranchModel * new_RelaxedClock( Tree *tree, const relaxed_clock type, const int n, ... );
 
-BranchModel * new_RelaxedClock_with_parameters( Tree *tree, Parameters *rates, const relaxed_clock type );
+BranchModel * new_RelaxedClock_with_parameters( Tree *tree, const Parameters *rates, const relaxed_clock type );
 
 BranchModel * new_RelaxedClock_from_tree( Tree *tree, double center );
 

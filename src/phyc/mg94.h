@@ -26,4 +26,6 @@ SubstitutionModel * new_MG94( unsigned gen_code );
 
 SubstitutionModel * new_MG94_with_values( const double *freqs, const double alpha, const double beta, const double kappa, unsigned gen_code );
 
+SubstitutionModel * new_MG94_with_parameters( const double *freqs, Parameter* alpha, Parameter* beta, Parameter* kappa, unsigned gen_code );
+
 #endif /* mg94_h */

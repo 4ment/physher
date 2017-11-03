@@ -23,4 +23,9 @@
 SubstitutionModel * new_ReversibleNucleotideModel( const char model[5] );
 
 void ReversibleNucleotideModel_estimate_freqs( SubstitutionModel *m );
+
+void nucleotide_update_freqs_relative( SubstitutionModel *model );
+
+void nucleotide_update_freqs( SubstitutionModel *model );
+
 #endif /* nucsubst_h */

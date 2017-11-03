@@ -48,7 +48,7 @@ double ** ConfidenceInterval_rates( SingleTreeLikelihood *tlk, double level ){
     opt_set_objective_function(opt, _brent_optimize_rate_ci);
     opt_set_tolx(opt, 0.000000001);
     Parameters *param = new_Parameters(1);
-    Parameters_add(param, new_Parameter("ci", 0, new_Constraint(0, 1)));
+    Parameters_move(param, new_Parameter("ci", 0, new_Constraint(0, 1)));
     double fmin = 0;
     for ( int i = 0; i < Parameters_count(tlk->bm->rates); i++ ) {
         data->index_param = i;

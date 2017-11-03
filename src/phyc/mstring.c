@@ -568,7 +568,10 @@ char ** String_split_char( const char *str, const char pattern, int *count ){
 	}
 	
 	if ( c == 0 ) {
-		return NULL;
+		char **substrs = malloc( sizeof(char*) );
+		substrs[0] = String_clone(str);
+		*count = 1;
+		return substrs;
 	}
 	
 	// c+1 because we count the number separators

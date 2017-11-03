@@ -43,7 +43,6 @@ typedef struct Node{
 	
 	int preorder_idx;
 	int postorder_idx;
-	int inorder_idx;
 	
 	Parameter *distance;
 	Parameter *height; // constraint lower bound maximum of the 2 kids

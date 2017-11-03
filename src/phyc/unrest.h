@@ -22,4 +22,6 @@
 
 SubstitutionModel * new_UnrestrictedNucleotideModel();
 
+SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters( const Parameters* rates );
+
 #endif /* unrest_h */

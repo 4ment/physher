@@ -44,9 +44,11 @@ typedef enum opt_result{
 typedef enum opt_algorithm {
 	OPT_POWELL = 0,
 	OPT_BRENT,
+	OPT_SERIAL_BRENT,
 	OPT_BFGS,
 	OPT_CG_PR,
 	OPT_CG_FR,
+	OPT_META,
 }opt_algorithm;
 
 static const char *OPT_ALGORITHMS[5] = {"POWELL","BRENT","BFGS","CG_PR","CG_FR"};
@@ -58,6 +60,7 @@ typedef struct OptStopCriterion{
 	double time_max;
 	
 	// Number of iteration
+	int iter_min;
 	int iter_max;
 	int iter;
 	
@@ -80,6 +83,19 @@ typedef double (*opt_func)( Parameters *x, double *gradient, void *data );
 
 typedef bool (*opt_update_data)( void *data, Parameters *p);
 
+struct _OptimizerSchedule;
+typedef struct _OptimizerSchedule OptimizerSchedule;
+
+typedef bool(*OptimizerSchedule_post)(OptimizerSchedule*, double before, double after);
+
+struct _OptimizerSchedule{
+	Optimizer** optimizers;
+	Parameters** parameters;
+	OptimizerSchedule_post* post;
+	int* rounds;
+	int count;
+	int capacity;
+};
 
 
 Optimizer * new_Optimizer( opt_algorithm algorithm );
@@ -123,5 +139,9 @@ int opt_f_evaluations( Optimizer *opt );
 void opt_set_update_data_function( Optimizer *opt, opt_update_data uf );
 
 opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx );
+
+void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, Parameters* parameters);
+
+OptimizerSchedule* opt_get_schedule(Optimizer *opt_meta);
 
 #endif

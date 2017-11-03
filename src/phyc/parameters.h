@@ -26,6 +26,8 @@
 #include "parser.h"
 #include "model.h"
 
+#include "hashtable.h"
+
 #define PARAMETER_TINY 1.0e-25
 #define PARAMETER_ZERO 0.
 #define PARAMETER_ZERO_PLUS TINY
@@ -34,7 +36,6 @@
 #define PARAMETER_POSITIVE_INFINTY INFINITY
 #define PARAMETER_NEGATIVE_INFINTY (-INFINITY)
 
-//#define LISTENERS 0
 
 struct _Constraint;
 typedef struct _Constraint Constraint;
@@ -45,14 +46,46 @@ typedef struct _Parameter Parameter;
 struct _Parameters;
 typedef struct _Parameters Parameters;
 
+struct _DiscreteParameter;
+typedef struct _DiscreteParameter DiscreteParameter;
+
+
+struct _ListenerList;
+typedef struct _ListenerList ListenerList;
+
+struct _Listeners;
+typedef struct _Listener Listener;
+
+struct _Model;
+typedef struct _Model Model;
+
 
 struct _Parameter{
 	char *name;
+	int id;
 	double value;
 	Constraint *cnstr;
 	bool ownconstraint;
 #ifdef LISTENERS
 	ListenerList *listeners;
+	int refCount;
+#endif
+};
+
+struct _DiscreteParameter{
+	char *name;
+	int id;
+	unsigned* values;
+	unsigned length;
+	
+	DiscreteParameter* (*clone)(DiscreteParameter*);
+//	void (*free)(DiscreteParameter*);
+	
+	void (*set_value)( DiscreteParameter*, int, unsigned );
+	void (*set_values)( DiscreteParameter*, const unsigned* );
+#ifdef LISTENERS
+	ListenerList *listeners;
+	int refCount;
 #endif
 };
 
@@ -190,6 +223,8 @@ Parameter * Parameters_at( const Parameters *p, const int index );
 
 void Parameters_add(Parameters *ps, Parameter *p);
 
+void Parameters_move( Parameters *ps, Parameter *p);
+
 void Parameters_add_parameters(Parameters *dst, const Parameters *src);
 
 char * Parameters_name( const Parameters *p, const int index );
@@ -226,6 +261,8 @@ void Parameters_remove( Parameters *params, int index );
 
 void Parameters_pop( Parameters *params );
 
+void Parameters_pop_soft( Parameters *params );
+
 bool update_matching_parameters( Parameters *params, const Parameters *new, const double precision );
 
 Parameters * get_sub_parameters( Parameters *p, const int start, const int end );
@@ -250,5 +287,57 @@ void Parameters_swap( Parameter **a, Parameter **b );
 void Parameters_swap_index( Parameters *ps, unsigned a, unsigned b );
 
 void Parameters_sort_from_ivector( Parameters *p, int *s );
+
+#pragma mark -
+#pragma mark DiscreteParameter
+
+DiscreteParameter * new_DiscreteParameter( const char *name, int dim );
+
+DiscreteParameter * new_DiscreteParameter_with_postfix( const char *name, const char *postfix, int dim );
+
+DiscreteParameter * new_DiscreteParameter_with_values( const char *name, const unsigned* values, int dim );
+
+DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name, const char *postfix, const unsigned* values, int dim );
+
+
+
+struct _ListenerList {
+	Model** models;
+	int count;
+	int capacity;
+	void (*free)( ListenerList*);
+	void (*fire)( ListenerList*, Model*, int );
+	void (*add)( ListenerList*, Model* );
+	void (*remove)( ListenerList*, Model* );
+	void (*removeAll)( ListenerList*);
+};
+
+struct _Model {
+	void *obj; // pointer to model
+	char *name;
+	void* data;
+	double (*logP)( Model * );
+	double (*dlogP)( Model *, const Parameter* );
+	Model* (*clone)( Model *, Hashtable* );
+	void (*free)( Model * );
+	void (*update)( Model *, Model *, int );
+	
+	Parameters *parameters; // pointers to the parameters of the model
+	ListenerList *listeners;
+	int ref_count;
+};
+
+
+#pragma mark -
+
+Model * new_Model( const char *name, void *obj );
+
+void free_Model( Model *model );
+
+#pragma mark -
+
+ListenerList * new_ListenerList( const unsigned capacity );
+
+void free_DiscreteParameter( DiscreteParameter *p );
 
 #endif

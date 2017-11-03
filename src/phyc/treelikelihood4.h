@@ -23,12 +23,15 @@
 #pragma mark -
 #pragma mark Lower Likelihood
 
-void update_partials_4( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
+void update_partials_4( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );
+
+//void update_partials_4( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
 
 void integrate_partials_4( const SingleTreeLikelihood *tlk, const double *inPartials, const double *proportions, double *outPartials );
 
 void node_log_likelihoods_4( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods);
 
+void node_likelihoods_4( const SingleTreeLikelihood *tlk, const double* partials, const double* frequencies, double* outLogLikelihoods );
 
 void partials_undefined_and_undefined_4( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 );
 
@@ -42,7 +45,7 @@ void update_partials_4_ancestral( SingleTreeLikelihood *tlk, int nodeIndex1, int
 
 
 
-void update_partials_noexp_integrate_4( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
+void update_partials_noexp_integrate_4( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );
 
 void partials_undefined_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, const double *partials1, const double *exps1, const double *partials2, const double *exps2, double *partials3);
 
@@ -54,7 +57,7 @@ void partials_states_and_states_noexp_integrate_4( const SingleTreeLikelihood *t
 #pragma mark -
 #pragma mark OpenMP
 
-void update_partials_4_openmp( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
+void update_partials_4_openmp( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );
 
 void partials_states_and_states_4_openmp( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, int idx2, const double *matrices2, double *partials );
 
@@ -67,11 +70,13 @@ void partials_undefined_and_undefined_4_openmp( const SingleTreeLikelihood *tlk,
 #pragma mark SSE
 
 #ifdef SSE3_ENABLED
-void update_partials_4_SSE( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
+void update_partials_4_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );
 
 void integrate_partials_4_SSE( const SingleTreeLikelihood *tlk, const double *inPartials, const double *proportions, double *outPartials );
 
 void node_log_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
+
+void node_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
 #endif
 
 
@@ -79,16 +84,20 @@ void node_log_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *
 #pragma mark AVX
 
 #ifdef AVX_ENABLED
-void update_partials_4_AVX( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
+void update_partials_4_AVX( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );
 
 void integrate_partials_4_AVX( const SingleTreeLikelihood *tlk, const double *inPartials, const double *proportions, double *outPartials );
 
 void node_log_likelihoods_4_AVX( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
+
+void node_likelihoods_4_AVX( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
 #endif
 
 
 #pragma mark -
 #pragma mark Upper Likelihood
+
+void calculate_branch_likelihood_4(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 
 void update_partials_upper_4( SingleTreeLikelihood *tlk, Node *node );
 
@@ -96,6 +105,8 @@ void node_log_likelihoods_upper_4( const SingleTreeLikelihood *tlk, Node *node )
 
 #pragma mark -
 #pragma mark Upper Likelihood SSE
+
+void calculate_branch_likelihood_4_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 
 void update_partials_upper_sse_4( SingleTreeLikelihood *tlk, Node *node );
 

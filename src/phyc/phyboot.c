@@ -141,11 +141,10 @@ static void * _resampling_thread_worker( void *threadpool  ){
                 StringBuffer_append_format(buffer_local, "%e,", Parameters_value(tlk2->sm->m->rates, j));
             }
         }
-        if( tlk->opt.gamma.optimize ){
-            StringBuffer_append_format(buffer_local, "%e,", Parameter_value(tlk2->sm->shape));
-        }
-        if( tlk->opt.pinv.optimize ){
-            StringBuffer_append_format(buffer_local, "%e,", Parameter_value(tlk2->sm->pinv));
+        for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
+            if(!Parameters_fixed(tlk->sm->rates, i)){
+                StringBuffer_append_format(buffer_local, "%e,", Parameters_value(tlk->sm->rates, i));
+            }
         }
         if( buffer_local->length != 0 ){
             StringBuffer_chop(buffer_local);
@@ -233,13 +232,11 @@ void SingleTreeLikelihood_resampling_threads( const SingleTreeLikelihood *tlk, r
                 StringBuffer_append_format(buffer2, "%e,", Parameters_value(tlk->sm->m->rates, j));
             }
         }
-        if ( tlk->opt.gamma.optimize ) {
-            StringBuffer_append_format(buffer, "%s,", Parameter_name(tlk->sm->shape));
-            StringBuffer_append_format(buffer2, "%e,", Parameter_value(tlk->sm->shape));
-        }
-        if ( tlk->opt.pinv.optimize ) {
-            StringBuffer_append_format(buffer, "%s,", Parameter_name(tlk->sm->pinv));
-            StringBuffer_append_format(buffer2, "%e,", Parameter_value(tlk->sm->pinv));
+        for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
+            if(!Parameters_fixed(tlk->sm->rates, i)){
+                StringBuffer_append_format(buffer, "%s,", Parameters_name(tlk->sm->rates, i));
+                StringBuffer_append_format(buffer2, "%e,", Parameters_value(tlk->sm->rates, i));
+            }
         }
         if( buffer->length != 0 ){
             StringBuffer_chop(buffer);
@@ -348,13 +345,11 @@ void SingleTreeLikelihood_resampling_openmp( const SingleTreeLikelihood *tlk, re
                 StringBuffer_append_format(buffer2, "%e,", Parameters_value(tlk->sm->m->rates, j));
             }
         }
-        if ( tlk->opt.gamma.optimize ) {
-            StringBuffer_append_format(buffer, "%s,", Parameter_name(tlk->sm->shape));
-            StringBuffer_append_format(buffer2, "%e,", Parameter_value(tlk->sm->shape));
-        }
-        if ( tlk->opt.pinv.optimize ) {
-            StringBuffer_append_format(buffer, "%s,", Parameter_name(tlk->sm->pinv));
-            StringBuffer_append_format(buffer2, "%e,", Parameter_value(tlk->sm->pinv));
+        for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
+            if(!Parameters_fixed(tlk->sm->rates, i)){
+                StringBuffer_append_format(buffer, "%s,", Parameters_name(tlk->sm->rates, i));
+                StringBuffer_append_format(buffer2, "%e,", Parameters_value(tlk->sm->rates, i));
+            }
         }
         if( buffer->length != 0 ){
             StringBuffer_chop(buffer);
@@ -432,11 +427,10 @@ void SingleTreeLikelihood_resampling_openmp( const SingleTreeLikelihood *tlk, re
                 StringBuffer_append_format(buffer_local, "%e,", Parameters_value(tlk2->sm->m->rates, j));
             }
         }
-        if( tlk->opt.gamma.optimize ){
-            StringBuffer_append_format(buffer_local, "%e,", Parameter_value(tlk2->sm->shape));
-        }
-        if( tlk->opt.pinv.optimize ){
-            StringBuffer_append_format(buffer_local, "%e,", Parameter_value(tlk2->sm->pinv));
+        for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
+            if(!Parameters_fixed(tlk->sm->rates, i)){
+                StringBuffer_append_format(buffer, "%e,", Parameters_name(tlk->sm->rates, i));
+            }
         }
         if( buffer_local->length != 0 ){
             StringBuffer_chop(buffer_local);

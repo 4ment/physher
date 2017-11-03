@@ -65,7 +65,7 @@ Coalescent * new_ConstantCoalescent( Tree *tree, double theta ){
 	Coalescent *coal = (Coalescent*)malloc(sizeof(Coalescent));
     assert(coal);
     coal->p = new_Parameters(1);
-    Parameters_add(coal->p, new_Parameter("theta", theta, new_Constraint(0, 200)));
+    Parameters_move(coal->p, new_Parameter("theta", theta, new_Constraint(0, 200)));
     coal->tree = tree;
 	coal->type = CONSTANT_DEMOGRAPHY;
     coal->calculate = _constant_calculate;

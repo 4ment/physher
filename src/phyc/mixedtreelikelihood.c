@@ -56,12 +56,10 @@ MixedTreeLikelihood * new_MixedStrictTreeLikelihood( SingleTreeLikelihood *tlk, 
     mixed->lnl = 0;
     mixed->calculate = _calculate;
     mixed->params = new_Parameters(2);
-    Parameter *alpha = new_Parameter("mixed.alpha", 1, new_Constraint(0.01, 100) );
-	Parameters_add(mixed->params, alpha);
+	Parameters_move(mixed->params, new_Parameter("mixed.alpha", 1, new_Constraint(0.01, 100) ));
     
     double r = tlk->bm->get(tlk->bm, NULL);
-    Parameter *rate = new_Parameter("mixed.rate", r, new_Constraint(r*0.01, r*20) );
-	Parameters_add(mixed->params, rate);
+	Parameters_move(mixed->params, new_Parameter("mixed.rate", r, new_Constraint(r*0.01, r*20) ));
     
     return mixed;
 }

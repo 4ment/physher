@@ -55,7 +55,6 @@ Node * new_Node( Node *parent, const char *nodename, const int counter ){
 	
 	n->postorder_idx = 0;
 	n->preorder_idx  = 0;
-	n->inorder_idx   = 0;
 	
 	n->time = 0;
 	n->info = NULL;
@@ -105,7 +104,6 @@ Node * clone_Node( const Node *node){
 	
 	n->postorder_idx = node->postorder_idx;
 	n->preorder_idx  = node->preorder_idx;
-	n->inorder_idx   = node->inorder_idx;
 	
 	n->class_id = node->class_id;
 	

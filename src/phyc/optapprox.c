@@ -36,13 +36,13 @@ double loglikelihood_approximation( SingleTreeLikelihood *tlk  ){
         parent = Node_parent(node);
         
         if( Node_isroot(parent) ){
-            double root_rate = ( Parameters_value(tlk->bm->rates, tlk->bm->map[i])*Node_time_elapsed(sibling)  + Parameters_value(tlk->bm->rates, tlk->bm->map[sibling->postorder_idx])*Node_time_elapsed(node)  ) / (Node_time_elapsed(node)+Node_time_elapsed(sibling) );
+            double root_rate = ( Parameters_value(tlk->bm->rates, tlk->bm->map->values[i])*Node_time_elapsed(sibling)  + Parameters_value(tlk->bm->rates, tlk->bm->map->values[sibling->postorder_idx])*Node_time_elapsed(node)  ) / (Node_time_elapsed(node)+Node_time_elapsed(sibling) );
             d = Node_distance(node)+ Node_distance(Node_sibling(node));
-            d -= (Node_time_elapsed(node)    * ( Parameters_value(tlk->bm->rates, tlk->bm->map[i])    + root_rate )*0.5);
-            d -= (Node_time_elapsed(sibling) * ( Parameters_value(tlk->bm->rates, tlk->bm->map[sibling->postorder_idx]) + root_rate )*0.5);
+            d -= (Node_time_elapsed(node)    * ( Parameters_value(tlk->bm->rates, tlk->bm->map->values[i])    + root_rate )*0.5);
+            d -= (Node_time_elapsed(sibling) * ( Parameters_value(tlk->bm->rates, tlk->bm->map->values[sibling->postorder_idx]) + root_rate )*0.5);
         }
         else {
-            d = Node_distance(node) - (Node_time_elapsed(node) * ( Parameters_value(tlk->bm->rates, tlk->bm->map[i])+Parameters_value(tlk->bm->rates, tlk->bm->map[parent->postorder_idx]) )*0.5);
+            d = Node_distance(node) - (Node_time_elapsed(node) * ( Parameters_value(tlk->bm->rates, tlk->bm->map->values[i])+Parameters_value(tlk->bm->rates, tlk->bm->map->values[parent->postorder_idx]) )*0.5);
         }
         lnl += d*d*tlk->hessian[i]/2.0;
         //printf("d %f var %f\n",d,tlk->hessian[i]);

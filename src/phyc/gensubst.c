@@ -143,7 +143,7 @@ SubstitutionModel * new_GeneralModel2( const unsigned *model, unsigned dim, int 
     for ( int i = 0; i < max; i++ ) {
         StringBuffer_empty(buffer);
         StringBuffer_append_format(buffer, "q.%d", i);
-        Parameters_add(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1.0, new_Constraint(0.00001, 1000) ) );
+        Parameters_move(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1.0, new_Constraint(0.00001, 1000) ) );
     }
     
     free_StringBuffer(buffer);
@@ -183,7 +183,7 @@ SubstitutionModel * new_ReversibleModel( int dim, const int *model ){
     for ( int i = 0; i < max; i++ ) {
         StringBuffer_empty(buffer);
         StringBuffer_append_format(buffer, "q.%d", i);
-        Parameters_add(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1.0, new_Constraint(0.00001, 1000) ) );
+        Parameters_move(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1.0, new_Constraint(0.00001, 1000) ) );
     }
     
     free_StringBuffer(buffer);
@@ -267,7 +267,7 @@ SubstitutionModel * new_NonReversibleModel( int dim, const int *model ){
     for ( int i = 0; i < max; i++ ) {
         StringBuffer_empty(buffer);
         StringBuffer_append_format(buffer, "q.%d", i);
-        Parameters_add(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1.0, new_Constraint(0.00001, 1000) ) );
+        Parameters_move(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1.0, new_Constraint(0.00001, 1000) ) );
     }
     
     free_StringBuffer(buffer);

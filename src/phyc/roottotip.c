@@ -153,7 +153,7 @@ double * lm_tree( Tree *tree, bool forward, bool use_correlation ){
     }
     
 	Parameters *ps = new_Parameters(1);
-	Parameters_add( ps, new_Parameter("root.pos", 0, new_Constraint(0, 0)) );
+	Parameters_move( ps, new_Parameter("root.pos", 0, new_Constraint(0, 0)) );
 	
 	Node **tips  = get_tips( tree, POSTORDER );
 	
@@ -316,7 +316,7 @@ double * lm_tree_cluster( Tree *tree, bool forward, int k ){
     for ( int i = 0; i < k; i++ ) {
         StringBuffer_empty(buffer);
         StringBuffer_append_format(buffer, "pos%d", i);
-        Parameters_add( ps, new_Parameter(buffer->c, 0, new_Constraint(0, 0)) );
+        Parameters_move( ps, new_Parameter(buffer->c, 0, new_Constraint(0, 0)) );
     }
     free_StringBuffer(buffer);
 	

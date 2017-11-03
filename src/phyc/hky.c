@@ -17,6 +17,7 @@
 
 #include "hky.h"
 
+#include "nucsubst.h"
 #include "matrix.h"
 
 /***************
@@ -56,38 +57,72 @@ SubstitutionModel * new_HKY(){
 }
 
 SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa ){
-    
-    check_frequencies( freqs, 4 );
-    
-    SubstitutionModel *m = create_nucleotide_model("HKY", HKY);
-    
-    m->_freqs = clone_dvector( freqs, 4);
-    
-    m->update_frequencies = nucleotide_update_freqs;
-    m->update_Q = _foo_update;
-    m->p_t = _hky_p_t;
-    m->p_t_transpose = _hky_p_t_transpose;
-    
-    m->dp_dt = _hky_dp_dt;
-    m->dp_dt_transpose = _hky_dp_dt_transpose;
-    
-    m->rates = new_Parameters( 1 );
-    Parameters_add(m->rates, new_Parameter_with_postfix("hky.kappa", "model", kappa, new_Constraint(0.0001, 100) ) );
-    
-    m->freqs = new_Parameters( 3 );
-    double aux1 = freqs[1] / (  1 - freqs[0]);
-    double aux2 = freqs[2] / ( (1 - freqs[0]) * (1 - aux1) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piA", "model", freqs[0], new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piC", "model", aux1,     new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piT", "model", aux2,     new_Constraint(0.001, 0.999) ) );
-    return m;
+	
+	check_frequencies( freqs, 4 );
+	
+	SubstitutionModel *m = create_nucleotide_model("HKY", HKY);
+	
+	m->_freqs = clone_dvector( freqs, 4);
+	
+	m->update_frequencies = nucleotide_update_freqs_relative;
+	m->update_Q = _foo_update;
+	m->p_t = _hky_p_t;
+	m->p_t_transpose = _hky_p_t_transpose;
+	
+	m->dp_dt = _hky_dp_dt;
+	m->dp_dt_transpose = _hky_dp_dt_transpose;
+	
+	m->rates = new_Parameters( 1 );
+	Parameters_move(m->rates, new_Parameter_with_postfix("hky.kappa", "model", kappa, new_Constraint(0.0001, 100) ) );
+	
+	m->freqs = new_Parameters( 3 );
+	Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piA", "model", freqs[0]/freqs[3], new_Constraint(0.001, 0.999) ) );
+	Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piC", "model", freqs[1]/freqs[3],     new_Constraint(0.001, 0.999) ) );
+	Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piG", "model", freqs[2]/freqs[3],     new_Constraint(0.001, 0.999) ) );
+	return m;
+}
+
+SubstitutionModel * new_HKY_with_parameters( const Parameters *freqs, const Parameters* kappa ){
+	
+	SubstitutionModel *m = create_nucleotide_model("HKY", HKY);
+	
+	m->_freqs = dvector(4);
+	
+	if(Parameters_count(freqs) == 4){
+		m->update_frequencies = nucleotide_update_freqs;
+		for (int i = 0; i < Parameters_count(freqs); i++) {
+			m->_freqs[i] = Parameters_value(freqs, i);
+		}
+	}
+	else{
+		m->update_frequencies = nucleotide_update_freqs_relative;
+		fprintf(stderr, "new_GTR_with_parameters need to be implemented\n");
+		exit(1);
+	}
+	check_frequencies( m->_freqs, 4 );
+
+	m->update_Q = _foo_update;
+	m->p_t = _hky_p_t;
+	m->p_t_transpose = _hky_p_t_transpose;
+	
+	m->dp_dt = _hky_dp_dt;
+	m->dp_dt_transpose = _hky_dp_dt_transpose;
+	
+	m->rates = new_Parameters( 1 );
+	Parameters_add(m->rates, Parameters_at(kappa, 0) );
+	
+	m->freqs = new_Parameters( 3 );
+	for(int i = 0; i < Parameters_count(freqs); i++){
+		Parameters_add(m->rates, Parameters_at(freqs, i) );
+	}
+	return m;
 }
 
 
 
 
 void hky_update_Q( SubstitutionModel *model ){
-    
+	
     model->Q[1][3] = model->Q[3][1] = model->Q[0][2] = model->Q[2][0] = Parameters_value(model->rates, 0); // kappa
     model->Q[0][1] = model->Q[1][0] = model->Q[0][3] = model->Q[3][0] = model->Q[1][2] = model->Q[2][1] = model->Q[2][3] = model->Q[3][2] = 1.;
     
@@ -125,8 +160,8 @@ void hky_update_Q2( SubstitutionModel *m ){
     
     double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + kappa * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
     
-    for ( int i = 0; i < m->nstate; i++ )  {
-        for ( int j = i + 1; j < m->nstate; j++ ) {
+    for ( int i = 0; i < 4; i++ )  {
+        for ( int j = i + 1; j < 4; j++ ) {
             m->Q[i][j] *= r;
         }
     }

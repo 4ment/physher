@@ -51,7 +51,7 @@ typedef enum modeltype {
 
 
 typedef struct SubstitutionModel{
-	int id;
+	char* id;
 	double *_freqs; // hold the real frequencies ex: 0.25 0.25 0.25 0.25
 	unsigned int nstate;
 	char *name;
@@ -60,6 +60,9 @@ typedef struct SubstitutionModel{
 	EigenDecomposition *eigendcmp;
 	double **Q;
     unsigned *model; // nstate * nstate
+    
+    double *dQ;
+    bool dQ_need_update;
 	
 	bool need_update;
 	
@@ -77,7 +80,10 @@ typedef struct SubstitutionModel{
 	
 	void (*update_frequencies)( struct SubstitutionModel * );
 	
-	void (*set_frequency)( struct SubstitutionModel *, const double, const int );
+	void (*set_frequencies)( struct SubstitutionModel *, const double* );
+	void (*set_rates)( struct SubstitutionModel *, const double * );
+	
+	void (*set_relative_frequency)( struct SubstitutionModel *, const double, const int );
 	void (*set_rate)( struct SubstitutionModel *, const double, const int );
 	
 	double (*pij_t)( struct SubstitutionModel *, const int, const int, const double );
@@ -91,13 +97,17 @@ typedef struct SubstitutionModel{
 	void (*d2p_d2t)( struct SubstitutionModel *, const double, double * );
 	void (*d2p_d2t_transpose)( struct SubstitutionModel *, const double, double * );
     
+    void (*dPdp)(struct SubstitutionModel *m, int index, double* mat, double t);//derivative of P with respect to a parameter
+    
     struct SubstitutionModel * (*clone)( struct SubstitutionModel * );
     
     void (*free)( struct SubstitutionModel * );
 	
 }SubstitutionModel;
 
-void nucleotide_update_freqs( SubstitutionModel *model );
+Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm );
+
+void generale_update_freqs( SubstitutionModel *model );
 
 void update_eigen_system( SubstitutionModel *m );
 
@@ -107,8 +117,6 @@ void make_zero_rows( double **q, const int dim );
 
 void normalize_Q( double **m, const double *freqs, const int dim );
 
-
-void SubstitutionModel_set_rates( SubstitutionModel *m, const double *rates );
 
 SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, const datatype dtype );
 
@@ -133,9 +141,6 @@ void free_SubstitutionModel_share( SubstitutionModel *m, bool share_freqs, bool 
 double get_frequency( SubstitutionModel *m, int pos );
 
 double *get_frequencies( SubstitutionModel *m );
-
-
-void set_frequencies( SubstitutionModel *m, const double *freqs );
 
 
 

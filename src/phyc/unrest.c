@@ -59,33 +59,54 @@ static void _p_t_transpose_unrestricted( SubstitutionModel *m, const double t, d
 
 
 SubstitutionModel * new_UnrestrictedNucleotideModel( ){
-    SubstitutionModel *m = NULL;
-    
-    m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA);
-    
-    m->_freqs = dvector(4);
-    
-    m->rates = new_Parameters( 11 );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r1",  "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r2",  "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r3",  "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r4",  "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r5",  "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r6",  "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r7",  "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r8",  "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r9",  "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r10", "model", 1, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("unres.r11", "model", 1, new_Constraint(0.001, 100) ) );
-    
-    
-    m->update_Q = _nuc_unrestricted_update_Q;
-    
-    //m->p_t = _p_t_unrestricted;
-    //m->p_t_transpose = _p_t_transpose_unrestricted;
-    
-    
-    return m;
+	SubstitutionModel *m = NULL;
+	
+	m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA);
+	
+	m->_freqs = dvector(4);
+	
+	m->rates = new_Parameters( 11 );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r1",  "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r2",  "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r3",  "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r4",  "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r5",  "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r6",  "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r7",  "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r8",  "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r9",  "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r10", "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r11", "model", 1, new_Constraint(0.001, 100) ) );
+	
+	
+	m->update_Q = _nuc_unrestricted_update_Q;
+	
+	//m->p_t = _p_t_unrestricted;
+	//m->p_t_transpose = _p_t_transpose_unrestricted;
+	
+	
+	return m;
+}
+
+SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters( const Parameters* rates ){
+	SubstitutionModel *m = NULL;
+	
+	m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA);
+	
+	m->_freqs = dvector(4);
+	
+	m->rates = new_Parameters(11);
+	for(int i = 0; i < Parameters_count(rates); i++){
+		Parameters_add(m->rates, Parameters_at(rates, i) );
+	}
+	
+	m->update_Q = _nuc_unrestricted_update_Q;
+	
+	//m->p_t = _p_t_unrestricted;
+	//m->p_t_transpose = _p_t_transpose_unrestricted;
+	
+	
+	return m;
 }
 
 

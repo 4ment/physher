@@ -81,7 +81,11 @@ typedef struct SitePattern{
 
 SitePattern * new_SitePattern( const Sequences *aln );
 
+SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int every );
+
 SitePattern ** SitePattern_split( const SitePattern *sitePattern, const int count );
+
+SitePattern* SitePattern_merge( const SitePattern* sitePattern1, const SitePattern* sitePattern2  );
 
 void free_SitePattern( SitePattern *sp );
 

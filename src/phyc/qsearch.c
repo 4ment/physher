@@ -340,7 +340,7 @@ static void _init_population( GA *ga, QSearch *search ){
             sprintf(name+4, "%d", (Parameters_count(search->pool->tlks[j]->sm->m->rates)+1) );
             double rate = Parameters_value(search->pool->tlks[j]->sm->m->rates, 0);
             Parameter *p = new_Parameter_with_postfix_and_ownership(name, "relativerate", rate, Parameters_constraint(search->pool->tlks[j]->sm->m->rates, index), false);
-            Parameters_add(search->pool->tlks[j]->sm->m->rates, p);
+            Parameters_move(search->pool->tlks[j]->sm->m->rates, p);
         }
         
         int *map = ivector(search->rateCount);
@@ -629,7 +629,7 @@ double _ga_optimize( QSearch *search ){
                 for ( ; i < n; i++ ) {
                     sprintf(name+4, "%d", (Parameters_count(search->pool->tlks[j]->sm->m->rates)+1) );
                     Parameter *p = new_Parameter_with_postfix_and_ownership(name, "relativerate", values[i], Parameters_constraint(search->pool->tlks[j]->sm->m->rates, 0), false);
-                    Parameters_add(search->pool->tlks[j]->sm->m->rates, p);
+                    Parameters_move(search->pool->tlks[j]->sm->m->rates, p);
                 }
             }
         

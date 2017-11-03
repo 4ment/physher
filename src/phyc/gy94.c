@@ -47,8 +47,8 @@ SubstitutionModel * new_GY94_with_values( const double *freqs, const double omeg
     m->update_Q = _gy_update_Q;
     
     m->rates = new_Parameters( 2 );
-    Parameters_add(m->rates, new_Parameter_with_postfix("gy.kappa", "model", kappa, new_Constraint(0.001, 100) ) );
-    Parameters_add(m->rates, new_Parameter_with_postfix("gy.omega", "model", omega, new_Constraint(0.001, 100) ) );
+    Parameters_move(m->rates, new_Parameter_with_postfix("gy.kappa", "model", kappa, new_Constraint(0.001, 100) ) );
+    Parameters_move(m->rates, new_Parameter_with_postfix("gy.omega", "model", omega, new_Constraint(0.001, 100) ) );
 	   
     return m;
 }

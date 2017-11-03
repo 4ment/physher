@@ -21,7 +21,8 @@
 
 #include "optimizer.h"
 
-//opt_result brent_optimize( Parameters *ps, opt_func f, void *data, const int maxeval, const double tol, double *fmin );
+opt_result serial_brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriterion *stop, double *fmin );
+
 opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriterion *stop, double *fmin );
 
 #endif

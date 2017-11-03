@@ -35,6 +35,14 @@ static double gcf( double *gammcf, double a, double x );
 #pragma mark -
 #pragma mark Gamma function
 
+double dgamma(const double x, const double alpha, const double beta){
+    return pow(beta, alpha)*pow(x,alpha-1.0)*exp(-beta*x)/gamm(alpha);
+}
+
+double dloggamma(const double x, const double alpha, const double beta){
+    return log(pow(beta, alpha)*pow(x,alpha-1.0)) -beta*x - gammln(alpha);
+}
+
 // Cumulative distribution function of Gamma function
 double pgamma( const double x, const double alpha, const double beta ){
 	if (x < 0.) error("bad x in pgamma");

@@ -26,4 +26,6 @@ SubstitutionModel * new_HKY();
 
 SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa );
 
+SubstitutionModel * new_HKY_with_parameters( const Parameters *freqs, const Parameters* kappa );
+
 #endif /* hky_h */

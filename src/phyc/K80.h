@@ -26,4 +26,6 @@ SubstitutionModel * new_K80();
 
 SubstitutionModel * new_K80_with_values( const double kappa );
 
+SubstitutionModel * new_K80_with_parameters( const Parameters* kappa );
+
 #endif /* K80_h */

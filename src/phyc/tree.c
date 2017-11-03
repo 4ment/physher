@@ -183,7 +183,7 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	atree->rooted = false;
 	atree->dated = false;
 #ifdef LISTENERS
-	bool time_mode;
+	atree->time_mode = false;
 #endif
 	//printf("%s",nexus);
 	Node *current = NULL;
@@ -374,6 +374,8 @@ Tree * new_Tree( const char *nexus, bool containBL ){
     int nInternals = 0;
     for ( int i = 0; i < Tree_node_count(atree); i++ ) {
         nodes[i]->id = i;
+		nodes[i]->distance->id = i;
+		nodes[i]->height->id = i;
         if( Node_isleaf(nodes[i]) ){
             nodes[i]->class_id = nTips++;
         }
@@ -409,7 +411,7 @@ Tree * new_Tree2( Node *root, bool containBL ){
 	atree->rooted = false;
 	atree->dated = false;
 #ifdef LISTENERS
-	bool time_mode;
+	atree->time_mode = false;
 #endif
 	
 	_Tree_count_nodes(root, &atree->nTips, &atree->nNodes);
@@ -426,7 +428,9 @@ Tree * new_Tree2( Node *root, bool containBL ){
     int nTips = 0;
     int nInternals = 0;
     for ( int i = 0; i < Tree_node_count(atree); i++ ) {
-        nodes[i]->id = i;
+		nodes[i]->id = i;
+		nodes[i]->distance->id = i;
+		nodes[i]->height->id = i;
         if( Node_isleaf(nodes[i]) ){
             nodes[i]->class_id = nTips++;
         }
@@ -552,30 +556,57 @@ void Tree_init_heights ( Tree *atree ) {
 void _tree_handle_change( Model *self, Model *model, int index ){
 	Tree *tree = (Tree*)self->obj;
 	if ( tree->time_mode ) {
-		Nodes ** nodes = Tree_get_nodes(tree, POSTORDER);
+		Node *node = Tree_node(tree, index);
 		// constrain lower bound of parent
-		if( !Node_isroot(nodes[index]) ) {
-			Tree_constrain_height( Node_parent(nodes[index]) );
+		if( !Node_isroot(node) ) {
+			Tree_constrain_height( Node_parent(node) );
 		}
 		
 		// constrain upper bound of children
-		if( !Node_isleaf(nodes[index]) ){
-			Tree_constrain_height( Node_left(nodes[index]) );
-			Tree_constrain_height( Node_right(nodes[index]) );
+		if( !Node_isleaf(node) ){
+			Tree_constrain_height( Node_left(node) );
+			Tree_constrain_height( Node_right(node) );
 		}
+		
+		self->listeners->fire( self->listeners, self, Node_id(Node_left(node)) );
+		self->listeners->fire( self->listeners, self, Node_id(Node_right(node)) );
 	}
-	ListenerList_fire( model->listeners, model, index );
+	self->listeners->fire( self->listeners, self, index );
+}
+
+static void _tree_model_free( Model *self ){
+	if(self->ref_count == 1){
+		printf("Free tree model %s\n", self->name);
+		Tree *tree = (Tree*)self->obj;
+		free_Tree(tree);
+		free_Model(self);
+	}
+	else{
+		self->ref_count--;
+	}
+}
+
+static Model* _tree_model_clone( Model *self, Hashtable *hash ){
+	if (Hashtable_exists(hash, self->name)) {
+		return Hashtable_get(hash, self->name);
+	}
+	Tree *tree = (Tree*)self->obj;
+	Tree *clonetree = clone_Tree(tree);
+	Model* clone = new_TreeModel(self->name, clonetree);
+	return clone;
 }
 
 // TreeModel listen to the height and distance parameters
-Model * new_TreeModel( Tree *tree ){
-	Model *model = new_Model("tree", tree, 1); // at least the treelikelihood will listen to it
-	Node **nodes = Tree_get_nodes(tree, POSTORDER);
+Model * new_TreeModel( const char* name, Tree *tree ){
+	Model *model = new_Model(name, tree);
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
-		ListenerList_add(nodes[i]->distance->listeners, model);
-		ListenerList_add(nodes[i]->height->listeners, model);
+		tree->nodes[i]->distance->listeners->add(tree->nodes[i]->distance->listeners, model);
+		tree->nodes[i]->height->listeners->add(tree->nodes[i]->height->listeners, model);
 	}
+//	Node** nodes = Tree_nodes(tree);
 	model->update = _tree_handle_change;
+	model->free = _tree_model_free;
+	model->clone = _tree_model_clone;
 	return model;
 }
 #endif
@@ -1057,16 +1088,6 @@ static void postorder( Node *n,  Node **nodes, bool tipsOnly, int *pos ){
         //n->postorder_idx = *pos;
         nodes[(*pos)++] = n;
     }
-}
-
-static void inorder( Node *n,  Node **nodes, bool tipsOnly, int *pos ){
-	if( n == NULL ) return;
-	inorder( n->left,  nodes, tipsOnly, pos );
-	if( (tipsOnly && Node_isleaf(n) ) || !tipsOnly ){
-        //n->inorder_idx = *pos;
-        nodes[(*pos)++] = n;
-    }
-	inorder( n->right, nodes, tipsOnly, pos );
 }
 
 static void _postorder_generic_aux( Node *n, void *data, void (*action)( Node *node, void *data )){

@@ -91,6 +91,20 @@
 
 
 
+#ifdef LISTENERS
+#include "compoundmodel.h"
+#include "distmodel.h"
+#endif
+
+double _logP( Parameters *params, double *grad, void *data ){
+	Model* model = (Model*)data;
+	return -model->logP(model);
+}
+
+bool post_freqs(OptimizerSchedule* schedule, double before, double after){
+	if(before-after < 0.01)return true;
+	return false;
+}
 
 // should only be used when the tree is dated and dates are forward in time
 double get_earliest_date( Tree *tree ){
@@ -193,8 +207,17 @@ void calculate_posteriors_sites( SingleTreeLikelihood *tlk, const char *filename
     double conditionalMean,best_prob;
 	FILE *file = fopen(filename, "w");
     
-	if( tlk->sm->shape != NULL ) fprintf(file, "Alpha %e\n", Parameter_value(tlk->sm->shape));
-    if( tlk->sm->pinv  != NULL ) fprintf(file, "Pinv %e\n", Parameter_value(tlk->sm->pinv));
+    for(int i = 0; i < Parameters_count(tlk->sm->rates); i++){
+        if(strcmp(Parameters_name(tlk->sm->rates, i), "sitemodel.alpha") == 0){
+            fprintf(file, "Alpha %e\n", Parameters_value(tlk->sm->rates, i));
+        }
+        else if(strcmp(Parameters_name(tlk->sm->rates, i), "sitemodel.pinv") == 0){
+            fprintf(file, "Pinv %e\n", Parameters_value(tlk->sm->rates, i));
+        }
+        else{
+            fprintf(file, "%s %e\n", Parameters_name(tlk->sm->rates, i), Parameters_value(tlk->sm->rates, i));
+        }
+    }
     
     fprintf(file, "Proportions\n");
 	for ( i = 0; i < tlk->sm->cat_count; i++ ) {
@@ -736,12 +759,12 @@ void run_discrete_ga_likelihood( SingleTreeLikelihood *tlk , const char* output_
             bool first = ( Node_distance(nodes[0]) >= Node_time_elapsed(nodes[0])*Parameters_value(tlk->bm->rates, 0) );
             for ( int i = 0; i < Tree_node_count(tree)-1; i++ ) {
                 int index = Node_id(nodes[i]);
-                bm_discrete->map[index] = ( Node_distance(nodes[index]) >= Node_time_elapsed(nodes[index])*Parameters_value(tlk->bm->rates, 0) );
-                bm_discrete->map[index] ^= first;
+                bm_discrete->map->values[index] = ( Node_distance(nodes[index]) >= Node_time_elapsed(nodes[index])*Parameters_value(tlk->bm->rates, 0) );
+                bm_discrete->map->values[index] ^= first;
             }
             
-            if( Node_id(Tree_root(tree)) == 0 ) bm_discrete->map[0] = bm_discrete->map[1];
-            else bm_discrete->map[Node_id(Tree_root(tree))] = bm_discrete->map[Node_id(Tree_root(tree))-1];
+            if( Node_id(Tree_root(tree)) == 0 ) bm_discrete->map->values[0] = bm_discrete->map->values[1];
+            else bm_discrete->map->values[Node_id(Tree_root(tree))] = bm_discrete->map->values[Node_id(Tree_root(tree))-1];
             
             Parameters_set_value(bm_discrete->rates, 0, Parameters_value(tlk->bm->rates, 0));
             Parameters_set_value(bm_discrete->rates, 1, Parameters_value(tlk->bm->rates, 0));
@@ -806,7 +829,7 @@ void run_discrete_ga_likelihood( SingleTreeLikelihood *tlk , const char* output_
     
     // check if we get a better a model
     
-    unsigned *clock_discrete_indexes = clone_uivector( bm_discrete->map, nNodes );
+    unsigned *clock_discrete_indexes = clone_uivector( bm_discrete->map->values, nNodes );
     double   *clock_discrete_heights = dvector( nNodes );
     Tree_heights_to_vector(tree, clock_discrete_heights);
     double   *clock_discrete_rates   = dvector( clock_discrete_n_rate );
@@ -855,7 +878,7 @@ void run_discrete_ga_likelihood( SingleTreeLikelihood *tlk , const char* output_
             Node_set_annotation(nodes[i], "rate", buffer->c);
             
             StringBuffer_empty(buffer);
-            StringBuffer_append_format(buffer, "%d", tlk->bm->map[ Node_id(nodes[i]) ]);
+            StringBuffer_append_format(buffer, "%d", tlk->bm->map->values[ Node_id(nodes[i]) ]);
             Node_set_annotation(nodes[i], "class", buffer->c);
         }
     }
@@ -1017,12 +1040,22 @@ void append_simultron( SingleTreeLikelihood* tlk, const char* model_string, cons
             }
             StringBuffer_chop(info);
         }
-        if(tlk->sm->shape != NULL ){
-            int cat = tlk->sm->cat_count;
-            if ( tlk->sm->pinv != NULL ) {
-                cat--;
-            }
-            StringBuffer_append_format(info, " -a %f -c %d",  Parameter_value(tlk->sm->shape), cat);
+
+        // no rate variation
+        if(tlk->sm->cat_count == 1){
+            
+        }
+        // invariant
+        else if(tlk->sm->cat_count == 2 && Parameters_count(tlk->sm->rates) == 1){
+            StringBuffer_append_format(info, " -I %f", Parameters_value(tlk->sm->rates, 0));
+        }
+        // gamma
+        else if(Parameters_count(tlk->sm->rates) == 1){
+            StringBuffer_append_format(info, " -a %f -c %d", Parameters_value(tlk->sm->rates, 0), tlk->sm->cat_count);
+        }
+        // gamma + invariant
+        else {
+            StringBuffer_append_format(info, " -a %f -c %d -I %f",  Parameters_value(tlk->sm->rates, 0), tlk->sm->cat_count-1, Parameters_value(tlk->sm->rates, 1));
         }
         StringBuffer_append_format(info, " -l %d", tlk->sp->nsites);
         StringBuffer_append_format(info, " -s %f", Parameters_value( tlk->bm->rates, 0) );
@@ -1974,10 +2007,11 @@ int main(int argc, char* argv[]){
          * FREQUENCIES
          */
         if(frequencies_user != NULL){
-            memcpy(mod->_freqs, frequencies_user, sizeof(double)*4);
+			mod->set_frequencies(mod, frequencies_user);
         }
         else if(strcasecmp("JC69", model_string) != 0 && strcasecmp("K80", model_string) != 0 && strcasecmp("NONSTAT", model_string) != 0 ){
             empirical_frequencies(seqs, mod->_freqs);
+			mod->set_frequencies(mod, mod->_freqs);//update the relative frequencies
         }
         
         /*
@@ -1989,13 +2023,13 @@ int main(int argc, char* argv[]){
             if( rateCount == 1 ){
                 fprintf(stdout, "Kappa (user): %f\n", *rates);
             }
-            SubstitutionModel_set_rates(mod,rates);
+            mod->set_rates(mod,rates);
             free(rates);
         }
         else if( Parameters_count(mod->rates) == 5 ){
             double rates[5];
             Sequence_rel_rates_empirical(seqs, rates);
-            SubstitutionModel_set_rates(mod,rates);
+            mod->set_rates(mod,rates);
         }
         else if( Parameters_count(mod->rates) == 1 ){
             double rate = Sequence_kappa_empirical(seqs, mod->_freqs);
@@ -2074,7 +2108,7 @@ int main(int argc, char* argv[]){
         if( rates_user != NULL ){
             unsigned rateCount = 0;
             double *rates = String_to_double_array( rates_user, ',', &rateCount);
-            SubstitutionModel_set_rates(mod,rates);
+            mod->set_rates(mod,rates);
             
             if(rateCount == 2){
                 fprintf(stdout, "Kappa (user): %f\n", rates[0]);
@@ -2166,7 +2200,7 @@ int main(int argc, char* argv[]){
         if ( rates_user != NULL ) {
             unsigned rateCount = 0;
             double *rates = String_to_double_array(rates_user, ',', &rateCount);
-            SubstitutionModel_set_rates(mod, rates);
+            mod->set_rates(mod, rates);
             free(rates);
         }
     }
@@ -2258,13 +2292,18 @@ int main(int argc, char* argv[]){
         }
     }
 	
-	if ( sm->pinv != NULL ) {
-		fprintf(stdout, "\nProportion of invariant sites: pinv = %f\n", Parameter_value(sm->pinv) );
-	}
-	
-	if ( sm->shape != NULL ) {
-		fprintf(stdout, "\nGamma model: shape = %f (%d categories)\n\n", Parameter_value(sm->shape), (sm->pinv == NULL ? sm->cat_count : sm->cat_count-1) );
-	}
+    for(int i = 0; i < Parameters_count(sm->rates); i++){
+        if(strcmp(Parameters_name(sm->rates, i), "sitemodel.alpha") == 0){
+            fprintf(stdout, "\nGamma model: shape = %f (%d categories)\n\n", Parameters_value(sm->rates, i), rate_category_count);
+        }
+        else if(strcmp(Parameters_name(sm->rates, i), "sitemodel.pinv") == 0){
+            fprintf(stdout, "\nProportion of invariant sites: pinv = %f", Parameters_value(sm->rates, i));
+        }
+        else{
+            fprintf(stdout, "%s %e\n", Parameters_name(sm->rates, i), Parameters_value(sm->rates, i));
+        }
+    }
+    printf("\n");
 	
     
     if(approximation > 0) printf("approximation %d\n", approximation);
@@ -2282,6 +2321,124 @@ int main(int argc, char* argv[]){
 	 *************************************************************************************************/
 
 	SingleTreeLikelihood *tlk = new_SingleTreeLikelihood( tree, sm, sp, NULL );
+	
+#ifdef LISTENERS
+#include "compoundmodel.h"
+	
+	Model* mtree = new_TreeModel("tree", tree);
+	Model* mmod = new_SubstitutionModel2("substmodel", mod);
+	Model* msm = new_SiteModel2("sitemodel", sm, mmod);
+	Model* mtlk = new_TreeLikelihoodModel("likelihood", tlk, mtree, msm, NULL);
+	printf("%d\n", mtree->ref_count);
+	mtree->free(mtree);
+	printf("%d\n", mtree->ref_count);
+	msm->free(msm);
+	mmod->free(mmod);
+	
+	CompoundModel* post = new_CompoundModel();
+	Model* mpost = new_CompoundModel2("posterior", post);
+	post->add(post, mtlk);
+	mtlk->free(mtlk);
+
+#endif
+	Parameters* pp_all = new_Parameters(10);
+	Parameters* pp_bl = new_Parameters(Tree_node_count(tree)-2);
+	for(int i = 0; i < Tree_node_count(tree); i++){
+		Node* node = Tree_node(tree, i);
+		if(Node_isroot(node) || (Node_isroot(Node_parent(node)) && Node_right(Node_parent(node)) == node)) continue;
+		if(!Parameter_fixed(node->distance))Parameters_add(pp_bl, node->distance);
+	}
+	Parameters_add_parameters(pp_all, pp_bl);
+	
+	DistributionModel* prior_branches = new_IndependantExpDistributionModel(10, pp_bl);
+	Model* prior_branches_model = new_DistributionModel2("branch.exp", prior_branches);
+	post->add(post, prior_branches_model);
+	
+	prior_branches_model->free(prior_branches_model);
+	
+	Parameters* pp_m = new_Parameters(4);
+	for (int i = 0; i < Parameters_count(sm->m->freqs); i++) {
+		if(!Parameters_fixed(sm->m->freqs, i)) Parameters_add(pp_m, Parameters_at(sm->m->freqs, i));
+	}
+	for (int i = 0; i < Parameters_count(sm->m->rates); i++) {
+		if(!Parameters_fixed(sm->m->rates, i)) Parameters_add(pp_m, Parameters_at(sm->m->rates, i));
+	}
+	if(Parameters_count(pp_m) > 0) Parameters_add_parameters(pp_all, pp_m);
+	
+	if(Parameters_count(sm->m->freqs) > 0){
+		DistributionModel* prior = new_FlatDirichletDistributionModel(sm->m->freqs);
+		Model* prior_freqs_model = new_DistributionModel2("freqs.dirichlet", prior);
+		post->add(post, prior_freqs_model);
+		prior->free(prior);
+		prior_freqs_model->free(prior_freqs_model);
+	}
+	
+	if(Parameters_count(sm->m->rates) > 0){
+		DistributionModel* prior = new_IndependantGammaDistributionModel(0.05, 0.1, sm->m->rates);
+		Model* prior_rates_model = new_DistributionModel2("mrates.gamma", prior);
+		post->add(post, prior_rates_model);
+		prior->free(prior);
+		prior_rates_model->free(prior_rates_model);
+	}
+	
+	if(Parameters_count(sm->rates) > 0){
+		DistributionModel* prior = new_IndependantExpDistributionModel(20, sm->rates);
+		Model* prior_model = new_DistributionModel2("rate.exp", prior);
+		post->add(post, prior_model);
+		prior->free(prior);
+		prior_model->free(prior_model);
+	}
+	Parameters_add_parameters(pp_all, sm->rates);
+	
+	// Optimization
+	Optimizer* opt_bl = new_Optimizer(OPT_SERIAL_BRENT);
+	opt_set_data(opt_bl, mpost);
+	opt_set_objective_function(opt_bl, _logP);
+	opt_set_tolx(opt_bl, 0.00000001);
+	
+	Optimizer* opt_m = new_Optimizer(OPT_SERIAL_BRENT);
+	opt_set_data(opt_m, mpost);
+	opt_set_objective_function(opt_m, _logP);
+	
+	Optimizer* opt_sm = new_Optimizer(OPT_SERIAL_BRENT);
+	opt_set_data(opt_sm, mpost);
+	opt_set_objective_function(opt_sm, _logP);
+	
+	Optimizer* opt_meta = new_Optimizer(OPT_META);
+	OptimizerSchedule* schedule = opt_get_schedule(opt_meta);
+	
+	opt_add_optimizer(opt_meta, opt_bl, pp_bl);
+	schedule->rounds[schedule->count-1] = 2;
+	
+	opt_add_optimizer(opt_meta, opt_m, pp_m);
+	schedule->post[schedule->count-1] = post_freqs;
+	schedule->rounds[schedule->count-1] = 20;
+	
+	opt_add_optimizer(opt_meta, opt_sm, sm->rates);
+	
+	opt_set_data(opt_meta, mpost);
+	opt_set_objective_function(opt_meta, _logP);
+	opt_set_tolx(opt_meta, 0.001);
+	
+	double logP;
+	opt_optimize(opt_meta, pp_bl, &logP);
+	printf("LnL: %f logP: %f Prior: %f\n", mtlk->logP(mtlk), -logP, prior_branches->logP(prior_branches));
+
+	double lnl = mtlk->logP(mtlk);
+	for(int i = 0; i < Parameters_count(pp_all); i++){
+		double temp = Parameters_value(pp_all, i);
+		Parameters_set_value(pp_all, i, temp+(temp*0.0001));
+		double lnl2 = mtlk->logP(mtlk);
+		Parameters_set_value(pp_all, i, temp);
+		//printf("%s %f %f\n", Parameters_name(pp_all, i), Parameters_value(pp_all, i), (lnl2-lnl)/(temp*0.0001));
+	}
+
+	free_Optimizer(opt_bl);
+	free_Parameters(pp_bl);
+	free_Parameters(pp_m);
+
+	mpost->free(mpost);
+	exit(1);
 	
 	time_t start_time;
 	time_t beginning_of_time;
@@ -2307,7 +2464,6 @@ int main(int argc, char* argv[]){
     tlk->opt.topology_optimize       = false;
     tlk->opt.verbosity = verbosity;
 
-    
     if ( topology_optimization_algorithm != NULL ) {
         tlk->opt.topology_optimize = true;
         if( strcasecmp(topology_optimization_algorithm, "nni") == 0 ){
@@ -2344,6 +2500,34 @@ int main(int argc, char* argv[]){
     }
     
     fprintf(stdout, "\nNot optimized LnL = %f\n\n", tlk->calculate(tlk) );
+	
+	/*double* dnls = dvector(Tree_node_count(tree));
+	Node** nodes = Tree_nodes(tree);
+	Node_set_distance(Tree_root(tree)->left, Tree_root(tree)->left->distance->value+Tree_root(tree)->right->distance->value);
+	Node_set_distance(Tree_root(tree)->right, 0);
+	SingleTreeLikelihood_update_all_nodes(tlk);
+		Tree_print_newick(stdout, tree, true);
+	calculate_all_dlnl_dt(tlk, dnls);
+	
+	tlk->calculate(tlk);
+	calculate_upper(tlk, Tree_root(tree));
+	double* pattern_dlikelihoods = dvector(sp->count);
+	double* pattern_likelihoods = dvector(sp->count);
+	for(int i = 0; i < sp->count; i++){
+		pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
+	}
+
+	for ( int j = 0; j < Tree_node_count(tlk->tree); j++ ) {
+		Node *n = nodes[j];
+		if ( Node_isroot(n) || (Node_isroot(Node_parent(n)) && Node_right(Node_parent(n)) == n )) {
+			continue;
+		}
+		calculate_dldt_uppper( tlk, n, pattern_dlikelihoods );
+		double dlnl = dlnldt_uppper(tlk, n, pattern_likelihoods, pattern_dlikelihoods);
+		double d2lnl = d2lnldt2_uppper(tlk, n, pattern_likelihoods, pattern_dlikelihoods);
+		printf("%d %s %e %f %f %f\n", Node_isleaf(n), Node_name(n), Node_distance(n), dnls[Node_id(n)], dlnl, d2lnl);
+		dnls[Node_id(n)] = dlnl;
+	}*/
 	
 	fprintf(stdout, "Estimation of branch length and substitution matrix parameters\n\n" );
     
@@ -2487,15 +2671,42 @@ int main(int argc, char* argv[]){
 //        }
     }
 	
-	if ( sm->pinv != NULL ) {
-		fprintf(stdout, "\nProportion of invariant sites: pinv = %f\n", Parameter_value(sm->pinv) );
-		StringBuffer_append_format(info, "P-inv: %f\n", Parameter_value(sm->pinv));
-	}
-	
-	if ( sm->shape != NULL ) {
-		fprintf(stdout, "\nGamma model: shape = %f (%d categories)\n\n", Parameter_value(sm->shape), (sm->pinv == NULL ? sm->cat_count : sm->cat_count-1) );
-		StringBuffer_append_format(info, "Gamma model: shape = %f (%d categories)\n", Parameter_value(sm->shape), (sm->pinv == NULL ? sm->cat_count : sm->cat_count-1) );
-	}
+    if(sitemodel_string == NULL){
+        for(int i = 0; i < Parameters_count(sm->rates); i++){
+            if(strcmp(Parameters_name(sm->rates, i), "sitemodel.alpha") == 0){
+                fprintf(stdout, "\nGamma model: shape = %f (%d categories)\n\n", Parameters_value(sm->rates, i), rate_category_count);
+                StringBuffer_append_format(info, "Gamma model: shape = %f (%d categories)\n", Parameters_value(sm->rates, i), rate_category_count );
+            }
+            else if(strcmp(Parameters_name(sm->rates, i), "sitemodel.pinv") == 0){
+                fprintf(stdout, "\nProportion of invariant sites: pinv = %f", Parameters_value(sm->rates, i));
+                StringBuffer_append_format(info, "P-inv: %f\n", Parameters_value(sm->rates, i));
+            }
+            else{
+                fprintf(stdout, "%s %e\n", Parameters_name(sm->rates, i), Parameters_value(sm->rates, i));
+                StringBuffer_append_format(info, "%s = %f\n", Parameters_name(sm->rates, i) );
+            }
+        }
+        fprintf(stdout, "Rates: ");
+        for(int i = 0; i < sm->cat_count; i++){
+            fprintf(stdout, " %f", sm->get_rate(sm, i));
+        }
+        printf("\n");
+    }
+    printf("\n");
+    
+    if(sitemodel_string != NULL && (strcasecmp(sitemodel_string, "gammaquad") == 0 || strcasecmp(sitemodel_string, "discrete") == 0)){
+        fprintf(stdout, "Rates: ");
+        for(int i = 0; i < sm->cat_count; i++){
+            fprintf(stdout, " %f", sm->get_rate(sm, i));
+        }
+        printf("\n");
+        fprintf(stdout, "Proportions: ");
+        for(int i = 0; i < sm->cat_count; i++){
+            fprintf(stdout, " %f", sm->get_proportion(sm, i));
+        }
+        printf("\n");
+    }
+    printf("\n");
 	
 	
 	FILE *freerarte_file = fopen(freerate_filename,"w");
@@ -2503,7 +2714,8 @@ int main(int argc, char* argv[]){
 	Tree_print_newick(freerarte_file, tree, true);
 	fclose(freerarte_file);
 	
-	
+    //Rates:  0.089181 0.895579 2.665123 5.864761
+    //Proportions:  0.764546 0.217944 0.017311 0.000198
 	time(&end_time);
 	diff_time = difftime(end_time, start_time);
 	fprintf(stdout, "\nTotal runtime ");
@@ -2602,7 +2814,92 @@ int main(int argc, char* argv[]){
             }
         }
     }
-    
+	
+    sm->need_update = true;
+    double* dnls = dvector(Tree_node_count(tree));
+    Node** nodes = Tree_nodes(tree);
+    Tree_print_newick(stdout, tree, true);
+    tlk->calculate(tlk);
+    double* pattern_dlikelihoods = dvector(sp->count);
+    double* pattern_likelihoods = dvector(sp->count);
+    SingleTreeLikelihood_enable_SSE(tlk, false);
+	SingleTreeLikelihood_update_all_nodes(tlk);
+	tlk->calculate(tlk);
+    calculate_all_dlnl_dt(tlk, dnls);
+    SingleTreeLikelihood_update_all_nodes(tlk);
+    tlk->calculate(tlk);
+	for(int i = 0; i < sp->count; i++){
+		pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
+        // printf("%f\n", pattern_likelihoods[i]);
+	}
+	calculate_upper(tlk, Tree_root(tree));
+	
+	double* d2lnl2 = dvector(Tree_node_count(tlk->tree));
+	calculate_all_d2lnl_d2t(tlk, d2lnl2);
+    //calculate_all_dlnl_dt(tlk, dnls);
+	
+	for ( int j = 0; j < Tree_node_count(tlk->tree); j++ ) {
+		Node *n = nodes[j];
+		//if( Parameter_fixed(n->distance) ) continue;
+		
+		if ( Node_isroot(n) || (Node_isroot(Node_parent(n)) && Node_right(Node_parent(n)) == n )) {
+			continue;
+		}
+        /*double nl = Node_distance(n);
+        Node_set_distance(n, nl+nl*0.000001);
+        SingleTreeLikelihood_update_all_nodes(tlk);
+        double km = tlk->calculate(tlk);
+        Node_set_distance(n, nl);
+        SingleTreeLikelihood_update_all_nodes(tlk);
+        double k = tlk->calculate(tlk);
+        */
+		calculate_dldt_uppper( tlk, n, pattern_dlikelihoods );
+		double dlnl = dlnldt_uppper(tlk, n, pattern_likelihoods, pattern_dlikelihoods);
+        double d2lnl = d2lnldt2_uppper(tlk, n, pattern_likelihoods, pattern_dlikelihoods);
+		//printf("%d %s %e %f %f diff: %e %s\n", Node_isleaf(n), Node_name(n), Node_distance(n), dlnl, dnls[Node_id(n)],dlnl- dnls[Node_id(n)], (fabs(dlnl-dnls[Node_id(n)])>0.0000001?"*":""));
+        printf("%d %s %e %f  %f %s\n", Node_isleaf(n), Node_name(n), Node_distance(n), d2lnl, d2lnl2[Node_id(n)], (fabs(d2lnl-d2lnl2[Node_id(n)])>0.0000001?"*":""));
+	}//0 node3 1.002472e-03 1.047433 0.002030 diff: 1.045403e+00 *
+	
+//    SingleTreeLikelihood_update_all_nodes(tlk);
+    /*tlk->calculate(tlk);
+    calculate_upper(tlk, Tree_root(tree));
+    printf("----- %d\n",Parameters_count(tlk->sm->m->rates));
+    for(int index = 0; index < Parameters_count(tlk->sm->m->rates)+Parameters_count(tlk->sm->m->freqs); index++){
+        printf("f %f\n", calculate_dlnl_dQ(tlk, index, pattern_likelihoods ));
+    }
+	
+    double temp[4];
+    memcpy(temp, mod->_freqs, sizeof(double)*4);
+	double eps = 0.000001;
+    for(int index = 0; index < Parameters_count(tlk->sm->m->rates); index++){
+        double k = Parameters_at(sm->m->rates, index)->value;
+        //sm->m->set_rate(sm->m, k+k*eps, 0);
+        SingleTreeLikelihood_update_all_nodes(tlk);
+        double km = tlk->calculate(tlk);
+        sm->m->set_rate(sm->m, k+k*eps, index);
+        SingleTreeLikelihood_update_all_nodes(tlk);
+        double kp = tlk->calculate(tlk);
+        printf("fd %f ",(kp-km)/(k*eps));
+        sm->m->set_rate(sm->m, k, index);
+    }
+	printf("\n");
+    for(int index = 0; index < Parameters_count(tlk->sm->m->freqs); index++){
+        double k = Parameters_at(sm->m->freqs, index)->value;
+        //sm->m->set_rate(sm->m, k+k*eps, 0);
+        SingleTreeLikelihood_update_all_nodes(tlk);
+        double km = tlk->calculate(tlk);
+        
+        sm->m->set_relative_frequency(sm->m, k+k*eps, index);
+        SingleTreeLikelihood_update_all_nodes(tlk);
+        double kp = tlk->calculate(tlk);
+        //double kp = calculate_crap(tlk, temp);
+        printf("dLnldF %f\n",(kp-km)/(k*eps));
+        sm->m->set_relative_frequency(sm->m, k, index);
+    }*/
+    free(pattern_likelihoods);
+    free(pattern_dlikelihoods);
+    free(dnls);
+    free(d2lnl2);
 	/*************************************************************************************************
 	 ****************************** Compute derivatives for Taylor expansion *************************
 	 *************************************************************************************************/
@@ -2938,6 +3235,10 @@ int main(int argc, char* argv[]){
 	
 	free_StringBuffer(buffer);	
 	free_StringBuffer(info);
-	free_SingleTreeLikelihood(tlk);
+//	free_SingleTreeLikelihood(tlk);
+	//msm->free(msm);
+	//mmod->free(mmod);
+	//mtree->free(mtree);
+	mpost->free(mpost);
     free_DataType(dataType);
 }

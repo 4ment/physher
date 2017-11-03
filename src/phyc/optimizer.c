@@ -35,6 +35,31 @@ static bool xStop( const Parameters *x,  double *xold, const double tolx);
 static bool fxStop(double fx, double *fxold, const double tolfx);
 
 
+opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double *fmin, OptimizerSchedule* schedule ){
+	double lnl = f(NULL, NULL, data);
+	double fret = lnl;
+	for (stop->iter = 0; stop->iter < stop->iter_max; stop->iter++) {
+		for (int i = 0; i < schedule->count; i++) {
+			Optimizer* opt = schedule->optimizers[i];
+			Parameters* parameters = schedule->parameters[i];
+			double local_fret;
+			for (int k = 0; k < schedule->rounds[i]; k++){
+				local_fret = fret;
+				opt_result status = opt_optimize( opt, parameters, &fret);
+				bool stopit = schedule->post[i](schedule,local_fret, fret);
+//				printf("%s %f %f -> %f (%f)\n", Parameters_name(parameters, 0), Parameters_value(parameters, 0), lnl, fret, local_fret);
+				if(stopit) break;
+			}
+			printf("%s %f %f\n", Parameters_name(parameters, 0), -fret, -lnl);
+			if(  lnl-fret < stop->tolx ){
+				*fmin = fret;
+				return OPT_SUCCESS;
+			}
+			lnl = fret;
+		}
+	}
+	return OPT_MAXITER;
+}
 
 struct _Optimizer{
 	opt_algorithm algorithm;
@@ -46,6 +71,8 @@ struct _Optimizer{
 	OptStopCriterion stop;
 	
 	opt_update_data update;
+	int verbosity;
+	OptimizerSchedule* schedule;
 };
 
 
@@ -59,6 +86,7 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->data = NULL;
 	opt->dimension = 0;
 	
+	opt->stop.iter_min = 1;
 	opt->stop.iter_max = 200;
 	opt->stop.iter = 0;
 
@@ -78,15 +106,22 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->stop.oldfx = 0;
 	
 	opt->stop.count = 0;
-	
+	opt->verbosity = 0;
 	opt->update = dummy_update_data;
+	opt->schedule = NULL;
 	return opt;
 }
 
 void free_Optimizer( Optimizer *opt ){
 	opt->data = NULL;
+	if(opt->schedule != NULL){
+		free(opt->schedule->optimizers);
+		free(opt->schedule->parameters);
+		free(opt->schedule->rounds);
+		free(opt->schedule->post);
+		free(opt->schedule);
+	}
 	free(opt);
-	opt = NULL;
 }
 
 void opt_set_objective_function( Optimizer *opt, opt_func f ){
@@ -167,6 +202,43 @@ int opt_f_evaluations( Optimizer *opt ){
     return opt->stop.f_eval_current;
 }
 
+// Meta optimizer
+
+bool opt_post(OptimizerSchedule* schedule, double before, double after){
+	return false;
+}
+
+void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, Parameters* parameters){
+	if(opt_meta->schedule == NULL){
+		opt_get_schedule(opt_meta);
+	}
+	else if(opt_meta->schedule->capacity == opt_meta->schedule->count){
+		opt_meta->schedule->capacity++;
+		opt_meta->schedule->optimizers = (Optimizer**)realloc(opt_meta->schedule->optimizers, sizeof(Optimizer*)*opt_meta->schedule->capacity);
+		opt_meta->schedule->parameters = (Parameters**)realloc(opt_meta->schedule->parameters, sizeof(Parameters*)*opt_meta->schedule->capacity);
+		opt_meta->schedule->rounds = (int*)realloc(opt_meta->schedule->rounds, opt_meta->schedule->capacity);
+		opt_meta->schedule->post = (OptimizerSchedule_post*)realloc(opt_meta->schedule->post, sizeof(OptimizerSchedule_post)*opt_meta->schedule->capacity);
+	}
+	opt_meta->schedule->optimizers[opt_meta->schedule->count] = opt;
+	opt_meta->schedule->parameters[opt_meta->schedule->count] = parameters;
+	opt_meta->schedule->rounds[opt_meta->schedule->count] = 1;
+	opt_meta->schedule->post[opt_meta->schedule->count] = opt_post;
+	opt_meta->schedule->count++;
+}
+
+OptimizerSchedule* opt_get_schedule(Optimizer *opt_meta){
+	if(opt_meta->schedule == NULL){
+		opt_meta->schedule = (OptimizerSchedule*)malloc(sizeof(OptimizerSchedule));
+		opt_meta->schedule->optimizers = (Optimizer**)malloc(sizeof(Optimizer*));
+		opt_meta->schedule->parameters = (Parameters**)malloc(sizeof(Parameters*));
+		opt_meta->schedule->post = (OptimizerSchedule_post*)malloc(sizeof(OptimizerSchedule_post));
+		opt_meta->schedule->rounds = ivector(1);
+		opt_meta->schedule->capacity = 1;
+		opt_meta->schedule->count = 0;
+	}
+	return opt_meta->schedule;
+}
+
 // At least one of these conditions is sufficient to stop the optimization
 opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx ){
 	opt_result stopflag = OPT_KEEP_GOING;
@@ -235,12 +307,20 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
     opt->stop.count = 0;
 	
 	switch (opt->algorithm ) {
+		case OPT_META:{
+			result = meta_optimize( opt->f, opt->data, &opt->stop, fmin, opt->schedule );
+			break;
+		}
 		case OPT_POWELL:{
 			result = powell_optimize( ps, opt->f, opt->data, opt->stop, fmin, opt->update );
 			break;
 		}
 		case OPT_BRENT:{
 			result = brent_optimize( ps, opt->f, opt->data, &opt->stop, fmin );
+			break;
+		}
+		case OPT_SERIAL_BRENT:{
+			result = serial_brent_optimize( ps, opt->f, opt->data, &opt->stop, fmin );
 			break;
 		}
 		case OPT_BFGS:{

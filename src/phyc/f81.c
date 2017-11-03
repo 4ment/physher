@@ -17,6 +17,7 @@
 
 #include "f81.h"
 
+#include "nucsubst.h"
 #include "matrix.h"
 
 static void f81_p_t( SubstitutionModel *m, const double t, double *P );
@@ -33,15 +34,14 @@ SubstitutionModel * new_F81(){
     SubstitutionModel *m = create_substitution_model("F81", JC69, DATA_TYPE_NUCLEOTIDE);
     m->nstate = 4;
     m->_freqs = dvector(4);
+    m->_freqs[0] = m->_freqs[1] = m->_freqs[2] = m->_freqs[3] = 0.25;
     for ( int i = 0; i < 4; i++ ) m->_freqs[i] = 0.25;
     
     m->freqs = new_Parameters( 3 );
-    m->update_frequencies = nucleotide_update_freqs;
-    double aux1 = m->_freqs[1] / (  1 - m->_freqs[0]);
-    double aux2 = m->_freqs[2] / ( (1 - m->_freqs[0]) * (1 - aux1) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piA", "model", m->_freqs[0], new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piC", "model", aux1,     new_Constraint(0.001, 0.999) ) );
-    Parameters_add(m->freqs, new_Parameter_with_postfix("hky.piT", "model", aux2,     new_Constraint(0.001, 0.999) ) );
+    m->update_frequencies = nucleotide_update_freqs_relative;
+    Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piA", "model", 1.0, new_Constraint(0.001, 0.999) ) );
+    Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piC", "model", 1.0, new_Constraint(0.001, 0.999) ) );
+    Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piG", "model", 1.0, new_Constraint(0.001, 0.999) ) );
     
     m->pij_t = f81_pij_t;
     m->p_t = f81_p_t;
@@ -51,6 +51,37 @@ SubstitutionModel * new_F81(){
     m->d2p_d2t = f81_d2p_dt2;
     m->d2p_d2t_transpose = f81_d2p_dt2_transpose;
     return m;
+}
+
+SubstitutionModel * new_F81_with_parameters(const Parameters* freqs){
+	
+	SubstitutionModel *m = create_substitution_model("F81", JC69, DATA_TYPE_NUCLEOTIDE);
+	m->nstate = 4;
+	m->_freqs = dvector(4);
+	
+	m->freqs = new_Parameters( 3 );
+	if(Parameters_count(freqs) == 4){
+		m->update_frequencies = nucleotide_update_freqs;
+		for (int i = 0; i < Parameters_count(freqs); i++) {
+			m->_freqs[i] = Parameters_value(freqs, i);
+		}
+	}
+	else{
+		m->update_frequencies = nucleotide_update_freqs_relative;
+		fprintf(stderr, "new_GTR_with_parameters need to be implemented\n");
+		exit(1);
+	}
+	check_frequencies( m->_freqs, 4 );
+	
+	
+	m->pij_t = f81_pij_t;
+	m->p_t = f81_p_t;
+	m->p_t_transpose = f81_p_t_transpose;
+	m->dp_dt = f81_dp_dt;
+	m->dp_dt_transpose = f81_dp_dt_transpose;
+	m->d2p_d2t = f81_d2p_dt2;
+	m->d2p_d2t_transpose = f81_d2p_dt2_transpose;
+	return m;
 }
 
 double f81_pij_t( SubstitutionModel *m, const int i, const int j, const double t ){

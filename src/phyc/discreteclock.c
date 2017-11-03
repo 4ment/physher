@@ -139,7 +139,7 @@ static double _discreteclock_ga_optimize( ClockSearch *search  ){
         }
         _sort_increasing_rate(search->current_rates, map, Parameters_count(bm->rates));
         for ( int i = 0; i < nNodes; i++ ) {
-            bm->map[i] = map[ bm->map[i] ];
+            bm->map->values[i] = map[ bm->map->values[i] ];
         }
         
         Parameters_sort_from_ivector(bm->rates, map);
@@ -147,10 +147,10 @@ static double _discreteclock_ga_optimize( ClockSearch *search  ){
         free(map);
     }
     
-    memcpy(search->current_indexes, bm->map, nNodes * sizeof(unsigned));
+    memcpy(search->current_indexes, bm->map->values, nNodes * sizeof(unsigned));
     Tree_heights_to_vector(search->pool->tlks[0]->tree, search->current_heights);
 
-    memcpy(search->best_indexes, bm->map, nNodes * sizeof(unsigned)); // should set indexes here instead of the init_population
+    memcpy(search->best_indexes, bm->map->values, nNodes * sizeof(unsigned)); // should set indexes here instead of the init_population
     Tree_heights_to_vector(search->pool->tlks[0]->tree, search->best_heights);
     BranchModel_rates_to_vector(bm, search->best_rates);
     
@@ -662,14 +662,14 @@ void init_random_population( GA *ga, ClockSearch *search ){
 bool check_roots_kids_assignment( BranchModel *bm ){
     Node *left  = Tree_root(bm->tree)->left;
     Node *right = Tree_root(bm->tree)->right;
-    int class1 = bm->map[ Node_id(left)  ];
-    int class2 = bm->map[ Node_id(right) ];
+    int class1 = bm->map->values[ Node_id(left)  ];
+    int class2 = bm->map->values[ Node_id(right) ];
     
     for ( int i = 0; i < Tree_node_count(bm->tree); i++ ) {
         if( Node_id(Tree_root(bm->tree)) == i ) continue;
         
         //if ( (i != left->postorder_idx && bm->map[i] == class1) ^ (i != right->postorder_idx && bm->map[i] == class2) ) {
-        if ( (i != Node_id(left) && i != Node_id(right)) && (bm->map[i] == class1 || bm->map[i] == class2) ) {
+        if ( (i != Node_id(left) && i != Node_id(right)) && (bm->map->values[i] == class1 || bm->map->values[i] == class2) ) {
             return true;
         }
     }
@@ -719,8 +719,8 @@ void DiscreteClock_greedy( SingleTreeLikelihood *tlk ){
     for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
         if( root_id == i  ) continue;
         
-        memset(tlk->bm->map, 0, sizeof(unsigned)*Tree_node_count(tlk->tree));
-        tlk->bm->map[i] = 1;
+        memset(tlk->bm->map->values, 0, sizeof(unsigned)*Tree_node_count(tlk->tree));
+		tlk->bm->map->set_value(tlk->bm->map, i, 1);
         Parameters_set_value(tlk->bm->rates, 0, rate);
         Parameters_set_value(tlk->bm->rates, 1, rate);
         
@@ -751,9 +751,9 @@ void DiscreteClock_greedy( SingleTreeLikelihood *tlk ){
         
         DiscreteClock_set_number_of_rate_classes(tlk->bm, i+2);
         
-        memset(tlk->bm->map, 0, sizeof(unsigned)*Tree_node_count(tlk->tree)-1);
+        memset(tlk->bm->map->values, 0, sizeof(unsigned)*Tree_node_count(tlk->tree)-1);
         for ( int j = 0 ; j <= i; j++ ) {
-            tlk->bm->map[ map[j] ] = j+1;
+			tlk->bm->map->set_value(tlk->bm->map, map[j], j+1);
         }
         
         SingleTreeLikelihood_update_all_nodes(tlk);
@@ -777,10 +777,10 @@ static int _discreteclock_greedy_search2( SingleTreeLikelihood *tlk, const int c
     
 	for ( int i = 0; i < tot; i++ ) {
         
-        memset(tlk->bm->map, 0, sizeof(unsigned)*Tree_node_count(tlk->tree)-1);
+        memset(tlk->bm->map->values, 0, sizeof(unsigned)*Tree_node_count(tlk->tree)-1);
         
         for ( int j = 0; j < current; j++ ) {
-            tlk->bm->map[ current_indexes[j] ] = j+1;
+			tlk->bm->map->set_value(tlk->bm->map, current_indexes[j], j+1);
         }
         
         int idx = 0;
@@ -795,8 +795,8 @@ static int _discreteclock_greedy_search2( SingleTreeLikelihood *tlk, const int c
             if( k == current+1 && idx > current_indexes[current] ){
                 break;
             }
-        }
-        tlk->bm->map[ idx ] = current+1;
+		}
+		tlk->bm->map->set_value(tlk->bm->map, idx, current+1);
 		current_indexes[current] = idx;
         //print_ivector(current_indexes, current+1);
         
@@ -849,10 +849,10 @@ static int _discreteclock_greedy_search3( SingleTreeLikelihood *tlk, const int c
     
 	for ( int i = 0; i < tot; i++ ) {
         
-        memset(tlk->bm->map, 0, sizeof(unsigned)*Tree_node_count(tlk->tree)-1);
+        memset(tlk->bm->map->values, 0, sizeof(unsigned)*Tree_node_count(tlk->tree)-1);
         
         for ( int j = 0; j < current; j++ ) {
-            tlk->bm->map[ current_indexes[j] ] = j+1;
+			tlk->bm->map->set_value(tlk->bm->map, current_indexes[j], j+1);
         }
         
         int idx = 0;
@@ -870,7 +870,7 @@ static int _discreteclock_greedy_search3( SingleTreeLikelihood *tlk, const int c
         }
         
         for ( int j = 1; j <= current+1; j++ ) {
-            tlk->bm->map[ idx ] = j;
+			tlk->bm->map->set_value(tlk->bm->map, idx, j);
             current_indexes[current] = idx;
             //print_ivector(current_indexes, current+1);
             
@@ -1221,7 +1221,7 @@ double discreteclock_fitness( GA *ga, Individual *individual ){
                         Node_set_annotation(nodes[i], "rate", buff->c);
                         
                         StringBuffer_empty(buff);
-                        StringBuffer_append_format(buff, "%d", tlk->bm->map[ Node_id(nodes[i]) ]);
+                        StringBuffer_append_format(buff, "%d", tlk->bm->map->values[ Node_id(nodes[i]) ]);
                         Node_set_annotation(nodes[i], "class", buff->c);
                     }
                 }
@@ -1343,7 +1343,7 @@ void * _discreteclock_fitness_threads( void *threadpool ){
                             Node_set_annotation(nodes[i], "rate", buff->c);
                             
                             StringBuffer_empty(buff);
-                            StringBuffer_append_format(buff, "%d", tlk->bm->map[ Node_id(nodes[i]) ]);
+                            StringBuffer_append_format(buff, "%d", tlk->bm->map->values[ Node_id(nodes[i]) ]);
                             Node_set_annotation(nodes[i], "class", buff->c);
                         }
                     }
@@ -1375,8 +1375,8 @@ void _discreteclock_mutate_order( GA *ga, Individual *individual ){
     
     int root_id = Node_id(Tree_root(searcher->pool->tlks[0]->tree));
     unsigned int *chromosome = individual->chromosome;
-    
-    if ( 1 == 0 ) {
+	
+    if ( /* DISABLES CODE */ (1) == 0 ) {
         unsigned *backup = uivector(individual->size);
         memcpy(backup, individual->chromosome, individual->size *sizeof(unsigned) );
         
@@ -1575,7 +1575,7 @@ double _discreteclock_fitness_order( GA *ga, Individual *individual ){
                         Node_set_annotation(nodes[i], "rate", buff->c);
                         
                         StringBuffer_empty(buff);
-                        StringBuffer_append_format(buff, "%d", tlk->bm->map[ Node_id(nodes[i]) ]);
+                        StringBuffer_append_format(buff, "%d", tlk->bm->map->values[ Node_id(nodes[i]) ]);
                         Node_set_annotation(nodes[i], "class", buff->c);
                     }
                 }
