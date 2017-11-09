@@ -342,7 +342,7 @@ static void _init_population( GA *ga, QSearch *search ){
 			//TODO: check why +4 and not +2
             sprintf(name+4, "%d", (Parameters_count(search->pool->tlks[j]->sm->m->rates)+1) );
             double rate = Parameters_value(search->pool->tlks[j]->sm->m->rates, 0);
-            Parameter *p = new_Parameter_with_postfix_and_ownership(name, "relativerate", rate, Parameters_constraint(search->pool->tlks[j]->sm->m->rates, index), false);
+            Parameter *p = new_Parameter_with_postfix(name, "relativerate", rate, Parameters_constraint(search->pool->tlks[j]->sm->m->rates, index));
             Parameters_move(search->pool->tlks[j]->sm->m->rates, p);
         }
         
@@ -631,7 +631,7 @@ double _ga_optimize( QSearch *search ){
                 
                 for ( ; i < n; i++ ) {
                     sprintf(name+4, "%d", (Parameters_count(search->pool->tlks[j]->sm->m->rates)+1) );
-                    Parameter *p = new_Parameter_with_postfix_and_ownership(name, "relativerate", values[i], Parameters_constraint(search->pool->tlks[j]->sm->m->rates, 0), false);
+                    Parameter *p = new_Parameter_with_postfix(name, "relativerate", values[i], Parameters_constraint(search->pool->tlks[j]->sm->m->rates, 0));
                     Parameters_move(search->pool->tlks[j]->sm->m->rates, p);
                 }
             }
@@ -1337,11 +1337,12 @@ void qsearch_lasso2(SingleTreeLikelihood *tlk ){
             for ( int i = 0; i < Parameters_count(tlk->sm->m->rates); i++) {
                 if( Parameters_estimate( tlk->sm->m->rates, i ) ){
 					data->index_param = i;
-					Parameters_set(oneparameter, 0, Parameters_at(tlk->sm->m->rates, i));
+					Parameters_add(oneparameter, Parameters_at(tlk->sm->m->rates, i));
 					
 					status = opt_maximize( opt_rates, oneparameter, &fret);
 					if( status == OPT_ERROR ) error("OPT.RATES No SUCCESS!!!!!!!!!!!!\n");
 					fret = -fret;
+					Parameters_pop(oneparameter);
 					//printf("%d LnL: %f\n", i, fret);
 				}
             }

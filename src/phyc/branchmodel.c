@@ -213,7 +213,7 @@ BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree ){
 	
 	newbm->need_update = bm->need_update;
 	
-	newbm->rates = clone_Parameters(bm->rates, true);
+	newbm->rates = clone_Parameters(bm->rates);
 	
 	newbm->scalefactor = bm->scalefactor;
 	
@@ -298,7 +298,7 @@ void * BranchModel_SML_to_object( ObjectStore *store, SMLNode node ){
 Parameters * BranchModel_save_rates( BranchModel *bm ){
 	Parameters *rates = new_Parameters( Parameters_count(bm->rates) );
 	for ( int i = 0; i < Parameters_count(bm->rates); i++ ) {
-		Parameters_add(rates, clone_Parameter( Parameters_at(bm->rates, i), true) );
+		Parameters_add(rates, clone_Parameter( Parameters_at(bm->rates, i)) );
 	}
 	return rates;
 }
@@ -391,13 +391,11 @@ static void _set_parameter_localclock( BranchModel *bm, const int index, const d
  * @param n: number of local clocks
  */
 BranchModel * new_LocalClock( Tree *tree, const int n ){
-	Constraint *cnstr = new_Constraint(BRANCHMODEL_RATE_MIN, BRANCHMODEL_RATE_MAX);
-	Parameters *rates = new_Parameters_with_contraint(n+1, cnstr, LOCAL_POSTFIX);
-	//add_parameter(rates, new_Parameter_with_postfix_and_ownership("meanrate", LOCAL_POSTFIX, 1., cnstr, false));
+	Parameters *rates = new_Parameters(n+1);
 	char name[50] = "rate";
 	for (int i = 0; i <= n; i++) {
 		sprintf(name+4, "%d", i);
-		Parameters_move(rates, new_Parameter_with_postfix_and_ownership(name, LOCAL_POSTFIX, 0.001, cnstr, false));
+		Parameters_move(rates, new_Parameter_with_postfix(name, LOCAL_POSTFIX, 0.001, new_Constraint(BRANCHMODEL_RATE_MIN, BRANCHMODEL_RATE_MAX)));
 	}
 	return new_LocalClock_with_parameters( tree, rates );
 }
@@ -497,7 +495,7 @@ void LocalClock_set_number_of_clocks( BranchModel *bm, const int nLocalClocks ){
 		for (int i = count; i < nLocalClocks; i++) {
 			sprintf(name+4, "%d", (i+1) );
 			double rate = Parameters_value(bm->rates, count);
-			Parameter *p = new_Parameter_with_postfix_and_ownership(name, LOCAL_POSTFIX, rate, Parameters_constraint(bm->rates, 0), false); // getting the common constraint from Parameters not Parameter
+			Parameter *p = new_Parameter_with_postfix(name, LOCAL_POSTFIX, rate, Parameters_constraint(bm->rates, 0)); // getting the common constraint from Parameters not Parameter
 			Parameters_move(bm->rates, p);
 		}
 	}
@@ -642,12 +640,11 @@ static double _get_DiscreteClock( BranchModel *bm , Node *node );
 static void _set_DiscreteClock( BranchModel *bm, const int index, const double value );
 
 BranchModel * new_DiscreteClock2( Tree *tree, const int n ){
-	Constraint *cnstr = new_Constraint(BRANCHMODEL_RATE_MIN, 100); // the main rate could have a lower upper bound
-	Parameters *rates = new_Parameters_with_contraint(n, cnstr, DISCRETE_POSTFIX);
+	Parameters *rates = new_Parameters(n);
 	char name[50] = "rate";
 	for (int i = 0; i < n; i++) {
 		sprintf(name+4, "%d", i);
-		Parameters_move(rates, new_Parameter_with_postfix_and_ownership(name, DISCRETE_POSTFIX, .01, cnstr, false));
+		Parameters_move(rates, new_Parameter_with_postfix(name, DISCRETE_POSTFIX, .01, new_Constraint(BRANCHMODEL_RATE_MIN, 100)));
 	}
     BranchModel *bm = new_DiscreteClock_with_parameters( tree, rates );
     bm->get = _get_DiscreteClock2;
@@ -655,12 +652,11 @@ BranchModel * new_DiscreteClock2( Tree *tree, const int n ){
 }
 
 BranchModel * new_DiscreteClock( Tree *tree, const int n ){
-	Constraint *cnstr = new_Constraint(BRANCHMODEL_RATE_MIN, 100);
-	Parameters *rates = new_Parameters_with_contraint(n, cnstr, DISCRETE_POSTFIX);
+	Parameters *rates = new_Parameters(n);
 	char name[50] = "rate";
 	for (int i = 0; i < n; i++) {
 		sprintf(name+4, "%d", i);
-		Parameters_move(rates, new_Parameter_with_postfix_and_ownership(name, DISCRETE_POSTFIX, .01, cnstr, false));
+		Parameters_move(rates, new_Parameter_with_postfix(name, DISCRETE_POSTFIX, .01, new_Constraint(BRANCHMODEL_RATE_MIN, 100)));
 	}
 	return new_DiscreteClock_with_parameters( tree, rates );
 }
@@ -813,7 +809,7 @@ BranchModel * new_DiscreteClock_from_LocalClock_tree( Tree *tree ){
 
 BranchModel * new_DiscreteClock_from_LocalClock( const BranchModel *localBm ){
 	
-	Parameters *newRates = clone_Parameters(localBm->rates, true);
+	Parameters *newRates = clone_Parameters(localBm->rates);
 	
 	BranchModel *bm = new_DiscreteClock_with_parameters( localBm->tree, newRates);
 	DiscreteClock_set_classes(bm, localBm->map->values);
@@ -835,7 +831,7 @@ void DiscreteClock_set_number_of_rate_classes( BranchModel *bm, const int nClass
 		//fprintf(stderr, "Add rates before %d after %d\n",count,n);
 		for (int i = count; i < nClasses; i++) {
 			sprintf(name+4, "%d", i );
-			Parameters_move(bm->rates, new_Parameter_with_postfix_and_ownership(name, DISCRETE_POSTFIX, rate, Parameters_constraint(bm->rates, -1), false));
+			Parameters_move(bm->rates, new_Parameter_with_postfix(name, DISCRETE_POSTFIX, rate, Parameters_constraint(bm->rates, -1)));
 		}
 		//fprintf(stderr, "Real number %d\n", Parameters_count(bm->rates)-1);
 	}

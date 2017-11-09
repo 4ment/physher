@@ -112,7 +112,7 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 			Parameters_add(ps, Hashtable_get(hash, name));
 		}
 		else{
-			Parameter* p = clone_Parameter(Parameters_at(sm->rates, i), true);
+			Parameter* p = clone_Parameter(Parameters_at(sm->rates, i));
 			Parameters_move(ps, p);
 			Hashtable_add(hash, name, p);
 		}
@@ -726,12 +726,12 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
 	newsm->cat_count = sm->cat_count;
 	
 	if ( sm->rates != NULL ){
-		newsm->rates = clone_Parameters(sm->rates, true);
+		newsm->rates = clone_Parameters(sm->rates);
 	}
 	
 	newsm->mu = NULL;
 	if ( sm->mu != NULL ){
-		newsm->mu = clone_Parameter(sm->mu, true);
+		newsm->mu = clone_Parameter(sm->mu);
 	}
 	
 	newsm->cat_assignment_length = sm->cat_assignment_length;
@@ -781,7 +781,7 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionMo
 	
 	newsm->mu = NULL;
 	if ( sm->mu != NULL ){
-		newsm->mu = clone_Parameter(sm->mu, true);
+		newsm->mu = clone_Parameter(sm->mu);
 	}
 	
 	newsm->cat_assignment_length = sm->cat_assignment_length;

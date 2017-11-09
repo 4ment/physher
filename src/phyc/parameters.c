@@ -33,8 +33,6 @@
 #define STRINGIFY_VALUE "value"
 #define STRINGIFY_CONSTRAINT "constraint"
 
-#define ASSIGN_DEBUG 1
-
 
 struct _Constraint{
 	double lower;
@@ -47,11 +45,8 @@ struct _Constraint{
 
 struct _Parameters{
 	Parameter **list;
-	int count;
-	int capacity;
-	
-	Constraint *cnstr; // if cnstr != NULL then a Parameter can point to this constraint
-	char *name;
+	size_t count;
+	size_t capacity;
 };
 
 
@@ -97,12 +92,6 @@ void * Constraint_SML_to_object( SMLNode node ){
 		c = new_Constraint( atof( SML_get_data(lower)), atof( SML_get_data(upper)) );
 	}
 	return c;
-}
-
-void add_contraint( Parameter *p, Constraint *constr, bool ownconstraint ){
-	if( p->cnstr != NULL ) remove_contraint( p );
-	p->cnstr = constr;
-	p->ownconstraint = ownconstraint;
 }
 
 void Constraint_set_bounds( Constraint *constr, const double lower, const double upper ){
@@ -164,11 +153,6 @@ void Constraint_set_flower( Constraint *c, const double flower ){
 	c->flower = flower;
 }
 
-void remove_contraint( Parameter *p ){
-	if( p->ownconstraint ) free_Constraint(p->cnstr);
-	else p->cnstr = NULL;
-}
-
 void compare_constraint( const Constraint *c1, const Constraint *c2 ){
 	assert( c1->lower == c2->lower );
 	assert( c1->upper == c2->upper );
@@ -183,10 +167,6 @@ Parameter * new_Parameter( const char *name, const double value, Constraint *con
 }
 
 Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, const double value, Constraint *constr ){
-	return new_Parameter_with_postfix_and_ownership( name, postfix, value, constr, true );
-}
-
-Parameter * new_Parameter_with_postfix_and_ownership( const char *name, const char *postfix, const double value, Constraint *constr, bool owner ){
 	Parameter *p = (Parameter *)malloc( sizeof(Parameter) );
 	assert(p);
 	size_t name_len    = strlen(name);
@@ -201,7 +181,6 @@ Parameter * new_Parameter_with_postfix_and_ownership( const char *name, const ch
 	}
 	p->value = value;
 	p->cnstr = constr;
-	p->ownconstraint = owner;
 	p->estimate = true;
 	p->id = 0;
 #ifdef LISTENERS
@@ -211,20 +190,15 @@ Parameter * new_Parameter_with_postfix_and_ownership( const char *name, const ch
 	return p;
 }
 
-Parameter * clone_Parameter( Parameter *p, bool duplicateconstraint ){
+Parameter * clone_Parameter( Parameter *p ){
 	Parameter *pnew = NULL;
 	Constraint *cnstr = NULL;
 
-	if( duplicateconstraint && p->cnstr != NULL ){ 
+	if( p->cnstr != NULL ){
 		cnstr = clone_Constraint(p->cnstr);
-		return new_Parameter( p->name, p->value,  cnstr );
-	}
-	else if( p->cnstr != NULL ){
-		cnstr = p->cnstr;
 	}
 	
 	pnew = new_Parameter( p->name, p->value,  cnstr );//pnew ref_count is reset to 1
-	pnew->ownconstraint = false;
 	pnew->estimate = p->estimate;
 	pnew->id = p->id;
 	return pnew;
@@ -235,7 +209,7 @@ void free_Parameter( Parameter *p ){
 	if(p->refCount == 1){
 		free(p->name);
 		p->listeners->free(p->listeners);
-		if( p->ownconstraint && p->cnstr != NULL ) free_Constraint(p->cnstr);
+		if( p->cnstr != NULL ) free_Constraint(p->cnstr);
 		free(p);
 	}
 	else{
@@ -243,7 +217,7 @@ void free_Parameter( Parameter *p ){
 	}
 #else
 	free(p->name);
-	if( p->ownconstraint && p->cnstr != NULL ) free_Constraint(p->cnstr);
+	if( p->cnstr != NULL ) free_Constraint(p->cnstr);
 	free(p);
 #endif
 }
@@ -273,7 +247,7 @@ StringBuffer * Parameter_bufferize( StringBuffer *buffer, Parameter *p ){
 	
 	buffer = StringBuffer_append_format(buffer,":\n  (%s:%f)\n", STRINGIFY_VALUE, p->value);	
 	
-	if( p->cnstr != NULL && p->ownconstraint ){
+	if( p->cnstr != NULL ){
 		buffer = Constraint_bufferize( buffer, p->cnstr);
 		buffer = StringBuffer_append_char(buffer,'\n');
 	}
@@ -306,7 +280,7 @@ void * Parameter_SML_to_object_with_postfix( SMLNode node, const char *postfix )
 	Parameter *p = NULL;
 	// shared constraint
 	if ( SML_get_child_count( node ) == 0) {
-		p = new_Parameter_with_postfix_and_ownership( SML_get_tag(node), postfix, atof(SML_get_data(node)), NULL, false);
+		p = new_Parameter_with_postfix( SML_get_tag(node), postfix, atof(SML_get_data(node)), NULL);
 	}
 	else {
 		Constraint *c = NULL;
@@ -395,7 +369,6 @@ void Parameter_set_lower( Parameter *p, const double value ){
 void Parameter_set_bounds( Parameter *p, const double lower, const double upper ){
 	if ( p->cnstr == NULL ) {
 		p->cnstr = new_Constraint(lower, upper);
-		p->ownconstraint = true;
 	}
 	else {
 		Constraint_set_bounds( p->cnstr, lower, upper );
@@ -447,7 +420,6 @@ void Parameter_print( const Parameter *p ){
 
 void compare_parameter( const Parameter *p1, const Parameter *p2 ){
 	assert(p1->value == p2->value);
-	assert(p1->ownconstraint == p2->ownconstraint);
 	assert( strcmp(p1->name, p2->name) == 0 );
 	if( p1->cnstr != NULL && p2->cnstr != NULL )
 		compare_constraint( p1->cnstr, p2->cnstr );
@@ -457,16 +429,9 @@ void compare_parameter( const Parameter *p1, const Parameter *p2 ){
 #pragma mark -
 #pragma mark Parameters
 
-Parameters * new_Parameters( const int n ){
-	if(n == 0) return NULL;
-	Parameters *ps = new_Parameters_with_contraint( n, NULL,NULL );
-	return ps;
-}
-
-Parameters * new_Parameters_with_contraint( const int capacity, Constraint *cnstr, const char *name ){
+Parameters * new_Parameters( const size_t capacity ){
 	Parameters *ps = (Parameters *)malloc( sizeof(Parameters) );
 	assert(ps);
-	ps->name = NULL;
 	ps->list = (Parameter **)malloc( capacity * sizeof(Parameter *) );
 	assert(ps->list);
 	for (int i = 0; i < capacity; i++) {
@@ -474,11 +439,6 @@ Parameters * new_Parameters_with_contraint( const int capacity, Constraint *cnst
 	}
 	ps->count = 0;
 	ps->capacity = capacity;
-	
-	ps->cnstr = cnstr;
-	if( name != NULL ){
-		ps->name = String_clone(name);
-	}
 	return ps;
 }
 
@@ -489,40 +449,16 @@ void free_Parameters( Parameters *ps ){
 		free_Parameter(ps->list[i]);
 	}
 	free(ps->list);
-	if ( ps->name != NULL ) {
-		free(ps->name);
-		ps->name = NULL;
-	}
-	if ( ps->cnstr != NULL ) {
-		free_Constraint( ps->cnstr );
-	}
 	free(ps);
 	ps = NULL;
 }
 
 // The cloned parameters can have different capacities but same count of course
-Parameters * clone_Parameters( Parameters *p, bool ownconstraint ){
-	Parameters * clone = NULL;
-	if ( p->cnstr != NULL ) {
-		Constraint *c = clone_Constraint( p->cnstr );
-		clone = new_Parameters_with_contraint( p->count, c, p->name );
-		
-		for (int i = 0; i < p->count; i++) {
-			Parameters_move(clone, new_Parameter_with_postfix_and_ownership( p->list[i]->name, "", p->list[i]->value, c, false) );
-		}
-		
+Parameters * clone_Parameters( Parameters *p ){
+	Parameters * clone = new_Parameters( p->capacity );
+	for (int i = 0; i < p->count; i++) {
+		Parameters_move(clone, clone_Parameter( p->list[i] ) );
 	}
-	else {
-		clone = new_Parameters( p->count );
-		
-		for (int i = 0; i < p->count; i++) {
-			Parameters_move(clone, clone_Parameter( p->list[i], ownconstraint ) );
-		}
-	}
-	
-	
-	//clone->count    = p->count;
-	//clone->capacity = p->capacity;
 	return clone;
 }
 
@@ -546,50 +482,36 @@ char * Parameters_stringify( Parameters *ps ){
 
 StringBuffer * Parameters_SML_bufferize( StringBuffer *buffer, Parameters *ps ){
 	int i = 0;
-	// bufferize parameters that share Constraint through Parameters (e.g. BranchModel)
-	if( ps->cnstr != NULL ){
-		buffer = StringBuffer_append_format( buffer, "(%s:\n  (%s:",ps->name, STRINGIFY_CONSTRAINT);
-		buffer = Constraint_bufferize( buffer, ps->cnstr);
-		buffer = StringBuffer_append_format(buffer, ")\n(%s:\n",STRINGIFY_PARAMETERS);
+	
+	char *postfix = ps->list[0]->name;
+	char *pch = NULL;
+	char *tempfix = NULL;
+	for ( i = 0; i < ps->count; i++) {
 		
-		for ( i = 0; i < ps->count; i++) {
-			buffer = Parameter_bufferize_parameter_set(buffer, ps->list[i]);
-			buffer = StringBuffer_append_char(buffer, '\n');
-		}
-		buffer = StringBuffer_append_string(buffer, ")\n)\n");
-	}
-	// bufferize parameters that DO NOT share a Constraint through Parameters
-	else{
-		char *postfix = ps->list[0]->name;
-		char *pch = NULL;
-		char *tempfix = NULL;
-		for ( i = 0; i < ps->count; i++) {
+		pch = strrchr( ps->list[i]->name,'.' );
+		if ( pch != NULL ){
+			tempfix = &ps->list[i]->name[pch - ps->list[i]->name+1];
 			
-			pch = strrchr( ps->list[i]->name,'.' );
-			if ( pch != NULL ){
-				tempfix = &ps->list[i]->name[pch - ps->list[i]->name+1];
+			if ( strcmp( tempfix, postfix ) == 0 ){
 				
-				if ( strcmp( tempfix, postfix ) == 0 ){
-					
-				}
-				else {
-					if ( i!= 0) buffer = StringBuffer_append_string( buffer, ")\n"); 
-					postfix = tempfix;
-					buffer = StringBuffer_append_format( buffer, "(%s:\n", postfix);
-					
-				}
-				buffer = Parameter_bufferize(buffer, ps->list[i]);
-				buffer = StringBuffer_append_char(buffer, '\n');
-
 			}
 			else {
-				buffer = Parameter_bufferize(buffer, ps->list[i]);
-				if (ps->count-1 != i) buffer = StringBuffer_append_char(buffer, '\n');
+				if ( i!= 0) buffer = StringBuffer_append_string( buffer, ")\n"); 
+				postfix = tempfix;
+				buffer = StringBuffer_append_format( buffer, "(%s:\n", postfix);
+				
 			}
-			
+			buffer = Parameter_bufferize(buffer, ps->list[i]);
+			buffer = StringBuffer_append_char(buffer, '\n');
+
 		}
-		buffer = StringBuffer_append_string(buffer, ")\n");
+		else {
+			buffer = Parameter_bufferize(buffer, ps->list[i]);
+			if (ps->count-1 != i) buffer = StringBuffer_append_char(buffer, '\n');
+		}
+		
 	}
+	buffer = StringBuffer_append_string(buffer, ")\n");
 	
 	return buffer;
 }
@@ -604,14 +526,10 @@ Parameters * Parameters_SML_to_object( SMLNode node ){
 	
 	// Set of parameters with the same constraint
 	if ( (params = SML_get_element( node, "params")) != NULL ) {
-		
-		Constraint *c = Constraint_SML_to_object( SML_get_element( node, "constraint") );
-		
-		ps = new_Parameters_with_contraint(SML_get_child_count( params ), c, name);
+		ps = new_Parameters(SML_get_child_count( params ));
 		
 		for ( i = 0; i < SML_get_child_count( params ); i++) {
 			Parameters_add( ps, Parameter_SML_to_object( SML_get_element_by_index(params, i)) );
-			ps->list[i]->cnstr = c;
 		}
 		
 	}
@@ -625,18 +543,8 @@ Parameters * Parameters_SML_to_object( SMLNode node ){
 	return ps;
 }
 
-Parameter * Parameters_at( const Parameters *p, const int index ){
+Parameter * Parameters_at( const Parameters *p, const size_t index ){
 	return p->list[index];
-}
-
-// FIXME: reconsider that
-// a bit crap, it should only allow adding, in case the cells bellow index are empty
-// only ok when index == 0 and index < capacity
-void Parameters_set( Parameters *ps, const int index, Parameter *p ){
-	if( ps->capacity > index){
-		ps->list[index] = p;
-		ps->count++;
-	}
 }
 
 void Parameters_add( Parameters *ps, Parameter *p){
@@ -680,22 +588,22 @@ Parameters * pack_parameters(Parameters *ps, Parameter *p){
 
 
 
-void Parameters_set_name( Parameters *p, const int index, const char *name ){
+void Parameters_set_name( Parameters *p, const size_t index, const char *name ){
 	assert( index < p->count);
-	//Parameter_set_value(p->list[index], value);
+	Parameter_set_name(p->list[index], name);
 }
 
-char * Parameters_name( const Parameters *p, const int index ){
+char * Parameters_name( const Parameters *p, const size_t index ){
 	return Parameter_name(p->list[index]);
 }
 
-int Parameters_count( const Parameters *p ){
+size_t Parameters_count( const Parameters *p ){
     if( p == NULL ) return 0;
 	return p->count;
 }
 
 
-int Parameters_capacity( const Parameters *p ){
+size_t Parameters_capacity( const Parameters *p ){
 	return p->capacity;
 }
 
@@ -723,10 +631,8 @@ void Parameters_set_estimate( Parameters *p, const bool estimate, const int inde
 }
 
 Constraint * Parameters_constraint( const Parameters *p, const int index ){
-	if( p->cnstr != NULL ) return p->cnstr; 
 	return Parameter_constraint( Parameters_at(p, index) );
 }
-
 
 double Parameters_upper( const Parameters *p, const int index ){
 	return Parameter_upper( Parameters_at(p, index) );
@@ -766,9 +672,6 @@ Parameters * get_sub_parameters( Parameters *p, const int start, const int end )
 
 void Parameters_print( Parameters *ps ){
 	fprintf(stderr, "==================================\n");
-	if ( ps->name != NULL) {
-		fprintf(stderr, "%s\n",ps->name);
-	}
 	for (int i = 0; i < ps->count; i++) {
 		Parameter_print(ps->list[i]);
 	}
@@ -838,26 +741,12 @@ int Parameters_count_optimizable( const Parameters *p, const char postfix[] ){
 	return count;
 }
 
-bool update_matching_parameters( Parameters *params, const Parameters *new, const double precision ){
-	bool updated = false;
-	int j = 0;
-	for (int i = 0; i < new->count; i++) {
-		for ( j = 0; j < params->count; j++) {
-			if( strcmp(new->list[i]->name, params->list[i]->name) == 0 && fabs(new->list[i]->value - params->list[i]->value) > precision ){
-				params->list[i]->value = new->list[i]->value;
-				updated = true;
-				break;
-			}
-		}
-	}
-	return updated;
-}
-
-void Parameters_remove( Parameters *params, int index ){
+void Parameters_remove( Parameters *params, size_t index ){
+	assert(index < params->count);
 	if( params->count !=0 ){
 		free_Parameter( params->list[index] );
         
-        for( int i = index+1; i < params->count; i++ ){
+        for( size_t i = index+1; i < params->count; i++ ){
             params->list[i-1] = params->list[i];
         }
 		params->list[params->count-1] = NULL;
@@ -876,12 +765,6 @@ void Parameters_pop( Parameters *params ){
 void compare_parameters( const Parameters *p1, const Parameters *p2 ){
 	assert( p1->count    == p2->count );
 	assert( p1->capacity == p2->capacity );
-	if( p1->cnstr != NULL && p2->cnstr != NULL ){
-		compare_constraint( p1->cnstr, p2->cnstr);
-		assert( strcmp( p1->name, p2->name) == 0 );
-	}
-	else assert( p1->cnstr == NULL && p2->cnstr == NULL );
-	
 	for (int i = 0; i < p1->count; i++) {
 		compare_parameter( p1->list[i], p2->list[i]);
 	}
@@ -901,7 +784,7 @@ void Parameters_swap_index( Parameters *ps, unsigned a, unsigned b ){
 
 void Parameters_sort_from_ivector( Parameters *p, int *s ){
 	bool done = false;
-	int size = p->count;
+	size_t size = p->count;
 	while ( !done ) {
 		done = true;
 		for ( int i = 0 ; i < size-1 ; i++ ) {

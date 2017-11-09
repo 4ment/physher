@@ -107,8 +107,8 @@ Node * clone_Node( const Node *node){
 	
 	n->class_id = node->class_id;
 	
-	n->height   = ( node->height == NULL ? NULL : clone_Parameter( node->height, true));
-	n->distance = ( node->distance == NULL ? NULL : clone_Parameter( node->distance, true));
+	n->height   = ( node->height == NULL ? NULL : clone_Parameter( node->height));
+	n->distance = ( node->distance == NULL ? NULL : clone_Parameter( node->distance));
 	
 	n->info = NULL;
 	if( node->info != NULL ) n->info = String_clone(node->info);

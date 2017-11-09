@@ -186,7 +186,7 @@ double optimize_mixedtreelikelihoods( MixedTreeLikelihood *mixed ){
     for ( int rounds = 0; rounds < 500; rounds++ ) {
         
         // Gamma shape
-        Parameters_set( oneparameter, 0,  Parameters_at(mixed->params, 0) );
+        Parameters_add( oneparameter, Parameters_at(mixed->params, 0) );
         data_brent->index_param = 0;
         double status = opt_optimize( opt_brent, oneparameter, &fret);
         if( status == OPT_ERROR ) error("OPT No SUCCESS!!!!!!!!!!!!\n");
@@ -195,9 +195,10 @@ double optimize_mixedtreelikelihoods( MixedTreeLikelihood *mixed ){
         if ( mixed->tlks[0]->opt.verbosity > 0 ) {
             fprintf(stdout, "Gamma         LnL: %f shape: %f  {%f}\n", fret, Parameters_value(mixed->params,0), fret-lnl );
         }
-        
+		Parameters_pop(oneparameter);
+		
         // Rate
-        Parameters_set( oneparameter, 0,  Parameters_at(mixed->params, 1) );
+        Parameters_add( oneparameter,  Parameters_at(mixed->params, 1) );
         data_brent->index_param = 1;
         status = opt_optimize( opt_brent, oneparameter, &fret);
         if( status == OPT_ERROR ) error("OPT.rate No SUCCESS!!!!!!!!!!!!\n");
@@ -206,6 +207,7 @@ double optimize_mixedtreelikelihoods( MixedTreeLikelihood *mixed ){
         if ( mixed->tlks[0]->opt.verbosity > 0 ) {
             fprintf(stdout, "Rate          LnL: %f rate: %f  {%f}\n", fret, Parameters_value(mixed->params,1), fret-lnl );
         }
+		Parameters_pop(oneparameter);
         
 //        // Branches
 //        fret = optimize_singletreelikelihood(mixed->tlks[0]);

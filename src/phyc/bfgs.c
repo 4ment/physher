@@ -62,7 +62,7 @@ opt_result dfpmin_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 	double *xi      = dvector(n);
 	bool *active    = bvector(n);
 	
-	Parameters *pnew = clone_Parameters(p, false);
+	Parameters *pnew = clone_Parameters(p);
 	
 	// Evaluate at point p and get gradients g
 	fp = f(p, g, data);

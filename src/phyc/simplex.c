@@ -44,7 +44,7 @@ Simplex* clone_Simplex(const Simplex* simplex){
 	Simplex* clone = (Simplex*)malloc(sizeof(Simplex));
 	clone->K = simplex->K;
 	if(simplex->parameters != NULL){
-		clone->parameters = clone_Parameters(simplex->parameters, true );
+		clone->parameters = clone_Parameters(simplex->parameters );
 	}
 	clone->values = clone_dvector(simplex->values, simplex->K);
 	clone->need_update = simplex->need_update;
@@ -109,7 +109,7 @@ Simplex* new_Simplex_with_values(const double *x, int K){
 	for(int i = 0; i < N; i++){
 		double phi = x[i]/x[N];
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix_and_ownership("phi", name, phi, new_Constraint(0.001, 100), true));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0.001, 100)));
 		Parameters_at(simplex->parameters, i)->id = i;
 	}
 	simplex->get_values = get_values;
@@ -136,7 +136,7 @@ Simplex* new_Simplex(int K){
 	for(int i = 0; i < N; i++){
 		double phi = simplex->values[i]/simplex->values[N];
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix_and_ownership("phi", name, phi, new_Constraint(0.001, 100), true));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0.001, 100)));
 		Parameters_at(simplex->parameters, i)->id = i;
 	}
 	simplex->get_values = get_values;

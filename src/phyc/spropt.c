@@ -138,7 +138,7 @@ double optimize_brent_branch_length_3nodes( SingleTreeLikelihood *stlk, Optimize
         
         SingleTreeLikelihood_update_all_nodes(stlk);
         data->index_param = node1->postorder_idx;
-        Parameters_set(param, 0, node1->distance);
+        Parameters_add(param, node1->distance);
         
         opt_set_objective_function(opt, _optimize_brent_branch_length_constrained);
         SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
@@ -148,12 +148,13 @@ double optimize_brent_branch_length_3nodes( SingleTreeLikelihood *stlk, Optimize
         
         Node_set_distance( node1, Parameters_value(param, 0) );
         Node_set_distance( Node_parent(node1), data->backup[0]-Parameters_value(param, 0) );
+		Parameters_pop(param);
         
         //printf("== lnl %f (%f) %f  %s %f %s %f\n", -lnl2, lnl, data->backup[0], node1->name, Parameters_value(param, 0), node1->parent->name, (data->backup[0]-Parameters_value(param, 0)) );
         
         SingleTreeLikelihood_update_all_nodes(stlk);
         data->index_param = node2->postorder_idx;
-        Parameters_set(param, 0, node2->distance);
+        Parameters_add(param, node2->distance);
         
         opt_set_objective_function(opt, optimize_brent_branch_length);
         SingleTreeLikelihood_set_upper_function(stlk, NULL);
@@ -161,7 +162,7 @@ double optimize_brent_branch_length_3nodes( SingleTreeLikelihood *stlk, Optimize
         status = opt_optimize( opt, param, &lnl2);
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         Node_set_distance(node2, Parameters_value(param, 0));
-        
+        Parameters_pop(param);
         //printf("++ lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
         
         
@@ -202,7 +203,7 @@ double optimize_brent_branch_length_2b( SingleTreeLikelihood *stlk, Optimizer *o
         
         SingleTreeLikelihood_update_all_nodes(stlk);
         data->index_param = node1->postorder_idx;
-        Parameters_set(param, 0, node1->distance);
+        Parameters_add(param, node1->distance);
         
         opt_set_objective_function(opt, _optimize_brent_branch_length_constrained);
         SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
@@ -212,12 +213,13 @@ double optimize_brent_branch_length_2b( SingleTreeLikelihood *stlk, Optimizer *o
         
         Node_set_distance( node1, Parameters_value(param, 0) );
         Node_set_distance( Node_parent(node1), data->backup[0]-Parameters_value(param, 0) );
+		Parameters_pop(param);
         
         //printf("== lnl %f (%f) %f  %s %f %s %f\n", -lnl2, lnl, data->backup[0], node1->name, Parameters_value(param, 0), node1->parent->name, (data->backup[0]-Parameters_value(param, 0)) );
         
         SingleTreeLikelihood_update_all_nodes(stlk);
         data->index_param = node2->postorder_idx;
-        Parameters_set(param, 0, node2->distance);
+        Parameters_add(param, node2->distance);
         
         opt_set_objective_function(opt, optimize_brent_branch_length);
         SingleTreeLikelihood_set_upper_function(stlk, NULL);
@@ -225,7 +227,7 @@ double optimize_brent_branch_length_2b( SingleTreeLikelihood *stlk, Optimizer *o
         status = opt_optimize( opt, param, &lnl2);
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         Node_set_distance(node2, Parameters_value(param, 0));
-        
+        Parameters_pop(param);
         //printf("++ lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
         
         
@@ -267,7 +269,7 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
         
         SingleTreeLikelihood_update_all_nodes(stlk);
         data->index_param = node1->left->postorder_idx;
-        Parameters_set(param, 0, node1->left->distance);
+        Parameters_add(param, node1->left->distance);
         
         
         status = opt_optimize( opt, param, &lnl2);
@@ -277,12 +279,12 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
 #ifdef DEBUG_TOPOLOGY_SPR
         printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->left->name, Parameters_value(param, 0) );
 #endif
-        
+        Parameters_pop(param);
         
         
         SingleTreeLikelihood_update_all_nodes(stlk);
         data->index_param = node1->right->postorder_idx;
-        Parameters_set(param, 0, node1->right->distance);
+        Parameters_add(param, node1->right->distance);
         
         
         status = opt_optimize( opt, param, &lnl2);
@@ -292,10 +294,11 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
 #ifdef DEBUG_TOPOLOGY_SPR
         printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->right->name, Parameters_value(param, 0) );
 #endif
-        
+        Parameters_pop(param);
+  
         SingleTreeLikelihood_update_all_nodes(stlk);
         data->index_param = node1->postorder_idx;
-        Parameters_set(param, 0, node1->distance);
+        Parameters_add(param, node1->distance);
         
         
         status = opt_optimize( opt, param, &lnl2);
@@ -305,11 +308,11 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
 #ifdef DEBUG_TOPOLOGY_SPR
         printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->name, Parameters_value(param, 0) );
 #endif
-        
+        Parameters_pop(param);
         
         SingleTreeLikelihood_update_all_nodes(stlk);
         data->index_param = node2->postorder_idx;
-        Parameters_set(param, 0, node2->distance);
+        Parameters_add(param, node2->distance);
         
         
         status = opt_optimize( opt, param, &lnl2);
@@ -319,6 +322,8 @@ double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *op
 #ifdef DEBUG_TOPOLOGY_SPR
         printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
 #endif
+		Parameters_pop(param);
+		
         if ( -lnl2 - lnl < 0.01 ){
             lnl = -lnl2;
             break;

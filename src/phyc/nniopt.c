@@ -319,7 +319,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
                 printf("  rearragement 2 %s %s\n", right->name, sibling->name);
 #endif
                 double original_bl = Node_distance(node);
-                Parameters_set(oneparameter, 0, node->distance);
+                Parameters_add(oneparameter, node->distance);
                 data_brent->index_param = Node_id(node);
                 
                 
@@ -359,6 +359,8 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
                 
                 status = opt_maximize( opt_bl, oneparameter, &nni_2);
                 if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+
+				Parameters_pop(oneparameter);
                 
                 double bl_2 = Node_distance(node);
                 
@@ -743,7 +745,7 @@ double nni_optimize_bl2( struct TopologyOptimizer * opt ){
                 printf("  rearragement 2 %s %s\n", right->name, sibling->name);
 #endif
                 double original_bl = Node_distance(node);
-                Parameters_set(oneparameter, 0, node->distance);
+                Parameters_add(oneparameter, node->distance);
                 
                 
                 // NNI 1
@@ -773,6 +775,8 @@ double nni_optimize_bl2( struct TopologyOptimizer * opt ){
                 data_brent->index_param = Node_id(node);
                 status = opt_maximize( opt_bl, oneparameter, &nni_2);
                 if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+				
+				Parameters_pop(oneparameter);
                 
                 //double nni_bl_2 = Parameters_value(oneparameter, 0);
                 
@@ -979,22 +983,24 @@ double optimize_brent_branch_length_2( SingleTreeLikelihood *stlk, Optimizer *op
         //SingleTreeLikelihood_update_all_nodes(stlk);
         SingleTreeLikelihood_update_one_node(stlk, i);
         data->index_param = Node_id(i);
-        Parameters_set(param, 0, i->distance);
+        Parameters_add(param, i->distance);
         
         status = opt_optimize( opt, param, &lnl2);
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         Node_set_distance(i, Parameters_value(param, 0));
+		Parameters_pop(param);
         
         
         //SingleTreeLikelihood_update_all_nodes(stlk);
         SingleTreeLikelihood_update_one_node(stlk, i);
         SingleTreeLikelihood_update_one_node(stlk, j);
         data->index_param = Node_id(j);
-        Parameters_set(param, 0, j->distance);
+        Parameters_add(param, j->distance);
         
         status = opt_optimize( opt, param, &lnl2);
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         Node_set_distance(j, Parameters_value(param, 0));
+		Parameters_pop(param);
         
         //SingleTreeLikelihood_update_all_nodes(stlk);
         SingleTreeLikelihood_update_one_node(stlk, j);
@@ -1886,7 +1892,7 @@ double nni_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
                 printf("  rearragement 2 %s %s\n", right->name, sibling->name);
 #endif
                 double original_bl = Node_distance(node);
-                Parameters_set(oneparameter, 0, node->distance);
+                Parameters_add(oneparameter, node->distance);
                 
                 
                 // NNI 1
@@ -1899,7 +1905,7 @@ double nni_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
                 //                data_brent->index_param = node->postorder_idx; // that's the updated postorder index in the new topology
                 //                status = opt_maximize( opt_bl, oneparameter, &nni_1);
                 //                if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-                
+				
                 nni_1 = -parsimony->calculate(parsimony);
                 
                 Tree_rearrange( tlk->tree, sibling, left );
@@ -1919,6 +1925,7 @@ double nni_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
                 //                data_brent->index_param = node->postorder_idx;
                 //                status = opt_maximize( opt_bl, oneparameter, &nni_2);
                 //                if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+				//				Parameters_pop(oneparameter);
                 
                 //parsimony->update(parsimony);
                 nni_2 = -parsimony->calculate(parsimony);

@@ -35,7 +35,7 @@ static DistributionModel* _clone_dist(DistributionModel* dm){
 	
 	clone->parameters = new_Parameters(Parameters_count(dm->parameters));
 	for (int i = 0; i < Parameters_count(dm->parameters); i++) {
-		Parameters_move(clone->parameters, clone_Parameter(Parameters_at(dm->parameters, i), true));
+		Parameters_move(clone->parameters, clone_Parameter(Parameters_at(dm->parameters, i)));
 	}
 	if(dm->x != NULL){
 		clone->x = new_Parameters(Parameters_count(dm->x));
@@ -270,7 +270,7 @@ static Model* _dist_model_clone( Model *self, Hashtable* hash ){
 				Parameters_add(x, Hashtable_get(hash, name));
 			}
 			else{
-				Parameter* p = clone_Parameter(Parameters_at(dm->x, i), true);
+				Parameter* p = clone_Parameter(Parameters_at(dm->x, i));
 				Parameters_move(x, p);
 				Hashtable_add(hash, name, p);
 			}
@@ -298,7 +298,7 @@ static Model* _dist_model_clone( Model *self, Hashtable* hash ){
 				Parameters_add(params, Hashtable_get(hash, name));
 			}
 			else{
-				Parameter* p = clone_Parameter(Parameters_at(dm->parameters, i), true);
+				Parameter* p = clone_Parameter(Parameters_at(dm->parameters, i));
 				Parameters_move(params, p);
 				Hashtable_add(hash, name, p);
 			}

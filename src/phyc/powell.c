@@ -50,7 +50,7 @@ opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 	
 	int n = Parameters_count(p);
 	
-	Parameters *ptt = clone_Parameters(p, true);
+	Parameters *ptt = clone_Parameters(p);
 	double *pt  = dvector(n);
 	double *xit = dvector(n);
 	

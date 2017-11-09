@@ -680,7 +680,7 @@ void run_searchq( SingleTreeLikelihood *tlk ,  const char* output_stem, int popS
     
     // wont work with non reversible
     if( Parameters_count(tlk->sm->m->rates) == 1 ){
-        Parameters_add(tlk->sm->m->rates, clone_Parameter(Parameters_at(tlk->sm->m->rates, 0), true));
+        Parameters_add(tlk->sm->m->rates, clone_Parameter(Parameters_at(tlk->sm->m->rates, 0)));
         for (int i = 0; i <  tlk->sm->nstate*(tlk->sm->nstate-1)/2; i+=2 ) {
             tlk->sm->m->model->values[i] = 1;
         }

@@ -65,7 +65,6 @@ struct _Parameter{
 	int id;
 	double value;
 	Constraint *cnstr;
-	bool ownconstraint;
 	bool estimate;
 #ifdef LISTENERS
 	ListenerList *listeners;
@@ -103,10 +102,6 @@ StringBuffer * Constraint_bufferize( StringBuffer *buffer, Constraint *c );
 
 void * Constraint_SML_to_object( SMLNode node );
 
-void remove_contraint( Parameter *p );
-
-void add_contraint( Parameter *p, Constraint *constr, bool ownconstraint );
-
 bool Constraint_lower_fixed( const Constraint *c );
 
 bool Constraint_upper_fixed( const Constraint *c );
@@ -143,11 +138,9 @@ Parameter * new_Parameter( const char *name, const double value, Constraint *con
 
 Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, const double value, Constraint *constr );
 
-Parameter * new_Parameter_with_postfix_and_ownership( const char *name, const char *postfix, const double value, Constraint *constr, bool owner );
-
 void free_Parameter( Parameter *p );
 
-Parameter * clone_Parameter( Parameter *p, bool duplicateconstraint );
+Parameter * clone_Parameter( Parameter *p );
 
 char * Parameter_stringify( Parameter *p );
 
@@ -198,13 +191,11 @@ void compare_parameter( const Parameter *p1, const Parameter *p2 );
 #pragma mark -
 #pragma mark Parameters
 
-Parameters * new_Parameters( const int n );
-
-Parameters * new_Parameters_with_contraint( const int capacity, Constraint *cnstr, const char *name );
+Parameters * new_Parameters( const size_t capacity );
 
 void free_Parameters( Parameters *ps );
 
-Parameters * clone_Parameters( Parameters *p, bool ownconstraint );
+Parameters * clone_Parameters( Parameters *p );
 
 char * Parameters_stringify( Parameters *ps );
 
@@ -213,9 +204,7 @@ StringBuffer * Parameters_SML_bufferize( StringBuffer *buffer, Parameters *ps );
 Parameters * Parameters_SML_to_object( SMLNode node );
 
 
-void Parameters_set( Parameters *ps, const int index, Parameter *p );
-
-Parameter * Parameters_at( const Parameters *p, const int index );
+Parameter * Parameters_at( const Parameters *p, const size_t index );
 
 void Parameters_add(Parameters *ps, Parameter *p);
 
@@ -223,19 +212,19 @@ void Parameters_move( Parameters *ps, Parameter *p);
 
 void Parameters_add_parameters(Parameters *dst, const Parameters *src);
 
-char * Parameters_name( const Parameters *p, const int index );
+void Parameters_set_name( Parameters *p, const size_t index, const char *name );
 
-int Parameters_count( const Parameters *p );
+char * Parameters_name( const Parameters *p, const size_t index );
 
-int Parameters_capacity( const Parameters *p );
+size_t Parameters_count( const Parameters *p );
+
+size_t Parameters_capacity( const Parameters *p );
 
 void Parameters_set_value( Parameters *p, const int index, const double value );
 
 void Parameters_set_all_value( Parameters *p, const double value );
 
 double Parameters_value( const Parameters *p, const int index );
-
-
 
 bool Parameters_estimate( const Parameters *p, const int index );
 
@@ -253,11 +242,10 @@ void Parameters_set_lower( Parameters *p, const int index, const double value );
 
 void Parameters_set_bounds( Parameters *p, const int index, const double lower, const double upper );
 
-void Parameters_remove( Parameters *params, int index );
+void Parameters_remove( Parameters *params, size_t index );
 
 void Parameters_pop( Parameters *params );
 
-bool update_matching_parameters( Parameters *params, const Parameters *new, const double precision );
 
 Parameters * get_sub_parameters( Parameters *p, const int start, const int end );
 

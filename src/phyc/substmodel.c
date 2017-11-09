@@ -660,7 +660,7 @@ SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
 	clone->clone = m->clone;
 	
 	if( m->rates != NULL ){
-		clone->rates = clone_Parameters(m->rates, true );
+		clone->rates = clone_Parameters(m->rates );
 		
 	}
 	
@@ -710,7 +710,7 @@ SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, Simplex*
 	clone->clone = m->clone;
 	
 	if( m->rates != NULL ){
-		clone->rates = clone_Parameters(m->rates, true );
+		clone->rates = clone_Parameters(m->rates);
 		
 	}
 	
