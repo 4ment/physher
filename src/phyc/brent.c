@@ -38,9 +38,9 @@ opt_result serial_brent_optimize( Parameters *ps, opt_func f, void *data, OptSto
 		stop->iter = 0;
 		stop->f_eval_current = 0;
 		opt_result status = brent_optimize(temp, f, data, stop, fmin);
-		Parameters_pop_soft(temp);
+		Parameters_pop(temp);
 	}
-	free_Parameters_soft(temp);
+	free_Parameters(temp);
 	return OPT_SUCCESS;
 }
 

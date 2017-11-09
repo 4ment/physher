@@ -77,6 +77,7 @@ typedef struct SitePattern{
 	int nsites;      // sum weights
 	int nstate;
     DataType *datatype;
+	int ref_count;
 } SitePattern;
 
 SitePattern * new_SitePattern( const Sequences *aln );

@@ -22,23 +22,8 @@
 
 static void _nuc_unrestricted_nonstat_update_Q( SubstitutionModel *m );
 
-SubstitutionModel * new_NONSTATNucleotideModel(){
-    double freqs[4] = {0.25,0.25,0.25,0.25};
-    SubstitutionModel *m = new_NONSTATNucleotideModel_with_values(freqs);
-    return m;
-}
-
-SubstitutionModel * new_NONSTATNucleotideModel_with_values( const double *freqs ){
-	SubstitutionModel *m = NULL;
-	
-	m = create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA);
-	
-	m->_freqs = clone_dvector(freqs, 4);
-	
-	m->freqs = new_Parameters( 3 );
-	Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piA", "model", freqs[0]/freqs[3], new_Constraint(0.001, 0.999) ) );
-	Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piC", "model", freqs[1]/freqs[3],     new_Constraint(0.001, 0.999) ) );
-	Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piG", "model", freqs[2]/freqs[3],     new_Constraint(0.001, 0.999) ) );
+SubstitutionModel * new_NONSTATNucleotideModel(Simplex* freqs){
+    SubstitutionModel *m = create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA, freqs);
 	
 	m->rates = new_Parameters( 11 );
 	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r1",  "model", 1, new_Constraint(0.001, 100) ) );
@@ -55,38 +40,17 @@ SubstitutionModel * new_NONSTATNucleotideModel_with_values( const double *freqs 
 	
 	
 	m->update_Q = _nuc_unrestricted_nonstat_update_Q;
-	m->update_frequencies = nucleotide_update_freqs_relative;
-	
-	
-	return m;
+    return m;
 }
 
-SubstitutionModel * new_NONSTATNucleotideModel_with_parameters( const Parameters *freqs, const Parameters *rates ){
+SubstitutionModel * new_NONSTATNucleotideModel_with_parameters( Simplex* freqs, const Parameters *rates ){
 	SubstitutionModel *m = NULL;
 	
-	m = create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA);
-	
-	m->_freqs = dvector(4);
-	if(Parameters_count(freqs) == 4){
-		m->update_frequencies = nucleotide_update_freqs;
-		for (int i = 0; i < Parameters_count(freqs); i++) {
-			m->_freqs[i] = Parameters_value(freqs, i);
-		}
-	}
-	else{
-		m->update_frequencies = nucleotide_update_freqs_relative;
-		fprintf(stderr, "new_GTR_with_parameters need to be implemented\n");
-		exit(1);
-	}
+	m = create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA, freqs);
 	
 	m->rates = new_Parameters( Parameters_count(rates) );
 	for(int i = 0; i < Parameters_count(rates); i++){
 		Parameters_add(m->rates, Parameters_at(rates, i) );
-	}
-	
-	m->freqs = new_Parameters( 3 );
-	for(int i = 0; i < Parameters_count(freqs); i++){
-		Parameters_add(m->rates, Parameters_at(freqs, i) );
 	}
 	
 	m->update_Q = _nuc_unrestricted_nonstat_update_Q;
@@ -96,7 +60,7 @@ SubstitutionModel * new_NONSTATNucleotideModel_with_parameters( const Parameters
 }
 
 void _nuc_unrestricted_nonstat_update_Q( SubstitutionModel *m ){
-	
+	const double* freqs = m->get_frequencies(m);
     int index = 0;
     for ( int i = 0; i < 4; i++ ) {
         for ( int j = 0; j < 4; j++ ) {
@@ -112,7 +76,7 @@ void _nuc_unrestricted_nonstat_update_Q( SubstitutionModel *m ){
     
     for ( int i = 0; i < m->nstate; i++ )  {
         for ( int j = 0; j < m->nstate; j++ ) {
-            m->Q[i][j] = m->Q[i][j] * m->_freqs[j];
+            m->Q[i][j] = m->Q[i][j] * freqs[j];
         }
     }
     

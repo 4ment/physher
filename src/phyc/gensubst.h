@@ -22,12 +22,12 @@
 
 #include "substmodel.h"
 
-SubstitutionModel * new_GeneralModel( const unsigned *model, unsigned dim );
+SubstitutionModel * new_GeneralModel( const unsigned *model, Simplex* freqs );
 
-SubstitutionModel * new_GeneralModel2( const unsigned *model, unsigned dim, int relativeTo, bool normalize );
+SubstitutionModel * new_GeneralModel2( const unsigned *model, Simplex* freqs, int relativeTo, bool normalize );
 
-SubstitutionModel * new_ReversibleModel( int dim, const int *model );
+SubstitutionModel * new_ReversibleModel( const int *model, Simplex* freqs );
 
-SubstitutionModel * new_NonReversibleModel( int dim, const int *model );
+SubstitutionModel * new_NonReversibleModel( const int *model, Simplex* freqs );
 
 #endif /* gensubst_h */

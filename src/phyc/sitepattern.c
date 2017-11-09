@@ -118,6 +118,7 @@ SitePattern * new_SitePattern( const Sequences *aln ){
 		free(temp_patterns[i]);
 	}
 	free(temp_patterns);
+	sp->ref_count = 1;
 	
 	return sp;
 }
@@ -202,25 +203,31 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 		free(temp_patterns[i]);
 	}
 	free(temp_patterns);
+	sp->ref_count = 1;
 	
 	return sp;
 }
 
 void free_SitePattern( SitePattern *sp ){
-    if(sp->patterns != NULL ){
-        free_ui8matrix(sp->patterns, sp->count);
-        free(sp->weights);
-    }
-    if(sp->indexes != NULL)free(sp->indexes);
-	
-    if(sp->names != NULL ){
-        for (int i = 0; i < sp->size; i++) {
-            free(sp->names[i]);
-        }
-        free(sp->names);
-    }
-    free_DataType(sp->datatype);
-    free(sp);
+	if(sp->ref_count == 1){
+		if(sp->patterns != NULL ){
+			free_ui8matrix(sp->patterns, sp->count);
+			free(sp->weights);
+		}
+		if(sp->indexes != NULL)free(sp->indexes);
+		
+		if(sp->names != NULL ){
+			for (int i = 0; i < sp->size; i++) {
+				free(sp->names[i]);
+			}
+			free(sp->names);
+		}
+		free_DataType(sp->datatype);
+		free(sp);
+	}
+	else{
+		sp->ref_count--;
+	}
 }
 
 SitePattern * clone_SitePattern( const SitePattern *sp ){
@@ -252,7 +259,7 @@ SitePattern * clone_SitePattern( const SitePattern *sp ){
     for ( int i = 0; i < sp->size; i++) {
         newsp->names[i] = String_clone( sp->names[i] );
     }
-    
+    newsp->ref_count = 1;
     return newsp;
 }
 
@@ -369,6 +376,8 @@ SitePattern* SitePattern_merge( const SitePattern* sitePattern1, const SitePatte
 		sp->names[i] = String_clone( sitePattern1->names[i] );
 	}
 	
+	sp->ref_count = 1;
+	
 	return sp;
 }
 
@@ -419,6 +428,7 @@ SitePattern ** SitePattern_split( const SitePattern *sitePattern, const int coun
 		sps[i]->nsites = sitePattern->nsites;
 		sps[i]->indexes = ivector(sitePattern->nsites);
 		p += sps[i]->count;
+		sps[i]->ref_count = 1;
 	}	
 	
 	return sps;

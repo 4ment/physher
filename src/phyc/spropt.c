@@ -797,7 +797,7 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
     free_Parsimony(parsimony);
     free_BrentData(data_brent);
     free_Optimizer(opt_bl);
-    free_Parameters_soft(oneparameter);
+    free_Parameters(oneparameter);
     free_SingleTreeLikelihood_share(tlk2, true, false);
     
     free(branches);
@@ -1795,7 +1795,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                 
                 free_Optimizer(opt_bl);
                 free_BrentData(data_brent);
-                free_Parameters_soft(oneparameter);
+                free_Parameters(oneparameter);
                 
                 
 #ifdef DEBUG_TOPOLOGY_SPR

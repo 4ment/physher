@@ -53,7 +53,7 @@ static void _scale_rate_heights( SingleTreeLikelihood *tlk ){
 	Parameter *p = NULL;
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
 		p = nodes[i]->height;
-		if ( Constraint_fixed(p->cnstr)) continue;
+		if ( !Parameter_estimate(p)) continue;
 		
 		if( Constraint_lower_fixed(p->cnstr) ){
 			min = dmax(min, Constraint_flower(p->cnstr)/p->value);
@@ -130,7 +130,7 @@ static void _init_pop( GA *ga ){
     double *chromosome = ga->individuals[0]->chromosome;
     int index = 0;
     for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        if( !Parameter_fixed( nodes[i]->height) ){
+        if( Parameter_estimate( nodes[i]->height) ){
             chromosome[index++] = Node_height( nodes[i] );
         }
     }
@@ -150,7 +150,7 @@ double optimize_ga( SingleTreeLikelihood *tlk ){
     Node **nodes = Tree_get_nodes(tree, POSTORDER);
     int variable_heights = 0;
     for ( int i = 0; i < Tree_node_count(tree); i++ ) {
-        if ( !Parameter_fixed( nodes[i]->height) ) {
+        if ( Parameter_estimate( nodes[i]->height) ) {
             variable_heights++;
         }
     }
@@ -191,7 +191,7 @@ void _strict_mutate( GA *ga, Individual *individual ){
     Node **nodes = Tree_get_nodes( tlk->tree, POSTORDER );
     int index = 0;
 	for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        if( !Parameter_fixed( nodes[i]->height) ){
+        if( Parameter_estimate( nodes[i]->height) ){
             Node_set_height( nodes[i], chromosome[index] );
             index++;
         }
@@ -221,7 +221,7 @@ void _strict_mutate( GA *ga, Individual *individual ){
     
     index = 0;
 	for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        if( !Parameter_fixed( nodes[i]->height) ){
+        if( Parameter_estimate( nodes[i]->height) ){
             chromosome[index] = Node_height( nodes[i] );
             index++;
         }
@@ -239,7 +239,7 @@ double _strict_fitness( GA *ga, Individual *individual ){
     Node **nodes = Tree_get_nodes( tlk->tree, POSTORDER );
     int index = 0;
 	for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        if( !Parameter_fixed( nodes[i]->height) ){
+        if( Parameter_estimate( nodes[i]->height) ){
             Node_set_height( nodes[i], chromosome[index] );
             index++;
         }

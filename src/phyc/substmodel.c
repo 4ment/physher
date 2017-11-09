@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <math.h>
+#include <tgmath.h>
 #include <string.h>
 #include <strings.h>
 #include <float.h>
@@ -46,8 +47,6 @@
 static void _substitution_model_handle_change( Model *self, Model *model, int index ){
 	SubstitutionModel* m = (SubstitutionModel*)self->obj;
 	m->need_update = true;
-	//TODO: should be smarter
-	m->update_frequencies(m);
 	m->dQ_need_update = true;
 	self->listeners->fire( self->listeners, self, index );
 }
@@ -56,15 +55,14 @@ static void _substitution_model_free( Model *self ){
 	if(self->ref_count == 1){
 		printf("Free subsitution model %s\n", self->name);
 		SubstitutionModel* m = (SubstitutionModel*)self->obj;
-	//	free_SubstitutionModel(m);
 		free(m->name);
-		if( m->_freqs != NULL ) free(m->_freqs);
+		free_Simplex(m->simplex);
 		if( m->eigendcmp != NULL ) free_EigenDecomposition(m->eigendcmp);
 		if( m->Q != NULL ) free_dmatrix(m->Q, m->nstate);
 		if( m->PP != NULL ) free_dmatrix(m->PP, m->nstate);
-		free_Parameters(m->rates);
-		free_Parameters(m->freqs);
-		if( m->model != NULL ) free(m->model);
+		if(m->rates != NULL) free_Parameters(m->rates);
+		free_Simplex(m->simplex);
+		if( m->model != NULL ) m->model->free(m->model);
 		if( m->dQ != NULL ) free(m->dQ);
 		free(m);
 		
@@ -80,25 +78,43 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 		return Hashtable_get(hash, self->name);
 	}
 	SubstitutionModel* subst = (SubstitutionModel*)self->obj;
-	SubstitutionModel* mclone = clone_substitution_model(subst);
-	return new_SubstitutionModel2(self->name, mclone);
+	Model* msimplex= self->data;
+	Model* msimplexclone = NULL;
+	if (Hashtable_exists(hash, msimplex->name)) {
+		msimplexclone = Hashtable_get(hash, msimplex->name);
+		msimplexclone->ref_count++;
+	}
+	else{
+		msimplexclone = msimplex->clone(msimplex, hash);
+		Hashtable_add(hash, msimplexclone->name, msimplexclone);
+	}
+	
+	SubstitutionModel* mclone = clone_substitution_model_with(subst, (Simplex*)msimplexclone->obj);
+	if ( mclone->rates != NULL ) {
+		for ( int i = 0; i < Parameters_count(mclone->rates); i++ ) {
+			Hashtable_add(hash, Parameters_name(mclone->rates, i), Parameters_at(mclone->rates, i));
+		}
+	}
+	
+	if (mclone->model != NULL) {
+		Hashtable_add(hash, mclone->model->name, mclone->model);
+	}
+	Model *clone = new_SubstitutionModel2(self->name, mclone, msimplexclone);
+	Hashtable_add(hash, clone->name, clone);
+	msimplexclone->free(msimplexclone);
+	return clone;
 }
 
 // SubstitutionModel2 listen to the rate and freq parameters
-Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm ){
+Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* simplex ){
 	Model *model = new_Model(name, sm);
+	model->data = simplex;
+	simplex->ref_count++;
 	int i = 0;
 	if ( sm->rates != NULL ) {
 		for ( i = 0; i < Parameters_count(sm->rates); i++ ) {
 			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
 		}
-		Parameters_add_parameters(model->parameters, sm->rates);
-	}
-	if ( sm->freqs != NULL ) {
-		for ( i = 0; i < Parameters_count(sm->freqs); i++ ) {
-			Parameters_at(sm->freqs, i)->listeners->add( Parameters_at(sm->freqs, i)->listeners, model );
-		}
-		Parameters_add_parameters(model->parameters, sm->freqs);
 	}
 	
 	model->update = _substitution_model_handle_change;
@@ -110,11 +126,11 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm ){
 
 
 double get_frequency( SubstitutionModel *m, int base ){
-	return m->_freqs[base];
+	return m->simplex->get_value(m->simplex, base);
 }
 
-double * get_frequencies( SubstitutionModel *m ){
-	return m->_freqs;
+const double * get_frequencies( SubstitutionModel *m ){
+	return m->simplex->get_values(m->simplex);
 }
 
 
@@ -122,29 +138,6 @@ double * get_frequencies( SubstitutionModel *m ){
 #pragma mark Private functions
 
 static void foo_update( SubstitutionModel *m ){} // does not nothing
-
-void general_update_freqs( SubstitutionModel *model ){
-    model->need_update = true;
-    model->dQ_need_update = true;
-    model->_freqs[model->nstate-1] = 0;
-    for(int i = 0; i < Parameters_count(model->freqs); i++){
-        model->_freqs[model->nstate-1] += Parameters_value(model->freqs, i);
-    }
-    model->_freqs[model->nstate-1] = 1.0/(1.0+model->_freqs[model->nstate-1]);
-    for(int i = 0; i < Parameters_count(model->freqs); i++){
-        model->_freqs[i] = Parameters_value(model->freqs, i) * model->_freqs[model->nstate-1];
-    }
-}
-
-static void _set_frequencies( SubstitutionModel *m, const double *freqs ){
-	memcpy(m->_freqs, freqs, sizeof(double)*m->nstate);
-	Parameters_set_value( m->freqs, 0, freqs[0]/freqs[m->nstate-1] ); // fire changes only once
-	for (int i = 1; i < m->nstate-1; i++) {
-		Parameters_at(m->freqs, i)->value = freqs[i]/freqs[m->nstate-1];
-	}
-	m->need_update = true;
-	m->dQ_need_update = true;
-}
 
 static void _set_rates( SubstitutionModel *m, const double *rates ){
 	for ( int i = 0; i < Parameters_count(m->rates); i++) {
@@ -156,8 +149,7 @@ static void _set_rates( SubstitutionModel *m, const double *rates ){
 
 // Set the relative frequency (ie. Parameter)!!
 static void _set_relative_frequency( SubstitutionModel *m, const double freq, const int index ){
-	Parameters_set_value(m->freqs,index, freq);
-	m->update_frequencies(m);
+	m->simplex->set_parameter_value(m->simplex, index, freq);
 	m->need_update = true;
     m->dQ_need_update = true;
 }
@@ -522,10 +514,9 @@ static double _pij_t( SubstitutionModel *m, const int i, const int j, const doub
 #pragma mark -
 
 
-SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, const datatype dtype ){
+SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, const datatype dtype, Simplex* freqs ){
     SubstitutionModel *m = (SubstitutionModel *)malloc( sizeof(SubstitutionModel) );
     assert(m);
-    m->id = 0;
     
     m->nstate = 0;
     m->name = String_clone(name);
@@ -533,25 +524,24 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     m->dtype = dtype;
     
     // Parameters and Q matrix
-    m->_freqs = NULL;
     m->Q = NULL;
     m->PP = NULL;
     
     m->rates = NULL;
-    m->freqs = NULL;
-    
+	m->simplex = freqs;
+	
     m->eigendcmp = NULL;
     
     m->need_update = true;
     m->dQ_need_update = true;
     
 	// Functions
-	m->set_frequencies = _set_frequencies; // real frequencies that sum to 1
+	m->get_frequencies = get_frequencies;
+	
 	m->set_rates = _set_rates;
 	
 	m->set_relative_frequency = _set_relative_frequency; // relative frequency with dimention nstate-1
     m->set_rate = _set_rate;
-    m->update_frequencies = foo_update;
     m->update_Q = foo_update;
     
     m->pij_t = _pij_t;
@@ -575,22 +565,22 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     m->normalize = true;
     
     m->model = NULL;
+	m->relativeTo = -1;
     
     return m;
 }
 
-SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname ){
-    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_NUCLEOTIDE);
+SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname, Simplex* freqs ){
+    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_NUCLEOTIDE, freqs);
     m->nstate = 4;
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);
     m->eigendcmp = new_EigenDecomposition(m->nstate);
-    m->model = uivector(5);
     return m;
 }
 
-SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code ){
-    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_CODON);
+SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code, Simplex* freqs ){
+    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_CODON, freqs);
     m->nstate = NUMBER_OF_CODONS[gen_code];
     m->gen_code = gen_code;
     m->Q = dmatrix(m->nstate, m->nstate);
@@ -599,8 +589,8 @@ SubstitutionModel * create_codon_model( const char *name, const modeltype modeln
     return m;
 }
 
-SubstitutionModel * create_aa_model( const char *name, const modeltype modelname ){
-    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_AMINO_ACID);
+SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Simplex* freqs ){
+    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_AMINO_ACID, freqs);
     m->nstate = 20;
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);
@@ -608,9 +598,9 @@ SubstitutionModel * create_aa_model( const char *name, const modeltype modelname
     return m;
 }
 
-SubstitutionModel * create_general_model( const char *name, const modeltype modelname, int dim ){
-    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_GENERIC);
-    m->nstate = dim;
+SubstitutionModel * create_general_model( const char *name, const modeltype modelname, Simplex* freqs ){
+    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_GENERIC, freqs);
+    m->nstate = freqs->K;
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);
     m->eigendcmp = new_EigenDecomposition(m->nstate);
@@ -618,92 +608,115 @@ SubstitutionModel * create_general_model( const char *name, const modeltype mode
 }
 
 void free_SubstitutionModel( SubstitutionModel *m){
-	free_SubstitutionModel_share(m, false, false);
-}
-
-void free_SubstitutionModel_share( SubstitutionModel *m, bool share_freqs, bool share_rates ){
 	free(m->name);
-	if( m->_freqs != NULL ) free(m->_freqs);
 	if( m->eigendcmp != NULL ) free_EigenDecomposition(m->eigendcmp);
 	if( m->Q != NULL ) free_dmatrix(m->Q, m->nstate);
 	if( m->PP != NULL ) free_dmatrix(m->PP, m->nstate);
-	if( m->rates != NULL && !share_rates ) free_Parameters(m->rates);
-	if( m->freqs != NULL && !share_freqs ) free_Parameters(m->freqs);
+	if( m->rates != NULL ) free_Parameters(m->rates);
     if( m->model != NULL ) free(m->model);
     if( m->dQ != NULL ) free(m->dQ);
+	free_Simplex(m->simplex);
 	free(m);
 }
 
 
 SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
-    return clone_substitution_model_share(m, false, false);
-}
-
-SubstitutionModel * clone_substitution_model_share(SubstitutionModel *m, bool share_freqs, bool share_rates){
-    SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->dtype);
-    clone->nstate = m->nstate;
-    clone->_freqs = clone_dvector(m->_freqs, m->nstate);
-    
-    if( m->Q != NULL ){
-        clone->eigendcmp = clone_EigenDecomposition(m->eigendcmp);
-        clone->Q = clone_dmatrix( m->Q, m->nstate, m->nstate );
-        clone->PP = clone_dmatrix( m->PP, m->nstate, m->nstate );
-    }
-    
-    clone->gen_code = m->gen_code;
-    clone->reversible = m->reversible;
-    clone->normalize = m->normalize;
-    
-    // Functions
-    clone->pij_t = m->pij_t;
-    clone->p_t   = m->p_t;
-    clone->p_t_transpose   = m->p_t_transpose;
-    
-    clone->dp_dt   = m->dp_dt;
-    clone->dp_dt_transpose   = m->dp_dt_transpose;
-    
-    clone->d2p_d2t   = m->d2p_d2t;
-    clone->d2p_d2t_transpose   = m->d2p_d2t_transpose;
-    
-    m->dPdp = m->dPdp;
-    if( m->dQ != NULL ) clone->dQ = clone_dvector(clone->dQ, m->nstate*m->nstate);
-    
-    clone->update_frequencies = m->update_frequencies;
+	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->dtype, clone_Simplex(m->simplex));
+	clone->nstate = m->nstate;
+	
+	if( m->Q != NULL ){
+		clone->eigendcmp = clone_EigenDecomposition(m->eigendcmp);
+		clone->Q = clone_dmatrix( m->Q, m->nstate, m->nstate );
+		clone->PP = clone_dmatrix( m->PP, m->nstate, m->nstate );
+	}
+	
+	clone->gen_code = m->gen_code;
+	clone->reversible = m->reversible;
+	clone->normalize = m->normalize;
+	
+	// Functions
+	clone->pij_t = m->pij_t;
+	clone->p_t   = m->p_t;
+	clone->p_t_transpose   = m->p_t_transpose;
+	
+	clone->dp_dt   = m->dp_dt;
+	clone->dp_dt_transpose   = m->dp_dt_transpose;
+	
+	clone->d2p_d2t   = m->d2p_d2t;
+	clone->d2p_d2t_transpose   = m->d2p_d2t_transpose;
+	
+	clone->dPdp = m->dPdp;
+	if( m->dQ != NULL ) clone->dQ = clone_dvector(m->dQ, m->nstate*m->nstate);
+	
 	clone->update_Q = m->update_Q;
-	clone->set_frequencies = m->set_frequencies;
 	clone->set_rates = m->set_rates;
 	clone->set_relative_frequency = m->set_relative_frequency;
 	clone->set_rate = m->set_rate;
 	
-    clone->free = m->free;
-    clone->clone = m->clone;
-    
-    if( m->rates != NULL ) clone->rates = clone_Parameters(m->rates, true );
-    if( m->freqs != NULL ) clone->freqs = clone_Parameters(m->freqs, true );
-    
-    if( m->rates != NULL ){
-        if( share_rates ){
-            clone->rates = m->rates;
-        }
-        else {
-            clone->rates = clone_Parameters(m->rates, true );
-        }
-    }
-    if( m->freqs != NULL ){
-        if( share_freqs ){
-            clone->freqs = m->freqs;
-        }
-        else {
-            clone->freqs = clone_Parameters(m->freqs, true );
-        }
-    }
-    
-    if( m->model != NULL ) clone->model = clone_uivector(m->model, m->nstate*m->nstate);
-    
-    clone->need_update = false;
-    clone->dQ_need_update = false;
-    
-    return clone;
+	clone->free = m->free;
+	clone->clone = m->clone;
+	
+	if( m->rates != NULL ){
+		clone->rates = clone_Parameters(m->rates, true );
+		
+	}
+	
+	if( m->model != NULL ) clone->model = m->model->clone(m->model);
+	
+	clone->need_update = false;
+	clone->dQ_need_update = false;
+	
+	return clone;
+}
+
+SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, Simplex* simplex){
+	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->dtype, simplex);
+	clone->nstate = m->nstate;
+	clone->simplex = simplex;
+	
+	if( m->Q != NULL ){
+		clone->eigendcmp = clone_EigenDecomposition(m->eigendcmp);
+		clone->Q = clone_dmatrix( m->Q, m->nstate, m->nstate );
+		clone->PP = clone_dmatrix( m->PP, m->nstate, m->nstate );
+	}
+	
+	clone->gen_code = m->gen_code;
+	clone->reversible = m->reversible;
+	clone->normalize = m->normalize;
+	
+	// Functions
+	clone->pij_t = m->pij_t;
+	clone->p_t   = m->p_t;
+	clone->p_t_transpose   = m->p_t_transpose;
+	
+	clone->dp_dt   = m->dp_dt;
+	clone->dp_dt_transpose   = m->dp_dt_transpose;
+	
+	clone->d2p_d2t   = m->d2p_d2t;
+	clone->d2p_d2t_transpose   = m->d2p_d2t_transpose;
+	
+	clone->dPdp = m->dPdp;
+	if( m->dQ != NULL ) clone->dQ = clone_dvector(m->dQ, m->nstate*m->nstate);
+	
+	clone->update_Q = m->update_Q;
+	clone->set_rates = m->set_rates;
+	clone->set_relative_frequency = m->set_relative_frequency;
+	clone->set_rate = m->set_rate;
+	
+	clone->free = m->free;
+	clone->clone = m->clone;
+	
+	if( m->rates != NULL ){
+		clone->rates = clone_Parameters(m->rates, true );
+		
+	}
+	
+	if( m->model != NULL ) clone->model = m->model->clone(m->model);
+	
+	clone->need_update = false;
+	clone->dQ_need_update = false;
+	
+	return clone;
 }
 
 
@@ -722,7 +735,6 @@ StringBuffer * SubstitutionModel_bufferize( StringBuffer *buffer, SubstitutionMo
 	int i = 0;
 	
 	StringBuffer_append_string(buffer, "{");
-	StringBuffer_append_strings(buffer, 2, "id:\"", m->id, "\",\n");
 	StringBuffer_append_strings(buffer, 2, "name:\"", m->name, "\",\n");
 	
 	if(Parameters_count(m->rates) > 0){
@@ -732,13 +744,13 @@ StringBuffer * SubstitutionModel_bufferize( StringBuffer *buffer, SubstitutionMo
 		}
 		StringBuffer_append_string(buffer, "]\n");
 	}
-	if(Parameters_count(m->rates) > 0){
-		StringBuffer_append_string(buffer, "freqs:[");
-		for ( i = 0; i < m->nstate; i++) {
-			buffer = StringBuffer_append_format(buffer," %f", m->_freqs[i]);		
-		}
-		StringBuffer_append_string(buffer, "]\n");
-	}
+//	if(Parameters_count(m->rates) > 0){
+//		StringBuffer_append_string(buffer, "freqs:[");
+//		for ( i = 0; i < m->nstate; i++) {
+//			buffer = StringBuffer_append_format(buffer," %f", m->_freqs[i]);		
+//		}
+//		StringBuffer_append_string(buffer, "]\n");
+//	}
 	StringBuffer_append_string(buffer, "}");
 
 	return buffer;
@@ -797,7 +809,7 @@ StringBuffer * SubstitutionModel_bufferize( StringBuffer *buffer, SubstitutionMo
 void update_eigen_system( SubstitutionModel *m ){
 	
 	make_zero_rows( m->Q, m->nstate);
-	normalize_Q( m->Q, m->_freqs, m->nstate );
+	normalize_Q( m->Q, m->get_frequencies(m), m->nstate );
     
     /*fprintf(stderr, "\n");
     print_frequencies(stderr, m);
@@ -857,7 +869,7 @@ void check_frequencies( const double *freqs, const int dim ){
 	}
 }
 
-void check_frequencies_parameters( const Parameters* freqs ){
+void check_frequencies_parameters( Parameters* freqs ){
 	double sum = 0.;
 	for ( int i = 0; i < Parameters_count(freqs); i++)
 		sum += Parameters_value(freqs, i);
@@ -869,27 +881,21 @@ void check_frequencies_parameters( const Parameters* freqs ){
 
 
 
-void bufferize_frequencies(StringBuffer *buffer, const SubstitutionModel *m ){
-    if( m->_freqs != NULL ){
-		StringBuffer_append_format(buffer, "   A: %f\n", m->_freqs[0] );
-		StringBuffer_append_format(buffer, "   C: %f\n", m->_freqs[1] );
-		StringBuffer_append_format(buffer, "   G: %f\n", m->_freqs[2] );
-		StringBuffer_append_format(buffer, "   T: %f\n", m->_freqs[3] );
-    }
-    else {
-		StringBuffer_append_format(buffer, "   A: 0.25\n" );
-		StringBuffer_append_format(buffer, "   C: 0.25\n" );
-		StringBuffer_append_format(buffer, "   G: 0.25\n" );
-		StringBuffer_append_format(buffer, "   T: 0.25\n" );
-    }
+void bufferize_frequencies(StringBuffer *buffer, SubstitutionModel *m ){
+	const double* freqs = m->get_frequencies(m);
+	StringBuffer_append_format(buffer, "   A: %f\n", freqs[0] );
+	StringBuffer_append_format(buffer, "   C: %f\n", freqs[1] );
+	StringBuffer_append_format(buffer, "   G: %f\n", freqs[2] );
+	StringBuffer_append_format(buffer, "   T: %f\n", freqs[3] );
 }
 
-void bufferize_codon_frequencies(StringBuffer *buffer, const SubstitutionModel *m ){
+void bufferize_codon_frequencies(StringBuffer *buffer, SubstitutionModel *m ){
     char codon[4];
     codon[3] = '\0';
+	const double* freqs = m->get_frequencies(m);
     for ( int i = 0; i < m->nstate; i++ ) {
         GenticCode_encoding_to_codon_string( i, m->gen_code, codon );
-        StringBuffer_append_format(buffer, "   %s: %f",  codon, m->_freqs[i]);
+        StringBuffer_append_format(buffer, "   %s: %f",  codon, freqs[i]);
         
         if( (i+1) % 8 == 0 ){
             StringBuffer_append_char(buffer, '\n');
@@ -897,11 +903,11 @@ void bufferize_codon_frequencies(StringBuffer *buffer, const SubstitutionModel *
     }
 }
 
-void bufferize_aa_frequencies(StringBuffer *buffer, const SubstitutionModel *m ){
+void bufferize_aa_frequencies(StringBuffer *buffer, SubstitutionModel *m ){
     char AMINO_ACIDS[20] = "ACDEFGHIKLMNPQRSTVWY";
-    
+    const double* freqs = m->get_frequencies(m);
     for ( int i = 0; i < m->nstate; i++ ) {
-        StringBuffer_append_format(buffer, "   %c: %f",  AMINO_ACIDS[i], m->_freqs[i]);
+        StringBuffer_append_format(buffer, "   %c: %f",  AMINO_ACIDS[i], freqs[i]);
         
         if( (i+1) % 5 == 0 ){
             StringBuffer_append_char(buffer, '\n');
@@ -921,7 +927,7 @@ void bufferize_aa_frequencies(StringBuffer *buffer, const SubstitutionModel *m )
     }
 }*/
 
-void print_frequencies(FILE *pfile, const SubstitutionModel *m ){
+void print_frequencies(FILE *pfile, SubstitutionModel *m ){
 	StringBuffer *buffer = new_StringBuffer(100);
 	if( m->dtype == DATA_TYPE_NUCLEOTIDE ) bufferize_frequencies(buffer, m);
     else if( m->dtype == DATA_TYPE_CODON ) bufferize_codon_frequencies(buffer, m);
@@ -1055,7 +1061,7 @@ void bufferize_rates( StringBuffer *buffer, const SubstitutionModel *m ){
 			StringBuffer_append_string(buffer, "   GT: 1\n");
 		}
 		else if ( m->modeltype == HKY ) {
-			StringBuffer_append_format(buffer, "   Kappa: %f (Ts/Tv: %f)\n", Parameters_value(m->rates, 0), kappa_to_tstv(Parameters_value(m->rates, 0), m->_freqs) );
+			StringBuffer_append_format(buffer, "   Kappa: %f (Ts/Tv: %f)\n", Parameters_value(m->rates, 0), kappa_to_tstv(Parameters_value(m->rates, 0), m->get_frequencies(m)) );
 		}
 		else if ( m->modeltype == K80 ) {
 			StringBuffer_append_format(buffer, "   Kappa: %f (Ts/Tv: %f)\n", Parameters_value(m->rates, 0), Parameters_value(m->rates, 0) );
@@ -1072,9 +1078,9 @@ void bufferize_rates( StringBuffer *buffer, const SubstitutionModel *m ){
             char cars[6] = "abcdef";
 			for ( int i = 0; i < 5; i++) {
                 char c[2];
-                c[0] = cars[m->model[i]];
+                c[0] = cars[m->model->values[i]];
                 c[1] = '\0';
-				StringBuffer_append_format(buffer, "   %s: %f", rates[ m->model[i] ], Parameters_value(m->rates, m->model[i]));
+				StringBuffer_append_format(buffer, "   %s: %f", rates[i], Parameters_value(m->rates, m->model->values[i]));
 				StringBuffer_append_format(buffer, " %s\n", c);
 			}
 			StringBuffer_append_format(buffer, "   GT: 1\n");
@@ -1283,11 +1289,11 @@ char * SubstitutionModel_get_string( modeltype modtype ){
 /****************************************************************************/
 
 
-double tstv_to_kappa( double tstv, double *freqs ){
+double tstv_to_kappa( double tstv, const double *freqs ){
     return (tstv*(freqs[0]+freqs[2])*(freqs[1]+freqs[3]))/((freqs[0]*freqs[2])+(freqs[1]*freqs[3]));
 }
 
-double kappa_to_tstv( double kappa, double *freqs ){
+double kappa_to_tstv( double kappa, const double *freqs ){
     return kappa * ((freqs[0]*freqs[2])+(freqs[1]*freqs[3]))/((freqs[0]+freqs[2])*(freqs[1]+freqs[3]));
 }
 

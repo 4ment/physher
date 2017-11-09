@@ -49,7 +49,7 @@
 
 static void _free_BranchModel( BranchModel *bm, bool remove_tree  ){
 	if( bm->indicators != NULL ) free(bm->indicators);
-	if( bm->map != NULL ) free_DiscreteParameter(bm->map);
+	if( bm->map != NULL ) bm->map->free(bm->map);
 	if( bm->unscaled_rates != NULL ) free(bm->unscaled_rates);
 	if( bm->rates != NULL ) free_Parameters(bm->rates);
 	if ( remove_tree && bm->tree != NULL ) {
@@ -135,7 +135,7 @@ static void _branch_model_free( Model *self ){
 		
 		//bm->free(bm, false);
 		if( bm->indicators != NULL ) free(bm->indicators);
-		free_DiscreteParameter(bm->map);
+		bm->map->free(bm->map);
 		if( bm->unscaled_rates != NULL ) free(bm->unscaled_rates);
 		free_Parameters(bm->rates);
 		free(bm);
@@ -161,6 +161,12 @@ static Model* _branch_model_clone( Model* self, Hashtable *hash ){
 		Hashtable_add(hash, mtree->name, mtreeclone);
 	}
 	BranchModel*bmclone = clone_BranchModel((BranchModel*)self->obj, (Tree*)mtreeclone->obj);
+	for (int i = 0; i < Parameters_count(bmclone->rates); i++) {
+		Hashtable_add(hash, Parameters_name(bmclone->rates, i), Parameters_at(bmclone->rates, i));
+	}
+	if(bmclone->map != NULL){
+		Hashtable_add(hash, bmclone->map->name, bmclone->map);
+	}
 	Model* clone = new_BranchModel2(self->name, bmclone, mtreeclone);
 	Hashtable_add(hash, clone->name, clone);
 	return clone;
@@ -180,7 +186,6 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
 	model->clone = _branch_model_clone;
 	model->data = tree;
 	tree->ref_count++;
-	Parameters_add_parameters(model->parameters, bm->rates);
 	return model;
 }
 #endif
@@ -303,7 +308,7 @@ void BranchModel_restore_rates( BranchModel *bm, const Parameters *rates ){
 		Parameters_set_value(bm->rates, i, Parameters_value(rates, i) );
 		Parameters_set_lower(bm->rates, i, Parameters_lower(rates, i) );
 		Parameters_set_upper(bm->rates, i, Parameters_upper(rates, i) );
-		Parameters_set_fixed(bm->rates, i, Parameters_fixed(rates, i) );
+		Parameters_set_estimate(bm->rates, i, Parameters_estimate(rates, i) );
 	}
 }
 

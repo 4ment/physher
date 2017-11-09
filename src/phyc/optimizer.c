@@ -216,7 +216,7 @@ void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, Parameters* paramete
 		opt_meta->schedule->capacity++;
 		opt_meta->schedule->optimizers = (Optimizer**)realloc(opt_meta->schedule->optimizers, sizeof(Optimizer*)*opt_meta->schedule->capacity);
 		opt_meta->schedule->parameters = (Parameters**)realloc(opt_meta->schedule->parameters, sizeof(Parameters*)*opt_meta->schedule->capacity);
-		opt_meta->schedule->rounds = (int*)realloc(opt_meta->schedule->rounds, opt_meta->schedule->capacity);
+		opt_meta->schedule->rounds = (int*)realloc(opt_meta->schedule->rounds, sizeof(int)*opt_meta->schedule->capacity);
 		opt_meta->schedule->post = (OptimizerSchedule_post*)realloc(opt_meta->schedule->post, sizeof(OptimizerSchedule_post)*opt_meta->schedule->capacity);
 	}
 	opt_meta->schedule->optimizers[opt_meta->schedule->count] = opt;
@@ -366,7 +366,7 @@ opt_result opt_optimize_univariate( Optimizer *opt, Parameter *p, double *fmin )
     
 	result = brent_optimize( ps, opt->f, opt->data, &opt->stop, fmin );
 	
-    free_Parameters_soft(ps);
+    free_Parameters(ps);
 	free(opt->stop.oldx);
 	return result;
 }

@@ -9,8 +9,6 @@
 #ifndef compoundmodel_h
 #define compoundmodel_h
 
-#include <stdio.h>
-
 #include "model.h"
 #include "parameters.h"
 
@@ -24,6 +22,7 @@ struct _CompoundModel{
 	double (*dlogP)(CompoundModel*, const Parameter*);
 	void (*free)(CompoundModel*);
 	void(*add)(CompoundModel*, Model*);
+	void(*move)(CompoundModel*, Model*);
 	void(*remove)(CompoundModel*, Model*);
 	void(*removeAll)(CompoundModel*);
 };

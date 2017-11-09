@@ -604,7 +604,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
     for ( int i = 0; i < opt->threads; i++ ) {
         free_BrentData(data_brents[i]);
         free_Optimizer(opt_bls[i]);
-        free_Parameters_soft(oneparameters[i]);
+        free_Parameters(oneparameters[i]);
     }
     free(data_brents);
     free(opt_bls);
@@ -952,7 +952,7 @@ double nni_optimize_bl2( struct TopologyOptimizer * opt ){
     
     free_BrentData(data_brent);
     free_Optimizer(opt_bl);
-    free_Parameters_soft(oneparameter);
+    free_Parameters(oneparameter);
     free_SingleTreeLikelihood_share(tlk2, true, false);
     free(map);
     free(map_index_to_post);
@@ -1429,7 +1429,7 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
     for ( int i = 0; i < opt->threads; i++ ) {
         free_BrentData(data_brents[i]);
         free_Optimizer(opt_bls[i]);
-        free_Parameters_soft(oneparameters[i]);
+        free_Parameters(oneparameters[i]);
     }
     free(data_brents);
     free(opt_bls);
@@ -1734,7 +1734,7 @@ double nni_optimize_heights( struct TopologyOptimizer * opt ){
     
     free_BrentData(data_brent);
     free_Optimizer(opt_height);
-    free_Parameters_soft(oneparameter);
+    free_Parameters(oneparameter);
     free(map);
     free(map_index_to_post);
     free(temp_node_list[0]);
@@ -1792,7 +1792,7 @@ double nni_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
     Node *left  = Node_left( Tree_root(tlk->tree) );
     Node_set_distance(left, Node_distance(right)+Node_distance(left) );
     Node_set_distance(right, 0);
-    Parameter_set_fixed(right->distance, true);
+    Parameter_set_estimate(right->distance, false);
     
 	Optimizer *opt_bl = new_Optimizer(OPT_BRENT);
     BrentData *data_brent = new_BrentData( tlk2 );
@@ -2106,7 +2106,7 @@ double nni_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
     free_Parsimony(parsimony);
     free_BrentData(data_brent);
     free_Optimizer(opt_bl);
-    free_Parameters_soft(oneparameter);
+    free_Parameters(oneparameter);
     free_SingleTreeLikelihood_share(tlk2, true, false);
     free(map);
     free(map_index_to_post);

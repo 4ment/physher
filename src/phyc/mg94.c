@@ -24,25 +24,13 @@
 
 static void _mg_update_Q( SubstitutionModel *m );
 
-SubstitutionModel * new_MG94( unsigned gen_code ){
-    double *freqs = dvector(NUMBER_OF_CODONS[gen_code]);
-    for ( int i = 0; i < NUMBER_OF_CODONS[gen_code]; i++) {
-        freqs[i] = 1.0/NUMBER_OF_CODONS[gen_code];
-    }
-    SubstitutionModel *m = new_MG94_with_values(freqs,1, 1, 1, gen_code);
-    free(freqs);
-    return m;
+SubstitutionModel * new_MG94(Simplex* freqs,  unsigned gen_code ){
+    return new_MG94_with_values(freqs,1, 1, 1, gen_code);
 }
 
-SubstitutionModel * new_MG94_with_values( const double *freqs, const double alpha, const double beta, const double kappa, unsigned gen_code ){
-    
-    check_frequencies( freqs, NUMBER_OF_CODONS[gen_code] );
-    SubstitutionModel *m = create_codon_model("MG94", MG94, gen_code);
-    
-    
-    // Parameters and Q matrix
-    m->_freqs = clone_dvector( freqs, NUMBER_OF_CODONS[gen_code] );
-    
+SubstitutionModel * new_MG94_with_values( Simplex* freqs, const double alpha, const double beta, const double kappa, unsigned gen_code ){
+    SubstitutionModel *m = create_codon_model("MG94", MG94, gen_code, freqs);
+	
     // Functions
     m->update_Q = _mg_update_Q;
     
@@ -55,14 +43,9 @@ SubstitutionModel * new_MG94_with_values( const double *freqs, const double alph
     return m;
 }
 
-SubstitutionModel * new_MG94_with_parameters( const double *freqs, Parameter* alpha, Parameter* beta, Parameter* kappa, unsigned gen_code ){
+SubstitutionModel * new_MG94_with_parameters( Simplex* freqs, Parameter* alpha, Parameter* beta, Parameter* kappa, unsigned gen_code ){
 	
-	check_frequencies( freqs, NUMBER_OF_CODONS[gen_code] );
-	SubstitutionModel *m = create_codon_model("MG94", MG94, gen_code);
-	
-	
-	// Parameters and Q matrix
-	m->_freqs = clone_dvector( freqs, NUMBER_OF_CODONS[gen_code] );
+	SubstitutionModel *m = create_codon_model("MG94", MG94, gen_code, freqs);
 	
 	// Functions
 	m->update_Q = _mg_update_Q;
@@ -84,6 +67,7 @@ static void _mg_update_Q( SubstitutionModel *m ){
     double beta  = Parameters_value(m->rates, 2);
     double kappa_alpha = Parameters_value(m->rates, 0) * alpha;
     double kappa_beta  = Parameters_value(m->rates, 0) * beta;
+	const double* freqs = m->get_frequencies(m);
     
     for ( int ii = 0; ii < 64; ii++ ) {
         if ( GENETIC_CODE_TABLES[m->gen_code][ii] == '*' ) continue;
@@ -123,24 +107,24 @@ static void _mg_update_Q( SubstitutionModel *m ){
                 
                 // synonymous
                 if ( GENETIC_CODE_TABLES[m->gen_code][ii] == GENETIC_CODE_TABLES[m->gen_code][jj] ) {
-                    m->Q[i][j] = kappa_alpha * m->_freqs[j];
-                    m->Q[j][i] = kappa_alpha * m->_freqs[i];
+                    m->Q[i][j] = kappa_alpha * freqs[j];
+                    m->Q[j][i] = kappa_alpha * freqs[i];
                 }
                 else {
-                    m->Q[i][j] = kappa_beta * m->_freqs[j];
-                    m->Q[j][i] = kappa_beta * m->_freqs[i];
+                    m->Q[i][j] = kappa_beta * freqs[j];
+                    m->Q[j][i] = kappa_beta * freqs[i];
                 }
             }
             // there is one transversion
             else{
                 // synonymous
                 if ( GENETIC_CODE_TABLES[m->gen_code][ii] == GENETIC_CODE_TABLES[m->gen_code][jj] ) {
-                    m->Q[i][j] = alpha * m->_freqs[j];
-                    m->Q[j][i] = alpha * m->_freqs[i];
+                    m->Q[i][j] = alpha * freqs[j];
+                    m->Q[j][i] = alpha * freqs[i];
                 }
                 else {
-                    m->Q[i][j] = beta * m->_freqs[j];
-                    m->Q[j][i] = beta * m->_freqs[i];
+                    m->Q[i][j] = beta * freqs[j];
+                    m->Q[j][i] = beta * freqs[i];
                 }
             }
             j++;

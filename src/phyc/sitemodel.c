@@ -74,7 +74,7 @@ static void _site_model_free( Model *self ){
 		mm->free(mm); // substitution model
 	//	free_SiteModel(sm);
 		
-		free_Parameters(sm->rates);
+		if(sm->rates != NULL) free_Parameters(sm->rates);
 		//TODO: deal with this
 		if(sm->mu!=NULL)free_Parameter(sm->mu);
 		if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
@@ -89,13 +89,39 @@ static void _site_model_free( Model *self ){
 }
 
 static Model* _site_model_clone( Model *self, Hashtable* hash ){
-	if (Hashtable_exists(hash, model->name)) {
-		return Hashtable_get(hash, model->name);
+	if (Hashtable_exists(hash, self->name)) {
+		return Hashtable_get(hash, self->name);
 	}
 	Model* mm = (Model*)self->data;
-	Model* mmclone = mm->clone(mm);
-	SiteModel* smclone = clone_SiteModel_with((SiteModel*)self->obj, (SubstitutionModel*)mmclone->obj);
+	Model* mmclone = NULL;
+	// Susbtitution model may have been parsed already
+	if (Hashtable_exists(hash, mm->name)) {
+		mmclone = Hashtable_get(hash, mm->name);
+		mmclone->ref_count++; // it is decremented at the end using free
+	}
+	else{
+		mmclone = mm->clone(mm, hash);
+		Hashtable_add(hash, mmclone->name, mmclone);
+	}
+	
+	SiteModel* sm = (SiteModel*)self->obj;
+	Parameters* ps = new_Parameters(1);
+	for (int i = 0; i < Parameters_count(sm->rates); i++) {
+		char* name = Parameters_name(sm->rates, i);
+		if (Hashtable_exists(hash, name)) {
+			Parameters_add(ps, Hashtable_get(hash, name));
+		}
+		else{
+			Parameter* p = clone_Parameter(Parameters_at(sm->rates, i), true);
+			Parameters_move(ps, p);
+			Hashtable_add(hash, name, p);
+		}
+	}
+	SiteModel* smclone = clone_SiteModel_with_parameters(sm, (SubstitutionModel*)mmclone->obj, ps);
+	free_Parameters(ps);
 	Model* clone = new_SiteModel2(self->name, smclone, mmclone);
+	Hashtable_add(hash, clone->name, clone);
+	mmclone->free(mmclone);
 	return clone;
 }
 
@@ -110,8 +136,6 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	}
 	// Listen to substitution model
 	substmodel->listeners->add( substmodel->listeners, model );
-
-	Parameters_add_parameters(model->parameters, sm->rates);
 	
 	model->update = _site_model_handle_change;
 	model->free = _site_model_free;
@@ -132,9 +156,10 @@ SiteModel * new_SiteModel( SubstitutionModel *m ){
 SiteModel * new_PinvSiteModel( SubstitutionModel *m, const double pinv ){
 	assert( pinv>0 && pinv <1 );
 	Parameters *params = new_Parameters(1);
-	Parameter *inv = new_Parameter("sitemodel.pinv", pinv, new_Constraint(0+TINY, 1-TINY) );
-	Parameters_move(params, inv);
-	return _new_SiteModel_with_parameters( m, params, 0, SITEMODEL_INV );
+	Parameters_move(params, new_Parameter("sitemodel.pinv", pinv, new_Constraint(0+TINY, 1-TINY) ));
+	SiteModel* sm = _new_SiteModel_with_parameters( m, params, 0, SITEMODEL_INV );
+	free_Parameters(params);
+	return sm;
 }
 
 SiteModel * new_PinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* pinv ){
@@ -145,9 +170,10 @@ SiteModel * new_PinvSiteModel_with_parameters( SubstitutionModel *m, const Param
 SiteModel * new_GammaSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count ){
 	assert( shape >= SITEMODEL_ALPHA_MIN && shape <= SITEMODEL_ALPHA_MAX );
 	Parameters *params = new_Parameters(1);
-	Parameter *alpha = new_Parameter("sitemodel.alpha", shape, new_Constraint(SITEMODEL_ALPHA_MIN, SITEMODEL_ALPHA_MAX) );
-	Parameters_move(params, alpha);
-	return _new_SiteModel_with_parameters( m, params, cat_count, SITEMODEL_GAMMA );
+	Parameters_move(params, new_Parameter("sitemodel.alpha", shape, new_Constraint(SITEMODEL_ALPHA_MIN, SITEMODEL_ALPHA_MAX) ));
+	SiteModel* sm = _new_SiteModel_with_parameters( m, params, cat_count, SITEMODEL_GAMMA );
+	free_Parameters(params);
+	return sm;
 }
 
 SiteModel * new_GammaSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const unsigned int cat_count ){
@@ -179,7 +205,9 @@ SiteModel * new_GammaPinvSiteModel( SubstitutionModel *m, const double pinv, con
     else if ( pinv > 0.0 && cat_count == 1 ){
         type = SITEMODEL_INV;
     }
-	return _new_SiteModel_with_parameters( m, params, cat_count, type );
+	SiteModel* sm = _new_SiteModel_with_parameters( m, params, cat_count, type );
+	free_Parameters(params);
+	return sm;
 }
 
 SiteModel * new_GammaPinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* params, const unsigned int cat_count ){
@@ -198,7 +226,9 @@ SiteModel * new_GammaLaguerreSiteModel( SubstitutionModel *m, const double shape
 	Parameters *params = new_Parameters(1);
 	Parameter *alpha = new_Parameter("sitemodel.alpha", shape, new_Constraint(SITEMODEL_ALPHA_MIN, SITEMODEL_ALPHA_MAX) );
 	Parameters_move(params, alpha);
-	return _new_SiteModel_with_parameters( m, params, cat_count, SITEMODEL_GAMMA_LAGUERRE );
+	SiteModel* sm = _new_SiteModel_with_parameters( m, params, cat_count, SITEMODEL_GAMMA_LAGUERRE );
+	free_Parameters(params);
+	return sm;
 }
 
 SiteModel * new_GammaLaguerreSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const unsigned int cat_count ){
@@ -216,7 +246,6 @@ void set_rate(SiteModel* sm, const int index, const double value){
 SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const unsigned int cat_count, sitemodel_heterogeneity type ){
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
-	sm->id = 0;
 	sm->m = m;
 	sm->nstate = m->nstate;
 	
@@ -246,7 +275,7 @@ SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Paramete
 			break;
 		case SITEMODEL_GAMMA:
             sm->rates = new_Parameters(1);
-            Parameters_set(sm->rates, 0, Parameters_at(params, 0));
+            Parameters_add(sm->rates, Parameters_at(params, 0));
 			sm->cat_count       = cat_count;
 			sm->get_rate        = _get_rate_gamma;
 			sm->get_proportion  = _get_proportion_gamma;
@@ -256,8 +285,8 @@ SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Paramete
 			break;
 		case SITEMODEL_GAMMAINV:
             sm->rates = new_Parameters(2);
-            Parameters_set(sm->rates, 0, Parameters_at(params, 0));
-            Parameters_set(sm->rates, 1, Parameters_at(params, 1));
+            Parameters_add(sm->rates, Parameters_at(params, 0));
+            Parameters_add(sm->rates, Parameters_at(params, 1));
             sm->cat_count       = cat_count+1;
 			sm->get_rate        = _get_rate_gamma;
 			sm->get_proportion  = _get_proportion_gamma;
@@ -267,7 +296,7 @@ SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Paramete
 			break;
         case SITEMODEL_INV:
             sm->rates = new_Parameters(1);
-            Parameters_set(sm->rates, 0, Parameters_at(params, 0));
+            Parameters_add(sm->rates, Parameters_at(params, 0));
 			sm->cat_count       = 2;
 			sm->get_rate        = _get_rate_invariant;
 			sm->get_proportion  = _get_proportion_invariant;
@@ -277,7 +306,7 @@ SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Paramete
 			break;
         case SITEMODEL_GAMMA_LAGUERRE:
             sm->rates = new_Parameters(1);
-            Parameters_set(sm->rates, 0, Parameters_at(params, 0));
+            Parameters_add(sm->rates, Parameters_at(params, 0));
 			sm->cat_count       = cat_count;
 			sm->get_rate        = _get_rate_laguerre;
 			sm->get_proportion  = _get_proportion_laguerre;
@@ -467,7 +496,6 @@ double SiteModel_mu( const SiteModel *sm ){
 SiteModel * new_DiscreteSiteModel( SubstitutionModel *m, int cat_count ){
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
-	sm->id = 0;
 	sm->m = m;
 	sm->nstate = m->nstate;
 	
@@ -605,7 +633,6 @@ SiteModel * new_CATSiteModel( SubstitutionModel *m, size_t cat_count, const unsi
     }
     SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
-	sm->id = 0;
 	sm->m = m;
 	sm->nstate = m->nstate;
 	
@@ -645,7 +672,6 @@ SiteModel * new_UnrestrictedSiteModel( SubstitutionModel *m, size_t npatterns ){
     
     SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
-	sm->id = 0;
 	sm->m = m;
 	sm->nstate = m->nstate;
 	
@@ -693,7 +719,6 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
 	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(newsm);
 	newsm->m = m;
-	newsm->id = sm->id;
 	newsm->nstate = sm->nstate;
 	
 	newsm->rates = NULL;
@@ -736,34 +761,47 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
 	return newsm;
 }
 
-SiteModel * clone_SiteModel_share( const SiteModel *sm, bool share_gamma, bool share_pinv, bool share_freqs, bool share_rates ){
+SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, const Parameters* params ){
 	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(newsm);
-	newsm->m = clone_substitution_model_share(sm->m, share_freqs, share_rates);
-	newsm->id = sm->id;
+	newsm->m = m;
+	newsm->type = sm->type;
 	newsm->nstate = sm->nstate;
-		
+	
+	newsm->rates = NULL;
+	
+	newsm->cat_count = sm->cat_count;
+	
 	if ( sm->rates != NULL ){
-        newsm->rates = clone_Parameters(sm->rates, true);		
+		newsm->rates = new_Parameters(Parameters_count(sm->rates));
+		for (int i = 0; i < Parameters_count(sm->rates); i++) {
+			Parameters_add(newsm->rates, Parameters_at(params, i));
+		}
 	}
-    
-    newsm->mu = NULL;
+	
+	newsm->mu = NULL;
 	if ( sm->mu != NULL ){
 		newsm->mu = clone_Parameter(sm->mu, true);
 	}
 	
-	newsm->cat_count = sm->cat_count;
+	newsm->cat_assignment_length = sm->cat_assignment_length;
+	newsm->cat_assignment = NULL;
+	if ( sm->cat_assignment != NULL ){
+		newsm->cat_assignment = clone_uivector((unsigned *)sm->cat_assignment, sm->cat_assignment_length);
+	}
 	
 	newsm->cat_rates = clone_dvector(sm->cat_rates, sm->cat_count);
 	
-	newsm->cat_proportions = clone_dvector(sm->cat_proportions, sm->cat_count);
-	
+	newsm->cat_proportions = NULL;
+	if ( sm->cat_proportions != NULL ){
+		newsm->cat_proportions = clone_dvector(sm->cat_proportions, sm->cat_count);
+	}
 	
 	newsm->integrate = sm->integrate;
 	newsm->need_update = false;
 	
-    newsm->set_rate = sm->set_rate;
-    
+	newsm->set_rate = sm->set_rate;
+	
 	newsm->get_rate        = sm->get_rate;
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
@@ -781,16 +819,6 @@ void free_SiteModel( SiteModel *sm ){
     if ( sm->cat_assignment != NULL ) free(sm->cat_assignment);
 	free(sm->cat_rates);
 	if(sm->m!=NULL)sm->m->free(sm->m);
-	free(sm);
-}
-
-void free_SiteModel_share( SiteModel *sm, bool share_gamma, bool share_pinv, bool share_freqs, bool share_rates ){
-	if ( sm->rates != NULL ) free_Parameters(sm->rates);
-	if ( sm->mu != NULL ) free_Parameter(sm->mu);
-	if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
-    if ( sm->cat_assignment != NULL ) free(sm->cat_assignment);
-	free(sm->cat_rates);
-    free_SubstitutionModel_share(sm->m, share_freqs, share_rates);
 	free(sm);
 }
 
@@ -863,7 +891,7 @@ void * SiteModel_SML_to_object( ObjectStore *store, SMLNode node ){
 }*/
 
 void compare_sitemodel( const SiteModel *sm1, const SiteModel *sm2){
-	assert(sm1->id == sm2->id );
+	assert(sm1->type == sm2->type );
 	assert( sm1->nstate == sm2->nstate );
 	assert( sm1->integrate == sm2->integrate );
 	

@@ -67,79 +67,55 @@ SubstitutionModel * new_GTR_with_values( const double *freqs, const double *rate
     Parameters_move(ratess, new_Parameter_with_postfix("gtr.d", "model", rates[3], new_Constraint(0.001, 100) ) );
     Parameters_move(ratess, new_Parameter_with_postfix("gtr.e", "model", rates[4], new_Constraint(0.001, 100) ) );
     
-    Parameters* freqss = new_Parameters( 3 );
-    Parameters_move(freqss, new_Parameter_with_postfix("gtr.piA", "model", freqs[0]/freqs[3], new_Constraint(0.001, 100) ) );
-    Parameters_move(freqss, new_Parameter_with_postfix("gtr.piC", "model", freqs[1]/freqs[3], new_Constraint(0.001, 100) ) );
-    Parameters_move(freqss, new_Parameter_with_postfix("gtr.piG", "model", freqs[2]/freqs[3], new_Constraint(0.001, 100) ) );
+    Simplex* sfreqs = new_Simplex(4);
+	sfreqs->set_values(sfreqs, freqs);
 	
-	SubstitutionModel *m = new_GTR_with_parameters(freqss, ratess);
-	free_Parameters(freqss);
+	SubstitutionModel *m = new_GTR_with_parameters(sfreqs, ratess, 5);
+
 	free_Parameters(ratess);
     return m;
 }
 
-SubstitutionModel * new_GTR_with_parameters( const Parameters* freqs, const Parameters* rates ){
-	//check_frequencies( freqs, 4 );
+SubstitutionModel * new_GTR_with_parameters( Simplex* freqs, const Parameters* rates, int relativeTo ){
 	
-	SubstitutionModel *m = create_nucleotide_model("GTR", GTR);
-	
-	m->_freqs = dvector(4);
-	if(Parameters_count(freqs) == 4){
-		m->update_frequencies = nucleotide_update_freqs;
-		for (int i = 0; i < Parameters_count(freqs); i++) {
-			m->_freqs[i] = Parameters_value(freqs, i);
-		}
-	}
-	else{
-		m->update_frequencies = nucleotide_update_freqs_relative;
-		fprintf(stderr, "new_GTR_with_parameters need to be implemented\n");
-		exit(1);
-	}
+	SubstitutionModel *m = create_nucleotide_model("GTR", GTR, freqs);
 	
 	m->update_Q = gtr_update_Q;
 	
 	m->dPdp = gtr_dQ;
 	m->dQ = dvector(16);
+	m->relativeTo = relativeTo;
 	
-	m->rates = new_Parameters( 5 );
+	m->rates = new_Parameters( Parameters_count(rates) );
 	for(int i = 0; i < Parameters_count(rates); i++){
 		Parameters_add(m->rates, Parameters_at(rates, i) );
-	}
-	
-	m->freqs = new_Parameters( 3 );
-	for(int i = 0; i < Parameters_count(freqs); i++){
-		Parameters_add(m->rates, Parameters_at(freqs, i) );
 	}
 	
 	return m;
 }
 
-
 void gtr_update_Q( SubstitutionModel *m ){
-	
-    m->Q[0][1] = m->Q[1][0] = Parameters_value(m->rates, 0); // a
-    m->Q[0][2] = m->Q[2][0] = Parameters_value(m->rates, 1); // b
-    m->Q[0][3] = m->Q[3][0] = Parameters_value(m->rates, 2); // c
-    
-    m->Q[1][2] = m->Q[2][1] = Parameters_value(m->rates, 3); // d
-    m->Q[1][3] = m->Q[3][1] = Parameters_value(m->rates, 4); // e
-    
-    m->Q[2][3] = m->Q[3][2] = 1; // f
-    
-    double temp;
-    for ( int i = 0; i < m->nstate; i++ )  {
-        for ( int j = i + 1; j < m->nstate; j++ ) {
-            temp = m->Q[i][j];
-            m->Q[i][j] = temp * m->_freqs[j];
-            m->Q[j][i] = temp * m->_freqs[i];
-        }
-    }
-    update_eigen_system( m );
-    m->need_update = false;
+	double temp;
+	int index = 0;
+	const double* freqs = m->get_frequencies(m);
+	for ( int i = 0; i < 4; i++ )  {
+		for ( int j = i + 1; j < 4; j++ ) {
+			if(m->relativeTo != index){
+				temp = Parameters_value(m->rates, index++);
+			}
+			else{
+				temp = 1;
+			}
+			m->Q[i][j] = temp * freqs[j];
+			m->Q[j][i] = temp * freqs[i];
+		}
+	}
+	update_eigen_system( m );
+	m->need_update = false;
 }
 
 void gtr_dQ(SubstitutionModel *m, int index, double* mat, double t){
-    
+	
     double *x = m->dQ;
     
     if(m->need_update){
@@ -153,11 +129,11 @@ void gtr_dQ(SubstitutionModel *m, int index, double* mat, double t){
         const double d = Parameters_value(m->rates, 3);
         const double e = Parameters_value(m->rates, 4);
         
-        const double phi1 = Parameters_value(m->freqs, 0);
-        const double phi2 = Parameters_value(m->freqs, 1);
-        const double phi3 = Parameters_value(m->freqs, 2);
+        const double phi1 = Parameters_value(m->simplex->parameters, 0);
+        const double phi2 = Parameters_value(m->simplex->parameters, 1);
+        const double phi3 = Parameters_value(m->simplex->parameters, 2);
 
-        const double piT = m->_freqs[3];
+        const double piT = m->get_frequencies(m)[3];
         
         const double norm = piT*(phi1*(a*phi2 + b*phi3 + c) + phi2*(a*phi1 + d*phi3 + e) + phi3*(b*phi1 + d*phi2 + 1.0) + (c*phi1 + e*phi2 + phi3));
         const double norm2 = norm*norm;

@@ -220,7 +220,7 @@ double optimize_mixedtreelikelihoods( MixedTreeLikelihood *mixed ){
         }
         
     }
-    free_Parameters_soft(oneparameter);
+    free_Parameters(oneparameter);
     free_GenericBrentData(data_brent);
     free_Optimizer( opt_brent );
     

@@ -67,10 +67,11 @@
 static void k80_update_Q( SubstitutionModel *m );
 
 SubstitutionModel * new_K80(){
-    SubstitutionModel *m = create_nucleotide_model("K80", K80);
-    
-    m->_freqs = dvector(4);
-    for ( int i = 0; i < 4; i++ ) m->_freqs[i] = 0.25;
+	Simplex* freqs = new_Simplex(4);
+	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
+		Parameters_at(freqs->parameters, i)->estimate = false;
+	}
+    SubstitutionModel *m = create_nucleotide_model("K80", K80, freqs);
     
     m->update_Q = k80_update_Q;
     
@@ -89,10 +90,11 @@ SubstitutionModel * new_K80_with_values( const double kappa ){
 }
 
 SubstitutionModel * new_K80_with_parameters( const Parameters* kappa ){
-	SubstitutionModel *m = create_nucleotide_model("K80", K80);
-	
-	m->_freqs = dvector(4);
-	for ( int i = 0; i < 4; i++ ) m->_freqs[i] = 0.25;
+	Simplex* freqs = new_Simplex(4);
+	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
+		Parameters_at(freqs->parameters, i)->estimate = false;
+	}
+	SubstitutionModel *m = create_nucleotide_model("K80", K80, freqs);
 	
 	m->update_Q = k80_update_Q;
 	
@@ -154,7 +156,6 @@ StringBuffer * SubstitutionModel_K80_bufferize( StringBuffer *buffer, Substituti
 	int i = 0;
 	
 	StringBuffer_append_string(buffer, "{");
-	StringBuffer_append_strings(buffer, 2, "id:\"", m->id, "\",\n");
 	StringBuffer_append_strings(buffer, 2, "name:\"", m->name, "\",\n");
 
 	StringBuffer_append_string(buffer, "rates:[");

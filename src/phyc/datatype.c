@@ -30,17 +30,17 @@ static int  _state_count( DataType *datatype);
 static int  _nucleotide_encoding( DataType *datatype, char nuc);
 static char _nucleotide_state( DataType *datatype, int encoding);
 static int _nucleotide_encoding_string( DataType *datatype, const char *nuc);
-static const char * _nucleotide_state_string( DataType *datatype, int encoding);
+static const char * _nucleotide_state_string( const DataType *datatype, int encoding);
 
 static int  _aa_encoding( DataType *datatype, char nuc);
 static char _aa_state( DataType *datatype, int encoding);
 static int _aa_encoding_string( DataType *datatype, const char *aa);
-static const char * _aa_state_string( DataType *datatype, int encoding);
+static const char * _aa_state_string( const DataType *datatype, int encoding);
 
 static int  _codon_encoding( DataType *datatype, char nuc);
 static char _codon_state( DataType *datatype, int encoding);
 static int _codon_encoding_string( DataType *datatype, const char *codon);
-static const char * _codon_state_string( DataType *datatype, int encoding);
+static const char * _codon_state_string( const DataType *datatype, int encoding);
 
 static DataType SINGLETON_DATATYPE_NUCLEOTIDE = {"Nucleotide", DATA_TYPE_NUCLEOTIDE,  4, 1, 0, _nucleotide_encoding, _nucleotide_state, _nucleotide_encoding_string, _nucleotide_state_string, _state_count, 0};
 static DataType SINGLETON_DATATYPE_AMINO_ACID = {"Amino Acid", DATA_TYPE_AMINO_ACID, 20, 1, 0, _aa_encoding,         _aa_state,         _aa_encoding_string,         _aa_state_string        , _state_count, 0};
@@ -88,7 +88,7 @@ int  _state_count( DataType *datatype){
     return datatype->stateCount;
 }
 
-const char * _state_string( DataType *datatype, int encoding){
+const char * _state_string( const DataType *datatype, int encoding){
     if( encoding < datatype->stateCount ){
         return datatype->states[encoding];
     }
@@ -223,7 +223,7 @@ char _nucleotide_state( DataType *datatype, int encoding){
     return NUCLEOTIDES[encoding];
 }
 
-const char * _nucleotide_state_string( DataType *datatype, int encoding){
+const char * _nucleotide_state_string( const DataType *datatype, int encoding){
     return NUCLEOTIDES_STRING[encoding];
 }
 
@@ -271,7 +271,7 @@ int _aa_encoding_string( DataType *datatype, const char *aa){
     return AMINO_ACID_STATES[aa[0]];
 }
 
-const char * _aa_state_string( DataType *datatype, int encoding){
+const char * _aa_state_string( const DataType *datatype, int encoding){
     return AMINO_ACIDS_STRING[encoding];
 }
 
@@ -366,7 +366,7 @@ int codon_to_encoding( const char *codon, int genetic_code ){
     return encoding;
 }
 
-const char * _codon_state_string( DataType *datatype, int encoding){
+const char * _codon_state_string( const DataType *datatype, int encoding){
     if( encoding >= NUMBER_OF_CODONS[datatype->genetic_code] ){
         return "???";
     }

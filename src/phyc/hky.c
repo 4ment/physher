@@ -58,13 +58,11 @@ SubstitutionModel * new_HKY(){
 
 SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa ){
 	
-	check_frequencies( freqs, 4 );
+	Simplex* sfreqs = new_Simplex(4);
+	sfreqs->set_values(sfreqs, freqs);
 	
-	SubstitutionModel *m = create_nucleotide_model("HKY", HKY);
+	SubstitutionModel *m = create_nucleotide_model("HKY", HKY, sfreqs);
 	
-	m->_freqs = clone_dvector( freqs, 4);
-	
-	m->update_frequencies = nucleotide_update_freqs_relative;
 	m->update_Q = _foo_update;
 	m->p_t = _hky_p_t;
 	m->p_t_transpose = _hky_p_t_transpose;
@@ -74,33 +72,14 @@ SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa
 	
 	m->rates = new_Parameters( 1 );
 	Parameters_move(m->rates, new_Parameter_with_postfix("hky.kappa", "model", kappa, new_Constraint(0.0001, 100) ) );
-	
-	m->freqs = new_Parameters( 3 );
-	Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piA", "model", freqs[0]/freqs[3], new_Constraint(0.001, 0.999) ) );
-	Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piC", "model", freqs[1]/freqs[3],     new_Constraint(0.001, 0.999) ) );
-	Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piG", "model", freqs[2]/freqs[3],     new_Constraint(0.001, 0.999) ) );
+
 	return m;
 }
 
-SubstitutionModel * new_HKY_with_parameters( const Parameters *freqs, const Parameters* kappa ){
+SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, const Parameters* kappa ){
 	
-	SubstitutionModel *m = create_nucleotide_model("HKY", HKY);
+	SubstitutionModel *m = create_nucleotide_model("HKY", HKY, freqs);
 	
-	m->_freqs = dvector(4);
-	
-	if(Parameters_count(freqs) == 4){
-		m->update_frequencies = nucleotide_update_freqs;
-		for (int i = 0; i < Parameters_count(freqs); i++) {
-			m->_freqs[i] = Parameters_value(freqs, i);
-		}
-	}
-	else{
-		m->update_frequencies = nucleotide_update_freqs_relative;
-		fprintf(stderr, "new_GTR_with_parameters need to be implemented\n");
-		exit(1);
-	}
-	check_frequencies( m->_freqs, 4 );
-
 	m->update_Q = _foo_update;
 	m->p_t = _hky_p_t;
 	m->p_t_transpose = _hky_p_t_transpose;
@@ -111,10 +90,6 @@ SubstitutionModel * new_HKY_with_parameters( const Parameters *freqs, const Para
 	m->rates = new_Parameters( 1 );
 	Parameters_add(m->rates, Parameters_at(kappa, 0) );
 	
-	m->freqs = new_Parameters( 3 );
-	for(int i = 0; i < Parameters_count(freqs); i++){
-		Parameters_add(m->rates, Parameters_at(freqs, i) );
-	}
 	return m;
 }
 
@@ -126,13 +101,13 @@ void hky_update_Q( SubstitutionModel *model ){
     model->Q[1][3] = model->Q[3][1] = model->Q[0][2] = model->Q[2][0] = Parameters_value(model->rates, 0); // kappa
     model->Q[0][1] = model->Q[1][0] = model->Q[0][3] = model->Q[3][0] = model->Q[1][2] = model->Q[2][1] = model->Q[2][3] = model->Q[3][2] = 1.;
     
-    
+	const double* freqs = model->get_frequencies(model);
     double temp;
     for ( int i = 0; i < 4; i++ )  {
         for ( int j = i + 1; j < 4; j++ ) {
             temp = model->Q[i][j];
-            model->Q[i][j] = temp * model->_freqs[j];
-            model->Q[j][i] = temp * model->_freqs[i];
+            model->Q[i][j] = temp * freqs[j];
+            model->Q[j][i] = temp * freqs[i];
         }
     }
     
@@ -142,7 +117,8 @@ void hky_update_Q( SubstitutionModel *model ){
 
 void hky_update_Q2( SubstitutionModel *m ){
     double kappa = Parameters_value(m->rates, 0);
-    const double *freqs = m->_freqs;
+	const double* freqs = m->get_frequencies(m);
+	
     m->Q[0][0] =  freqs[1] + kappa*freqs[2]+ freqs[3];
     m->Q[1][1] =  freqs[0] + freqs[2]+ kappa*freqs[3];
     m->Q[2][2] =  kappa*freqs[0] + freqs[1]+ kappa*freqs[3];
@@ -195,7 +171,7 @@ void _hky_p_t( SubstitutionModel *m, const double t, double *P ){
     //	if( m->need_update ){
     //		m->update_Q(m);
     //	}
-    const double *freqs = m->_freqs;
+    const double* freqs = m->get_frequencies(m);
     
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
@@ -240,7 +216,7 @@ void _hky_p_t_transpose( SubstitutionModel *m, const double t, double *P ){
     //	if( m->need_update ){
     //		m->update_Q(m);
     //	}
-    const double *freqs = m->_freqs;
+    const double* freqs = m->get_frequencies(m);
     
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
@@ -282,7 +258,7 @@ void _hky_p_t_transpose( SubstitutionModel *m, const double t, double *P ){
 
 void _hky_dp_dt( SubstitutionModel *m, const double t, double *P ) {
     
-    const double *freqs = m->_freqs;
+    const double* freqs = m->get_frequencies(m);
     
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
@@ -324,7 +300,7 @@ void _hky_dp_dt( SubstitutionModel *m, const double t, double *P ) {
 
 void _hky_dp_dt_transpose( SubstitutionModel *m, const double t, double *P ) {
     //fprintf(stderr, "dp_dt_T %d\n", counter++);
-    const double *freqs = m->_freqs;
+    const double* freqs = m->get_frequencies(m);
     
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
@@ -365,7 +341,7 @@ void _hky_dp_dt_transpose( SubstitutionModel *m, const double t, double *P ) {
 
 void _hky_d2p_dt2( SubstitutionModel *m, const double t, double *P ) {
     
-    const double *freqs = m->_freqs;
+    const double* freqs = m->get_frequencies(m);
     
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
@@ -411,7 +387,7 @@ void _hky_d2p_dt2( SubstitutionModel *m, const double t, double *P ) {
 
 void _hky_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P ) {
     
-    const double *freqs = m->_freqs;
+    const double* freqs = m->get_frequencies(m);
     
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];

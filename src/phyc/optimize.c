@@ -416,7 +416,7 @@ void set_scale_bounds( Tree *tree, Parameters *scaler ){
 	Parameter *p = NULL;
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
 		p = nodes[i]->height;
-		if ( Constraint_fixed(p->cnstr)) continue;
+		if (Parameter_estimate(p)) continue;
 		
 		if( Constraint_lower_fixed(p->cnstr) ){
 			min = dmax(min, Constraint_flower(p->cnstr)/p->value);
@@ -515,7 +515,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
         Node *left  = Node_left( Tree_root(stlk->tree) );
         Node_set_distance(left, Node_distance(right)+Node_distance(left) );
         Node_set_distance(right, 0);
-        Parameter_set_fixed(right->distance, true);
+        Parameter_set_estimate(right->distance, false);
         SingleTreeLikelihood_update_one_node(stlk, right);
         SingleTreeLikelihood_update_one_node(stlk, left);
     }
@@ -523,14 +523,14 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
 	
 	// Init frequencies of the substitution model
 	if( opt.freqs.optimize ){
-		int n = Parameters_count_optimizable(stlk->sm->m->freqs, NULL );
+		int n = Parameters_count_optimizable(stlk->sm->m->simplex->parameters, NULL );
         
 		
 		if( n == 0 ){
 			opt.freqs.optimize = false;
 		}
 		else{
-            Parameters_add_parameters(all_params, stlk->sm->m->freqs);
+            Parameters_add_parameters(all_params, stlk->sm->m->simplex->parameters);
             
 			opt_freq = new_Optimizer( opt.freqs.method );
 			opt_set_max_iteration(opt_freq, opt.freqs.max_iteration);
@@ -604,12 +604,12 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
         
         //MARK: check this
         // not sure what it is not set somewhere else
-        Parameter_set_fixed( Tree_root(stlk->tree)->distance, true );
+        Parameter_set_estimate( Tree_root(stlk->tree)->distance, false );
         
         int count = 0;
         for ( int i = 0; i < Tree_node_count(stlk->tree); i++ ) {
             //if( Parameter_value(nodes[i]->distance) < 1e-5) Parameter_set_fixed(nodes[i]->distance, true);
-            if( !Parameter_fixed(nodes[i]->distance) ){
+            if( Parameter_estimate(nodes[i]->distance) ){
                 //Parameters_add(all_params, nodes[i]->distance);
                 count++;
             }
@@ -638,8 +638,9 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
                 //all_params = new_Parameters( Tree_node_count(stlk->tree)-1);
                 
                 for ( int i = 0; i < Tree_node_count(stlk->tree); i++ ) {
-                    if( Parameter_fixed(nodes[i]->distance) ) continue;
-                    Parameters_set(all_params, i, nodes[i]->distance);
+					if( Parameter_estimate(nodes[i]->distance) ){
+						Parameters_set(all_params, i, nodes[i]->distance);
+					}
                 }
 			}
             else {
@@ -708,7 +709,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
 	if( opt.heights.optimize ){
         int n = 0;
 		for ( int i = 0; i < Tree_node_count(stlk->tree); i++ ) {
-			if ( !Parameter_fixed(nodes[i]->height) ){
+			if ( Parameter_estimate(nodes[i]->height) ){
 				n++;
 			}
 		}
@@ -730,7 +731,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
 			}
             
 			
-			bool isRootFixed = Parameter_fixed(Tree_root(stlk->tree)->height );
+			bool isRootFixed = !Parameter_estimate(Tree_root(stlk->tree)->height );
 			
             data_brent->backup = dvector( Tree_node_count(stlk->tree) + Parameters_count(stlk->bm->rates));
             
@@ -1049,7 +1050,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
                     fret = optimize_brent_frequencies_all(stlk, opt_freq, data_brent, oneparameter);
                 }
                 else {
-                    double status = opt_optimize( opt_freq, stlk->sm->m->freqs, &fret);
+                    double status = opt_optimize( opt_freq, stlk->sm->m->simplex->parameters, &fret);
                     if( status == OPT_ERROR ) error("OPT.frequencies No SUCCESS!!!!!!!!!!!!\n");
                     fret = -fret;
                     if( status != OPT_SUCCESS ){
@@ -1077,10 +1078,10 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
             while ( fret - templnl > 0.01 );
             
             if ( stlk->opt.verbosity > 0 ) {
-				stlk->sm->m->update_frequencies(stlk->sm->m);
 				fprintf(stdout, "Frequencies    LnL: %f [", fret);
+				const double* freqs = stlk->sm->m->get_frequencies(stlk->sm->m);
 				for ( int i = 0; i < stlk->sm->nstate; i++ ) {
-					fprintf( stdout, "%s%f", (i==0?"":","), stlk->sm->m->_freqs[i] );
+					fprintf( stdout, "%s%f", (i==0?"":","), freqs[i] );
 				}
 				fprintf(stdout, "]  {%f}\n", fret-lnl );
                 
@@ -1106,7 +1107,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
                     fret = optimize_brent_frequencies_all(stlk, opt_freq, data_brent, oneparameter);
                 }
                 else {
-                    double status = opt_optimize( opt_freq, stlk->sm->m->freqs, &fret);
+                    double status = opt_optimize( opt_freq, stlk->sm->m->simplex->parameters, &fret);
                     if( status == OPT_ERROR ) error("OPT.frequencies No SUCCESS!!!!!!!!!!!!\n");
                     fret = -fret;
                     if( status != OPT_SUCCESS ){
@@ -1116,10 +1117,10 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
                 }
                 
                 if ( stlk->opt.verbosity > 0 ) {
-                    stlk->sm->m->update_frequencies(stlk->sm->m);
+					const double* freqs = stlk->sm->m->get_frequencies(stlk->sm->m);
                     fprintf(stdout, "Frequencies    LnL: %f [", fret);
                     for ( int i = 0; i < stlk->sm->nstate; i++ ) {
-                        fprintf( stdout, "%s%f", (i==0?"":","), stlk->sm->m->_freqs[i] );
+                        fprintf( stdout, "%s%f", (i==0?"":","), freqs[i] );
                     }
                     fprintf(stdout, "]  {%f} [%s]", fret-lnl, OPT_ALGORITHMS[opt.freqs.method] );
                     
@@ -1424,7 +1425,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
                         
                     }
                 }
-                free_Parameters_soft(params);
+                free_Parameters(params);
                 free_Parameter(coef);
                 free_Optimizer(opt_poly);
             }
@@ -1786,19 +1787,19 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
 #endif
     
     
-    free_Parameters_soft(all_params);
+    free_Parameters(all_params);
 
 #ifdef TIMETEST
     if ( opt_heightsRates != NULL) {
         free_Optimizer(opt_heightsRates);
-        free_Parameters_soft(heightsRateParams);
+        free_Parameters(heightsRateParams);
     }
 #endif
     
     free_BrentData(data_brent);
     if (data_multivariate != NULL ) free_MultivariateData( data_multivariate);
     
-    free_Parameters_soft(oneparameter);
+    free_Parameters(oneparameter);
     
 	if( opt.freqs.optimize ){
 		free_Optimizer( opt_freq );
@@ -1867,7 +1868,7 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
     
     Optimizer *opt_all = new_Optimizer( OPT_CG_PR );
     
-    Parameters *all_params = new_Parameters( Tree_node_count(stlk->tree)-1 + Parameters_count_optimizable(stlk->sm->m->freqs, NULL ) + Parameters_count_optimizable(stlk->sm->m->rates, NULL ));if( data_multivariate == NULL ) data_multivariate = new_MultivariateData( stlk, NULL);;
+    Parameters *all_params = new_Parameters( Tree_node_count(stlk->tree)-1 + Parameters_count_optimizable(stlk->sm->m->simplex->parameters, NULL ) + Parameters_count_optimizable(stlk->sm->m->rates, NULL ));if( data_multivariate == NULL ) data_multivariate = new_MultivariateData( stlk, NULL);;
     
     opt_set_data(opt_all, data_multivariate);
     opt_set_objective_function(opt_all, _cg_optimize_all);
@@ -1878,8 +1879,8 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
 	
 	// Init frequencies of the substitution model
 	if( opt.freqs.optimize ){
-		int n = Parameters_count_optimizable(stlk->sm->m->freqs, NULL );
-        if( n > 0 ) Parameters_add_parameters(all_params, stlk->sm->m->freqs);
+		int n = Parameters_count_optimizable(stlk->sm->m->simplex->parameters, NULL );
+        if( n > 0 ) Parameters_add_parameters(all_params, stlk->sm->m->simplex->parameters);
         else opt.freqs.optimize = false;
 	}
 	
@@ -1895,15 +1896,15 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
         Node *left  = Node_left( Tree_root(stlk->tree) );
         Node_set_distance(left, Node_distance(right)+Node_distance(left) );
         Node_set_distance(right, 0);
-        Parameter_set_fixed(right->distance, true);
+        Parameter_set_estimate(right->distance, false);
         SingleTreeLikelihood_update_one_node(stlk, right);
         SingleTreeLikelihood_update_one_node(stlk, left);
         
         // not sure what it is not set somewhere else
-        Parameter_set_fixed( Tree_root(stlk->tree)->distance, true );
+        Parameter_set_estimate( Tree_root(stlk->tree)->distance, false );
         
         for ( int i = 0; i < Tree_node_count(stlk->tree); i++ ) {
-            if( !Parameter_fixed(nodes[i]->distance) ){
+            if( Parameter_estimate(nodes[i]->distance) ){
                 Parameters_add(all_params, nodes[i]->distance);
             }
         }
@@ -2035,19 +2036,17 @@ double optimize_brent_relative_rate_all( SingleTreeLikelihood *stlk, Optimizer *
     
     for (int j = 0; j < 3; j++){
         for (int i = 0; i < Parameters_count(stlk->sm->m->rates); i++) {
-            if( Parameters_fixed( stlk->sm->m->rates, i ) ){
-                continue;
-            }
-            
-            data->index_param = i;
-            Parameters_set(param, 0, Parameters_at(stlk->sm->m->rates, i));
-            
-            status = opt_optimize( opt, param, &lnl);
-            if( status == OPT_ERROR ) error("OPT.relative_rates No SUCCESS!!!!!!!!!!!!\n");
-            
-            stlk->sm->m->set_rate( stlk->sm->m, Parameters_value(param, 0), i );
-            SingleTreeLikelihood_update_all_nodes(stlk);
-            //printf("%f %f\n",Parameters_value(param, 0), -lnl);
+            if( Parameters_estimate( stlk->sm->m->rates, i ) ){
+				data->index_param = i;
+				Parameters_set(param, 0, Parameters_at(stlk->sm->m->rates, i));
+				
+				status = opt_optimize( opt, param, &lnl);
+				if( status == OPT_ERROR ) error("OPT.relative_rates No SUCCESS!!!!!!!!!!!!\n");
+				
+				stlk->sm->m->set_rate( stlk->sm->m, Parameters_value(param, 0), i );
+				SingleTreeLikelihood_update_all_nodes(stlk);
+				//printf("%f %f\n",Parameters_value(param, 0), -lnl);
+			}
         }
         
         if(-lnl - lnl2 < 0.001 ){
@@ -2061,13 +2060,10 @@ double optimize_brent_relative_rate_all( SingleTreeLikelihood *stlk, Optimizer *
 double optimize_brent_frequencies_all( SingleTreeLikelihood *stlk, Optimizer *opt, BrentData *data, Parameters *param ){
 	opt_result status = OPT_NEED_CHECK;
     double lnl = 0;
-    for (int i = 0; i < Parameters_count(stlk->sm->m->freqs); i++) {
-        if( Parameters_fixed( stlk->sm->m->freqs, i ) ){
-            continue;
-        }
+    for (int i = 0; i < Parameters_count(stlk->sm->m->simplex->parameters); i++) {
         
         data->index_param = i;
-        Parameters_set(param, 0, Parameters_at(stlk->sm->m->freqs, i));
+        Parameters_set(param, 0, Parameters_at(stlk->sm->m->simplex->parameters, i));
         
         status = opt_optimize( opt, param, &lnl);
         if( status == OPT_ERROR ) error("OPT.frequencies No SUCCESS!!!!!!!!!!!!\n");
@@ -2103,7 +2099,7 @@ static void _optimize_brent_branch_length_all_aux( SingleTreeLikelihood *stlk, O
     _optimize_brent_branch_length_all_aux(stlk, opt, data, param, Node_right(node), lnl);
     
     if( !Node_isroot(node) ){
-        if( Parameter_fixed( node->distance ) ){
+        if( !Parameter_estimate( node->distance ) ){
             SingleTreeLikelihood_update_all_nodes(stlk);
         }
         else {
@@ -2138,15 +2134,15 @@ double optimize_brent_branch_length_all( SingleTreeLikelihood *stlk, Optimizer *
     Node *right = Node_right( Tree_root(stlk->tree) );
     Node *left  = Node_left( Tree_root(stlk->tree) );
     
-    bool left_fixed  = Parameter_fixed(left->distance);
-    bool right_fixed = Parameter_fixed(right->distance);
+    bool left_fixed  = !Parameter_estimate(left->distance);
+    bool right_fixed = !Parameter_estimate(right->distance);
     
     // We don't need to optimize these branches together, at least for a reversible model
     // if at least 1 node is fixed we don't change these 2 branches
     if( !right_fixed && !left_fixed && stlk->sm->m->modeltype < NON_REVERSIBLE_DNA ){
         Node_set_distance(left, Node_distance(right)+Node_distance(left) );
         Node_set_distance(right, 0);
-        Parameter_set_fixed(right->distance, true);
+        Parameter_set_estimate(right->distance, false);
     }
     
     
@@ -2163,7 +2159,7 @@ double optimize_brent_branch_length_all( SingleTreeLikelihood *stlk, Optimizer *
     }
     
     if( !right_fixed && !left_fixed && stlk->sm->m->modeltype < NON_REVERSIBLE_DNA ){
-        Parameter_set_fixed(right->distance, false);
+        Parameter_set_estimate(right->distance, true);
     }
     
     SingleTreeLikelihood_update_all_nodes(stlk);
@@ -2177,18 +2173,16 @@ double optimize_brent_rate_all( SingleTreeLikelihood *stlk, Optimizer *opt, Bren
     opt_result status = OPT_NEED_CHECK;
     double lnl = 0;
     for (int i = 0; i < BranchModel_n_rate(stlk->bm); i++) {
-        if( Parameters_fixed(stlk->bm->rates, i) ){
-            continue;
-        }
-        
-        data->index_param = i;
-        Parameters_set( param, 0,  Parameters_at(stlk->bm->rates, i ) );
-        
-        status = opt_optimize( opt, param, &lnl);
-        if( status == OPT_ERROR ) fprintf(stderr, "OPT.RATES No SUCCESS!!!!!!!!!!!!\n");
-        
-        stlk->bm->set( stlk->bm, i, Parameters_value(param, 0) );
-        SingleTreeLikelihood_update_all_nodes(stlk);
+        if( Parameters_estimate(stlk->bm->rates, i) ){
+			data->index_param = i;
+			Parameters_set( param, 0,  Parameters_at(stlk->bm->rates, i ) );
+			
+			status = opt_optimize( opt, param, &lnl);
+			if( status == OPT_ERROR ) fprintf(stderr, "OPT.RATES No SUCCESS!!!!!!!!!!!!\n");
+			
+			stlk->bm->set( stlk->bm, i, Parameters_value(param, 0) );
+			SingleTreeLikelihood_update_all_nodes(stlk);
+		}
     }
     
     return -lnl;
@@ -2201,7 +2195,7 @@ static void _optimize_brent_height_all_post_order_aux( SingleTreeLikelihood *stl
     _optimize_brent_height_all_post_order_aux(stlk, opt, data, param, Node_left(node), lnl);
     _optimize_brent_height_all_post_order_aux(stlk, opt, data, param, Node_right(node), lnl);
     
-    if( Parameter_fixed( node->height ) ){
+    if( !Parameter_estimate( node->height ) ){
         SingleTreeLikelihood_update_all_nodes(stlk);
     }
     else {
@@ -2248,7 +2242,7 @@ static void _optimize_brent_height_threshold_aux( SingleTreeLikelihood *stlk, Op
     _optimize_brent_height_threshold_aux(stlk, opt, data, param, Node_right(node), lnl);
     
     // Ignore fixed node (leaf are fixed)
-    if( !Parameter_fixed( node->height ) ){
+    if( Parameter_estimate( node->height ) ){
          // We ignore nodes that are <= threshold unless they are root or kids root
         if( ( Node_distance(node) <= data->threshold && !( Node_isroot( node ) || Node_isroot( Node_parent(node) ) ) ) ){
             SingleTreeLikelihood_update_all_nodes(stlk);
@@ -2530,12 +2524,12 @@ double optimize_scale_heights_polynomial( SingleTreeLikelihood *tlk, Optimizer *
         opt_set_tolx(opt_height, 0.001);
         Parameters *oneparameter = new_Parameters(1);
         lnl = optimize_brent_height_all(tlk, opt_height, data, oneparameter);
-        free_Parameters_soft(oneparameter);
+        free_Parameters(oneparameter);
         free_Optimizer(opt_height);
         
         //        Node **nodes = Tree_get_nodes(tlk->tree, POSTORDER);
         //        for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-        //            if( !Parameter_fixed( nodes[i]->height ) ){
+        //            if( Parameter_estimate( nodes[i]->height ) ){
         //                //Node_set_height(nodes[i], _correct_height( Node_height(nodes[i]), Parameters_value(coefficient, 0)) );
         //                Node_set_height(nodes[i], _correct_height( Node_height(nodes[i]), Parameters_value(coefficient, 0)) );
         //            }
@@ -2594,7 +2588,7 @@ double optimize_brent_heights_strict_local( SingleTreeLikelihood *stlk, Optimize
     int count = 0;
     
     for (int i = 0; i < Tree_node_count(stlk->tree); i++) {
-        if( Parameter_fixed( nodes[i]->height ) ){
+        if( !Parameter_estimate( nodes[i]->height ) ){
             continue;
         }
         count = 0 ;
@@ -3053,7 +3047,7 @@ double _brent_optimize_scale_heights_polynomial( Parameters *params, double *gra
 	}
 	
     //	for ( int i = 0; i < Tree_node_count(opt_data->tlk->tree); i++ ) {
-    //        if( !Parameter_fixed( nodes[i]->height ) ){
+    //        if( Parameter_estimate( nodes[i]->height ) ){
     //            Node_set_height(nodes[i], _correct_height( Node_height(nodes[i]), Parameters_value(params, 0)) );
     //        }
     //    }
@@ -3069,7 +3063,7 @@ double _brent_optimize_scale_heights_polynomial( Parameters *params, double *gra
     opt_set_tolx(opt_height, 0.001);
     Parameters *oneparameter = new_Parameters(1);
     double fret = optimize_brent_height_all(opt_data->tlk, opt_height, opt_data, oneparameter);
-    free_Parameters_soft(oneparameter);
+    free_Parameters(oneparameter);
     free_Optimizer(opt_height);
 	
 	//double lk = fabs(opt_data->tlk->calculate(opt_data->tlk));
@@ -3302,26 +3296,26 @@ double _cg_optimize_all( Parameters *params, double *grad, void *data ){
     //Node **nodes = Tree_nodes(stlk->tree);
 	
     int index = 0;
-	for ( int i = 0; i < Parameters_count(stlk->sm->m->freqs); i++) {
-        if( Parameters_fixed(stlk->sm->m->freqs, i) ) continue;
+	for ( int i = 0; i < Parameters_count(stlk->sm->m->simplex->parameters); i++) {
 		stlk->sm->m->set_relative_frequency( stlk->sm->m, Parameters_value(params, index++), i );
 	}
 
     for ( int i = 0; i < Parameters_count(stlk->sm->m->rates); i++) {
-        if( Parameters_fixed(stlk->sm->m->rates, i) ) continue;
-		stlk->sm->m->set_rate( stlk->sm->m, Parameters_value(params, index++), i );
+		if( Parameters_estimate(stlk->sm->m->rates, i) ) {
+			stlk->sm->m->set_rate( stlk->sm->m, Parameters_value(params, index++), i );
+		}
 	}
     
 //    for ( int i = 0; i < Tree_node_count(stlk->tree); i++) {
-//        if( Parameter_fixed(nodes[i]->distance) ) continue;
+//        if( !Parameter_estimate(nodes[i]->distance) ) continue;
 //        Node_set_distance(nodes[i], Parameters_value(params, index++));
 //        
 //	}
-//    if(stlk->sm->shape != NULL && !Parameter_fixed(stlk->sm->shape) ){
+//    if(stlk->sm->shape != NULL && Parameter_estimate(stlk->sm->shape) ){
 //        SiteModel_set_alpha( stlk->sm, Parameters_value(params, index++) );
 //    }
 //    
-//    if(stlk->sm->pinv != NULL && !Parameter_fixed(stlk->sm->pinv) ){
+//    if(stlk->sm->pinv != NULL && Parameter_estimate(stlk->sm->pinv) ){
 //        SiteModel_set_pinv( stlk->sm, Parameters_value(params, index++) );
 //    }
     
@@ -3334,8 +3328,7 @@ double _cg_optimize_all( Parameters *params, double *grad, void *data ){
 	if ( grad != NULL ) {
         index = 0;
         
-		for ( int i = 0; i < Parameters_count(stlk->sm->m->freqs); i++ ) {
-            if( Parameters_fixed(stlk->sm->m->freqs, i) ) continue;
+		for ( int i = 0; i < Parameters_count(stlk->sm->m->simplex->parameters); i++ ) {
             
 			double h = SQRT_EPS*(fabs(Parameters_value(params, index)) + 1.0);
 			
@@ -3359,7 +3352,7 @@ double _cg_optimize_all( Parameters *params, double *grad, void *data ){
 		}
         
         for ( int i = 0; i < Parameters_count(stlk->sm->m->rates); i++ ) {
-            if( Parameters_fixed(stlk->sm->m->rates, i) ) continue;
+            if( !Parameters_estimate(stlk->sm->m->rates, i) ) continue;
             
 			//double h = SQRT_EPS*(fabs(Parameters_value(params, index)) + 1.0);
             double h = 0.00001;
@@ -3385,7 +3378,7 @@ double _cg_optimize_all( Parameters *params, double *grad, void *data ){
         
 //        calculate_all_dlnl_dt( stlk, grad+index );
 //        for ( int i = 0; i < Tree_node_count(stlk->tree); i++) {
-//            if( Parameter_fixed(nodes[i]->distance) ) continue;
+//            if( !Parameter_estimate(nodes[i]->distance) ) continue;
 //            
 //            grad[index] = -grad[index];
 //            if( grad[index] > 1000 ){
@@ -3438,7 +3431,7 @@ double _cg_optimize_all( Parameters *params, double *grad, void *data ){
 //            index++;
 //		}
 //        
-//        if(stlk->sm->shape != NULL && !Parameter_fixed(stlk->sm->shape)){
+//        if(stlk->sm->shape != NULL && Parameter_estimate(stlk->sm->shape)){
 //            //double h = SQRT_EPS*(fabs(Parameters_value(params, index)) + 1.0);
 //            double h = 0.000001;
 //			double oldx = Parameters_value(params,index);
@@ -3740,7 +3733,7 @@ double _cg_optimize_scale_rate_heights_polynomial( Parameters *params, double *g
     double rate = opt_data->tlk->bm->get(opt_data->tlk->bm, 0);
 	
     //	for ( int i = 0; i < Tree_node_count(opt_data->tlk->tree); i++ ) {
-    //        if( !Parameter_fixed( nodes[i]->height ) ){
+    //        if( Parameter_estimate( nodes[i]->height ) ){
     //            Node_set_height(nodes[i], _correct_height( Node_height(nodes[i]), Parameters_value(params, 0)) );
     //        }
     //    }

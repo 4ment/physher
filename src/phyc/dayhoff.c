@@ -20,36 +20,26 @@
 #include "matrix.h"
 
 SubstitutionModel * new_DAYHOFF(){
-    double freqs[20];
-    for ( int i = 0; i < 20; i++ ) {
-        freqs[i] = 0.05;
-    }
-    SubstitutionModel *m = new_DAYHOFF_with_values(freqs);
+    Simplex* freqs = new_Simplex(20);
+	freqs->set_values(freqs, AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES);
+    SubstitutionModel *m = new_DAYHOFF_with_parameters(freqs);
     
     return m;
 }
 
-SubstitutionModel * new_DAYHOFF_with_values( const double *freqs ){
-    
-    SubstitutionModel *m = create_aa_model("DAYHOFF", DAYHOFF);
-    
-    if( freqs != NULL ){
-        check_frequencies( freqs, 20 );
-        m->_freqs = clone_dvector( freqs, 20 );
-    }
-    else {
-        m->_freqs = clone_dvector( AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES, 20 );
-    }
-    
-    for ( int i = 0; i < m->nstate; i++ )  {
-        for ( int j = i + 1; j < m->nstate; j++ ) {
-            m->Q[i][j] = AMINO_ACID_MODEL_DAYHOFF[i][j] * m->_freqs[j];
-            m->Q[j][i] = AMINO_ACID_MODEL_DAYHOFF[i][j] * m->_freqs[i];
-        }
-    }
-    
-    update_eigen_system( m );
-    m->need_update = false;
-    
-    return m;
+SubstitutionModel * new_DAYHOFF_with_parameters( Simplex *freqs ){
+	SubstitutionModel *m = create_aa_model("DAYHOFF", DAYHOFF, freqs);
+	
+	const double* f = freqs->get_values(freqs);
+	for ( int i = 0; i < m->nstate; i++ )  {
+		for ( int j = i + 1; j < m->nstate; j++ ) {
+			m->Q[i][j] = AMINO_ACID_MODEL_DAYHOFF[i][j] * f[j];
+			m->Q[j][i] = AMINO_ACID_MODEL_DAYHOFF[i][j] * f[i];
+		}
+	}
+	
+	update_eigen_system( m );
+	m->need_update = false;
+	
+	return m;
 }

@@ -24,24 +24,14 @@
 
 static void _gy_update_Q( SubstitutionModel *m );
 
-SubstitutionModel * new_GY94( unsigned gen_code ){
-    double *freqs = dvector(NUMBER_OF_CODONS[gen_code]);
-    for ( int i = 0; i < NUMBER_OF_CODONS[gen_code]; i++) {
-        freqs[i] = 1.0/NUMBER_OF_CODONS[gen_code];
-    }
+SubstitutionModel * new_GY94( Simplex* freqs, unsigned gen_code ){
     SubstitutionModel *m = new_GY94_with_values(freqs,1, 1, gen_code);
-    free(freqs);
     return m;
 }
 
-SubstitutionModel * new_GY94_with_values( const double *freqs, const double omega, const double kappa, unsigned gen_code ){
-    
-    check_frequencies( freqs, NUMBER_OF_CODONS[gen_code] );
-    SubstitutionModel *m = create_codon_model("GY94", GY94, gen_code);
-    
-    //printf("nstate %d freq length %d\n", m->nstate, NUMBER_OF_CODONS[gen_code]);
-    // Parameters and Q matrix
-    m->_freqs = clone_dvector( freqs, NUMBER_OF_CODONS[gen_code] );
+SubstitutionModel * new_GY94_with_values( Simplex* freqs, const double omega, const double kappa, unsigned gen_code ){
+	
+    SubstitutionModel *m = create_codon_model("GY94", GY94, gen_code, freqs);
     
     // Functions
     m->update_Q = _gy_update_Q;
@@ -60,6 +50,7 @@ static void _gy_update_Q( SubstitutionModel *m ){
     
     double kappa = Parameters_value(m->rates, 0);
     double omega = Parameters_value(m->rates, 1);
+	const double* freqs = m->get_frequencies(m);
     
     for ( int ii = 0; ii < 64; ii++ ) {
         if ( GENETIC_CODE_TABLES[m->gen_code][ii] == '*' ) continue;
@@ -99,24 +90,24 @@ static void _gy_update_Q( SubstitutionModel *m ){
                 
                 // synonymous
                 if ( GENETIC_CODE_TABLES[m->gen_code][ii] == GENETIC_CODE_TABLES[m->gen_code][jj] ) {
-                    m->Q[i][j] = kappa * m->_freqs[j];
-                    m->Q[j][i] = kappa * m->_freqs[i];
+                    m->Q[i][j] = kappa * freqs[j];
+                    m->Q[j][i] = kappa * freqs[i];
                 }
                 else {
-                    m->Q[i][j] = kappa * omega * m->_freqs[j];
-                    m->Q[j][i] = kappa * omega * m->_freqs[i];
+                    m->Q[i][j] = kappa * omega * freqs[j];
+                    m->Q[j][i] = kappa * omega * freqs[i];
                 }
             }
             // there is one transversion
             else{
                 // synonymous
                 if ( GENETIC_CODE_TABLES[m->gen_code][ii] == GENETIC_CODE_TABLES[m->gen_code][jj] ) {
-                    m->Q[i][j] = m->_freqs[j];
-                    m->Q[j][i] = m->_freqs[i];
+                    m->Q[i][j] = freqs[j];
+                    m->Q[j][i] = freqs[i];
                 }
                 else {
-                    m->Q[i][j] = omega * m->_freqs[j];
-                    m->Q[j][i] = omega * m->_freqs[i];
+                    m->Q[i][j] = omega * freqs[j];
+                    m->Q[j][i] = omega * freqs[i];
                 }
             }
             j++;

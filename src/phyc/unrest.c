@@ -59,11 +59,8 @@ static void _p_t_transpose_unrestricted( SubstitutionModel *m, const double t, d
 
 
 SubstitutionModel * new_UnrestrictedNucleotideModel( ){
-	SubstitutionModel *m = NULL;
-	
-	m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA);
-	
-	m->_freqs = dvector(4);
+	Simplex* freqs = new_Simplex(4);
+	SubstitutionModel *m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA, freqs);
 	
 	m->rates = new_Parameters( 11 );
 	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r1",  "model", 1, new_Constraint(0.001, 100) ) );
@@ -89,11 +86,8 @@ SubstitutionModel * new_UnrestrictedNucleotideModel( ){
 }
 
 SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters( const Parameters* rates ){
-	SubstitutionModel *m = NULL;
-	
-	m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA);
-	
-	m->_freqs = dvector(4);
+	Simplex* freqs = new_Simplex(4);
+	SubstitutionModel *m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA, freqs);
 	
 	m->rates = new_Parameters(11);
 	for(int i = 0; i < Parameters_count(rates); i++){
@@ -170,7 +164,7 @@ int matinv( double x[], int n, int m, double space[] ) {
 // Q[,4]=c(1,1,1,1)
 // solve(t(Q),c(0,0,0,1))
 // or solve(Q) and take last row as pi
-int QtoPi ( double **Q, double *pi, int n ){
+int QtoPi ( const double **Q, double *pi, int n ){
     /* from rate matrix Q[] to pi, the stationary frequencies:
      pi * Q = Q' * pi = 0     pi * 1 = 1
      space[] is of size n*(n+1).
@@ -283,9 +277,10 @@ void _nuc_unrestricted_update_Q( SubstitutionModel *m ){
     }
     
     make_zero_rows( m->Q, m->nstate);
-    
-    QtoPi( m->Q, m->_freqs, m->nstate);
-    normalize_Q( m->Q, m->_freqs, m->nstate );
+	double f[4];
+    QtoPi( m->Q, f, m->nstate);
+	m->simplex->set_values(m->simplex, f);
+    normalize_Q( m->Q, f, m->nstate );
     
     EigenDecomposition_decompose(m->Q, m->eigendcmp);
     

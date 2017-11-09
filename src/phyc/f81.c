@@ -29,20 +29,11 @@ static void f81_dp_dt_transpose( SubstitutionModel *m, const double t, double *P
 static void f81_d2p_dt2( SubstitutionModel *m, const double t, double *P );
 static void f81_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P );
 
-SubstitutionModel * new_F81(){
+SubstitutionModel * new_F81(Simplex* freqs){
     
-    SubstitutionModel *m = create_substitution_model("F81", JC69, DATA_TYPE_NUCLEOTIDE);
+    SubstitutionModel *m = create_substitution_model("F81", JC69, DATA_TYPE_NUCLEOTIDE, freqs);
     m->nstate = 4;
-    m->_freqs = dvector(4);
-    m->_freqs[0] = m->_freqs[1] = m->_freqs[2] = m->_freqs[3] = 0.25;
-    for ( int i = 0; i < 4; i++ ) m->_freqs[i] = 0.25;
-    
-    m->freqs = new_Parameters( 3 );
-    m->update_frequencies = nucleotide_update_freqs_relative;
-    Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piA", "model", 1.0, new_Constraint(0.001, 0.999) ) );
-    Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piC", "model", 1.0, new_Constraint(0.001, 0.999) ) );
-    Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piG", "model", 1.0, new_Constraint(0.001, 0.999) ) );
-    
+	
     m->pij_t = f81_pij_t;
     m->p_t = f81_p_t;
     m->p_t_transpose = f81_p_t_transpose;
@@ -53,64 +44,36 @@ SubstitutionModel * new_F81(){
     return m;
 }
 
-SubstitutionModel * new_F81_with_parameters(const Parameters* freqs){
-	
-	SubstitutionModel *m = create_substitution_model("F81", JC69, DATA_TYPE_NUCLEOTIDE);
-	m->nstate = 4;
-	m->_freqs = dvector(4);
-	
-	m->freqs = new_Parameters( 3 );
-	if(Parameters_count(freqs) == 4){
-		m->update_frequencies = nucleotide_update_freqs;
-		for (int i = 0; i < Parameters_count(freqs); i++) {
-			m->_freqs[i] = Parameters_value(freqs, i);
-		}
-	}
-	else{
-		m->update_frequencies = nucleotide_update_freqs_relative;
-		fprintf(stderr, "new_GTR_with_parameters need to be implemented\n");
-		exit(1);
-	}
-	check_frequencies( m->_freqs, 4 );
-	
-	
-	m->pij_t = f81_pij_t;
-	m->p_t = f81_p_t;
-	m->p_t_transpose = f81_p_t_transpose;
-	m->dp_dt = f81_dp_dt;
-	m->dp_dt_transpose = f81_dp_dt_transpose;
-	m->d2p_d2t = f81_d2p_dt2;
-	m->d2p_d2t_transpose = f81_d2p_dt2_transpose;
-	return m;
-}
-
 double f81_pij_t( SubstitutionModel *m, const int i, const int j, const double t ){
-    double temp =  exp(-t/(1.0 - m->_freqs[0]*m->_freqs[0] - m->_freqs[1]*m->_freqs[1] - m->_freqs[2]*m->_freqs[2] - m->_freqs[3]*m->_freqs[3]));
-    if(i == j) return temp + m->_freqs[j]*(1.0-temp);
-    else       return m->_freqs[j]*(1.0-temp);
+	const double* freqs = m->simplex->get_values(m->simplex);
+    double temp =  exp(-t/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]));
+    if(i == j) return temp + freqs[j]*(1.0-temp);
+    else       return freqs[j]*(1.0-temp);
 }
 
 void f81_p_t_rolled( SubstitutionModel *m, const double t, double *P ){
-    double temp =  exp(-t/(1.0 - m->_freqs[0]*m->_freqs[0] - m->_freqs[1]*m->_freqs[1] - m->_freqs[2]*m->_freqs[2] - m->_freqs[3]*m->_freqs[3]));
+	const double* freqs = m->simplex->get_values(m->simplex);
+    double temp =  exp(-t/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]));
     int i,j;
     int k = 0;
     for ( i = 0; i < 4; i++) {
         for ( j = 0; j < 4; j++){
-            if( i == j ) P[k] = temp + m->_freqs[j]*(1.0-temp);
-            else P[k] = m->_freqs[j]*(1.0-temp);
+            if( i == j ) P[k] = temp + freqs[j]*(1.0-temp);
+            else P[k] = freqs[j]*(1.0-temp);
             k++;
         }
     }
 }
 
 void f81_p_t( SubstitutionModel *m, const double t, double *P ){
-    double temp =  exp(-t/(1.0 - m->_freqs[0]*m->_freqs[0] - m->_freqs[1]*m->_freqs[1] - m->_freqs[2]*m->_freqs[2] - m->_freqs[3]*m->_freqs[3]));
+	const double* freqs = m->simplex->get_values(m->simplex);
+    double temp =  exp(-t/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]));
     double temp2 = 1.0 - temp;
     
-    double atemp2 = m->_freqs[0] * temp2;
-    double ctemp2 = m->_freqs[1] * temp2;
-    double ttemp2 = m->_freqs[2] * temp2;
-    double gtemp2 = m->_freqs[3] * temp2;
+    double atemp2 = freqs[0] * temp2;
+    double ctemp2 = freqs[1] * temp2;
+    double ttemp2 = freqs[2] * temp2;
+    double gtemp2 = freqs[3] * temp2;
     
     //A
     P[0]  = atemp2 + temp; //A
@@ -138,13 +101,14 @@ void f81_p_t( SubstitutionModel *m, const double t, double *P ){
 }
 
 void f81_p_t_transpose( SubstitutionModel *m, const double t, double *P ){
-    double temp =  exp(-t/(1.0 - m->_freqs[0]*m->_freqs[0] - m->_freqs[1]*m->_freqs[1] - m->_freqs[2]*m->_freqs[2] - m->_freqs[3]*m->_freqs[3]));
+	const double* freqs = m->simplex->get_values(m->simplex);
+    double temp =  exp(-t/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]));
     double temp2 = 1.0 - temp;
     
-    double atemp2 = m->_freqs[0] * temp2;
-    double ctemp2 = m->_freqs[1] * temp2;
-    double ttemp2 = m->_freqs[2] * temp2;
-    double gtemp2 = m->_freqs[3] * temp2;
+    double atemp2 = freqs[0] * temp2;
+    double ctemp2 = freqs[1] * temp2;
+    double ttemp2 = freqs[2] * temp2;
+    double gtemp2 = freqs[3] * temp2;
     
     //A
     P[0]  = atemp2 + temp; //A
@@ -172,13 +136,14 @@ void f81_p_t_transpose( SubstitutionModel *m, const double t, double *P ){
 }
 
 void f81_dp_dt( SubstitutionModel *m, const double t, double *P ){
-    double beta = 1.0/(1.0 - m->_freqs[0]*m->_freqs[0] - m->_freqs[1]*m->_freqs[1] - m->_freqs[2]*m->_freqs[2] - m->_freqs[3]*m->_freqs[3]);
+	const double* freqs = m->simplex->get_values(m->simplex);
+    double beta = 1.0/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]);
     double betatemp = beta*exp(-beta*t);
     
-    double atemp = m->_freqs[0] * betatemp;
-    double ctemp = m->_freqs[1] * betatemp;
-    double ttemp = m->_freqs[2] * betatemp;
-    double gtemp = m->_freqs[3] * betatemp;
+    double atemp = freqs[0] * betatemp;
+    double ctemp = freqs[1] * betatemp;
+    double ttemp = freqs[2] * betatemp;
+    double gtemp = freqs[3] * betatemp;
     
     //A
     P[0]  = betatemp - atemp; //A
@@ -206,13 +171,14 @@ void f81_dp_dt( SubstitutionModel *m, const double t, double *P ){
 }
 
 void f81_dp_dt_transpose( SubstitutionModel *m, const double t, double *P ){
-    double beta = 1.0/(1.0 - m->_freqs[0]*m->_freqs[0] - m->_freqs[1]*m->_freqs[1] - m->_freqs[2]*m->_freqs[2] - m->_freqs[3]*m->_freqs[3]);
+	const double* freqs = m->simplex->get_values(m->simplex);
+    double beta = 1.0/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]);
     double betatemp = beta*exp(-beta*t);
     
-    double atemp = m->_freqs[0] * betatemp;
-    double ctemp = m->_freqs[1] * betatemp;
-    double ttemp = m->_freqs[2] * betatemp;
-    double gtemp = m->_freqs[3] * betatemp;
+    double atemp = freqs[0] * betatemp;
+    double ctemp = freqs[1] * betatemp;
+    double ttemp = freqs[2] * betatemp;
+    double gtemp = freqs[3] * betatemp;
     
     //A
     P[0]  = betatemp - atemp; //A
@@ -240,13 +206,14 @@ void f81_dp_dt_transpose( SubstitutionModel *m, const double t, double *P ){
 }
 
 void f81_d2p_dt2( SubstitutionModel *m, const double t, double *P ){
-    double beta = 1.0/(1.0 - m->_freqs[0]*m->_freqs[0] - m->_freqs[1]*m->_freqs[1] - m->_freqs[2]*m->_freqs[2] - m->_freqs[3]*m->_freqs[3]);
+	const double* freqs = m->simplex->get_values(m->simplex);
+    double beta = 1.0/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]);
     double beta2temp = beta*beta*exp(-beta*t);
     
-    double atemp = m->_freqs[0] * beta2temp;
-    double ctemp = m->_freqs[1] * beta2temp;
-    double ttemp = m->_freqs[2] * beta2temp;
-    double gtemp = m->_freqs[3] * beta2temp;
+    double atemp = freqs[0] * beta2temp;
+    double ctemp = freqs[1] * beta2temp;
+    double ttemp = freqs[2] * beta2temp;
+    double gtemp = freqs[3] * beta2temp;
     
     //A
     P[0]  = atemp - beta2temp; //A
@@ -276,13 +243,14 @@ void f81_d2p_dt2( SubstitutionModel *m, const double t, double *P ){
 
 
 void f81_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P ){
-    double beta = 1.0/(1.0 - m->_freqs[0]*m->_freqs[0] - m->_freqs[1]*m->_freqs[1] - m->_freqs[2]*m->_freqs[2] - m->_freqs[3]*m->_freqs[3]);
+	const double* freqs = m->simplex->get_values(m->simplex);
+    double beta = 1.0/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]);
     double beta2temp = beta*beta*exp(-beta*t);
     
-    double atemp = m->_freqs[0] * beta2temp;
-    double ctemp = m->_freqs[1] * beta2temp;
-    double ttemp = m->_freqs[2] * beta2temp;
-    double gtemp = m->_freqs[3] * beta2temp;
+    double atemp = freqs[0] * beta2temp;
+    double ctemp = freqs[1] * beta2temp;
+    double ttemp = freqs[2] * beta2temp;
+    double gtemp = freqs[3] * beta2temp;
     
     //A
     P[0]  = atemp - beta2temp; //A

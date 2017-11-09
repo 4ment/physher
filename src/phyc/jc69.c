@@ -26,12 +26,12 @@ static void jc69_dp_dt( SubstitutionModel *m, const double t, double *P );
 static void jc69_d2p_dt2( SubstitutionModel *m, const double t, double *P );
 
 SubstitutionModel * new_JC69(){
-    
-    SubstitutionModel *m = create_substitution_model("JC69", JC69, DATA_TYPE_NUCLEOTIDE);
+	Simplex* freqs = new_Simplex(4);
+	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
+		Parameters_at(freqs->parameters, i)->estimate = false;
+	}
+    SubstitutionModel *m = create_substitution_model("JC69", JC69, DATA_TYPE_NUCLEOTIDE, freqs);
     m->nstate = 4;
-    m->_freqs = dvector(4);
-    for ( int i = 0; i < 4; i++ ) m->_freqs[i] = 0.25;
-    
     m->pij_t = jc69_pij_t;
     m->p_t   = m->p_t_transpose = jc69_p_t;
     m->dp_dt = m->dp_dt_transpose = jc69_dp_dt;
@@ -83,7 +83,6 @@ void jc69_d2p_dt2( SubstitutionModel *m, const double t, double *P ){
 
 StringBuffer * SubstitutionModel_JC69_bufferize( StringBuffer *buffer, SubstitutionModel *m ){
 	StringBuffer_append_string(buffer, "{");
-	StringBuffer_append_strings(buffer, 2, "id:\"", m->id, "\",\n");
 	StringBuffer_append_strings(buffer, 2, "name:\"", m->name, "\"\n");
 	StringBuffer_append_string(buffer, "}");
 	

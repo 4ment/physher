@@ -184,7 +184,7 @@
 
 SubstitutionModel * new_GTR();
 
-SubstitutionModel * new_GTR_with_parameters( const Parameters *freqs, const Parameters *rates );
+SubstitutionModel * new_GTR_with_parameters( Simplex *freqs, const Parameters *rates, int relativeTo );
 
 SubstitutionModel * new_GTR_with_values( const double *freqs, const double *rates );
 

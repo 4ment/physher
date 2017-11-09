@@ -535,7 +535,7 @@ void Tree_init_heights ( Tree *atree ) {
 				}
 				
 				if ( Constraint_lower_fixed(nodes[i]->height->cnstr) && Constraint_upper_fixed(nodes[i]->height->cnstr) && Parameter_upper(nodes[i]->height) == Parameter_lower(nodes[i]->height) ) {
-					Parameter_set_fixed(nodes[i]->height, true);
+					Parameter_set_estimate(nodes[i]->height, false);
 				}
 				
 			}
@@ -592,7 +592,19 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 	}
 	Tree *tree = (Tree*)self->obj;
 	Tree *clonetree = clone_Tree(tree);
+	for (int i = 0; i < Tree_node_count(clonetree); i++) {
+		Node* node = Tree_node(clonetree, i);
+		if(node->distance != NULL){
+			char* name = Parameter_name(node->distance);
+			Hashtable_add(hash, name, node->distance);
+		}
+		if(node->height != NULL){
+			char* name = Parameter_name(node->height);
+			Hashtable_add(hash, name, node->height);
+		}
+	}
 	Model* clone = new_TreeModel(self->name, clonetree);
+	Hashtable_add(hash, clone->name, clone);
 	return clone;
 }
 
@@ -1405,7 +1417,7 @@ void Tree_init_heights_heterochronous( Tree *tree, const double rate, bool conve
 		if ( Node_isleaf(nodes[i]) ){
 			if ( nodes[i]->height == NULL ) nodes[i]->height = new_Parameter_with_postfix(nodes[i]->name, POSTFIX_HEIGHT, nodes[i]->time, new_Constraint(nodes[i]->time, nodes[i]->time)); // constraint is temporary
 			Node_set_height( nodes[i], nodes[i]->time );
-			Parameter_set_fixed(nodes[i]->height, true);
+			Parameter_set_estimate(nodes[i]->height, false);
 			
 			if ( convert ) {
 				nodes[i]->height->value = youngest - nodes[i]->height->value;
@@ -1487,7 +1499,7 @@ bool parse_calibrations( Tree *tree ){
 				//				}
 				if ( Constraint_lower_fixed(nodes[i]->height->cnstr) && Constraint_upper_fixed(nodes[i]->height->cnstr) && Parameter_upper(nodes[i]->height) == Parameter_lower(nodes[i]->height) ) {
 					Parameter_set_value( nodes[i]->height, Parameter_upper(nodes[i]->height) );
-					Parameter_set_fixed(nodes[i]->height, true);
+					Parameter_set_estimate(nodes[i]->height, false);
 					//fprintf(stderr, "%s %s\n", nodes[i]->name, nodes[i]->info);
 				}
 				else if ( Constraint_lower_fixed(nodes[i]->height->cnstr) && Constraint_upper_fixed(nodes[i]->height->cnstr) ) {
@@ -1589,7 +1601,7 @@ void Tree_init_heights_homochronous( Tree *tree, const double rate ){
 		}
         else if(Node_isleaf(nodes[i]) ) {
             Node_set_height(nodes[i], 0);
-			Parameter_set_fixed(nodes[i]->height, true);
+			Parameter_set_estimate(nodes[i]->height, false);
         }
 		
 		Node *n = nodes[i];
@@ -1834,14 +1846,14 @@ bool parse_dates( Tree *tree ){
 
 void Tree_constrain_height( Node *node ){
 	Constraint *cnstr = node->height->cnstr;
-	if ( Constraint_fixed(cnstr) ) {
+	if ( Parameter_estimate(node->height) == false ) {
 		return;
 	}
 	
 	// Always assume that tips have a date
 	if( Node_isleaf( node ) ){
 		Constraint_set_bounds(cnstr, Parameter_value(node->height), Parameter_value(node->height) );
-		Constraint_set_fixed(cnstr, true);
+		Parameter_set_estimate(node->height, false);
 	}
 	else {
 		double lower = dmax(Parameter_value( Node_left(node)->height ), Parameter_value( Node_right(node)->height ) );
@@ -1949,7 +1961,7 @@ void Tree_print_parameters( Tree *tree ){
 				i,nodes[i]->id, nodes[i]->name, nodes[i]->height->value,
 				Parameter_lower(nodes[i]->height) ,
 				Parameter_upper(nodes[i]->height),
-				Parameter_fixed(nodes[i]->height) );
+				Parameter_estimate(nodes[i]->height) );
 	}
 }
 
@@ -1966,8 +1978,7 @@ void Tree_copy_height_constraints( Tree *src, Tree *dist ){
 		
 		Constraint_set_lower_fixed(dist_nodes[i]->height->cnstr, Constraint_lower_fixed(src_nodes[i]->height->cnstr));
 		Constraint_set_upper_fixed(dist_nodes[i]->height->cnstr, Constraint_upper_fixed(src_nodes[i]->height->cnstr));
-		
-		Constraint_set_fixed( dist_nodes[i]->height->cnstr, Constraint_fixed(src_nodes[i]->height->cnstr) );
+		Parameter_set_estimate(dist_nodes[i]->height, Parameter_estimate(src_nodes[i]->height));
 	}
 }
 

@@ -13,6 +13,7 @@
 
 #include "model.h"
 #include "parameters.h"
+#include "simplex.h"
 
 
 struct _DistributionModel;
@@ -21,6 +22,7 @@ typedef struct _DistributionModel DistributionModel;
 struct _DistributionModel{
 	Parameters* parameters;
 	Parameters* x;
+	Simplex* simplex;
 	double* tempx; // array to pass to multivariate distributions
 	double* tempp;
 	double (*logP)(DistributionModel*);
@@ -35,8 +37,10 @@ DistributionModel* new_IndependantGammaDistributionModel(const double shape, con
 
 DistributionModel* new_IndependantExpDistributionModel(const double lambda, const Parameters* x);
 
-DistributionModel* new_FlatDirichletDistributionModel(const Parameters* x);
+DistributionModel* new_FlatDirichletDistributionModel(Simplex* simplex);
 
-Model* new_DistributionModel2(const char* name, DistributionModel* cm);
+Model* new_DistributionModel2(const char* name, DistributionModel* dm);
+
+Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex);
 
 #endif /* distmodel_h */

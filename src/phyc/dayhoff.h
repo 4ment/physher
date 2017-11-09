@@ -48,6 +48,6 @@ static const double AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES[20] = { 0.087127, 0.033
 
 SubstitutionModel * new_DAYHOFF();
 
-SubstitutionModel * new_DAYHOFF_with_values( const double *freqs );
+SubstitutionModel * new_DAYHOFF_with_parameters( Simplex *freqs );
 
 #endif

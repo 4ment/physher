@@ -21,6 +21,7 @@
 #include "sequence.h"
 #include "eigen.h"
 #include "parameters.h"
+#include "simplex.h"
 
 typedef enum modeltype {
     // Nucleotide models
@@ -51,15 +52,15 @@ typedef enum modeltype {
 
 
 typedef struct SubstitutionModel{
-	char* id;
-	double *_freqs; // hold the real frequencies ex: 0.25 0.25 0.25 0.25
+	//double *_freqs; // hold the real frequencies ex: 0.25 0.25 0.25 0.25
+	Simplex* simplex;
 	unsigned int nstate;
 	char *name;
 	modeltype modeltype;
 	datatype dtype;
 	EigenDecomposition *eigendcmp;
 	double **Q;
-    unsigned *model; // nstate * nstate
+	DiscreteParameter* model;
     
     double *dQ;
     bool dQ_need_update;
@@ -67,8 +68,10 @@ typedef struct SubstitutionModel{
 	bool need_update;
 	
 	Parameters *rates;
-	Parameters *freqs; // hold relative frequencies
+	//Parameters *freqs; // hold relative frequencies
 
+	int relativeTo;
+	
 	// temp variables
 	double **PP;
 	
@@ -78,9 +81,10 @@ typedef struct SubstitutionModel{
 	
 	void (*update_Q)( struct SubstitutionModel * );
 	
-	void (*update_frequencies)( struct SubstitutionModel * );
+//	void (*update_frequencies)( struct SubstitutionModel * );
 	
-	void (*set_frequencies)( struct SubstitutionModel *, const double* );
+	const double* (*get_frequencies)( struct SubstitutionModel * );
+	
 	void (*set_rates)( struct SubstitutionModel *, const double * );
 	
 	void (*set_relative_frequency)( struct SubstitutionModel *, const double, const int );
@@ -105,7 +109,7 @@ typedef struct SubstitutionModel{
 	
 }SubstitutionModel;
 
-Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm );
+Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* simplex  );
 
 void generale_update_freqs( SubstitutionModel *model );
 
@@ -118,41 +122,36 @@ void make_zero_rows( double **q, const int dim );
 void normalize_Q( double **m, const double *freqs, const int dim );
 
 
-SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, const datatype dtype );
+SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, const datatype dtype, Simplex* freqs );
 
-SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname );
+SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname, Simplex* freqs );
 
-SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code );
+SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code, Simplex* freqs );
 
-SubstitutionModel * create_aa_model( const char *name, const modeltype modelname );
+SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Simplex* freqs );
 
-SubstitutionModel * create_general_model( const char *name, const modeltype modelname, int dim );
+SubstitutionModel * create_general_model( const char *name, const modeltype modelname, Simplex* freqs );
 
 
 SubstitutionModel * clone_substitution_model(SubstitutionModel *m);
 
-SubstitutionModel * clone_substitution_model_share(SubstitutionModel *m, bool share_freqs, bool share_rates);
+SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, Simplex* simplex);
 
 void free_SubstitutionModel( SubstitutionModel *m);
 
-void free_SubstitutionModel_share( SubstitutionModel *m, bool share_freqs, bool share_rates );
-
-
 double get_frequency( SubstitutionModel *m, int pos );
-
-double *get_frequencies( SubstitutionModel *m );
 
 
 
 #pragma mark -
 #pragma mark misc
 	
-void print_frequencies(FILE *pfile, const SubstitutionModel *m);
+void print_frequencies(FILE *pfile, SubstitutionModel *m);
 void print_rates(FILE *pfile, const SubstitutionModel *m);
 
-void bufferize_frequencies(StringBuffer *buffer, const SubstitutionModel *m );
-void bufferize_codon_frequencies(StringBuffer *buffer, const SubstitutionModel *m );
-void bufferize_aa_frequencies(StringBuffer *buffer, const SubstitutionModel *m );
+void bufferize_frequencies(StringBuffer *buffer, SubstitutionModel *m );
+void bufferize_codon_frequencies(StringBuffer *buffer, SubstitutionModel *m );
+void bufferize_aa_frequencies(StringBuffer *buffer, SubstitutionModel *m );
 void bufferize_rates( StringBuffer *buffer, const SubstitutionModel *m );
 
 void compare_model( const SubstitutionModel *m1, const SubstitutionModel *m2 );
@@ -172,9 +171,9 @@ void print_substitution_matrix( SubstitutionModel *sm, double t );
 
 modeltype SubstitutionModel_get_code( const char *model_string );
 
-double tstv_to_kappa( double tstv, double *freqs );
+double tstv_to_kappa( double tstv, const double *freqs );
 
-double kappa_to_tstv( double kappa, double *freqs );
+double kappa_to_tstv( double kappa, const double *freqs );
 
 /*char *SubstitutionModel_stringify( SubstitutionModel *m );
  

@@ -37,7 +37,6 @@ typedef enum sitemodel_heterogeneity {
 }sitemodel_heterogeneity;
 
 typedef struct SiteModel{
-	int id;
 	SubstitutionModel *m;
 	int nstate;
 	
@@ -109,13 +108,11 @@ double sitemodel_get_discrete( SiteModel *sm, const int index );
 
 void free_SiteModel( SiteModel *sm );
 
-void free_SiteModel_share( SiteModel *sm, bool share_gamma, bool share_pinv, bool share_freqs, bool share_rates );
-
 SiteModel * clone_SiteModel( const SiteModel *sm );
 
 SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m );
 
-SiteModel * clone_SiteModel_share( const SiteModel *sm, bool share_gamma, bool share_pinv, bool share_freqs, bool share_rates );
+SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, const Parameters* params );
 
 /*char *SiteModel_stringify( SiteModel *sm );
 

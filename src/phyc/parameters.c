@@ -39,7 +39,6 @@
 struct _Constraint{
 	double lower;
 	double upper;
-	bool fixed;
 	bool lower_fixed;
 	bool upper_fixed;
 	double flower;
@@ -64,7 +63,6 @@ Constraint * new_Constraint( const double lower, const double upper ){
 	assert(c);
 	c->lower = lower;
 	c->upper = upper;
-	c->fixed = false;
 	c->lower_fixed = false;
 	c->upper_fixed = false;
 	
@@ -81,7 +79,6 @@ void free_Constraint( Constraint *c ){
 
 Constraint * clone_Constraint( Constraint *cnstr ){
 	Constraint *new = new_Constraint(cnstr->lower, cnstr->upper);
-	new->fixed = cnstr->fixed;
 	new->lower_fixed = cnstr->lower_fixed;
 	new->upper_fixed = cnstr->upper_fixed;
 	return new;
@@ -117,10 +114,6 @@ void Constraint_set_bounds( Constraint *constr, const double lower, const double
 	}
 }
 
-bool Constraint_fixed( const Constraint *c ){
-	return c->fixed;
-}
-
 bool Constraint_lower_fixed( const Constraint *c ){
 	return c->lower_fixed;
 }
@@ -128,11 +121,6 @@ bool Constraint_lower_fixed( const Constraint *c ){
 bool Constraint_upper_fixed( const Constraint *c ){
 	return c->upper_fixed;
 }
-
-void Constraint_set_fixed( Constraint *c, const bool fixed ){
-	c->fixed = fixed;
-}
-
 
 void Constraint_set_lower_fixed( Constraint *c, const bool fixed ){
 	c->lower_fixed = fixed;
@@ -182,7 +170,6 @@ void remove_contraint( Parameter *p ){
 }
 
 void compare_constraint( const Constraint *c1, const Constraint *c2 ){
-	assert( c1->fixed == c2->fixed );
 	assert( c1->lower == c2->lower );
 	assert( c1->upper == c2->upper );
 }
@@ -215,6 +202,7 @@ Parameter * new_Parameter_with_postfix_and_ownership( const char *name, const ch
 	p->value = value;
 	p->cnstr = constr;
 	p->ownconstraint = owner;
+	p->estimate = true;
 	p->id = 0;
 #ifdef LISTENERS
 	p->listeners = new_ListenerList(1);
@@ -237,6 +225,7 @@ Parameter * clone_Parameter( Parameter *p, bool duplicateconstraint ){
 	
 	pnew = new_Parameter( p->name, p->value,  cnstr );//pnew ref_count is reset to 1
 	pnew->ownconstraint = false;
+	pnew->estimate = p->estimate;
 	pnew->id = p->id;
 	return pnew;
 }
@@ -379,12 +368,12 @@ Constraint * Parameter_constraint( const Parameter *p ){
 	return p->cnstr;
 }
 
-bool Parameter_fixed( const Parameter *p ){
-	return Constraint_fixed(p->cnstr);
+bool Parameter_estimate( const Parameter *p ){
+	return p->estimate;
 }
 
-void Parameter_set_fixed( Parameter *p, const bool fixed ){
-	Constraint_set_fixed(p->cnstr, fixed);
+void Parameter_set_estimate( Parameter *p, const bool estimate ){
+	p->estimate = estimate;
 }
 
 double Parameter_upper( const Parameter *p ){
@@ -439,7 +428,7 @@ double check_value( Constraint *cnstr, double value ){
 		if ( value >= cnstr->lower &&  value <= cnstr->upper ) return value;
 #ifdef ASSIGN_DEBUG
 		fprintf(stderr, "Parameter out of bound\n%s\n",__FILE__);
-		fprintf(stderr, "%f [%f - %f] fixed = %d\n", value, cnstr->lower, cnstr->upper, cnstr->fixed);
+		fprintf(stderr, "%f [%f - %f]\n", value, cnstr->lower, cnstr->upper);
 		exit(0);
 #endif
 		if( value < cnstr->lower ) return cnstr->lower;
@@ -453,7 +442,7 @@ double check_value( Constraint *cnstr, double value ){
 
 
 void Parameter_print( const Parameter *p ){
-	fprintf(stderr, "%s %e [%e - %e] fixed = %d lower_fixed = %d upper_fixed = %d\n",p->name, p->value, p->cnstr->lower, p->cnstr->upper, p->cnstr->fixed, p->cnstr->lower_fixed, p->cnstr->upper_fixed);
+	fprintf(stderr, "%s %e [%e - %e] estimate = %d lower_fixed = %d upper_fixed = %d\n",p->name, p->value, p->cnstr->lower, p->cnstr->upper, p->estimate, p->cnstr->lower_fixed, p->cnstr->upper_fixed);
 }
 
 void compare_parameter( const Parameter *p1, const Parameter *p2 ){
@@ -494,6 +483,8 @@ Parameters * new_Parameters_with_contraint( const int capacity, Constraint *cnst
 }
 
 void free_Parameters( Parameters *ps ){
+	if(ps == NULL) return;
+	
 	for (int i = 0; i < ps->count; i++) {
 		free_Parameter(ps->list[i]);
 	}
@@ -509,18 +500,6 @@ void free_Parameters( Parameters *ps ){
 	ps = NULL;
 }
 
-void free_Parameters_soft( Parameters *ps ){
-	if ( ps->name != NULL ) {
-		free(ps->name);
-	}
-	if ( ps->cnstr != NULL ) {
-		free_Constraint( ps->cnstr );
-	}
-	free(ps->list);
-	free(ps);
-	ps = NULL;
-}
-
 // The cloned parameters can have different capacities but same count of course
 Parameters * clone_Parameters( Parameters *p, bool ownconstraint ){
 	Parameters * clone = NULL;
@@ -529,7 +508,7 @@ Parameters * clone_Parameters( Parameters *p, bool ownconstraint ){
 		clone = new_Parameters_with_contraint( p->count, c, p->name );
 		
 		for (int i = 0; i < p->count; i++) {
-			Parameters_add(clone, new_Parameter_with_postfix_and_ownership( p->list[i]->name, "", p->list[i]->value, c, false) );
+			Parameters_move(clone, new_Parameter_with_postfix_and_ownership( p->list[i]->name, "", p->list[i]->value, c, false) );
 		}
 		
 	}
@@ -537,7 +516,7 @@ Parameters * clone_Parameters( Parameters *p, bool ownconstraint ){
 		clone = new_Parameters( p->count );
 		
 		for (int i = 0; i < p->count; i++) {
-			Parameters_add(clone, clone_Parameter( p->list[i], ownconstraint ) );
+			Parameters_move(clone, clone_Parameter( p->list[i], ownconstraint ) );
 		}
 	}
 	
@@ -678,15 +657,14 @@ void Parameters_move( Parameters *ps, Parameter *p){
 		ps->capacity++;
 	}
 	ps->list[ps->count++] = p;
-	//p->refCount++;
 }
 
 void Parameters_add_parameters(Parameters *dst, const Parameters *src){
 	if(Parameters_count(src) == 0) return;
-	if( dst->count+src->count == dst->capacity ){
+	if( dst->count+src->count > dst->capacity ){
 		dst->list = realloc(dst->list, (dst->count+src->count) * sizeof(Parameter*) );
 		assert(dst->list);
-		dst->capacity++;		
+		dst->capacity = dst->count+src->count;
 	}
 	for (int i = 0; i < src->count; i++) {
 		Parameters_add( dst, src->list[i] );
@@ -736,12 +714,12 @@ double Parameters_value( const Parameters *p, const int index ){
 	return Parameter_value(p->list[index]);
 }
 
-bool Parameters_fixed( const Parameters *p, const int index ){
-	return Parameter_fixed(p->list[index] );
+bool Parameters_estimate( const Parameters *p, const int index ){
+	return Parameter_estimate(p->list[index] );
 }
 
-void Parameters_set_fixed( Parameters *p, const bool fixed, const int index ){
-	Parameter_set_fixed(p->list[index], fixed );
+void Parameters_set_estimate( Parameters *p, const bool estimate, const int index ){
+	Parameter_set_estimate(p->list[index], estimate );
 }
 
 Constraint * Parameters_constraint( const Parameters *p, const int index ){
@@ -821,7 +799,7 @@ Parameters * Parameters_optimizable( Parameters *p, int **map, const char postfi
 		}
 			
 		
-		if( !p->list[i]->cnstr->fixed ){
+		if( p->list[i]->estimate ){
 			if ( postfix != NULL ){
 				if(strstr(p->list[i]->name, postfix) == NULL ) continue;
 			}
@@ -850,7 +828,7 @@ int Parameters_count_optimizable( const Parameters *p, const char postfix[] ){
 	if( p == NULL ) return 0;
 	int count = 0;
 	for ( int i = 0; i < p->count; i++) {
-		if( !p->list[i]->cnstr->fixed ){
+		if( p->list[i]->estimate ){
 			if ( postfix != NULL ){
 				if(strstr(p->list[i]->name, postfix) != NULL ) count++;
 			}
@@ -890,13 +868,6 @@ void Parameters_remove( Parameters *params, int index ){
 void Parameters_pop( Parameters *params ){
 	if( params->count !=0 ){
 		free_Parameter( params->list[params->count-1] );
-		params->list[params->count-1] = NULL;
-		params->count--;
-	}
-}
-
-void Parameters_pop_soft( Parameters *params ){
-	if( params->count !=0 ){
 		params->list[params->count-1] = NULL;
 		params->count--;
 	}
@@ -947,7 +918,7 @@ void Parameters_sort_from_ivector( Parameters *p, int *s ){
 #pragma mark -
 #pragma mark DiscreteParameter
 
-void free_DiscreteParameter( DiscreteParameter *p ){
+static void _free_DiscreteParameter( DiscreteParameter *p ){
 #ifdef LISTENERS
 	if(p->refCount == 1){
 		free(p->name);
@@ -1019,7 +990,7 @@ DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name,
 	}
 	p->set_value = _set_value_discrete;
 	p->set_values = _set_values_discrete;
-//	p->free = _free_DiscreteParameter;
+	p->free = _free_DiscreteParameter;
 	p->clone = _clone_DiscreteParameter;
 	p->id = 0;
 #ifdef LISTENERS
@@ -1049,7 +1020,6 @@ Model * new_Model( const char *name, void *obj ){
 	model->listeners = new_ListenerList(1);
 	model->clone = NULL;
 	model->ref_count = 1;
-	model->parameters = new_Parameters(1);
 	return model;
 }
 
@@ -1058,7 +1028,6 @@ void free_Model( Model *model ){
 	if(model->ref_count == 1){
 		free(model->name);
 		model->listeners->free(model->listeners);
-		free_Parameters(model->parameters);
 		free(model);
 	}
 	else{

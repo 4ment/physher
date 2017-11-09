@@ -58,8 +58,8 @@ double random_double3(double n );
 double random_double4( double l, double u );
 
 // sum of array must be equal to 1
-int roulette_wheel( double *array, int len );
+int roulette_wheel( const double *array, int len );
 
-int roulette_wheel2( double *array, int len, double tot );
+int roulette_wheel2( const double *array, int len, double tot );
 
 #endif

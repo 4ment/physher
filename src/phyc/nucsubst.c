@@ -22,17 +22,14 @@
 static void nuc_sym_update_Q( SubstitutionModel *m );
 
 
-SubstitutionModel * new_ReversibleNucleotideModel( const char model[5] ){
+SubstitutionModel * new_ReversibleNucleotideModel( const char model[5], Simplex* freqs ){
     SubstitutionModel *m = NULL;
     
-    m = create_nucleotide_model("nucleotide", REVERSIBLE_DNA);
-    m->_freqs = dvector(4);
-    //default model has fixed frequencies
-    for ( int i = 0; i < 4; i++ ) {
-        m->_freqs[i] = 0.25;
-    }
+    m = create_nucleotide_model("nucleotide", REVERSIBLE_DNA, freqs);
+	m->relativeTo = 5;
     
     int max = 0;
+	m->model = new_DiscreteParameter("nucleotide.model", 5);
     for ( int i = 0; i < 5; i++ ) {
         int code = model[i];
         
@@ -49,7 +46,7 @@ SubstitutionModel * new_ReversibleNucleotideModel( const char model[5] ){
             code -= 48;
         }
         
-        m->model[i] = code;
+        m->model->values[i] = code;
         
         if ( code > max ) {
             max = code;
@@ -73,36 +70,21 @@ SubstitutionModel * new_ReversibleNucleotideModel( const char model[5] ){
     return m;
 }
 
-void ReversibleNucleotideModel_estimate_freqs( SubstitutionModel *m ){
-    if ( m->freqs == NULL ) {
-        m->freqs = new_Parameters( 3 );
-        Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piA", "model", m->_freqs[0]/m->_freqs[3], new_Constraint(0.001, 0.999) ) );
-        Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piC", "model", m->_freqs[1]/m->_freqs[3],     new_Constraint(0.001, 0.999) ) );
-        Parameters_move(m->freqs, new_Parameter_with_postfix("gtr.piG", "model", m->_freqs[2]/m->_freqs[3],     new_Constraint(0.001, 0.999) ) );
-        
-        m->update_frequencies = nucleotide_update_freqs_relative;
-        m->need_update = true;
-    }
-}
-
 void nuc_sym_update_Q( SubstitutionModel *m ){
-    
-    
-    m->Q[0][1] = m->Q[1][0] = Parameters_value(m->rates, m->model[0]); // a
-    m->Q[0][2] = m->Q[2][0] = Parameters_value(m->rates, m->model[1]); // b
-    m->Q[0][3] = m->Q[3][0] = Parameters_value(m->rates, m->model[2]); // c
-    
-    m->Q[1][2] = m->Q[2][1] = Parameters_value(m->rates, m->model[3]); // d
-    m->Q[1][3] = m->Q[3][1] = Parameters_value(m->rates, m->model[4]); // e
-    
-    m->Q[2][3] = m->Q[3][2] = 1; // f
-    
+	const unsigned* model = m->model->values;
+	const double* freqs = m->simplex->get_values(m->simplex);
     double temp;
-    for ( int i = 0; i < m->nstate; i++ )  {
-        for ( int j = i + 1; j < m->nstate; j++ ) {
-            temp = m->Q[i][j];
-            m->Q[i][j] = temp * m->_freqs[j];
-            m->Q[j][i] = temp * m->_freqs[i];
+	int index = 0;
+    for ( int i = 0; i < 4; i++ )  {
+        for ( int j = i + 1; j < 4; j++ ) {
+			if(m->relativeTo != index){
+				temp = Parameters_value(m->rates, model[index++]);
+			}
+			else{
+				temp = 1;
+			}
+            m->Q[i][j] = temp * freqs[j];
+            m->Q[j][i] = temp * freqs[i];
         }
     }
     
@@ -110,21 +92,3 @@ void nuc_sym_update_Q( SubstitutionModel *m ){
     m->need_update = false;
 }
 
-
-void nucleotide_update_freqs_relative( SubstitutionModel *model ){
-	model->need_update = true;
-	model->dQ_need_update = true;
-	model->_freqs[3] = 1.0/(1.0+Parameters_value(model->freqs, 0)+Parameters_value(model->freqs, 1)+Parameters_value(model->freqs, 2));
-	model->_freqs[0] = Parameters_value(model->freqs, 0) * model->_freqs[3];
-	model->_freqs[1] = Parameters_value(model->freqs, 1) * model->_freqs[3];
-	model->_freqs[2] = Parameters_value(model->freqs, 2) * model->_freqs[3];
-}
-
-void nucleotide_update_freqs( SubstitutionModel *model ){
-	model->need_update = true;
-	model->dQ_need_update = true;
-	model->_freqs[0] = Parameters_value(model->freqs, 0);
-	model->_freqs[1] = Parameters_value(model->freqs, 1);
-	model->_freqs[2] = Parameters_value(model->freqs, 2);
-	model->_freqs[3] = Parameters_value(model->freqs, 3);
-}

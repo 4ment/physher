@@ -35,6 +35,12 @@ static void _compoundModel_add(CompoundModel* cm, Model*model){
 	cm->count++;
 }
 
+static void _compoundModel_move(CompoundModel* cm, Model*model){
+	cm->models = realloc(cm->models, sizeof(Model*)*(cm->count+1));
+	cm->models[cm->count] = model;
+	cm->count++;
+}
+
 static void _compoundModel_remove( CompoundModel* cm, Model*model ){
 	int i = 0;
 	for ( ; i < cm->count; i++ ) {
@@ -70,6 +76,45 @@ static void _free_compound_model(CompoundModel* cm){
 	free(cm);
 }
 
+CompoundModel* clone_compound_model(CompoundModel* cm){
+	CompoundModel* clone = new_CompoundModel();
+	clone->add = cm->add;
+	clone->move = cm->move;
+	clone->remove = cm->remove;
+	clone->removeAll = cm->removeAll;
+	clone->logP = cm->logP;
+	clone->dlogP = cm->dlogP;
+	clone->free = cm->free;
+	return clone;
+}
+
+static Model* _compound_model_clone( Model *self, Hashtable* hash ){
+	if (Hashtable_exists(hash, self->name)) {
+		return Hashtable_get(hash, self->name);
+	}
+	CompoundModel* cm = self->obj;
+	CompoundModel* cmclone = clone_compound_model(cm);
+	for (int i = 0; i < cm->count; i++) {
+		Model* m = cm->models[i];
+		Model* mclone = NULL;
+		if (Hashtable_exists(hash, m->name)) {
+			mclone = Hashtable_get(hash, m->name);
+			mclone->ref_count++;
+		}
+		else{
+			mclone = m->clone(m, hash);
+			Hashtable_add(hash, mclone->name, mclone);
+		}
+		cmclone->add(cmclone, mclone);
+		mclone->free(mclone);
+	}
+	Model* clone = new_CompoundModel2(self->name, cmclone);
+	
+	Hashtable_add(hash, clone->name, clone);
+	return clone;
+}
+
+
 CompoundModel* new_CompoundModel(){
 	CompoundModel* cm = (CompoundModel*)malloc(sizeof(CompoundModel));
 	assert(cm);
@@ -79,6 +124,7 @@ CompoundModel* new_CompoundModel(){
 	assert(cm->models);
 	cm->count = 0;
 	cm->add = _compoundModel_add;
+	cm->move = _compoundModel_move;
 	cm->remove = _compoundModel_remove;
 	cm->removeAll = _compoundModel_remove_all;
 	cm->logP = _compoundModel_logP;
@@ -88,6 +134,7 @@ CompoundModel* new_CompoundModel(){
 }
 
 static void _compound_model_free( Model *self ){
+	assert(self->ref_count >= 1);
 	if(self->ref_count == 1){
 		printf("Free compound model %s\n", self->name);
 		CompoundModel* cm = (CompoundModel*)self->obj;
@@ -115,5 +162,6 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->logP = _compoundModel_logP2;
 	model->dlogP = _compoundModel_dlogP2;
 	model->free = _compound_model_free;
+	model->clone = _compound_model_clone;
 	return model;
 }

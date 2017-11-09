@@ -91,10 +91,10 @@
 
 
 
-#ifdef LISTENERS
+//#ifdef LISTENERS
 #include "compoundmodel.h"
 #include "distmodel.h"
-#endif
+//#endif
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -682,14 +682,14 @@ void run_searchq( SingleTreeLikelihood *tlk ,  const char* output_stem, int popS
     if( Parameters_count(tlk->sm->m->rates) == 1 ){
         Parameters_add(tlk->sm->m->rates, clone_Parameter(Parameters_at(tlk->sm->m->rates, 0), true));
         for (int i = 0; i <  tlk->sm->nstate*(tlk->sm->nstate-1)/2; i+=2 ) {
-            tlk->sm->m->model[i] = 1;
+            tlk->sm->m->model->values[i] = 1;
         }
     }
 //    else {
 //        int index = 0;
 //        // Find a parameter that is not fixed
 //        for ( ; index < Parameters_count(tlk->sm->m->rates); index++ ) {
-//            if( Parameters_fixed(tlk->sm->m->rates, index)) break;
+//            if( !Parameters_estimate(tlk->sm->m->rates, index)) break;
 //        }
 //        for ( int i = 0; i < Parameters_count(tlk->sm->m->rates); i++ ) {
 //            if( Parameters_value(tlk->sm->m->rates, i) < 0.001){
@@ -1025,13 +1025,10 @@ void append_simultron( SingleTreeLikelihood* tlk, const char* model_string, cons
         StringBuffer_append_string(info, "\n\n");
         StringBuffer_append_string(info, "simultron -m ");
         StringBuffer_append_string(info, model_string);
-        
-        if( mod->_freqs != NULL ){
-            StringBuffer_append_format(info, " -f %f,%f,%f,%f", mod->_freqs[0], mod->_freqs[1], mod->_freqs[2], mod->_freqs[3] );
-        }
-        else {
-            StringBuffer_append_string(info, " -f 0.25,0.25,0.25,0.25" );
-        }
+		
+		const double* freqs = mod->simplex->get_values(mod->simplex);
+        StringBuffer_append_format(info, " -f %f,%f,%f,%f", freqs[0], freqs[1], freqs[2], freqs[3] );
+			
         if( Parameters_count(mod->rates) != 0 ){
             StringBuffer_append_string(info, " -r " );
             
@@ -1387,6 +1384,136 @@ char* get_program_name(char* argv[]){
         name--;
     }
     return name;
+}
+
+void test2(Model* mpost){
+	Hashtable* hash = new_Hashtable_string(10);
+	hashtable_set_key_ownership( hash, false );
+	hashtable_set_value_ownership( hash, false );
+	
+	Model* clone = mpost->clone(mpost, hash);
+	mpost->free(mpost);
+	CompoundModel* cm = clone->obj;
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)cm->models[0]->obj;
+	SingleTreeLikelihood_update_all_nodes(tlk);
+	
+	printf("LnL clone: %f\n", tlk->calculate(tlk));
+	printf("LnL clone: %f\n", clone->logP(clone));
+//	Model* mtree = new_TreeModel("tree", tree);
+//	Model* mmod = new_SubstitutionModel2("substmodel", mod);
+//	Model* msm = new_SiteModel2("sitemodel", sm, mmod);
+//	Model* mtlk = new_TreeLikelihoodModel("likelihood", tlk, mtree, msm, NULL);
+//	printf("%d\n", mtree->ref_count);
+//	mtree->free(mtree);
+//	printf("%d\n", mtree->ref_count);
+//	msm->free(msm);
+//	mmod->free(mmod);
+//	
+//	CompoundModel* post = new_CompoundModel();
+//	Model* mpost = new_CompoundModel2("posterior", post);
+//	post->add(post, mtlk);
+//	mtlk->free(mtlk);
+//	
+//#endif
+//	Parameters* pp_all = new_Parameters(10);
+//	Parameters* pp_bl = new_Parameters(Tree_node_count(tree)-2);
+//	for(int i = 0; i < Tree_node_count(tree); i++){
+//		Node* node = Tree_node(tree, i);
+//		if(Node_isroot(node) || (Node_isroot(Node_parent(node)) && Node_right(Node_parent(node)) == node)) continue;
+//		if(Parameter_estimate(node->distance))Parameters_add(pp_bl, node->distance);
+//	}
+//	Parameters_add_parameters(pp_all, pp_bl);
+//	
+//	DistributionModel* prior_branches = new_IndependantExpDistributionModel(10, pp_bl);
+//	Model* prior_branches_model = new_DistributionModel2("branch.exp", prior_branches);
+//	post->add(post, prior_branches_model);
+//	
+//	prior_branches_model->free(prior_branches_model);
+//	
+//	if(Parameters_count(sm->m->freqs) > 0){
+//		DistributionModel* prior = new_FlatDirichletDistributionModel(sm->m->freqs);
+//		Model* prior_freqs_model = new_DistributionModel2("freqs.dirichlet", prior);
+//		post->add(post, prior_freqs_model);
+//		prior->free(prior);
+//		prior_freqs_model->free(prior_freqs_model);
+//	}
+//	
+//	if(Parameters_count(sm->m->rates) > 0){
+//		DistributionModel* prior = new_IndependantGammaDistributionModel(0.05, 0.1, sm->m->rates);
+//		Model* prior_rates_model = new_DistributionModel2("mrates.gamma", prior);
+//		post->add(post, prior_rates_model);
+//		prior->free(prior);
+//		prior_rates_model->free(prior_rates_model);
+//	}
+//	
+//	if(Parameters_count(sm->rates) > 0){
+//		DistributionModel* prior = new_IndependantExpDistributionModel(20, sm->rates);
+//		Model* prior_model = new_DistributionModel2("rate.exp", prior);
+//		post->add(post, prior_model);
+//		prior->free(prior);
+//		prior_model->free(prior_model);
+//	}
+//	
+//	
+//	Parameters* pp_m = new_Parameters(4);
+//	for (int i = 0; i < Parameters_count(sm->m->freqs); i++) {
+//		if(Parameters_estimate(sm->m->freqs, i)) Parameters_add(pp_m, Parameters_at(sm->m->freqs, i));
+//	}
+//	for (int i = 0; i < Parameters_count(sm->m->rates); i++) {
+//		if(Parameters_estimate(sm->m->rates, i)) Parameters_add(pp_m, Parameters_at(sm->m->rates, i));
+//	}
+//	if(Parameters_count(pp_m) > 0) Parameters_add_parameters(pp_all, pp_m);
+//	
+//	Parameters_add_parameters(pp_all, sm->rates);
+//	
+//	// Optimization
+//	Optimizer* opt_bl = new_Optimizer(OPT_SERIAL_BRENT);
+//	opt_set_data(opt_bl, mpost);
+//	opt_set_objective_function(opt_bl, _logP);
+//	opt_set_tolx(opt_bl, 0.00000001);
+//	
+//	Optimizer* opt_m = new_Optimizer(OPT_SERIAL_BRENT);
+//	opt_set_data(opt_m, mpost);
+//	opt_set_objective_function(opt_m, _logP);
+//	
+//	Optimizer* opt_sm = new_Optimizer(OPT_SERIAL_BRENT);
+//	opt_set_data(opt_sm, mpost);
+//	opt_set_objective_function(opt_sm, _logP);
+//	
+//	Optimizer* opt_meta = new_Optimizer(OPT_META);
+//	OptimizerSchedule* schedule = opt_get_schedule(opt_meta);
+//	
+//	opt_add_optimizer(opt_meta, opt_bl, pp_bl);
+//	schedule->rounds[schedule->count-1] = 2;
+//	
+//	opt_add_optimizer(opt_meta, opt_m, pp_m);
+//	schedule->post[schedule->count-1] = post_freqs;
+//	schedule->rounds[schedule->count-1] = 20;
+//	
+//	opt_add_optimizer(opt_meta, opt_sm, sm->rates);
+//	
+//	opt_set_data(opt_meta, mpost);
+//	opt_set_objective_function(opt_meta, _logP);
+//	opt_set_tolx(opt_meta, 0.001);
+//	
+//	double logP;
+//	opt_optimize(opt_meta, pp_bl, &logP);
+//	printf("LnL: %f logP: %f Prior: %f\n", mtlk->logP(mtlk), -logP, prior_branches->logP(prior_branches));
+//	
+//	double lnl = mtlk->logP(mtlk);
+//	for(int i = 0; i < Parameters_count(pp_all); i++){
+//		double temp = Parameters_value(pp_all, i);
+//		Parameters_set_value(pp_all, i, temp+(temp*0.0001));
+//		double lnl2 = mtlk->logP(mtlk);
+//		Parameters_set_value(pp_all, i, temp);
+//		//printf("%s %f %f\n", Parameters_name(pp_all, i), Parameters_value(pp_all, i), (lnl2-lnl)/(temp*0.0001));
+//	}
+//	
+//	free_Optimizer(opt_bl);
+//	free_Parameters(pp_bl);
+//	free_Parameters(pp_m);
+//	
+//	mpost->free(mpost);
 }
 
 int main(int argc, char* argv[]){
@@ -1915,9 +2042,11 @@ int main(int argc, char* argv[]){
 	 *************************************************************************************************/
 	
 	SubstitutionModel* mod = NULL;
-    
+	Simplex* freqSimplex = new_Simplex(matrixDimension);
     double *frequencies_user = NULL;
+	
     if ( frequencies_string_user != NULL ) {
+		// estimate frequencies
         if(strlen(frequencies_string_user) == 1 && tolower(frequencies_string_user[0]) == 'e'){
             frequencies_user = dvector(matrixDimension);
             for (int i = 0; i < matrixDimension; i ++) {
@@ -1929,6 +2058,7 @@ int main(int argc, char* argv[]){
             frequencies_user = String_to_double_array( frequencies_string_user, ',', &nfreqs);
             assert(nfreqs==matrixDimension);
         }
+		freqSimplex->set_values(freqSimplex, frequencies_user);
     }
     
     if ( dataType->type == DATA_TYPE_NUCLEOTIDE ) {
@@ -1941,7 +2071,38 @@ int main(int argc, char* argv[]){
                 }
             }
         }
-        
+		
+		// custom model
+		if( model_string[0] == '0' ){
+			if(strcasecmp("00000", model_string) == 0 && frequencies_user != NULL && !unequal_frequencies){
+				free(model_string);
+				model_string = String_clone("JC69");
+			}
+			else if( strcasecmp("01001", model_string) == 0 && frequencies_user != NULL && !unequal_frequencies){
+				free(model_string);
+				model_string = String_clone("K80");
+			}
+			else if(strcasecmp("00000", model_string) == 0){
+				free(model_string);
+				model_string = String_clone("F81");
+			}
+			else if( strcasecmp("01001", model_string) == 0){
+				free(model_string);
+				model_string = String_clone("HKY");
+			}
+			else if( strcasecmp("01234", model_string) == 0){
+				free(model_string);
+				model_string = String_clone("GTR");
+			}
+		}
+		
+		if(strcasecmp("JC69", model_string) != 0 && strcasecmp("K80", model_string) != 0 && strcasecmp("NONSTAT", model_string) != 0 ){
+			double* temp = dvector(matrixDimension);
+			empirical_frequencies(seqs, temp);
+			freqSimplex->set_values(freqSimplex, temp);
+			free(temp);
+		}
+		
         if( strcasecmp("JC69", model_string) == 0 ){
             mod = new_JC69();
         }
@@ -1949,70 +2110,26 @@ int main(int argc, char* argv[]){
             mod = new_K80();
         }
         else if( strcasecmp("F81", model_string) == 0 ){
-            mod = new_F81();
+            mod = new_F81(freqSimplex);
         }
         else if( strcasecmp("HKY", model_string) == 0 ){
-            mod = new_HKY();
+            mod = new_HKY(freqSimplex);
         }
         else if( strcasecmp("GTR", model_string) == 0 ){
-            mod = new_GTR();
+            mod = new_GTR(freqSimplex);
         }
         else if( strcasecmp("UREV", model_string) == 0 ){
-            mod = new_UnrestrictedNucleotideModel();
+            mod = new_UnrestrictedNucleotideModel(freqSimplex);
         }
         else if( strcasecmp("NONSTAT", model_string) == 0 ){
-            mod = new_NONSTATNucleotideModel();
+            mod = new_NONSTATNucleotideModel(freqSimplex);
         }
-        else if( model_string[0] == '0' ){
-            if(strcasecmp("00000", model_string) == 0 && frequencies_user != NULL && !unequal_frequencies){
-                free(model_string);
-                model_string = String_clone("JC69");
-                mod = new_JC69();
-            }
-            else if( strcasecmp("01001", model_string) == 0 && frequencies_user != NULL && !unequal_frequencies){
-                free(model_string);
-                model_string = String_clone("K80");
-                mod = new_K80();
-            }
-            else if(strcasecmp("00000", model_string) == 0){
-                free(model_string);
-                model_string = String_clone("F81");
-                mod = new_F81();
-            }
-            else if( strcasecmp("01001", model_string) == 0){
-                free(model_string);
-                model_string = String_clone("HKY");
-                mod = new_HKY();
-            }
-            else if( strcasecmp("01234", model_string) == 0){
-                free(model_string);
-                model_string = String_clone("GTR");
-                mod = new_GTR();
-            }
-            else{
-                mod = new_ReversibleNucleotideModel(model_string);
-                if( !frequencies_fixed ){
-                    ReversibleNucleotideModel_estimate_freqs(mod);
-                }
-            }
-        }
-        else{
-            assert(0);
-        }
+		else{
+			mod = new_ReversibleNucleotideModel(model_string, freqSimplex);
+		}
         
         fprintf( stdout, "\nModel: %s\n", model_string );
         StringBuffer_append_strings(info, 3, "Model: ", model_string, "\n\n");
-        
-        /*
-         * FREQUENCIES
-         */
-        if(frequencies_user != NULL){
-			mod->set_frequencies(mod, frequencies_user);
-        }
-        else if(strcasecmp("JC69", model_string) != 0 && strcasecmp("K80", model_string) != 0 && strcasecmp("NONSTAT", model_string) != 0 ){
-            empirical_frequencies(seqs, mod->_freqs);
-			mod->set_frequencies(mod, mod->_freqs);//update the relative frequencies
-        }
         
         /*
          * RATES
@@ -2032,76 +2149,75 @@ int main(int argc, char* argv[]){
             mod->set_rates(mod,rates);
         }
         else if( Parameters_count(mod->rates) == 1 ){
-            double rate = Sequence_kappa_empirical(seqs, mod->_freqs);
+            double rate = Sequence_kappa_empirical(seqs, mod->simplex->get_values(mod->simplex));
             Parameters_set_value(mod->rates, 0, rate);
         }
     
     }
     else if ( dataType->type == DATA_TYPE_CODON ) {
-        
+		
+		double freqs_nuc[4];
+		double *freqs = dvector(matrixDimension);
+		int freq_est = 0;
+		
+		
+		if( frequencies_string_user != NULL ){
+			if( strcasecmp("F1x4", frequencies_string_user) == 0 ){
+				freq_est = 1;
+			}
+			else if( strcasecmp("F3x4", frequencies_string_user) == 0 ){
+				freq_est = 2;
+			}
+			else {
+				printf("Condon frequency unknwon (F1x3 or F3x4)");
+				exit(1);
+			}
+		}
+		
+		fprintf( stdout, "\nModel: %s\n", model_string );
+		StringBuffer_append_strings(info, 3, "Model: ", model_string, "\n\n");
+		
+		printf("Nucleotide frequencies ");
+		if( freq_est == 1 ){
+			printf("F1x4\n");
+			empirical_nuc_frequencies( seqs, freqs_nuc);
+			printf(" A: %f\n", freqs_nuc[0] );
+			printf(" C: %f\n", freqs_nuc[1] );
+			printf(" G: %f\n", freqs_nuc[2] );
+			printf(" T: %f\n", freqs_nuc[3] );
+			printf("\n");
+			
+			calculate_F1x4_from_nuc_freq(dataType->genetic_code, freqs_nuc, freqs);
+			mod->simplex->set_values(mod->simplex, freqs);
+		}
+		else if( freq_est == 2 ){
+			printf("F3x4\n");
+			double nuc_freq[12];
+			calculate_nuc_freq_codon( seqs, nuc_freq);
+			printf("    1        2        3        Total\n");
+			printf(" A: %f %f %f %f\n", nuc_freq[0], nuc_freq[4], nuc_freq[8],  ((nuc_freq[0]+nuc_freq[4]+nuc_freq[8])/3) );
+			printf(" C: %f %f %f %f\n", nuc_freq[1], nuc_freq[5], nuc_freq[9],  ((nuc_freq[1]+nuc_freq[5]+nuc_freq[9])/3) );
+			printf(" G: %f %f %f %f\n", nuc_freq[2], nuc_freq[6], nuc_freq[10], ((nuc_freq[2]+nuc_freq[6]+nuc_freq[10])/3) );
+			printf(" T: %f %f %f %f\n", nuc_freq[3], nuc_freq[7], nuc_freq[11], ((nuc_freq[3]+nuc_freq[7]+nuc_freq[11])/3) );
+			printf("\n");
+			
+			calculate_F3x4_from_nuc_freq(dataType->genetic_code, nuc_freq, freqs);
+			mod->simplex->set_values(mod->simplex, freqs);
+			
+			freqs_nuc[0] = (nuc_freq[0]+nuc_freq[4]+nuc_freq[8])/3;
+			freqs_nuc[1] = (nuc_freq[1]+nuc_freq[5]+nuc_freq[9])/3;
+			freqs_nuc[2] = (nuc_freq[2]+nuc_freq[6]+nuc_freq[10])/3;
+			freqs_nuc[3] = 1 - (freqs_nuc[0]+freqs_nuc[1]+freqs_nuc[2]);
+		}
+		free(freqs);
+		
         if( strcasecmp("GY94", model_string) == 0 ){
-            mod = new_GY94(genetic_code);
+            mod = new_GY94(freqSimplex, genetic_code);
         }
         else if( strcasecmp("MG94", model_string) == 0 ){
-            mod = new_MG94(genetic_code);
+            mod = new_MG94(freqSimplex, genetic_code);
         }
-        
-        double freqs_nuc[4];
-        double *freqs = dvector(matrixDimension);
-        int freq_est = 0;
-        
-        
-        if( frequencies_string_user != NULL ){
-            if( strcasecmp("F1x4", frequencies_string_user) == 0 ){
-                freq_est = 1;
-            }
-            else if( strcasecmp("F3x4", frequencies_string_user) == 0 ){
-                freq_est = 2;
-            }
-            else {
-                printf("Condon frequency unknwon (F1x3 or F3x4)");
-                exit(1);
-            }
-        }
-        
-        fprintf( stdout, "\nModel: %s\n", model_string );
-        StringBuffer_append_strings(info, 3, "Model: ", model_string, "\n\n");
-        
-        printf("Nucleotide frequencies ");
-        if( freq_est == 1 ){
-            printf("F1x4\n");
-            empirical_nuc_frequencies( seqs, freqs_nuc);
-            printf(" A: %f\n", freqs_nuc[0] );
-            printf(" C: %f\n", freqs_nuc[1] );
-            printf(" G: %f\n", freqs_nuc[2] );
-            printf(" T: %f\n", freqs_nuc[3] );
-            printf("\n");
-            
-            calculate_F1x4_from_nuc_freq(dataType->genetic_code, freqs_nuc, freqs);
-            memcpy(mod->_freqs, freqs, sizeof(double)*matrixDimension);
-        }
-        else if( freq_est == 2 ){
-            printf("F3x4\n");
-            double nuc_freq[12];
-            calculate_nuc_freq_codon( seqs, nuc_freq);
-            printf("    1        2        3        Total\n");
-            printf(" A: %f %f %f %f\n", nuc_freq[0], nuc_freq[4], nuc_freq[8],  ((nuc_freq[0]+nuc_freq[4]+nuc_freq[8])/3) );
-            printf(" C: %f %f %f %f\n", nuc_freq[1], nuc_freq[5], nuc_freq[9],  ((nuc_freq[1]+nuc_freq[5]+nuc_freq[9])/3) );
-            printf(" G: %f %f %f %f\n", nuc_freq[2], nuc_freq[6], nuc_freq[10], ((nuc_freq[2]+nuc_freq[6]+nuc_freq[10])/3) );
-            printf(" T: %f %f %f %f\n", nuc_freq[3], nuc_freq[7], nuc_freq[11], ((nuc_freq[3]+nuc_freq[7]+nuc_freq[11])/3) );
-            printf("\n");
-            
-            calculate_F3x4_from_nuc_freq(dataType->genetic_code, nuc_freq, freqs);
-            
-            memcpy(mod->_freqs, freqs, sizeof(double)*matrixDimension);
-            
-            freqs_nuc[0] = (nuc_freq[0]+nuc_freq[4]+nuc_freq[8])/3;
-            freqs_nuc[1] = (nuc_freq[1]+nuc_freq[5]+nuc_freq[9])/3;
-            freqs_nuc[2] = (nuc_freq[2]+nuc_freq[6]+nuc_freq[10])/3;
-            freqs_nuc[3] = 1 - (freqs_nuc[0]+freqs_nuc[1]+freqs_nuc[2]);
-        }
-        free(freqs);
-        
+		
         /*
          * RATES
          */
@@ -2128,22 +2244,26 @@ int main(int argc, char* argv[]){
     else if ( dataType->type == DATA_TYPE_AMINO_ACID ) {
         fprintf( stdout, "\nModel: %s\n", model_string );
         StringBuffer_append_strings(info, 3, "Model: ", model_string, "\n\n");
-        
+		
+		
+		if ( frequencies_string_user == NULL) {
+			double* temp = dvector(matrixDimension);
+			empirical_frequencies(seqs, temp);
+			freqSimplex->set_values(freqSimplex, temp);
+			free(temp);
+		}
+		
         if( strcasecmp("DAYHOFF", model_string) == 0 ){
-            mod = new_DAYHOFF();
+            mod = new_DAYHOFF(freqSimplex);
         }
         else if( strcasecmp("LG", model_string) == 0 ){
-            mod = new_LG();
+            mod = new_LG(freqSimplex);
         }
         else if( strcasecmp("WAG", model_string) == 0 ){
-            mod = new_WAG();
+            mod = new_WAG(freqSimplex);
         }
         else {
             assert(0);
-        }
-        
-        if ( frequencies_string_user == NULL) {
-            empirical_frequencies(seqs, mod->_freqs);
         }
     }
     else if ( dataType->type == DATA_TYPE_GENERIC) {
@@ -2152,7 +2272,17 @@ int main(int argc, char* argv[]){
         
         // empirical
         unsigned *rateIndexes = NULL;
-        
+		
+		if(frequencies_user != NULL){
+			freqSimplex->set_values(freqSimplex, frequencies_user);
+		}
+		else if(!frequencies_unknown){
+			double* temp = dvector(matrixDimension);
+			empirical_generic_frequencies(seqs, temp);
+			freqSimplex->set_values(freqSimplex, temp);
+			free(temp);
+		}
+		
         if( strcasecmp(model_string,"ER") == 0 ){
             rateIndexes = uivector(matrixDimension*matrixDimension);
         }
@@ -2175,25 +2305,21 @@ int main(int argc, char* argv[]){
             }
         }
         
-        mod = new_GeneralModel(rateIndexes, matrixDimension);
+        mod = new_GeneralModel(rateIndexes, freqSimplex);
         
         free(rateIndexes);
-        
-        if(frequencies_user != NULL){
-            memcpy(mod->_freqs, frequencies_user, sizeof(double)*matrixDimension);
-        }
-        else if(!frequencies_unknown){
-            empirical_generic_frequencies(seqs, mod->_freqs);
-        }
+		
         if(!normalize_q){
             mod->normalize = false;
             mod->need_update = true;
         }
         if(frequencies_unknown){
-            for ( int i = 0; i < matrixDimension; i++ ) {
-                mod->_freqs[i] = 1.0;
-            }
-            mod->need_update = true;
+			printf("frequencies_unknown set up");
+			exit(1);
+//            for ( int i = 0; i < matrixDimension; i++ ) {
+//                mod->_freqs[i] = 1.0;
+//            }
+//            mod->need_update = true;
         }
         
         
@@ -2261,8 +2387,9 @@ int main(int argc, char* argv[]){
     
 	fprintf(stdout, "Frequencies:\n");
     if( dataType->type == DATA_TYPE_GENERIC ){
+		const double* freqs = mod->get_frequencies(mod);
         for ( int i = 0; i < matrixDimension; i++) {
-            printf(" %s: %f\n", dataType->state_string(dataType, i), mod->_freqs[i]);
+            printf(" %s: %f\n", dataType->state_string(dataType, i), freqs[i]);
         }
     }
     else {
@@ -2323,15 +2450,13 @@ int main(int argc, char* argv[]){
 	SingleTreeLikelihood *tlk = new_SingleTreeLikelihood( tree, sm, sp, NULL );
 	
 #ifdef LISTENERS
-#include "compoundmodel.h"
 	
 	Model* mtree = new_TreeModel("tree", tree);
-	Model* mmod = new_SubstitutionModel2("substmodel", mod);
+	Model* mfreq = new_SimplexModel("simplex", freqSimplex);
+	Model* mmod = new_SubstitutionModel2("substmodel", mod, mfreq);
 	Model* msm = new_SiteModel2("sitemodel", sm, mmod);
 	Model* mtlk = new_TreeLikelihoodModel("likelihood", tlk, mtree, msm, NULL);
-	printf("%d\n", mtree->ref_count);
 	mtree->free(mtree);
-	printf("%d\n", mtree->ref_count);
 	msm->free(msm);
 	mmod->free(mmod);
 	
@@ -2346,7 +2471,7 @@ int main(int argc, char* argv[]){
 	for(int i = 0; i < Tree_node_count(tree); i++){
 		Node* node = Tree_node(tree, i);
 		if(Node_isroot(node) || (Node_isroot(Node_parent(node)) && Node_right(Node_parent(node)) == node)) continue;
-		if(!Parameter_fixed(node->distance))Parameters_add(pp_bl, node->distance);
+		if(Parameter_estimate(node->distance))Parameters_add(pp_bl, node->distance);
 	}
 	Parameters_add_parameters(pp_all, pp_bl);
 	
@@ -2357,38 +2482,38 @@ int main(int argc, char* argv[]){
 	prior_branches_model->free(prior_branches_model);
 	
 	Parameters* pp_m = new_Parameters(4);
-	for (int i = 0; i < Parameters_count(sm->m->freqs); i++) {
-		if(!Parameters_fixed(sm->m->freqs, i)) Parameters_add(pp_m, Parameters_at(sm->m->freqs, i));
+	if(Parameters_at(sm->m->simplex->parameters, 0)->estimate){
+		DistributionModel* prior = new_FlatDirichletDistributionModel(sm->m->simplex);
+		Model* prior_freqs_model = new_DistributionModel3("freqs.dirichlet", prior, mfreq);
+		post->add(post, prior_freqs_model);
+		prior_freqs_model->free(prior_freqs_model);
+		
+		for (int i = 0; i < Parameters_count(sm->m->simplex->parameters); i++) {
+			Parameters_add(pp_m, Parameters_at(sm->m->simplex->parameters, i));
+		}
 	}
+	
+//	if(Parameters_count(sm->m->rates) > 0){
+//		DistributionModel* prior = new_IndependantGammaDistributionModel(0.05, 0.1, sm->m->rates);
+//		Model* prior_rates_model = new_DistributionModel2("mrates.gamma", prior);
+//		post->add(post, prior_rates_model);
+//		prior_rates_model->free(prior_rates_model);
+//	}
+	
+//	if(Parameters_count(sm->rates) > 0){
+//		DistributionModel* prior = new_IndependantExpDistributionModel(20, sm->rates);
+//		Model* prior_model = new_DistributionModel2("rate.exp", prior);
+//		post->add(post, prior_model);
+//		prior_model->free(prior_model);
+//	}
+	
+	
 	for (int i = 0; i < Parameters_count(sm->m->rates); i++) {
-		if(!Parameters_fixed(sm->m->rates, i)) Parameters_add(pp_m, Parameters_at(sm->m->rates, i));
+		if(Parameters_estimate(sm->m->rates, i)) Parameters_add(pp_m, Parameters_at(sm->m->rates, i));
 	}
 	if(Parameters_count(pp_m) > 0) Parameters_add_parameters(pp_all, pp_m);
 	
-	if(Parameters_count(sm->m->freqs) > 0){
-		DistributionModel* prior = new_FlatDirichletDistributionModel(sm->m->freqs);
-		Model* prior_freqs_model = new_DistributionModel2("freqs.dirichlet", prior);
-		post->add(post, prior_freqs_model);
-		prior->free(prior);
-		prior_freqs_model->free(prior_freqs_model);
-	}
-	
-	if(Parameters_count(sm->m->rates) > 0){
-		DistributionModel* prior = new_IndependantGammaDistributionModel(0.05, 0.1, sm->m->rates);
-		Model* prior_rates_model = new_DistributionModel2("mrates.gamma", prior);
-		post->add(post, prior_rates_model);
-		prior->free(prior);
-		prior_rates_model->free(prior_rates_model);
-	}
-	
-	if(Parameters_count(sm->rates) > 0){
-		DistributionModel* prior = new_IndependantExpDistributionModel(20, sm->rates);
-		Model* prior_model = new_DistributionModel2("rate.exp", prior);
-		post->add(post, prior_model);
-		prior->free(prior);
-		prior_model->free(prior_model);
-	}
-	Parameters_add_parameters(pp_all, sm->rates);
+	if(Parameters_count(sm->rates) > 0) Parameters_add_parameters(pp_all, sm->rates);
 	
 	// Optimization
 	Optimizer* opt_bl = new_Optimizer(OPT_SERIAL_BRENT);
@@ -2414,14 +2539,14 @@ int main(int argc, char* argv[]){
 	schedule->post[schedule->count-1] = post_freqs;
 	schedule->rounds[schedule->count-1] = 20;
 	
-	opt_add_optimizer(opt_meta, opt_sm, sm->rates);
+	if(Parameters_count(sm->rates) > 0) opt_add_optimizer(opt_meta, opt_sm, sm->rates);
 	
 	opt_set_data(opt_meta, mpost);
 	opt_set_objective_function(opt_meta, _logP);
 	opt_set_tolx(opt_meta, 0.001);
 	
 	double logP;
-	opt_optimize(opt_meta, pp_bl, &logP);
+	//opt_optimize(opt_meta, pp_bl, &logP);
 	printf("LnL: %f logP: %f Prior: %f\n", mtlk->logP(mtlk), -logP, prior_branches->logP(prior_branches));
 
 	double lnl = mtlk->logP(mtlk);
@@ -2434,10 +2559,66 @@ int main(int argc, char* argv[]){
 	}
 
 	free_Optimizer(opt_bl);
+	free_Optimizer(opt_m);
+	free_Optimizer(opt_sm);
+	free_Optimizer(opt_meta);
+
 	free_Parameters(pp_bl);
 	free_Parameters(pp_m);
+	free_Parameters(pp_all);
+	
+	fprintf(stdout, "\nRates:\n");
+	print_rates(stdout, mod);
 
+	//test2(mpost);
+	Hashtable* hash = new_Hashtable_string(10);
+	hashtable_set_key_ownership( hash, false );
+	hashtable_set_value_ownership( hash, false );
+	Model* clone = mpost->clone(mpost, hash);
+	free_Hashtable(hash);
 	mpost->free(mpost);
+	printf("====\n");
+	CompoundModel* cm = clone->obj;
+	SingleTreeLikelihood* tlk3 = (SingleTreeLikelihood*)cm->models[0]->obj;
+	SingleTreeLikelihood_update_all_nodes(tlk3);
+	
+	printf("LnL clone: %f\n", tlk3->calculate(tlk3));
+	printf("LnL clone: %f\n", clone->logP(clone));
+	
+	clone->free(clone);
+	
+	
+	
+	
+	free(argsparser);
+	
+	if(seq_file) free(seq_file);
+	if(tree_file) free(tree_file);
+	if(fix) free(fix);
+	if(sitemodel_string) free(sitemodel_string);
+	if(clock) free(clock);
+	if(markov_states) free(markov_states);
+	if(frequencies_string_user) free(frequencies_string_user);
+	if(rates_user) free(rates_user);
+	if(qsearch) free(qsearch);
+	if(topology_optimization_algorithm) free(topology_optimization_algorithm);
+	if(clock_algorithm) free(clock_algorithm);
+	if(model_string_user)free(model_string_user);
+	free(output_stem);
+	free(ic);
+	
+	free(model_string);
+	free(freerate_filename);
+	free(strict_filename);
+	
+	free_StringBuffer(buffer);
+	free_StringBuffer(info);
+	//	free_SingleTreeLikelihood(tlk);
+	//msm->free(msm);
+	//mmod->free(mmod);
+	//mtree->free(mtree);
+	free_DataType(dataType);
+	
 	exit(1);
 	
 	time_t start_time;
@@ -2455,7 +2636,7 @@ int main(int argc, char* argv[]){
     tlk->opt.bl.tolx = 0.00000001;
     //tlk->opt.bl.tolx = 0.0001;
     //tlk->opt.bl.method = OPT_CG_PR;
-	tlk->opt.freqs.optimize          = !frequencies_fixed && sm->m->freqs != NULL;
+	tlk->opt.freqs.optimize          = !frequencies_fixed && Parameters_at(sm->m->simplex->parameters, 0)->estimate;
 	//tlk->opt.freqs.method  = OPT_CG_PR;
     //if( Parameters_count(mod->rates) > 1 ) tlk->opt.relative_rates.method = OPT_CG_PR; //Brent optmize better in the flub simulated data
     tlk->opt.relative_rates.optimize = !rates_fixed && sm->m->rates != NULL;
@@ -2840,7 +3021,7 @@ int main(int argc, char* argv[]){
 	
 	for ( int j = 0; j < Tree_node_count(tlk->tree); j++ ) {
 		Node *n = nodes[j];
-		//if( Parameter_fixed(n->distance) ) continue;
+		//if( !Parameter_estimate(n->distance) ) continue;
 		
 		if ( Node_isroot(n) || (Node_isroot(Node_parent(n)) && Node_right(Node_parent(n)) == n )) {
 			continue;

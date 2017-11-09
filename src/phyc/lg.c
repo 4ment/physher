@@ -21,31 +21,21 @@
 
 
 SubstitutionModel * new_LG(){
-    double freqs[20];
-    for ( int i = 0; i < 20; i++ ) {
-        freqs[i] = 0.05;
-    }
-    SubstitutionModel *m = new_LG_with_values(freqs);
-    
+	Simplex* freqs = new_Simplex(20);
+	freqs->set_values(freqs, AMINO_ACID_MODEL_LG_FREQUENCIES);
+	SubstitutionModel *m = new_LG_with_parameters(freqs);
+	
     return m;
 }
 
-SubstitutionModel * new_LG_with_values( const double *freqs ){
+SubstitutionModel * new_LG_with_parameters(Simplex* freqs){
     
-    SubstitutionModel *m = create_aa_model("LG", LG);
-    
-    if( freqs != NULL ){
-        check_frequencies( freqs, 20 );
-        m->_freqs = clone_dvector( freqs, 20 );
-    }
-    else {
-        m->_freqs = clone_dvector( AMINO_ACID_MODEL_LG_FREQUENCIES, 20 );
-    }
+    SubstitutionModel *m = create_aa_model("LG", LG, freqs);
     
     for ( int i = 0; i < m->nstate; i++ )  {
         for ( int j = i + 1; j < m->nstate; j++ ) {
-            m->Q[i][j] = AMINO_ACID_MODEL_LG[i][j] * m->_freqs[j];
-            m->Q[j][i] = AMINO_ACID_MODEL_LG[i][j] * m->_freqs[i];
+            m->Q[i][j] = AMINO_ACID_MODEL_LG[i][j] * freqs->get_value(freqs, j);
+            m->Q[j][i] = AMINO_ACID_MODEL_LG[i][j] * freqs->get_value(freqs, i);
         }
     }
     

@@ -74,7 +74,7 @@ typedef struct DataType{
     char (*state)( struct DataType *, int  );
     
     int (*encoding_string)( struct DataType *, const char *);
-    const char * (*state_string)( struct DataType *, int  );
+    const char * (*state_string)( const struct DataType *, int  );
     
     int (*state_count)( struct DataType *  );
     int8_t genetic_code;

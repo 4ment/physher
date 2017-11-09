@@ -38,21 +38,14 @@ Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataT
     double *p = dvector(nstate*nstate);
     int *rates = ivector(len);
     
-    double *freqs = sm->m->_freqs;
+    const double *freqs = sm->m->get_frequencies(sm->m);
     
     double accum = 0;
     for ( int i = 0; i < nstate; i++ ) {
         accum += freqs[i];
     }
     
-    if(accum != 1.0 && fabs(1.0-accum) < 0.001){
-        accum = 0;
-        for ( int i = 1; i < nstate; i++ ) {
-            accum += freqs[i];
-        }
-        freqs[0] = 1.0 - accum;
-    }
-    else if( accum != 1.0 ){
+    if(fabs(1.0-accum) > 0.001){
         fprintf(stderr, "Frequencies must add up to 1 (%e)\n", accum);
         for ( int i = 0; i < nstate; i++ ) {
             fprintf(stderr, "%d %e\n", i, freqs[i]);

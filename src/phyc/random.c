@@ -61,7 +61,7 @@ double random_double4( double l, double u ){
 
 
 // array has to sum to 1
-int roulette_wheel( double *array, int len ){
+int roulette_wheel( const double *array, int len ){
     double accum = 0.0;
     double rnum = random_double();
     int i = 0;
@@ -72,7 +72,7 @@ int roulette_wheel( double *array, int len ){
     return i;
 }
 
-int roulette_wheel2( double *array, int len, double tot ){
+int roulette_wheel2( const double *array, int len, double tot ){
     double accum = 0.0;
     double rnum = random_double2(tot);
     int i = 0;

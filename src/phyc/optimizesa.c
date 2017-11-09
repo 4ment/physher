@@ -68,7 +68,7 @@ void scale_rate_heights( SingleTreeLikelihood *tlk ){
 	Parameter *p = NULL;
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
 		p = nodes[i]->height;
-		if ( Constraint_fixed(p->cnstr)) continue;
+		if ( Parameter_estimate(p)) continue;
 		
 		if( Constraint_lower_fixed(p->cnstr) ){
 			min = dmax(min, Constraint_flower(p->cnstr)/p->value);

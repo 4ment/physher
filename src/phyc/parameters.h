@@ -66,6 +66,7 @@ struct _Parameter{
 	double value;
 	Constraint *cnstr;
 	bool ownconstraint;
+	bool estimate;
 #ifdef LISTENERS
 	ListenerList *listeners;
 	int refCount;
@@ -79,7 +80,7 @@ struct _DiscreteParameter{
 	unsigned length;
 	
 	DiscreteParameter* (*clone)(DiscreteParameter*);
-//	void (*free)(DiscreteParameter*);
+	void (*free)(DiscreteParameter*);
 	
 	void (*set_value)( DiscreteParameter*, int, unsigned );
 	void (*set_values)( DiscreteParameter*, const unsigned* );
@@ -106,13 +107,10 @@ void remove_contraint( Parameter *p );
 
 void add_contraint( Parameter *p, Constraint *constr, bool ownconstraint );
 
-bool Constraint_fixed( const Constraint *c );
-
 bool Constraint_lower_fixed( const Constraint *c );
 
 bool Constraint_upper_fixed( const Constraint *c );
 
-void Constraint_set_fixed( Constraint *c, const bool fixed );
 
 void Constraint_set_lower_fixed( Constraint *c, const bool fixed );
 
@@ -174,9 +172,9 @@ bool Parameters_is_at_boundry( const Parameters *p, const int index, double prec
 
 Constraint * Parameter_constraint( const Parameter *p );
 
-bool Parameter_fixed( const Parameter *p );
+bool Parameter_estimate( const Parameter *p );
 
-void Parameter_set_fixed( Parameter *p, const bool fixed );
+void Parameter_set_estimate( Parameter *p, const bool estimate );
 
 double Parameter_upper( const Parameter *p );
 
@@ -205,8 +203,6 @@ Parameters * new_Parameters( const int n );
 Parameters * new_Parameters_with_contraint( const int capacity, Constraint *cnstr, const char *name );
 
 void free_Parameters( Parameters *ps );
-
-void free_Parameters_soft( Parameters *ps );
 
 Parameters * clone_Parameters( Parameters *p, bool ownconstraint );
 
@@ -241,9 +237,9 @@ double Parameters_value( const Parameters *p, const int index );
 
 
 
-bool Parameters_fixed( const Parameters *p, const int index );
+bool Parameters_estimate( const Parameters *p, const int index );
 
-void Parameters_set_fixed( Parameters *p, const bool fixed, const int index );
+void Parameters_set_estimate( Parameters *p, const bool estimate, const int index );
 
 Constraint * Parameters_constraint( const Parameters *p, const int index );
 
@@ -260,8 +256,6 @@ void Parameters_set_bounds( Parameters *p, const int index, const double lower, 
 void Parameters_remove( Parameters *params, int index );
 
 void Parameters_pop( Parameters *params );
-
-void Parameters_pop_soft( Parameters *params );
 
 bool update_matching_parameters( Parameters *params, const Parameters *new, const double precision );
 
@@ -322,7 +316,6 @@ struct _Model {
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, int );
 	
-	Parameters *parameters; // pointers to the parameters of the model
 	ListenerList *listeners;
 	int ref_count;
 };
@@ -337,7 +330,5 @@ void free_Model( Model *model );
 #pragma mark -
 
 ListenerList * new_ListenerList( const unsigned capacity );
-
-void free_DiscreteParameter( DiscreteParameter *p );
 
 #endif

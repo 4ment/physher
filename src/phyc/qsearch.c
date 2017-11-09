@@ -243,12 +243,13 @@ void model_to_chromosome(unsigned *chromosome, const unsigned *model, int dim, b
     }
 }
 
-void chromosome_to_model(unsigned *model, const unsigned *chromosome, int dim, bool reversible){
+void chromosome_to_model(DiscreteParameter* model, const unsigned *chromosome, int dim, bool reversible){
     int index = 0;
     if(reversible){
         for ( int i = 0; i < dim; i++ ) {
             for ( int j = i+1; j < dim; j++ ) {
-                model[j*dim+i] = model[i*dim+j] = chromosome[index++];
+                //model[j*dim+i] = model[i*dim+j] = chromosome[index++];
+				model->set_value(model, i*dim+j, chromosome[index++]);
             }
         }
     }
@@ -256,7 +257,8 @@ void chromosome_to_model(unsigned *model, const unsigned *chromosome, int dim, b
         for ( int i = 0; i < dim; i++ ) {
             for ( int j = 0; j < dim; j++ ) {
                 if (i != j) {
-                    model[i*dim+j] = chromosome[index++];
+                    //model[i*dim+j] = chromosome[index++];
+					model->set_value(model, i*dim+j, chromosome[index++]);
                 }
             }
         }
@@ -337,6 +339,7 @@ static void _init_population( GA *ga, QSearch *search ){
         
         // Add an additional parameter
         for ( int j = 0; j < search->pool->count; j++ ) {
+			//TODO: check why +4 and not +2
             sprintf(name+4, "%d", (Parameters_count(search->pool->tlks[j]->sm->m->rates)+1) );
             double rate = Parameters_value(search->pool->tlks[j]->sm->m->rates, 0);
             Parameter *p = new_Parameter_with_postfix_and_ownership(name, "relativerate", rate, Parameters_constraint(search->pool->tlks[j]->sm->m->rates, index), false);
@@ -480,8 +483,8 @@ double _ga_optimize( QSearch *search ){
     SingleTreeLikelihood *tlk = search->pool->tlks[0];
     SubstitutionModel *m = tlk->sm->m;
     
-    model_to_chromosome(search->current_indexes, m->model, m->nstate, m->reversible);
-    model_to_chromosome(search->best_indexes, m->model, m->nstate, m->reversible);
+    model_to_chromosome(search->current_indexes, m->model->values, m->nstate, m->reversible);
+    model_to_chromosome(search->best_indexes, m->model->values, m->nstate, m->reversible);
     //memcpy(search->current_indexes, m->model, search->indexCount * sizeof(unsigned));
     //memcpy(search->best_indexes, search->current_indexes, search->indexCount * sizeof(unsigned));
     
@@ -1179,10 +1182,9 @@ double l1norm( void *data ){
     
     double penalty = 0;
     for ( int i = 0; i < Parameters_count(tlk->sm->m->rates); i++) {
-        if( Parameters_fixed( tlk->sm->m->rates, i ) ){
-            continue;
-        }
-        penalty += Parameters_value(tlk->sm->m->rates,i);
+        if( Parameters_estimate( tlk->sm->m->rates, i ) ){
+			penalty += Parameters_value(tlk->sm->m->rates,i);
+		}
     }
     return penalty;
 }
@@ -1251,10 +1253,8 @@ double _cg_optimize_rel_rates( Parameters *params, double *grad, void *data ){
 int df( SingleTreeLikelihood *tlk ){
     int count = 0;
     for ( int i = 0; i < Parameters_count(tlk->sm->m->rates); i++) {
-        if( Parameters_fixed( tlk->sm->m->rates, i ) ){
-            continue;
-        }
-        if(Parameters_value(tlk->sm->m->rates,i) <= Constraint_lower(Parameters_at(tlk->sm->m->rates, i)->cnstr)*1.2 ){
+        if( Parameters_estimate( tlk->sm->m->rates, i ) &&
+			Parameters_value(tlk->sm->m->rates,i) <= Constraint_lower(Parameters_at(tlk->sm->m->rates, i)->cnstr)*1.2 ){
             count++;
         }
     }
@@ -1296,11 +1296,10 @@ void qsearch_lasso(SingleTreeLikelihood *tlk ){
         fprintf(pFile,"Lambda %f PML %f LnL %f AIC %f df %d\n", lambda, -lnl, tlk->calculate(tlk), AIC(tlk->calculate(tlk), df(tlk)), df(tlk));
         
         for ( int i = 0; i < Parameters_count(tlk->sm->m->rates); i++) {
-            if( Parameters_fixed( tlk->sm->m->rates, i ) ){
-                continue;
-            }
-            fprintf(pFile," %e", Parameters_value(tlk->sm->m->rates,i));
-            
+            if( Parameters_estimate( tlk->sm->m->rates, i ) ){
+				fprintf(pFile," %e", Parameters_value(tlk->sm->m->rates,i));
+			}
+			
         }
         fprintf(pFile, "\n");
         fflush(pFile);
@@ -1308,7 +1307,7 @@ void qsearch_lasso(SingleTreeLikelihood *tlk ){
     fclose(pFile);
     free_Optimizer(opt_rel_rate);
     free(data);
-    free_Parameters_soft(oneparameter);
+    free_Parameters(oneparameter);
 }
 
 void qsearch_lasso2(SingleTreeLikelihood *tlk ){
@@ -1336,16 +1335,15 @@ void qsearch_lasso2(SingleTreeLikelihood *tlk ){
         for ( int rounds = 0; rounds < 1000; rounds++ ) {
             
             for ( int i = 0; i < Parameters_count(tlk->sm->m->rates); i++) {
-                if( Parameters_fixed( tlk->sm->m->rates, i ) ){
-                    continue;
-                }
-                data->index_param = i;
-                Parameters_set(oneparameter, 0, Parameters_at(tlk->sm->m->rates, i));
-                
-                status = opt_maximize( opt_rates, oneparameter, &fret);
-                if( status == OPT_ERROR ) error("OPT.RATES No SUCCESS!!!!!!!!!!!!\n");
-                fret = -fret;
-                //printf("%d LnL: %f\n", i, fret);
+                if( Parameters_estimate( tlk->sm->m->rates, i ) ){
+					data->index_param = i;
+					Parameters_set(oneparameter, 0, Parameters_at(tlk->sm->m->rates, i));
+					
+					status = opt_maximize( opt_rates, oneparameter, &fret);
+					if( status == OPT_ERROR ) error("OPT.RATES No SUCCESS!!!!!!!!!!!!\n");
+					fret = -fret;
+					//printf("%d LnL: %f\n", i, fret);
+				}
             }
             
             if ( fret - lnl < 0.01 ) {
@@ -1360,17 +1358,16 @@ void qsearch_lasso2(SingleTreeLikelihood *tlk ){
         fprintf(pFile,"Lambda %f PML %f LnL %f AIC %f df %d\n", lambda, lnl, tlk->calculate(tlk), AIC(tlk->calculate(tlk), df(tlk)), df(tlk));
         
         for ( int i = 0; i < Parameters_count(tlk->sm->m->rates); i++) {
-            if( Parameters_fixed( tlk->sm->m->rates, i ) ){
-                continue;
-            }
-            fprintf(pFile," %e", Parameters_value(tlk->sm->m->rates,i));
-            
+            if( Parameters_estimate( tlk->sm->m->rates, i ) ){
+				fprintf(pFile," %e", Parameters_value(tlk->sm->m->rates,i));
+			}
+			
         }
         fprintf(pFile, "\n");
     }
     fclose(pFile);
     free_Optimizer(opt_rates);
     free(data);
-    free_Parameters_soft(oneparameter);
+    free_Parameters(oneparameter);
 }
 
