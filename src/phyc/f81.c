@@ -66,7 +66,7 @@ void f81_p_t_rolled( SubstitutionModel *m, const double t, double *P ){
 }
 
 void f81_p_t( SubstitutionModel *m, const double t, double *P ){
-	const double* freqs = m->simplex->get_values(m->simplex);
+	const double* freqs = m->get_frequencies(m);
     double temp =  exp(-t/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]));
     double temp2 = 1.0 - temp;
     
@@ -98,10 +98,11 @@ void f81_p_t( SubstitutionModel *m, const double t, double *P ){
     P[13] = ctemp2;        //C
     P[14] = ttemp2;        //G
     P[15] = gtemp2 + temp; //T, U
+//	print_dvector(P, 16);
 }
 
 void f81_p_t_transpose( SubstitutionModel *m, const double t, double *P ){
-	const double* freqs = m->simplex->get_values(m->simplex);
+	const double* freqs = m->get_frequencies(m);
     double temp =  exp(-t/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]));
     double temp2 = 1.0 - temp;
     

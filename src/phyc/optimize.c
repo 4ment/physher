@@ -3130,7 +3130,6 @@ double _brent_optimize_slide_height( Parameters *params, double *grad, void *dat
 double _cg_optimize_frequencies( Parameters *params, double *grad, void *data ){
 	MultivariateData *mydata = (MultivariateData*)data;
 	SingleTreeLikelihood *stlk = mydata->tlk;
-	
 	for (int i = 0; i < stlk->sm->nstate-1; i++) {
 		stlk->sm->m->set_relative_frequency( stlk->sm->m, Parameters_value(params, i), i );
 	}

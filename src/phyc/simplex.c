@@ -35,7 +35,7 @@ void transform(const double* values, Parameters* parameters){
 
 
 void free_Simplex(Simplex* simplex){
-	if(simplex->parameters != NULL) free_Parameters(simplex->parameters);
+	free_Parameters(simplex->parameters);
 	free(simplex->values);
 	free(simplex);
 }
@@ -67,8 +67,11 @@ void set_parameter_value(Simplex* simplex, int index, double value){
 
 const double* get_values(Simplex* simplex){
 	if (simplex->need_update) {
+//			print_dvector(simplex->values,4);
 		inverse_transform(simplex->parameters, simplex->values);
 		simplex->need_update  = false;
+//		print_dvector(simplex->values,4);
+//		printf("--------------------------------\n");
 	}
 	return simplex->values;
 }
@@ -78,14 +81,6 @@ double get_value(Simplex* simplex, int i){
 		inverse_transform(simplex->parameters, simplex->values);
 		simplex->need_update  = false;
 	}
-	return simplex->values[i];
-}
-
-const double* get_values_simple(Simplex* simplex){
-	return simplex->values;
-}
-
-double get_value_simple(Simplex* simplex, int i){
 	return simplex->values[i];
 }
 
@@ -114,12 +109,14 @@ Simplex* new_Simplex_with_values(const double *x, int K){
 	for(int i = 0; i < N; i++){
 		double phi = x[i]/x[N];
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix_and_ownership("phi", name, phi, new_Constraint(0.001, 0.999), true));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix_and_ownership("phi", name, phi, new_Constraint(0.001, 100), true));
+		Parameters_at(simplex->parameters, i)->id = i;
 	}
 	simplex->get_values = get_values;
 	simplex->get_value = get_value;
 	simplex->set_values = set_values;
 	simplex->set_parameter_value = set_parameter_value;
+	simplex->need_update = true;
 	return simplex;
 }
 
@@ -139,15 +136,19 @@ Simplex* new_Simplex(int K){
 	for(int i = 0; i < N; i++){
 		double phi = simplex->values[i]/simplex->values[N];
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix_and_ownership("phi", name, phi, new_Constraint(0.001, 0.999), true));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix_and_ownership("phi", name, phi, new_Constraint(0.001, 100), true));
+		Parameters_at(simplex->parameters, i)->id = i;
 	}
-	simplex->get_values = get_values_simple;
-	simplex->get_value = get_value_simple;
+	simplex->get_values = get_values;
+	simplex->get_value = get_value;
 	simplex->set_values = set_values;
+	simplex->set_parameter_value = set_parameter_value;
+	simplex->need_update = true;
 	return simplex;
 }
 
 static void _simplex_model_handle_change( Model *self, Model *model, int index ){
+//	printf("update %d\n", index);
 	Simplex* simplex = (Simplex*)self->obj;
 	simplex->need_update = true;
 	self->listeners->fire( self->listeners, self, index );

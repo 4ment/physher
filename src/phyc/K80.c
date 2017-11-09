@@ -69,7 +69,7 @@ static void k80_update_Q( SubstitutionModel *m );
 SubstitutionModel * new_K80(){
 	Simplex* freqs = new_Simplex(4);
 	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
-		Parameters_at(freqs->parameters, i)->estimate = false;
+		Parameters_set_estimate(freqs->parameters, false, i);
 	}
     SubstitutionModel *m = create_nucleotide_model("K80", K80, freqs);
     
@@ -92,7 +92,7 @@ SubstitutionModel * new_K80_with_values( const double kappa ){
 SubstitutionModel * new_K80_with_parameters( const Parameters* kappa ){
 	Simplex* freqs = new_Simplex(4);
 	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
-		Parameters_at(freqs->parameters, i)->estimate = false;
+		Parameters_set_estimate(freqs->parameters, false, i);
 	}
 	SubstitutionModel *m = create_nucleotide_model("K80", K80, freqs);
 	

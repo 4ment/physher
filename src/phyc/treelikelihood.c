@@ -820,20 +820,20 @@ int SingleTreeLikelihood_df_count( const SingleTreeLikelihood *stlk ){
 	}
 
 	// Frequencies
-	if(Parameters_at(stlk->sm->m->simplex->parameters, 0)->estimate){
+	if(Parameters_estimate(stlk->sm->m->simplex->parameters, 0)){
 		df += stlk->sm->nstate-1;
 	}
 	// Rate bias
 	if(Parameters_count(stlk->sm->m->rates) > 0){
 		for (int i = 0; i < Parameters_count(stlk->sm->m->rates); i++) {
-			df += Parameters_at(stlk->sm->m->rates, i)->estimate;
+			df += Parameters_estimate(stlk->sm->m->rates, i);
 		}
 	}
 	
 	// SiteModel
 	if(Parameters_count(stlk->sm->rates) > 0){
 		for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
-			df += Parameters_at(stlk->sm->rates, i)->estimate;
+			df += Parameters_estimate(stlk->sm->rates, i);
 		}
 	}
 	return df;

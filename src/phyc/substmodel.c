@@ -55,13 +55,13 @@ static void _substitution_model_free( Model *self ){
 	if(self->ref_count == 1){
 		printf("Free subsitution model %s\n", self->name);
 		SubstitutionModel* m = (SubstitutionModel*)self->obj;
+		Model* msimplex = (Model*)self->data;
+		msimplex->free(msimplex);
 		free(m->name);
-		free_Simplex(m->simplex);
 		if( m->eigendcmp != NULL ) free_EigenDecomposition(m->eigendcmp);
 		if( m->Q != NULL ) free_dmatrix(m->Q, m->nstate);
 		if( m->PP != NULL ) free_dmatrix(m->PP, m->nstate);
 		if(m->rates != NULL) free_Parameters(m->rates);
-		free_Simplex(m->simplex);
 		if( m->model != NULL ) m->model->free(m->model);
 		if( m->dQ != NULL ) free(m->dQ);
 		free(m);
@@ -116,6 +116,9 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
 		}
 	}
+	
+	// Listen to frequency simplex
+	simplex->listeners->add( simplex->listeners, model );
 	
 	model->update = _substitution_model_handle_change;
 	model->free = _substitution_model_free;

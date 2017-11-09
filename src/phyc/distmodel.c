@@ -142,7 +142,7 @@ double DistributionModel_dlog_exp(DistributionModel* dm, const Parameter* p){
 
 // Flat dirichlet
 double DistributionModel_log_flat_dirichlet(DistributionModel* dm){
-	return log(ddirchlet_flat(Parameters_count(dm->x)));
+	return log(ddirchlet_flat(dm->simplex->K));
 }
 
 double DistributionModel_dlog_flat_dirichlet(DistributionModel* dm, const Parameter* p){
@@ -236,7 +236,15 @@ static void _dist_model_free( Model *self ){
 	if(self->ref_count == 1){
 		printf("Free distribution model %s\n", self->name);
 		DistributionModel* cm = (DistributionModel*)self->obj;
-		cm->free(cm);
+		Model* msimplex = (Model*)self->data;
+		if(msimplex != NULL){
+			msimplex->free(msimplex);
+		}
+		if(cm->x != NULL) free_Parameters(cm->x);
+		if(cm->parameters != NULL) free_Parameters(cm->parameters);
+		if(cm->tempx != NULL) free(cm->tempx);
+		if(cm->tempp != NULL) free(cm->tempp);
+		free(cm);
 		free_Model(self);
 	}
 	else{
@@ -320,6 +328,7 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex){
 	Model *model = new_Model(name, dm);
 	model->data = simplex;
+	simplex->ref_count++;
 	model->logP = _dist_model_logP;
 	model->dlogP = _dist_model_dlogP;
 	model->free = _dist_model_free;

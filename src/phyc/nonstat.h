@@ -20,7 +20,7 @@
 
 #include "substmodel.h"
 
-SubstitutionModel * new_NONSTATNucleotideModel(Simplex* freqs);
+SubstitutionModel * new_NONSTATNucleotideModel();
 
 SubstitutionModel * new_NONSTATNucleotideModel_with_parameters( Simplex* freqs, const Parameters *rates );
 

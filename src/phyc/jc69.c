@@ -28,7 +28,7 @@ static void jc69_d2p_dt2( SubstitutionModel *m, const double t, double *P );
 SubstitutionModel * new_JC69(){
 	Simplex* freqs = new_Simplex(4);
 	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
-		Parameters_at(freqs->parameters, i)->estimate = false;
+		Parameters_set_estimate(freqs->parameters, false, i);
 	}
     SubstitutionModel *m = create_substitution_model("JC69", JC69, DATA_TYPE_NUCLEOTIDE, freqs);
     m->nstate = 4;
