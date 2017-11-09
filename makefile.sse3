@@ -11,7 +11,7 @@ SRCDIR = src
 
 PHYCDIR = $(SRCDIR)/phyc
 
-INCLUDES = -I$(SRCDIR)
+INCLUDES = -I$(PHYCDIR)
 
 OBJDIR = obj
 BINDIR = bin
