@@ -129,9 +129,8 @@ static void * _resampling_thread_worker( void *threadpool  ){
         
         StringBuffer_empty(buffer_local);
         if( tlk->opt.freqs.optimize ){
-            
-            tlk2->sm->m->update_frequencies(tlk2->sm->m);
-            StringBuffer_append_format(buffer_local, "%e,%e,%e,%e,", tlk2->sm->m->_freqs[0], tlk2->sm->m->_freqs[1], tlk2->sm->m->_freqs[2], tlk2->sm->m->_freqs[3]);
+			const double* freqs = tlk2->sm->m->get_frequencies(tlk2->sm->m);
+            StringBuffer_append_format(buffer_local, "%e,%e,%e,%e,", freqs[0], freqs[1], freqs[2], freqs[3]);
             //            for ( int j = 0; j < Parameters_count(tlk2->sm->m->freqs); j++ ) {
             //                StringBuffer_append_format(buffer_local, "%e,", Parameters_value(tlk2->sm->m->freqs, j));
             //            }
@@ -225,9 +224,9 @@ void SingleTreeLikelihood_resampling_threads( const SingleTreeLikelihood *tlk, r
         StringBuffer_empty(buffer);
         
         if( tlk->opt.freqs.optimize ){
-            tlk->sm->m->update_frequencies(tlk->sm->m);
+            const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
             StringBuffer_append_string(buffer, "A,C,G,T,");
-            StringBuffer_append_format(buffer2, "%e,%e,%e,%e,", tlk->sm->m->_freqs[0], tlk->sm->m->_freqs[1], tlk->sm->m->_freqs[2], tlk->sm->m->_freqs[3]);
+            StringBuffer_append_format(buffer2, "%e,%e,%e,%e,", freqs[0], freqs[1], freqs[2], freqs[3]);
             //            for ( int j = 0; j < Parameters_count(tlk->sm->m->freqs); j++ ) {
             //                StringBuffer_append_format(buffer, "%s,", Parameters_name(tlk->sm->m->freqs, j));
             //                StringBuffer_append_format(buffer2, "%e,", Parameters_value(tlk->sm->m->freqs, j));
