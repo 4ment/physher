@@ -89,12 +89,8 @@
 #include "phyc/PhyCConfig.h"
 #endif
 
-
-
-//#ifdef LISTENERS
 #include "compoundmodel.h"
 #include "distmodel.h"
-//#endif
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -2446,8 +2442,6 @@ int main(int argc, char* argv[]){
 		}
 	}
 	
-#ifdef LISTENERS
-	
 	Model* mtree = new_TreeModel("tree", tree);
 	Model* mfreq = new_SimplexModel("simplex", freqSimplex);
 	Model* mmod = new_SubstitutionModel2("substmodel", mod, mfreq);
@@ -2463,7 +2457,6 @@ int main(int argc, char* argv[]){
 	post->add(post, mtlk);
 	mtlk->free(mtlk);
 
-#endif
 	Parameters* pp_bl = new_Parameters(Tree_node_count(tree)-2);
 	if(true){
 		for(int i = 0; i < Tree_node_count(tree); i++){

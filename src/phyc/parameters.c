@@ -183,10 +183,8 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 	p->cnstr = constr;
 	p->estimate = true;
 	p->id = 0;
-#ifdef LISTENERS
 	p->listeners = new_ListenerList(1);
 	p->refCount = 1;
-#endif
 	return p;
 }
 
@@ -205,7 +203,6 @@ Parameter * clone_Parameter( Parameter *p ){
 }
 
 void free_Parameter( Parameter *p ){
-#ifdef LISTENERS
 	if(p->refCount == 1){
 		free(p->name);
 		p->listeners->free(p->listeners);
@@ -215,11 +212,6 @@ void free_Parameter( Parameter *p ){
 	else{
 		p->refCount--;
 	}
-#else
-	free(p->name);
-	if( p->cnstr != NULL ) free_Constraint(p->cnstr);
-	free(p);
-#endif
 }
 
 char * Parameter_stringify( Parameter *p ){
@@ -309,9 +301,7 @@ char * Parameter_name( const Parameter *p ){
 
 void Parameter_set_value( Parameter *p, const double value ){
 	p->value = value;
-#ifdef LISTENERS
 	p->listeners->fire(p->listeners, NULL, p->id);
-#endif
 }
 
 
@@ -816,7 +806,6 @@ void Parameters_sort_from_ivector( Parameters *p, int *s ){
 #pragma mark DiscreteParameter
 
 static void _free_DiscreteParameter( DiscreteParameter *p ){
-#ifdef LISTENERS
 	if(p->refCount == 1){
 		free(p->name);
 		p->listeners->free(p->listeners);
@@ -825,11 +814,6 @@ static void _free_DiscreteParameter( DiscreteParameter *p ){
 	else{
 		p->refCount--;
 	}
-#else
-	free(p->name);
-	free(p->values);
-	free(p);
-#endif
 }
 
 static DiscreteParameter * _clone_DiscreteParameter( DiscreteParameter *p ){
@@ -842,16 +826,12 @@ static DiscreteParameter * _clone_DiscreteParameter( DiscreteParameter *p ){
 static void _set_value_discrete(DiscreteParameter* p, int index, unsigned value){
 	assert(index < p->length);
 	p->values[index] = value;
-#ifdef LISTENERS
 	p->listeners->fire(p->listeners, NULL, index);
-#endif
 }
 
 static void _set_values_discrete(DiscreteParameter* p, const unsigned* values){
 	memcpy(p->values, values, p->length);
-#ifdef LISTENERS
 	p->listeners->fire(p->listeners, NULL, -1);
-#endif
 }
 
 DiscreteParameter * new_DiscreteParameter( const char *name, int dim ){
@@ -890,10 +870,8 @@ DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name,
 	p->free = _free_DiscreteParameter;
 	p->clone = _clone_DiscreteParameter;
 	p->id = 0;
-#ifdef LISTENERS
 	p->listeners = new_ListenerList(1);
 	p->refCount = 1;
-#endif
 	return p;
 }
 

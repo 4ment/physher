@@ -72,7 +72,6 @@ static bool _calculate_partials_noexp_integrate( SingleTreeLikelihood *tlk, Node
 #pragma mark -
 // MARK: TreeLikelihood
 
-#ifdef LISTENERS
 void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 	SingleTreeLikelihood *tlk = (SingleTreeLikelihood*)self->obj;
 	//printf("%s %d\n", model->name, index);
@@ -211,7 +210,6 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	if(bm != NULL) bm->ref_count++;
 	return model;
 }
-#endif
 
 #pragma mark -
 // MARK: SingleTreeLikelihood

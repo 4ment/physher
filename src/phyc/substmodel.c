@@ -42,7 +42,6 @@
 
 #pragma mark Public function definition
 
-#ifdef LISTENERS
 
 static void _substitution_model_handle_change( Model *self, Model *model, int index ){
 	SubstitutionModel* m = (SubstitutionModel*)self->obj;
@@ -149,8 +148,6 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 	model->get_free_parameters = _substitution_model_get_free_parameters;
 	return model;
 }
-#endif
-
 
 double get_frequency( SubstitutionModel *m, int base ){
 	return m->simplex->get_value(m->simplex, base);

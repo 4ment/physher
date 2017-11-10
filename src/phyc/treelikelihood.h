@@ -150,9 +150,7 @@ struct _SingleTreeLikelihood{
 	double* root_frequencies;
 };
 
-#ifdef LISTENERS
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm );
-#endif
 
 #pragma mark -
 #pragma mark Optimizable

@@ -111,7 +111,6 @@ BranchModel * new_BranchModel( Tree *tree, branchmodel type ){
 }
 
 
-#ifdef LISTENERS
 static void _branchmodel_handle_change( Model *self, Model *model, int index ){
 	// from the index we can try to tell treelikelihood to update the right part of the tree
 	BranchModel *bm = (BranchModel*)self->obj;
@@ -199,7 +198,6 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
 	tree->ref_count++;
 	return model;
 }
-#endif
 
 
 BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree ){

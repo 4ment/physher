@@ -66,10 +66,8 @@ struct _Parameter{
 	double value;
 	Constraint *cnstr;
 	bool estimate;
-#ifdef LISTENERS
 	ListenerList *listeners;
 	int refCount;
-#endif
 };
 
 struct _DiscreteParameter{
@@ -83,10 +81,8 @@ struct _DiscreteParameter{
 	
 	void (*set_value)( DiscreteParameter*, int, unsigned );
 	void (*set_values)( DiscreteParameter*, const unsigned* );
-#ifdef LISTENERS
 	ListenerList *listeners;
 	int refCount;
-#endif
 };
 
 #pragma mark -

@@ -41,9 +41,7 @@ struct _Tree{
     Node **nodes;
 	bool topology_changed;
 	bool dated;
-#ifdef LISTENERS
 	bool time_mode;
-#endif
 };
 
 static void tree_init_distance_parameters( Tree *t, Parameters *ps );
@@ -182,9 +180,8 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	atree->nNodes = 0;
 	atree->rooted = false;
 	atree->dated = false;
-#ifdef LISTENERS
 	atree->time_mode = false;
-#endif
+
 	//printf("%s",nexus);
 	Node *current = NULL;
 	int i = 0;
@@ -410,9 +407,7 @@ Tree * new_Tree2( Node *root, bool containBL ){
 	atree->nNodes = 0;
 	atree->rooted = false;
 	atree->dated = false;
-#ifdef LISTENERS
 	atree->time_mode = false;
-#endif
 	
 	_Tree_count_nodes(root, &atree->nTips, &atree->nNodes);
 	
@@ -552,7 +547,6 @@ void Tree_init_heights ( Tree *atree ) {
 	free_StringBuffer(buffer);
 }
 
-#ifdef LISTENERS
 void _tree_handle_change( Model *self, Model *model, int index ){
 	Tree *tree = (Tree*)self->obj;
 	if ( tree->time_mode ) {
@@ -635,9 +629,6 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 	model->get_free_parameters = _tree_model_get_free_parameters;
 	return model;
 }
-#endif
-
-
 
 static void free_Tree_aux( Node *n ){
 	if( n != NULL ){

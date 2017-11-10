@@ -59,7 +59,7 @@ static double _get_rate_cat( SiteModel *sm, const int index );
 
 static SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const unsigned int cat_count, sitemodel_heterogeneity type );
 
-#ifdef LISTENERS
+
 static void _site_model_handle_change( Model *self, Model *model, int index ){
 	SiteModel *sm = (SiteModel*)self->obj;
 	if( model == NULL )sm->need_update = true;// one of the sitemodel parameters
@@ -154,7 +154,6 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	substmodel->ref_count++;
 	return model;
 }
-#endif
 
 #pragma mark -
 // MARK: Gamma SiteModel

@@ -54,20 +54,10 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 	double tol = stop->tolx;
     //int *numFun = &stop.f_eval_current;
     int *iter = &stop->iter;
-#ifdef LISTENERS
+
 	a = ( Parameters_lower(ps,0) < Parameters_upper(ps,0) ? Parameters_lower(ps,0) : Parameters_upper(ps,0));
 	b = ( Parameters_lower(ps,0) > Parameters_upper(ps,0) ? Parameters_lower(ps,0) : Parameters_upper(ps,0));
 	x = Parameters_value(ps,0);
-#else
-	Parameters *newps = new_Parameters(1);
-	Parameters_add(newps, clone_Parameter( Parameters_at(ps,0), true) );
-	x = Parameters_value(newps,0);
-	//	double xmin = Parameters_lower(newps,0);
-	//	double xmax = Parameters_upper(newps,0);
-	a = ( Parameters_lower(newps,0) < Parameters_upper(newps,0) ? Parameters_lower(newps,0) : Parameters_upper(newps,0));
-	b = ( Parameters_lower(newps,0) > Parameters_upper(newps,0) ? Parameters_lower(newps,0) : Parameters_upper(newps,0));
-#endif
-	
     
 //    // x is equal to its lower bound
 //    if ( x == a) {
@@ -123,13 +113,10 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 //    Parameters_set_value(newps, 0, x );
     
     //printf("a %e (%f) b %e (%f) c %e (%f)\n", a, fa, x, fx, b, fb);
-#ifdef LISTENERS
+
 	x = w = v = Parameters_value(ps,0);
 	fw = fv = fx = f(ps, NULL, data);
-#else
-	x = w = v = Parameters_value(newps,0);
-	fw = fv = fx = f(newps, NULL, data);
-#endif
+
     stop->f_eval_current = 1;
 	
     stop->iter = 0;
@@ -140,12 +127,8 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 		tol2 = 2.0*(tol1 = tol*fabs(x) + ZEPS);
 		
 		if ( fabs(x - xm) <= (tol2 - 0.5*(b-a)) ) {
-#ifndef LISTENERS
-			Parameters_set_value(newps, 0, x );
-			free_Parameters(newps);
-#else
 			Parameters_set_value(ps, 0, x );
-#endif
+
 			*fmin = fx;
             //printf("%s xmin %e (%f)\n\n", Parameters_name(ps, 0), x, fx);
 			return OPT_SUCCESS;
@@ -182,13 +165,8 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 		
 		u  = (fabs(d) >= tol1 ? x+d : x+SIGN(tol1,d));
 		//This is the one function evaluation per iteration.
-#ifndef LISTENERS
-		Parameters_set_value(newps, 0, u );
-		fu = f(newps, NULL, data);
-#else
 		Parameters_set_value(ps, 0, u );
 		fu = f(ps, NULL, data);
-#endif
         stop->f_eval_current++;
 		
 		if (fu <= fx) {
@@ -216,9 +194,6 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 	}
 	fprintf(stderr,"Too many iterations in brent_one_d:%s\n",Parameters_name(ps,0));
 	Parameters_set_value(ps, 0, x );
-#ifndef LISTENERS
-	free_Parameters(newps);
-#endif
 	*fmin = fx;
 	return OPT_MAXITER;
 }
