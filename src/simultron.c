@@ -292,29 +292,29 @@ int main( int argc, char *argv[] ){
     
     
     SubstitutionModel *m = NULL;
-    
+	Simplex* freqsSimplex = new_Simplex(matrixDimension);
     if ( dataType->type == DATA_TYPE_NUCLEOTIDE ) {
         
         if( strcasecmp("JC69", model_string) == 0 ){
-            m = new_JC69();
+            m = new_JC69(freqsSimplex);
         }
         else if( strcasecmp("K80", model_string) == 0 ){
-            m = new_K80();
+            m = new_K80(freqsSimplex);
         }
         else if( strcasecmp("HKY", model_string) == 0 ){
-            m = new_HKY();
+            m = new_HKY(freqsSimplex);
         }
         else if( strcasecmp("GTR", model_string) == 0 ){
-            m = new_GTR();
+            m = new_GTR(freqsSimplex);
         }
         else if( strcasecmp("UREV", model_string) == 0 ){
-            m = new_UnrestrictedNucleotideModel();
+            m = new_UnrestrictedNucleotideModel(freqsSimplex);
         }
         else if( strcasecmp("NONSTAT", model_string) == 0 ){
-            m = new_NONSTATNucleotideModel();
+            m = new_NONSTATNucleotideModel(freqsSimplex);
         }
         else if( model_string[0] == '0' ){
-            m = new_ReversibleNucleotideModel(model_string);
+            m = new_ReversibleNucleotideModel(model_string, freqsSimplex);
         }
         
         /*
@@ -324,7 +324,7 @@ int main( int argc, char *argv[] ){
         if ( args_contains(argc, argv, "-f") ) {
             int nfreqs = 0;
             double *freqs = args_get_double_array(argc, argv, "-f", ',', &nfreqs);
-            memcpy(m->_freqs, freqs, sizeof(double)*4);
+			freqsSimplex->set_values(freqsSimplex, freqs);
             free(freqs);
         }
         
@@ -334,7 +334,7 @@ int main( int argc, char *argv[] ){
         if ( args_contains(argc, argv, "-r") ) {
             int rateCount = 0;
             double *rates = args_get_double_array(argc, argv, "-r", ',', &rateCount);
-            mod->set_rates(m,rates);
+            m->set_rates(m,rates);
         }
         
     }
@@ -343,7 +343,7 @@ int main( int argc, char *argv[] ){
         if ( args_contains(argc, argv, "-f") ) {
             int nfreqs = 0;
             double *freqs = args_get_double_array(argc, argv, "-f", ',', &nfreqs);
-            memcpy(m->_freqs, freqs, sizeof(double)*nfreqs);
+            freqsSimplex->set_values(freqsSimplex, freqs);
             free(freqs);
         }
         
@@ -351,7 +351,7 @@ int main( int argc, char *argv[] ){
         if( args_contains(argc, argv, "-r") ){
             int rateCount = 0;
             double *rates = args_get_double_array(argc, argv, "-r", ',', &rateCount);
-            mod->set_rates(m,rates);
+            m->set_rates(m,rates);
             free(rates);
         }
     }
@@ -372,7 +372,7 @@ int main( int argc, char *argv[] ){
         if ( args_contains(argc, argv, "-f") ) {
             int freqCount = 0;
             double *freqs = args_get_double_array(argc, argv, "-f", ',', &freqCount);
-            memcpy(m->_freqs, freqs, sizeof(double)*20);
+            freqsSimplex->set_values(freqsSimplex, freqs);
             free(freqs);
         }
     }
@@ -401,14 +401,14 @@ int main( int argc, char *argv[] ){
             }
         }
         
-        m = new_GeneralModel(rateIndexes, matrixDimension);
+        m = new_GeneralModel(rateIndexes, freqsSimplex);
         
         free(rateIndexes);
         
         if ( args_contains(argc, argv, "-f") ) {
             int freqCount = 0;
             double *freqs = args_get_double_array(argc, argv, "-f", ',', &freqCount);
-            memcpy(m->_freqs, freqs, sizeof(double)*dataType->stateCount);
+            freqsSimplex->set_values(freqsSimplex, freqs);
             free(freqs);
         }
         
@@ -423,7 +423,7 @@ int main( int argc, char *argv[] ){
         if ( args_contains(argc, argv, "-r") ) {
             int rateCount = 0;
             double *rates = args_get_double_array(argc, argv, "-r", ',', &rateCount);
-            mod->set_rates(m, rates);
+            m->set_rates(m, rates);
             free(rates);
         }
     }
