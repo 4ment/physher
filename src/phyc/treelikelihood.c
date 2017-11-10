@@ -144,7 +144,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 	tlk->root_partials_size = sp->count*sm->nstate*3;
 	tlk->pattern_lk_size = sp->count*3;
 	
-	tlk->partials_dim = Tree_node_count(tree)*2;
+	tlk->partials_dim = Tree_node_count(tree)*2; // allocate *2 for upper likelihoods
 	
 // partials and matrices need to be aligned when compiled with GCC >= 4.7 if we want autovectorization
 #if defined (SSE3_ENABLED) || (AVX_ENABLED) || (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
