@@ -1468,7 +1468,7 @@ void update_partials_upper_general( SingleTreeLikelihood *tlk, Node *node ){
     Node *parent = Node_parent(node);
     Node *sibling = Node_sibling(node);
 	
-	const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+	const double* freqs = tlk->get_root_frequencies(tlk);
     if( Node_isroot(parent) ){
         if( Node_isleaf(sibling) ){
             _update_upper_partials_root_and_state(tlk, tlk->matrices[Node_id(sibling)], tlk->mapping[Node_id(sibling)], freqs, tlk->partials_upper[Node_id(node)] );

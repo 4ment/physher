@@ -2311,15 +2311,6 @@ int main(int argc, char* argv[]){
             mod->normalize = false;
             mod->need_update = true;
         }
-        if(frequencies_unknown){
-			printf("frequencies_unknown set up");
-			exit(1);
-//            for ( int i = 0; i < matrixDimension; i++ ) {
-//                mod->_freqs[i] = 1.0;
-//            }
-//            mod->need_update = true;
-        }
-        
         
         if ( rates_user != NULL ) {
             unsigned rateCount = 0;
@@ -2446,6 +2437,14 @@ int main(int argc, char* argv[]){
 	 *************************************************************************************************/
 
 	SingleTreeLikelihood *tlk = new_SingleTreeLikelihood( tree, sm, sp, NULL );
+	
+	if(frequencies_unknown){
+		tlk->get_root_frequencies = get_root_frequencies_fixed;
+		tlk->root_frequencies = dvector(sm->nstate);
+		for (int i = 0; i < sm->nstate; i++) {
+			tlk->root_frequencies[i] = 1;
+		}
+	}
 	
 #ifdef LISTENERS
 	

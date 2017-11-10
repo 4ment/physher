@@ -420,6 +420,8 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 #endif
 
     tlk->nthreads = 1;
+	tlk->root_frequencies = NULL;
+	tlk->get_root_frequencies = get_root_frequencies;
 	return tlk;
 }
 
@@ -445,6 +447,7 @@ void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk ){
 	}
 	free(tlk->upper_partial_indexes);
 	SingleTreeLikelihood_free_upper(tlk);
+	if(tlk->root_frequencies != NULL)free(tlk->root_frequencies);
 	
 	free(tlk);
 }
@@ -486,7 +489,7 @@ void free_SingleTreeLikelihood_share( SingleTreeLikelihood *tlk, bool shared_sit
 	}
 	
 	free(tlk->upper_partial_indexes);
-    
+    if(tlk->root_frequencies != NULL)free(tlk->root_frequencies);
 	free(tlk);
 }
 
@@ -526,7 +529,7 @@ void free_SingleTreeLikelihood_share2( SingleTreeLikelihood *tlk, bool shared_tr
 	if ( tlk->hessian != NULL ) {
 		free(tlk->hessian);
 	}
-    
+    if(tlk->root_frequencies != NULL)free(tlk->root_frequencies);
 	free(tlk);
 }
 
@@ -740,6 +743,11 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
     
 #endif
 	newtlk->sp->ref_count++;
+	
+	if(tlk->root_frequencies != NULL){
+		newtlk->root_frequencies = clone_dvector(tlk->root_frequencies, tlk->sm->nstate);
+	}
+	newtlk->get_root_frequencies = tlk->get_root_frequencies;
 	return newtlk;
 }
 
@@ -1007,7 +1015,7 @@ double ** SingleTreeLikelihood_posterior_sites( SingleTreeLikelihood *tlk ){
 		_calculate(tlk);
 	}
 	const double *partials = tlk->partials[ Tree_node_count(tlk->tree)-1];
-	const double *frequencies = tlk->sm->m->get_frequencies(tlk->sm->m);
+	const double *frequencies = tlk->get_root_frequencies(tlk);
 	const double *root_lk   = tlk->pattern_lk; // P[D_i]
 	const double *rate_prop = tlk->sm->get_proportions(tlk->sm); // P[R_j]
 	
@@ -1046,7 +1054,7 @@ double SingleTreeLikelihood_calculate_at_node( SingleTreeLikelihood *tlk, const 
     
 	tlk->integrate_partials(tlk, tlk->partials[Node_id(node)], tlk->sm->get_proportions(tlk->sm), partials );
 	
-	tlk->node_log_likelihoods( tlk, partials, tlk->sm->m->get_frequencies(tlk->sm->m), pattern_lk);
+	tlk->node_log_likelihoods( tlk, partials, tlk->get_root_frequencies(tlk), pattern_lk);
 	
 	double lnl = 0;
 	for ( int i = 0; i < tlk->sp->count; i++) {
@@ -1068,7 +1076,7 @@ static double _calculate2( SingleTreeLikelihood *tlk ){
     
     tlk->integrate_partials(tlk, tlk->partials[Node_id(Tree_root(tlk->tree))], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
     
-    tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+    tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
     
 	tlk->lk = 0;
 	int i = 0;
@@ -1087,7 +1095,7 @@ static double _calculate2( SingleTreeLikelihood *tlk ){
 		
         tlk->integrate_partials(tlk, tlk->partials[Node_id(Tree_root(tlk->tree))], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
         
-        tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+        tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
 		
 		for ( i = 0; i < tlk->sp->count; i++) {
 			tlk->lk += tlk->pattern_lk[i] * tlk->sp->weights[i];
@@ -1197,7 +1205,7 @@ void calculate_all_df_dt( SingleTreeLikelihood *tlk, double **df ){
         
         const int nstate   = tlk->sm->nstate;
         const int patternCount = tlk->sp->count;
-		const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+		const double* freqs = tlk->get_root_frequencies(tlk);
         
         for ( int k = 0; k < patternCount; k++ ) {
             
@@ -1290,7 +1298,7 @@ void calculate_all_dlnl_dt( SingleTreeLikelihood *tlk, double *dlnl ){
 		int v = 0;
 		int i = 0;
 		
-		const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+		const double* freqs = tlk->get_root_frequencies(tlk);
 		const int nstate   = tlk->sm->nstate;
 		const int patternCount = tlk->sp->count;
 		dlnl[Node_id(n)] = 0;
@@ -1389,7 +1397,7 @@ void calculate_all_d2lnl_d2t( SingleTreeLikelihood *tlk, double *d2lnl ){
         
         const int nstate   = tlk->sm->nstate;
 		const int patternCount = tlk->sp->count;
-		const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+		const double* freqs = tlk->get_root_frequencies(tlk);
 		
         for ( int k = 0; k < patternCount; k++ ) {
             
@@ -1494,7 +1502,7 @@ void calculate_hessian_branches( SingleTreeLikelihood *tlk, double *d2lnl ){
         
         const int nstate   = tlk->sm->nstate;
 		const int patternCount = tlk->sp->count;
-		const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+		const double* freqs = tlk->get_root_frequencies(tlk);
 		
         for ( int k = 0; k < patternCount; k++ ) {
             
@@ -1596,7 +1604,7 @@ void calculate_hessian_branches( SingleTreeLikelihood *tlk, double *d2lnl ){
             
             const int nstate   = tlk->sm->nstate;
 			const int patternCount = tlk->sp->count;
-			const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+			const double* freqs = tlk->get_root_frequencies(tlk);
 			
             for ( int k = 0; k < patternCount; k++ ) {
                 
@@ -1648,7 +1656,7 @@ void calculate_dpartials_dfreqs(SingleTreeLikelihood *tlk, int index, double* dp
     memset(dpartials, 0, sizeof(double)*patternCount);
     
     const int freqIndex = index - Parameters_count(tlk->sm->m->rates);
-	const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+	const double* freqs = tlk->get_root_frequencies(tlk);
     double* transpose = dvector(nstate*nstate*tlk->sm->cat_count);
 
     int v = 0;
@@ -1736,7 +1744,7 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
     tlk->sm->m->dQ_need_update = true;
     
     const int freqIndex = index - Parameters_count(tlk->sm->m->rates);
-	const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+	const double* freqs = tlk->get_root_frequencies(tlk);
     double* transpose = dvector(nstate*nstate*tlk->sm->cat_count);
     
     // Frequencies
@@ -1845,7 +1853,7 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
             tlk->calculate_branch_likelihood(tlk, root_partials, tlk->upper_partial_indexes[nodeId], nodeId, tempMatrixId );
             int v = 0;
 			int i = 0;
-			const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+			const double* freqs = tlk->get_root_frequencies(tlk);
 			
             for ( int k = 0; k < patternCount; k++ ) {
                 for ( i = 0; i < nstate; i++ ) {
@@ -1882,7 +1890,7 @@ double _calculate( SingleTreeLikelihood *tlk ){
 	
     tlk->integrate_partials(tlk, tlk->partials[Node_id(Tree_root(tlk->tree))], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
 	
-    tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+    tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
 	
 	tlk->lk = 0;
 	int i = 0;
@@ -1902,7 +1910,7 @@ double _calculate( SingleTreeLikelihood *tlk ){
         
         tlk->integrate_partials(tlk, tlk->partials[Node_id(Tree_root(tlk->tree))], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
         
-        tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+        tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
 		
 		
 		for ( i = 0; i < tlk->sp->count; i++) {
@@ -1986,7 +1994,7 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
 			if( Node_id(n) == tlk->node_id ){
 				tlk->integrate_partials(tlk, tlk->partials[Node_id(n)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
 				
-				tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+				tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
                 
 			}
 			updated = true;
@@ -2091,7 +2099,7 @@ bool _calculate_partials_noexp_integrate( SingleTreeLikelihood *tlk, Node *n  ){
 			if( Node_isroot(n) || Node_id(n) == tlk->node_id ){
 				tlk->integrate_partials(tlk, tlk->partials[Node_id(n)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
 				
-				tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+				tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
 			}
         
 			updated = true;
@@ -2304,6 +2312,16 @@ bool SingleTreeLikelihood_SSE( SingleTreeLikelihood *tlk ){
     return false;
 #endif
     
+}
+
+
+const double* get_root_frequencies(SingleTreeLikelihood* tlk){
+	return tlk->sm->m->get_frequencies(tlk->sm->m);
+}
+
+const double* get_root_frequencies_fixed(SingleTreeLikelihood* tlk){
+	assert(tlk->root_frequencies);
+	return tlk->root_frequencies;
 }
 
 #pragma mark -
@@ -2540,7 +2558,7 @@ double _calculate_uppper_height( SingleTreeLikelihood *tlk, Node *node ){
     
     if ( Node_isroot(node) ) {
         tlk->integrate_partials(tlk, tlk->partials[Node_id(node)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
-        tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+        tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
         for ( ; i < tlk->sp->count; i++) {
             tlk->lk += tlk->pattern_lk[i] * tlk->sp->weights[i];
         }
@@ -2750,7 +2768,7 @@ double _calculate_uppper_height_sse( SingleTreeLikelihood *tlk, Node *node ){
     
     if ( Node_isroot(node) ) {
         tlk->integrate_partials(tlk, tlk->partials[Node_id(node)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
-        tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+        tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
         for ( ; i < tlk->sp->count; i++) {
             tlk->lk += tlk->pattern_lk[i] * tlk->sp->weights[i];
         }
@@ -2836,7 +2854,7 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 #endif
 		tlk->calculate_branch_likelihood(tlk, tlk->root_partials, tlk->upper_partial_indexes[nodeId], nodeId, tempMatrixId );
 		
-		tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+		tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
 		
 		double lk = 0;
 		for ( int i = 0; i < tlk->sp->count; i++) {
@@ -3021,7 +3039,7 @@ double dldt_uppper2( SingleTreeLikelihood *tlk, Node *node ){
 	
 	const int nstate   = tlk->sm->nstate;
 	const int patternCount = tlk->sp->count;
-	const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+	const double* freqs = tlk->get_root_frequencies(tlk);
 	double dl = 0;
 	
 	for ( int k = 0; k < patternCount; k++ ) {
@@ -3088,7 +3106,7 @@ void calculate_dldt_uppper( SingleTreeLikelihood *tlk, Node *node, double* patte
 	const int nstate   = tlk->sm->nstate;
 	const int patternCount = tlk->sp->count;
 	double* root_partials = tlk->root_partials  + patternCount*nstate;
-	const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+	const double* freqs = tlk->get_root_frequencies(tlk);
 	
 	tlk->calculate_branch_likelihood(tlk, root_partials, tlk->upper_partial_indexes[nodeId], nodeId, tempMatrixId );
 	
@@ -3153,7 +3171,7 @@ double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pat
     const int patternCount = tlk->sp->count;
 	double* root_partials = tlk->root_partials  + (patternCount*nstate)*2;
 	double* pattern_d2lnl = tlk->pattern_lk + patternCount*2;
-	const double* freqs = tlk->sm->m->get_frequencies(tlk->sm->m);
+	const double* freqs = tlk->get_root_frequencies(tlk);
 	tlk->calculate_branch_likelihood(tlk, root_partials, tlk->upper_partial_indexes[nodeId], nodeId, tempMatrixId );
 	
 	//tlk->node_log_likelihoods( tlk, root_partials, tlk->sm->m->_freqs, pattern_d2lnl);

@@ -89,7 +89,7 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
 			if( Node_isroot(n) ){
 				tlk->integrate_partials(tlk, tlk->partials[Node_id(n)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
 				
-				tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+				tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
 			}
 			updated = true;
 		}
@@ -124,7 +124,7 @@ void _traverse3( SingleTreeLikelihood *tlk, Node *node, double *partials, int *i
                 
                 if( Node_isroot(node) ){
                     tlk->integrate_partials(tlk, tlk->partials[Node_id(node)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
-                    tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+                    tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
                 }
                 else {
                     SingleTreeLikelihood_update_one_node(tlk, node);
@@ -175,7 +175,7 @@ void _traverse( SingleTreeLikelihood *tlk, Node *node, int *index ){
             
             if( Node_isroot(node) ){
                 tlk->integrate_partials(tlk, tlk->partials[Node_id(node)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
-                tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->sm->m->get_frequencies(tlk->sm->m), tlk->pattern_lk);
+                tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
             }
             else {
                 SingleTreeLikelihood_update_one_node(tlk, node);

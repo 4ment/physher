@@ -147,6 +147,9 @@ struct _SingleTreeLikelihood{
 	
 	int* upper_partial_indexes;
 	bool update_upper;
+	
+	const double* (*get_root_frequencies)(SingleTreeLikelihood*);
+	double* root_frequencies;
 };
 
 #ifdef LISTENERS
@@ -243,6 +246,10 @@ double ** SingleTreeLikelihood_posterior_sites( SingleTreeLikelihood *tlk );
 
 void SingleTreeLikelihood_enable_SSE( SingleTreeLikelihood *tlk, bool value );
 bool SingleTreeLikelihood_SSE( SingleTreeLikelihood *tlk );
+
+const double* get_root_frequencies(SingleTreeLikelihood* tlk);
+
+const double* get_root_frequencies_fixed(SingleTreeLikelihood* tlk);
 
 
 void SingleTreeLikelihood_add_height( SingleTreeLikelihood *tlk, Node *node, double value );
