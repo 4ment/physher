@@ -251,6 +251,11 @@ void set_rate(SiteModel* sm, const int index, const double value){
     sm->need_update = true;
 }
 
+static void _set_rate(SiteModel* sm, const int index, const double value){
+    Parameters_set_value(sm->rates, index, value);
+    sm->need_update = true;
+}
+
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
 SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const unsigned int cat_count, sitemodel_heterogeneity type ){

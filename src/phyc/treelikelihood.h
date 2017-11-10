@@ -57,8 +57,6 @@ typedef struct OptConfig{
 	Optimizable bl;
 	Optimizable freqs;
 	Optimizable relative_rates;
-	Optimizable gamma;
-	Optimizable pinv;
 	Optimizable rates;
 	Optimizable heights;
     tree_search_algorithm topology_alogrithm;

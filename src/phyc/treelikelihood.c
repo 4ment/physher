@@ -461,7 +461,7 @@ void free_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 
 void free_SingleTreeLikelihood_share( SingleTreeLikelihood *tlk, bool shared_sitepattern, bool shared_sitemodel ){
 	
-	if(tlk->scaling_factors != NULL ) free_dmatrix( tlk->scaling_factors, Tree_node_count(tlk->tree));
+	if(tlk->scaling_factors != NULL ) free_dmatrix( tlk->scaling_factors, tlk->partials_dim);
 	
 	for ( int i = 0; i < tlk->partials_dim; i++ ) {
 		if( tlk->partials[i] != NULL ){
@@ -495,7 +495,7 @@ void free_SingleTreeLikelihood_share( SingleTreeLikelihood *tlk, bool shared_sit
 
 void free_SingleTreeLikelihood_share2( SingleTreeLikelihood *tlk, bool shared_tree, bool shared_sitemodel, bool shared_sitepattern, bool shared_branchmodel ){
 	
-	if(tlk->scaling_factors != NULL ) free_dmatrix( tlk->scaling_factors, Tree_node_count(tlk->tree));
+	if(tlk->scaling_factors != NULL ) free_dmatrix( tlk->scaling_factors, tlk->partials_dim);
 	
 	for ( int i = 0; i < tlk->partials_dim; i++ ) {
 		if( tlk->partials[i] != NULL ){
@@ -594,7 +594,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	
 	newtlk->scaling_factors = NULL;
 	if ( tlk->scaling_factors != NULL ){
-		newtlk->scaling_factors = clone_dmatrix( tlk->scaling_factors, Tree_node_count(newtlk->tree), tlk->sp->count );
+		newtlk->scaling_factors = clone_dmatrix( tlk->scaling_factors, tlk->partials_dim, tlk->sp->count );
 	}
 	
 	newtlk->scale = tlk->scale;
@@ -817,7 +817,7 @@ void SingleTreeLikelihood_remove_Tree( SingleTreeLikelihood *stlk ){
 void SingleTreeLikelihood_use_rescaling( SingleTreeLikelihood *tlk, bool use ){
 	tlk->scale = use;
 	if ( tlk->scaling_factors == NULL && use ) {
-		tlk->scaling_factors = dmatrix(Tree_node_count(tlk->tree), tlk->sp->count );
+		tlk->scaling_factors = dmatrix(tlk->partials_dim, tlk->sp->count );
 	}
 }
 
@@ -1915,8 +1915,10 @@ double _calculate( SingleTreeLikelihood *tlk ){
 		
 		for ( i = 0; i < tlk->sp->count; i++) {
             tlk->lk += tlk->pattern_lk[i] * tlk->sp->weights[i];
+            printf("%f\n",tlk->pattern_lk[i]);
 		}
-		
+        printf("%f\n",tlk->lk);
+        exit(1);
 	}
 	
 	for ( i = 0; i < Tree_node_count(tlk->tree); i++) tlk->update_nodes[i] = false;
@@ -3922,8 +3924,6 @@ void Optimizable_copy( const Optimizable *src, Optimizable *dst ){
 void OptConfig_init( SingleTreeLikelihood *tlk ){
 	Optimizable_init(&tlk->opt.freqs, false, OPT_BRENT, 100, 0.001, OPTIMIZATION_PRECISION);
 	Optimizable_init(&tlk->opt.relative_rates, false, OPT_BRENT, 100, 0.001, OPTIMIZATION_PRECISION);
-	Optimizable_init(&tlk->opt.pinv, false, OPT_BRENT, 100, 0.001, OPTIMIZATION_PRECISION);
-	Optimizable_init(&tlk->opt.gamma, false, OPT_BRENT, 100, 0.001, OPTIMIZATION_PRECISION);
 	Optimizable_init(&tlk->opt.bl, false, OPT_BRENT, 100, 0.001, OPTIMIZATION_PRECISION);
 	Optimizable_init(&tlk->opt.rates, false, OPT_BRENT, 100, 0.0001, OPTIMIZATION_PRECISION);
 	Optimizable_init(&tlk->opt.heights, false, OPT_BRENT, 100, 0.0001, OPTIMIZATION_PRECISION);
@@ -3939,8 +3939,6 @@ void OptConfig_init( SingleTreeLikelihood *tlk ){
 void OptConfig_copy( const OptConfig *src, OptConfig *dst ){
 	Optimizable_copy(&src->freqs, &dst->freqs);
 	Optimizable_copy(&src->relative_rates, &dst->relative_rates);
-	Optimizable_copy(&src->pinv, &dst->pinv);
-	Optimizable_copy(&src->gamma, &dst->gamma);
 	Optimizable_copy(&src->bl, &dst->bl);
 	Optimizable_copy(&src->rates, &dst->rates);
 	Optimizable_copy(&src->heights, &dst->heights);

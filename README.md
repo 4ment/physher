@@ -1,3 +1,8 @@
+physher
+=======
+
+[![Build Status](https://travis-ci.org/4ment/physher.svg?branch=master)](https://travis-ci.org/4ment/physher)
+
 Introduction
 ------------
 

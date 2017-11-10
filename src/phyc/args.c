@@ -162,11 +162,6 @@ void argsparser_parse(args_parser* args, char* argv[], int argc){
                     break;
                 }
                 case ARGS_OPTION_STRING:{
-                    char* option = *((char **)args->options[j].value);
-                    option = NULL;
-                    if(option != NULL){
-                        free(option);
-                    }
                     *((char **)args->options[j].value) = String_clone(argv[i+1]);
                     break;
                 }
