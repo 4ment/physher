@@ -416,7 +416,7 @@ void set_scale_bounds( Tree *tree, Parameters *scaler ){
 	Parameter *p = NULL;
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
 		p = nodes[i]->height;
-		if (Parameter_estimate(p)) continue;
+		if (!Parameter_estimate(p)) continue;
 		
 		if( Constraint_lower_fixed(p->cnstr) ){
 			min = dmax(min, Constraint_flower(p->cnstr)/p->value);
@@ -654,20 +654,16 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
     // Init rate heterogeneity
     opt_algorithm algo = OPT_BRENT;
     //opt_algorithm algo = OPT_CG_PR;
+    bool optimize_sitemmodel = false;
     if(Parameters_count(stlk->sm->rates) > 0){
-        
-        //Parameters_add(all_params, stlk->sm->rates);
-        opt_sm = new_Optimizer( algo );
-        
-        if(algo == OPT_BRENT ){
-            opt_set_data(opt_sm, data_brent );
-            opt_set_objective_function(opt_sm, _brent_optimize_sm_rates);
+        for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
+            if(Parameters_estimate(stlk->sm->rates, i)){
+                optimize_sitemmodel = true;
+            }
         }
-        else {
-            if( data_multivariate == NULL ) data_multivariate = new_MultivariateData( stlk, NULL);
-            opt_set_data(opt_sm, data_multivariate);
-            opt_set_objective_function(opt_sm, _cg_optimize_sm_rates);
-            opt_set_tolfx(opt_sm, opt.relative_rates.tolfx);
+        
+        if(optimize_sitemmodel){
+            opt_sm = new_Optimizer( algo );
             
             if(algo == OPT_BRENT ){
                 opt_set_data(opt_sm, data_brent );
@@ -681,8 +677,9 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
                 
             }
         }
+        
     }
-	//Parameters_print(all_params);
+    //Parameters_print(all_params);
 	
 	// Init rate optimization
     int n_optim_rates = 0;
@@ -1216,7 +1213,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
 //		}
         
 		// Rate heterogeneity
-        if( Parameters_count(stlk->sm->rates) > 0 ){
+        if( optimize_sitemmodel ){
             if(algo == OPT_BRENT){
                 fret = optimize_brent_sm_rates_all(stlk, opt_sm, data_brent, oneparameter);
             }
@@ -1231,10 +1228,10 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
             if ( stlk->opt.verbosity > 0 ) {
                 for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
                     if(strcmp(Parameters_name(stlk->sm->rates, i), "sitemodel.alpha") == 0){
-                        fprintf(stdout, "Gamma          LnL: %f shape: %f  {%f}", fret, Parameters_value(stlk->sm->rates, i), fret-lnl );
+                        fprintf(stdout, "Gamma          LnL: %f shape: %f  {%f}%s", fret, Parameters_value(stlk->sm->rates, i), fret-lnl, (i == Parameters_count(stlk->sm->rates)-1 ? "": "\n") );
                     }
                     else if(strcmp(Parameters_name(stlk->sm->rates, i), "sitemodel.pinv") == 0){
-                        fprintf(stdout, "Prop invariant LnL: %f p: %f  {%f}", fret, Parameters_value(stlk->sm->rates, i), fret-lnl );
+                        fprintf(stdout, "Prop invariant LnL: %f p: %f  {%f}%s", fret, Parameters_value(stlk->sm->rates, i), fret-lnl, (i == Parameters_count(stlk->sm->rates)-1 ? "": "\n") );
                     }
                     else{
                         flaggy = true;
@@ -1920,10 +1917,7 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
         }
     }
     
-    for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
-        Parameters_add_parameters(all_params, stlk->sm->rates);
-        
-    }
+    
 	
     //Parameters_print(all_params);
 	
@@ -1941,7 +1935,7 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
     
     bool optimize_sitemmodel = false;
     for (int i = 0; i < Parameters_count(stlk->sm->rates); i++) {
-        if(Parameters_fixed(stlk->sm->rates, i) == false){
+        if(Parameters_estimate(stlk->sm->rates, i)){
             optimize_sitemmodel = true;
             Parameters_add(all_params, Parameters_at(stlk->sm->rates, i));
         }

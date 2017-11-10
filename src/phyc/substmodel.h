@@ -113,8 +113,6 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 
 void generale_update_freqs( SubstitutionModel *model );
 
-void generale_update_freqs( SubstitutionModel *model );
-
 void update_eigen_system( SubstitutionModel *m );
 
 void check_frequencies( const double *freqs, const int dim );

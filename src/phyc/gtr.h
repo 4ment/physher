@@ -47,7 +47,7 @@
  * \f[
  * C = \pi_A(a \pi_C + b \pi_G + c \pi_T) + \pi_C(a \pi_A + d \pi_G + e \pi_T) + \pi_G(b \pi_A + d \pi_C +\pi_T) + \pi_T(c \pi_A + e \pi_C + \pi_G)
  * \f]
- * Reparametrized
+ * Frequencies are reparametrized
  * \f{eqnarray*}
  * \phi_1 &=& \frac{\pi_A}{\pi_T}\\
  * \phi_2 &=& \frac{\pi_C}{\pi_T}\\
@@ -108,68 +108,6 @@
  * \frac{\partial}{\partial \phi_k}\frac{Q_{i,j}}{C} &=& \frac{C \frac{\partial Q_{i,j}}{\partial \phi_k} - Q_{i,j} \frac{\partial C}{\partial \phi_1}}{C^2}
  * \f}
  *
- *
- * Reparametrization #2
- * \f{eqnarray*}
- * \phi_1 &=& \pi_A \\
- * \phi_2 &=& \frac{\pi_C}{(1-\pi_A)}\\
- * \phi_3 &=& \frac{\pi_G}{(1 - \pi_A - \pi_C)}\\
- * \pi_T &=& 1 - \pi_A - \pi_C - \pi_G
- * \f}
- * \f{eqnarray*}
- * \pi = \left(\phi_1, \phi_2 (1-\pi_A), \phi_3 (1 - \pi_A - \pi_C), \pi_T\right) \\
- * \pi = \left(\phi_1, \phi_2 (1-\phi_1), \phi_3 (1 - \phi_1 - \phi_2(1-\phi_1)), 1-\phi_1 - \phi_2 (1-\phi_1) - \phi_3 (1 - \phi_1 - \phi_2(1-\phi_1)) \right)
- * \f}
- * \f[
- * Q = \frac{S . \pi}{C}  = \frac{1}{C} \begin{pmatrix}
- * -(a \phi_2 \pi_T + b \phi_3 \pi_T + c \pi_T) & a \phi_2 (1-\phi_1) & b \phi_3 (1 - \phi_1 - \phi_2(1-\phi_1)) & c (1-\phi_1 - \phi_2 (1-\phi_1) - \phi_3 (1 - \phi_1 - \phi_2(1-\phi_1))) \\
- * a \phi_1 & -(a \phi_1 + d \phi_3 \pi_T + e \pi_T) & d \phi_3 (1 - \phi_1 - \phi_2(1-\phi_1)) & e (1-\phi_1 - \phi_2 (1-\phi_1) - \phi_3 (1 - \phi_1 - \phi_2(1-\phi_1))) \\
- * b \phi_1  & d \phi_2 (1-\phi_1) & -(b \phi_1 + d \phi_2 \pi_T +\pi_T) & 1-\phi_1 - \phi_2 (1-\phi_1) - \phi_3 (1 - \phi_1 - \phi_2(1-\phi_1)) \\
- * c \phi_1  & e \phi_2 (1-\phi_1) & \phi_3 (1 - \phi_1 - \phi_2(1-\phi_1)) & -(c \phi_1 + e \phi_2 \pi_T + \phi_3 \pi_T) \\
- * \end{pmatrix}
- * \f]
- * \f{eqnarray*}
- * C &=& \phi_1 \pi_T(a \phi_2 \pi_T + b \phi_3 \pi_T + c \pi_T) + \phi_2 \pi_T(a \phi_1 \pi_T + d \phi_3 \pi_T + e \pi_T) + \phi_3 \pi_T(b \phi_1 \pi_T + d \phi_2 \pi_T +\pi_T) + \pi_T(c \phi_1 \pi_T + e \phi_2 \pi_T + \phi_3 \pi_T)\\
- *   &=& \phi_1 \pi_T^2(a \phi_2 + b \phi_3 + c) + \phi_2 \pi_T^2(a \phi_1 + d \phi_3 + e) + \phi_3 \pi_T^2(b \phi_1 + d \phi_2  + 1) + \pi_T^2(c \phi_1 + e \phi_2 + \phi_3)\\
- *	 &=& \pi_T^2 (\phi_1(a \phi_2 + b \phi_3 + c) + \phi_2(a \phi_1 + d \phi_3 + e) + \phi_3 (b \phi_1 + d \phi_2  + 1) + (c \phi_1 + e \phi_2 + \phi_3))\\
- * \f}
- *
- *
- \f{eqnarray*}
- * \phi_1 &=& \frac{\pi_A}{\pi_T}\\
- * \phi_2 &=& \frac{\pi_C}{\pi_T}\\
- * \phi_3 &=& \frac{\pi_G}{\pi_T}\\
- * \pi_T &=& \frac{1}{1+\sum_{i=1}^3{\phi_i}}
- * \f}
- * \f[
- * \pi = \left(\phi_1 \pi_T, \phi_2 \pi_T, \phi_3 \pi_T, \pi_T\right)
- * \f]
- * \f[
- * Q = \frac{S . \pi}{C}  = \frac{1}{C} \begin{pmatrix}
- * -(a \phi_2 + b \phi_3 + c) & a \phi_2 & b \phi_3 & c \\
- * a \phi_1 & -(a \phi_1 + d \phi_3 + e) & d \phi_3 & e \\
- * b \phi_1 & d \phi_2 & -(b \phi_1 + d \phi_2 +1) & 1\\
- * c \phi_1 & e \phi_2 & \phi_3 & -(c \phi_1 + e \phi_2 + \phi_3) \\
- * \end{pmatrix}
- * \f]
- * \f{eqnarray*}
- * C &=& \pi_T (\phi_1(a \phi_2 + b \phi_3 + c) + \phi_2(a \phi_1 + d \phi_3 + e) + \phi_3 (b \phi_1 + d \phi_2  + 1) + (c \phi_1 + e \phi_2 + \phi_3))\\
- * \f}
- * \f{equation}
- * \frac{\partial \pi_T}{\partial \phi_1} = \frac{\partial \pi_T}{\partial \phi_2} = \frac{\partial \pi_T}{\partial \phi_3} = - \frac{1}{(1+\sum_{i=1}^3{\phi_i})^2} = -\pi_T^2
- * \f}
- * \f{eqnarray*}
- * \frac{\partial C}{\partial \phi_1} &=& 2 \pi_T (a \phi_2 + b \phi_3 + c)  - \pi_T C \\
- * \frac{\partial C}{\partial \phi_2} &=& 2 \pi_T (a \phi_1 + d \phi_3 + e)  - \pi_T C \\
- * \frac{\partial C}{\partial \phi_3} &=& 2 \pi_T (b \phi_1 + d \phi_2 + 1)  - \pi_T C
- * \f}
- *
- * \f{eqnarray*}
- * \frac{\partial}{\partial \phi_k}\frac{Q_{i,i}}{C} &=& -\frac{Q_{i,j}}{C^2}  \frac{\partial C}{\partial \phi_k}
- * \f}
- * \f{eqnarray*}
- * \frac{\partial}{\partial \phi_k}\frac{Q_{i,j}}{C} &=& \frac{C \frac{\partial Q_{i,j}}{\partial \phi_k} - Q_{i,j} \frac{\partial C}{\partial \phi_1}}{C^2}
- * \f}
  */
 
 #ifndef gtr_h

@@ -330,7 +330,7 @@ void SingleTreeLikelihood_resampling_openmp( const SingleTreeLikelihood *tlk, re
     
     bool optimize_sitemmodel = false;
     for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
-        if(Parameters_fixed(tlk->sm->rates, i) == false){
+        if(Parameters_estimate(tlk->sm->rates, i)){
             optimize_sitemmodel = true;
         }
     }
@@ -902,10 +902,6 @@ void SingleTreeLikelihood_bootstrap_greedy( const SingleTreeLikelihood *tlk, int
 		tlk2->opt.heights.optimize        = true;
 		tlk2->opt.rates.optimize          = true;
 		
-        for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
-            Parameters_set_fixed(tlk->sm->rates, true, i);
-        }
-        
 		BranchModel *bm_strict = new_StrictClock( tlk->tree );
 		SingleTreeLikelihood_set_BranchModel(tlk2, bm_strict, false);
 		bm_strict->set( bm_strict, 0, rate_strict );		
