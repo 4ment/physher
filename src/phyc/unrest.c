@@ -164,7 +164,7 @@ int matinv( double x[], int n, int m, double space[] ) {
 // Q[,4]=c(1,1,1,1)
 // solve(t(Q),c(0,0,0,1))
 // or solve(Q) and take last row as pi
-int QtoPi ( const double **Q, double *pi, int n ){
+int QtoPi ( double **Q, double *pi, int n ){
     /* from rate matrix Q[] to pi, the stationary frequencies:
      pi * Q = Q' * pi = 0     pi * 1 = 1
      space[] is of size n*(n+1).

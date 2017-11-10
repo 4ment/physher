@@ -7396,14 +7396,15 @@ static void _update_upper_partials_root_and_state_sse_codon( const SingleTreeLik
 void update_partials_upper_sse_codon( SingleTreeLikelihood *tlk, Node *node ){
     Node *parent = Node_parent(node);
     Node *sibling = Node_sibling(node);
-    
+    const double* freqs = tlk->get_root_frequencies(tlk);
+	
     if( Node_isroot(parent) ){
         // The matrix of the sibling is transposed
         if( Node_isleaf(sibling) ){
-            _update_upper_partials_root_and_state_sse_codon(tlk, tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->sm->m->_freqs, tlk->partials_upper[ Node_id(node) ] );
+            _update_upper_partials_root_and_state_sse_codon(tlk, tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], freqs, tlk->partials_upper[ Node_id(node) ] );
         }
         else {
-            _update_upper_partials_root_and_undefined_sse_codon(tlk, tlk->partials[ Node_id(sibling) ],  tlk->matrices[ Node_id(sibling) ],  tlk->sm->m->_freqs, tlk->partials_upper[ Node_id(node) ] );
+            _update_upper_partials_root_and_undefined_sse_codon(tlk, tlk->partials[ Node_id(sibling) ],  tlk->matrices[ Node_id(sibling) ],  freqs, tlk->partials_upper[ Node_id(node) ] );
         }
     }
     // The matrix of the sibling is transposed

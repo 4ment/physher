@@ -3732,14 +3732,15 @@ static void _update_upper_partials_root_and_state_sse( const SingleTreeLikelihoo
 void update_partials_upper_sse_4( SingleTreeLikelihood *tlk, Node *node ){
     Node *parent = Node_parent(node);
     Node *sibling = Node_sibling(node);
-    
+	const double* freqs = tlk->get_root_frequencies(tlk);
+	
     if( Node_isroot(parent) ){
         // The matrix of the sibling is transposed
         if( Node_isleaf(sibling) ){
-            _update_upper_partials_root_and_state_sse(tlk, tlk->matrices[Node_id(sibling) ], tlk->mapping[Node_id(sibling) ], tlk->sm->m->_freqs, tlk->partials_upper[Node_id(node) ] );
+            _update_upper_partials_root_and_state_sse(tlk, tlk->matrices[Node_id(sibling) ], tlk->mapping[Node_id(sibling) ], freqs, tlk->partials_upper[Node_id(node) ] );
         }
         else {
-            _update_upper_partials_root_and_undefined_sse(tlk, tlk->partials[Node_id(sibling) ],  tlk->matrices[Node_id(sibling) ],  tlk->sm->m->_freqs, tlk->partials_upper[Node_id(node) ] );
+            _update_upper_partials_root_and_undefined_sse(tlk, tlk->partials[Node_id(sibling) ],  tlk->matrices[Node_id(sibling) ],  freqs, tlk->partials_upper[Node_id(node) ] );
         }
     }
     // The matrix of the sibling is transposed

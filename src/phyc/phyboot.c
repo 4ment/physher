@@ -209,7 +209,7 @@ void SingleTreeLikelihood_resampling_threads( const SingleTreeLikelihood *tlk, r
     
     bool optimize_sitemodel = false;
     for (int i = 0; i < Parameters_count(tlk->sm->rates); i++) {
-        if(!Parameters_fixed(tlk->sm->rates, i)){
+        if(Parameters_estimate(tlk->sm->rates, i)){
             optimize_sitemodel = true;
         }
     }
