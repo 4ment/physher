@@ -264,6 +264,7 @@ int main( int argc, char *argv[] ){
         }
         
         model_string = String_clone(model_type);
+        free(model_type);
         
         if( array_of_string_contains(model_string, nucleotide_models, sizeof(nucleotide_models) / sizeof(nucleotide_models[0])) ){
             dataType = new_NucleotideDataType();
@@ -519,19 +520,79 @@ int main( int argc, char *argv[] ){
             StringBuffer_append_format(buffer, "\nRates from tree file\n");
         }
         else {
-            if ( strcasecmp(rate_dist, "logn") == 0 ) {
-                bool success = false;
-                double mean = args_get_double(argc, argv, "-M", &success );
-                if( !success || mean <= 0 ) error("Could not read the mean of the lognormal distribution of categories [-M]");
+            if ( strcasecmp(rate_dist, "logn") == 0 || strcasecmp(rate_dist, "exp") == 0 ) {
+
+                char* mean_str = args_get_string(argc, argv, "-M");
+                if( mean_str == NULL ) error("Could not read the mean of the lognormal distribution of categories [-M]");
                 
-                double logsigma = args_get_double(argc, argv, "-S", &success );
-                if( !success || logsigma <= 0 ) error("Could not read the standard deviation of the distribution of categories [-S]");
+                unsigned l = 0;
+                double* means = String_to_double_array(mean_str, ',', &l);
+                for (int i = 0; i < l; i++) {
+                    if( means[i] <= 0 ) error("Mean cannot be negative [-M]");
+                }
+                free(mean_str);
                 
-                lognormal_discretize(log(mean), logsigma, rates, Tree_node_count(tree)-1);
-                print_dvector(rates, Tree_node_count(tree)-1);
-                randomize_dvector( rates, Tree_node_count(tree)-1 );
+                double* logsigmas = NULL;
+                if(strcasecmp(rate_dist, "logn") == 0){
+                    char* logsigma_str = args_get_string(argc, argv, "-S");
+                    if( logsigma_str == NULL ) error("Could not read the standard deviation of the distribution of categories [-S]");
+                    unsigned l2 = 0;
+                    logsigmas = String_to_double_array(logsigma_str, ',', &l2);
+                    for (int i = 0; i < l2; i++) {
+                        if( logsigmas[i] <= 0 ) error("logsigma cannot be negative [-M]");
+                    }
+                    free(logsigma_str);
+                    
+                    if(l!=l2){
+                        error("-M != -S");
+                    }
+                }
                 
-                StringBuffer_append_format(buffer, "\nLognormal distribution mean = %f log(stdev) = %f\n", mean, logsigma);
+                if(l > 1){
+                    int* counts = calloc(l, sizeof(int));
+                    for ( int i = 0; i < Tree_node_count(tree); i++ ) {
+                        if( !Node_isroot(nodes[i]) ){
+                            counts[Node_get_int_from_info(nodes[i], "class=")]++;
+                        }
+                    }
+                    double* temp_rates = dvector(Tree_node_count(tree)-1);
+        
+                    for (int i = 0; i < l; i++) {
+                        if(strcasecmp(rate_dist, "logn") == 0){
+                            lognormal_discretize(log(means[i]), logsigmas[i], temp_rates, counts[i]);
+                            StringBuffer_append_format(buffer, "\n%d Lognormal distribution mean = %f log(stdev) = %f", i, means[i], logsigmas[i]);
+                        }
+                        else{
+                            exponential_discretize(means[i], temp_rates, counts[i]);
+                            StringBuffer_append_format(buffer, "\n%d Exponential distribution mean = %f", i, means[i]);
+                        }
+                        randomize_dvector( temp_rates, counts[i]);
+                        int k = 0;
+                        for ( int j = 0; j < Tree_node_count(tree); j++ ) {
+                            int class = Node_get_int_from_info(nodes[j], "class=");
+                            if( !Node_isroot(nodes[j]) && class == i){
+                                rates[j] = temp_rates[k];
+                                k++;
+                            }
+                        }
+                    }
+                    StringBuffer_append_string(buffer, "\n");
+                    free(temp_rates);
+                    free(counts);
+                }
+                else{
+                    if(strcasecmp(rate_dist, "logn") == 0){
+                        lognormal_discretize(log(means[0]), logsigmas[0], rates, Tree_node_count(tree)-1);
+                    }
+                    else{
+                        exponential_discretize(means[0], rates, Tree_node_count(tree)-1);
+                    }
+                    randomize_dvector( rates, Tree_node_count(tree)-1);
+                }
+                free(means);
+                if(logsigmas != NULL) {
+                    free(logsigmas);
+                }
             }
             else if ( strcasecmp(rate_dist, "exp") == 0 ) {
                 bool success = false;
@@ -546,7 +607,6 @@ int main( int argc, char *argv[] ){
             else {
                 error("Coud not read the type of distribution -d exp or -d logn\n");
             }
-            
             StringBuffer *info = new_StringBuffer(100);
             for ( int i = 0; i < Tree_node_count(tree); i++ ) {
                 Node_empty_annotation(nodes[i]);
@@ -556,7 +616,8 @@ int main( int argc, char *argv[] ){
                     Node_set_annotation(nodes[i], "rate", info->c);
                     
                     StringBuffer_empty(info);
-                    StringBuffer_append_format(info, "%d", i);
+                    int class = Node_get_int_from_info(nodes[i], "class=");
+                    StringBuffer_append_format(info, "%d", class);
                     Node_set_annotation(nodes[i], "class", info->c);
                 }
             }
@@ -673,8 +734,9 @@ int main( int argc, char *argv[] ){
     
     if( outputtree != NULL ){
         FILE *testFile = fopen(outputtree,"w");
-        
-        Tree_print_nexus_header_figtree_Taxa(testFile, tree);
+        fprintf(testFile, "#NEXUS\n");
+        fprintf(testFile, "%s\n\n", buffer->c);
+        Tree_print_nexus_taxa_block(testFile, tree);
         Tree_print_nexus_header_figtree_BeginTrees(testFile, tree);
         
         fprintf(testFile, "tree TREE = [&R] ");
@@ -708,6 +770,7 @@ int main( int argc, char *argv[] ){
     if ( freq_codon != NULL ) {
         free(freq_codon);
     }
+    free(model_string);
     free_Sequences(sim);
     free(output);
     free_SiteModel(sm);

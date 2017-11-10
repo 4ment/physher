@@ -95,6 +95,7 @@ void print_tree_extended_nexus_double( FILE *pf, Tree *tree, double *info );
 // Should not be used with trees with different topologies
 void Tree_print_nexus_header_figtree( FILE *pf, Tree *tree );
 void Tree_print_nexus_header_figtree_Taxa( FILE *pf, Tree *tree );
+void Tree_print_nexus_taxa_block( FILE *pf, Tree *tree );
 void Tree_print_nexus_header_figtree_BeginTrees( FILE *pf, Tree *tree );
 void Tree_print_nexus_with_annotation2( FILE *pf, Tree *tree, bool time );
 void Tree_print_nexus_with_annotation( FILE *pf, Tree *tree );
