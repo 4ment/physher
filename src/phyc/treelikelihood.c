@@ -174,6 +174,20 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	return clone;
 }
 
+static void _treeLikelihood_model_get_free_parameters(Model* model, Parameters* parameters){
+	Model** list = (Model**)model->data;
+	Model* mtree = list[0];
+	Model* msm = list[1];
+	Model* mbm = list[2];
+	
+	mtree->get_free_parameters(mtree, parameters);
+	msm->get_free_parameters(msm, parameters);
+	if(mbm != NULL){
+		mbm->get_free_parameters(mbm, parameters);
+	}
+}
+
+
 // TreeLikelihood listen to the TreeModel, SiteModel, BranchModel
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm ){
 	Model *model = new_Model(name, tlk);
@@ -186,6 +200,7 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	model->update = _treelikelihood_handle_change;
 	model->free = _treeLikelihood_model_free;
 	model->clone = _treeLikelihood_model_clone;
+	model->get_free_parameters = _treeLikelihood_model_get_free_parameters;
 	model->data = (Model**)malloc(sizeof(Model*)*3);
 	Model** list = (Model**)model->data;
 	list[0] = tree;

@@ -579,6 +579,20 @@ void Parameters_add_parameters(Parameters *dst, const Parameters *src){
 	}
 }
 
+void Parameters_add_free_parameters(Parameters *dst, const Parameters *src){
+	if(Parameters_count(src) == 0) return;
+	if( dst->count+src->count > dst->capacity ){
+		dst->list = realloc(dst->list, (dst->count+src->count) * sizeof(Parameter*) );
+		assert(dst->list);
+		dst->capacity = dst->count+src->count;
+	}
+	for (int i = 0; i < src->count; i++) {
+		if(src->list[i]->estimate){
+			Parameters_add( dst, src->list[i] );
+		}
+	}
+}
+
 Parameters * pack_parameters(Parameters *ps, Parameter *p){
 	ps->list = realloc(ps->list, ps->count * sizeof(Parameter*) );
 	assert(ps->list);
@@ -902,6 +916,7 @@ Model * new_Model( const char *name, void *obj ){
 	model->data = NULL;
 	model->listeners = new_ListenerList(1);
 	model->clone = NULL;
+	model->get_free_parameters = NULL;
 	model->ref_count = 1;
 	return model;
 }

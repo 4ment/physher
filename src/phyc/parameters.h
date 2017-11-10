@@ -210,6 +210,8 @@ void Parameters_add(Parameters *ps, Parameter *p);
 
 void Parameters_move( Parameters *ps, Parameter *p);
 
+void Parameters_add_free_parameters(Parameters *dst, const Parameters *src);
+
 void Parameters_add_parameters(Parameters *dst, const Parameters *src);
 
 void Parameters_set_name( Parameters *p, const size_t index, const char *name );
@@ -303,6 +305,7 @@ struct _Model {
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, int );
+	void (*get_free_parameters)(Model*, Parameters*);
 	
 	ListenerList *listeners;
 	int ref_count;

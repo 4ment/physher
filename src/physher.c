@@ -2483,7 +2483,6 @@ int main(int argc, char* argv[]){
 	Parameters* pp_m = new_Parameters(4);
 	// Frequencies
 	if(Parameters_estimate(sm->m->simplex->parameters, 0)){
-		printf("some ferqs\n");
 		DistributionModel* prior = new_FlatDirichletDistributionModel(sm->m->simplex);
 		Model* prior_freqs_model = new_DistributionModel3("freqs.dirichlet", prior, mfreq);
 		post->add(post, prior_freqs_model);
@@ -2512,74 +2511,72 @@ int main(int argc, char* argv[]){
 	OptimizerSchedule* schedule = opt_get_schedule(opt_meta);
 	
 	// Branch length
-	Optimizer* opt_bl = new_Optimizer(OPT_SERIAL_BRENT);
-	opt_set_data(opt_bl, mpost);
-	opt_set_objective_function(opt_bl, _logP);
-	opt_set_tolx(opt_bl, 0.00000001);
-	
 	if(Parameters_count(pp_bl) > 0){
+		Optimizer* opt_bl = new_Optimizer(OPT_SERIAL_BRENT);
+		opt_set_data(opt_bl, mpost);
+		opt_set_objective_function(opt_bl, _logP);
+		opt_set_tolx(opt_bl, 0.00000001);
 		opt_add_optimizer(opt_meta, opt_bl, pp_bl);
 		schedule->rounds[schedule->count-1] = 2;
 	}
 	// Substitution model
-	Optimizer* opt_m = new_Optimizer(OPT_SERIAL_BRENT);
-	opt_set_data(opt_m, mpost);
-	opt_set_objective_function(opt_m, _logP);
-	
 	if(Parameters_count(pp_m) > 0){
+		Optimizer* opt_m = new_Optimizer(OPT_SERIAL_BRENT);
+		opt_set_data(opt_m, mpost);
+		opt_set_objective_function(opt_m, _logP);
 		opt_add_optimizer(opt_meta, opt_m, pp_m);
 		schedule->post[schedule->count-1] = post_freqs;
 		schedule->rounds[schedule->count-1] = 20;
 	}
 	
 	// Site model
-	Optimizer* opt_sm = new_Optimizer(OPT_SERIAL_BRENT);
-	opt_set_data(opt_sm, mpost);
-	opt_set_objective_function(opt_sm, _logP);
-	
-	if(Parameters_count(sm->rates) > 0) opt_add_optimizer(opt_meta, opt_sm, sm->rates);
+	if(Parameters_count(sm->rates) > 0){
+		Optimizer* opt_sm = new_Optimizer(OPT_SERIAL_BRENT);
+		opt_set_data(opt_sm, mpost);
+		opt_set_objective_function(opt_sm, _logP);
+		opt_add_optimizer(opt_meta, opt_sm, sm->rates);
+	}
 	
 	opt_set_data(opt_meta, mpost);
 //	opt_set_data(opt_meta, mtlk);
 	opt_set_objective_function(opt_meta, _logP);
 	opt_set_tolx(opt_meta, 0.001);
 	
+	Hashtable* hash = new_Hashtable_string(10);
+	hashtable_set_key_ownership( hash, false );
+	hashtable_set_value_ownership( hash, false );
+	Model* clone = mpost->clone(mpost, hash);
+	free_Hashtable(hash);
+
+	printf("LnL clone: %f\n", clone->logP(clone));
+
+	
 	double logP;
 	opt_optimize(opt_meta, pp_bl, &logP);
 	//printf("LnL: %f logP: %f Prior: %f\n", mtlk->logP(mtlk), -logP, prior_branches->logP(prior_branches));
 	printf("LnL: %f logP: %f\n", mtlk->logP(mtlk), -logP);
 	
-
-	free_Optimizer(opt_bl);
-	free_Optimizer(opt_m);
-	free_Optimizer(opt_sm);
+	fprintf(stdout, "\nRates:\n\n");
+	print_rates(stdout, mod);
+	
+	Parameters* tempparams = new_Parameters(10);
+	clone->get_free_parameters(clone, tempparams);
+	Optimizer* opt_meta2 = clone_Optimizer(opt_meta, clone, tempparams);
+	free_Parameters(tempparams);
+	
 	free_Optimizer(opt_meta);
+	mpost->free(mpost);
+	
+	opt_optimize(opt_meta2, pp_bl, &logP);
+	printf("clone ML logP: %f\n", -logP);
+	
+	free_Optimizer(opt_meta2);
 
 	free_Parameters(pp_bl);
 	free_Parameters(pp_m);
 	
-	fprintf(stdout, "\nRates:\n");
-	print_rates(stdout, mod);
-
 	//test2(mpost);
-//	Hashtable* hash = new_Hashtable_string(10);
-//	hashtable_set_key_ownership( hash, false );
-//	hashtable_set_value_ownership( hash, false );
-//	Model* clone = mpost->clone(mpost, hash);
-//	free_Hashtable(hash);
-	mpost->free(mpost);
-	printf("====\n");
-//	CompoundModel* cm = clone->obj;
-//	SingleTreeLikelihood* tlk3 = (SingleTreeLikelihood*)cm->models[0]->obj;
-//	SingleTreeLikelihood_update_all_nodes(tlk3);
-//	
-//	printf("LnL clone: %f\n", tlk3->calculate(tlk3));
-//	printf("LnL clone: %f\n", clone->logP(clone));
-//	
-//	clone->free(clone);
-	
-	
-	
+	clone->free(clone);
 	
 	free(argsparser);
 	

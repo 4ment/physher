@@ -172,6 +172,16 @@ static Model* _branch_model_clone( Model* self, Hashtable *hash ){
 	return clone;
 }
 
+
+static void _branch_model_get_free_parameters(Model* model, Parameters* parameters){
+	BranchModel* m = (BranchModel*)model->obj;
+	if (m->rates != NULL) {
+		Parameters_add_free_parameters(parameters, m->rates);
+	}
+	Model* mtree = (Model*)model->data;
+	mtree->get_free_parameters(mtree, parameters);
+}
+
 // BranchModel2 listen to the rate parameters
 Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
 	Model *model = new_Model(name, bm);
@@ -184,6 +194,7 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
 	model->update = _branchmodel_handle_change;
 	model->free = _branch_model_free;
 	model->clone = _branch_model_clone;
+	model->get_free_parameters = _branch_model_get_free_parameters;
 	model->data = tree;
 	tree->ref_count++;
 	return model;

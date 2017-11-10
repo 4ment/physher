@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 
 #include "parameters.h"
 #include "brent.h"
@@ -112,9 +113,86 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	return opt;
 }
 
+// need to change:
+// data treelikelihood
+// f: maybe different log likleihood for tree with upper
+Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
+	Optimizer* clone = (Optimizer*) malloc(sizeof(struct _Optimizer));
+	assert(clone);
+	clone->algorithm = opt->algorithm;
+	clone->f = opt->f;
+	clone->data = data;
+	clone->dimension = opt->dimension;
+	
+	clone->stop.iter_min = opt->stop.iter_min;
+	clone->stop.iter_max = opt->stop.iter_max;
+	clone->stop.iter = opt->stop.iter;
+	
+	clone->stop.time_max = opt->stop.time_max;
+	clone->stop.time_start = opt->stop.time_start;
+	clone->stop.time_end = opt->stop.time_end;
+	clone->stop.time_current = opt->stop.time_current;
+	
+	clone->stop.f_eval_max = opt->stop.f_eval_max;
+	clone->stop.f_eval_current = opt->stop.f_eval_current;
+	
+	clone->stop.tolfx = opt->stop.tolfx;
+	clone->stop.tolx = opt->stop.tolx;
+	clone->stop.tolg = opt->stop.tolg;
+	
+	clone->stop.oldx = opt->stop.oldx;
+	clone->stop.oldfx = opt->stop.oldfx;
+	
+	clone->stop.count = opt->stop.count;
+	clone->verbosity = opt->verbosity;
+	clone->update = opt->update;
+	clone->schedule = NULL;
+	
+	if(opt->schedule != NULL){
+		clone->schedule = (OptimizerSchedule*)malloc(sizeof(OptimizerSchedule));
+		clone->schedule->capacity = opt->schedule->capacity;
+		clone->schedule->count = opt->schedule->count;
+		clone->schedule->optimizers = (Optimizer**)calloc(opt->schedule->capacity, sizeof(Optimizer*));
+		clone->schedule->parameters = (Parameters**)calloc(opt->schedule->capacity, sizeof(Parameters*));
+		clone->schedule->post = (OptimizerSchedule_post*)calloc(opt->schedule->capacity, sizeof(OptimizerSchedule_post));
+		clone->schedule->rounds = ivector(opt->schedule->capacity);
+		memcpy(clone->schedule->rounds, opt->schedule->rounds, sizeof(int)*opt->schedule->count);
+		
+		for (int i = 0; i < clone->schedule->count; i++) {
+			clone->schedule->optimizers[i] = clone_Optimizer(opt->schedule->optimizers[i], data, parameters);
+			clone->schedule->post[i] = opt->schedule->post[i];
+			clone->schedule->parameters[i] = new_Parameters(Parameters_count(opt->schedule->parameters[i]));
+			
+			// Find matching parameters
+			for (int j = 0; j < Parameters_count(opt->schedule->parameters[i]); j++) {
+				int k = 0;
+				for (k = 0; k < Parameters_count(parameters); k++) {
+					if(strcmp(Parameters_name(opt->schedule->parameters[i], j), Parameters_name(parameters, k)) == 0){
+						Parameters_add(clone->schedule->parameters[i], Parameters_at(parameters, k));
+						break;
+					}
+				}
+				if(k == Parameters_count(parameters)){
+					printf("not found %s\n", Parameters_name(parameters, k));
+					for (k = 0; k < Parameters_count(parameters); k++) {
+						printf("%s\n", Parameters_name(parameters, k));
+					}
+					exit(1);
+				}
+			}
+		}
+	}
+	
+	return clone;
+}
+
 void free_Optimizer( Optimizer *opt ){
 	opt->data = NULL;
 	if(opt->schedule != NULL){
+		for (int i = 0; i < opt->schedule->count; i++) {
+			free_Optimizer(opt->schedule->optimizers[i]);
+			free_Parameters(opt->schedule->parameters[i]);
+		}
 		free(opt->schedule->optimizers);
 		free(opt->schedule->parameters);
 		free(opt->schedule->rounds);
@@ -208,7 +286,7 @@ bool opt_post(OptimizerSchedule* schedule, double before, double after){
 	return false;
 }
 
-void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, Parameters* parameters){
+void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, const Parameters* parameters){
 	if(opt_meta->schedule == NULL){
 		opt_get_schedule(opt_meta);
 	}
@@ -220,7 +298,8 @@ void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, Parameters* paramete
 		opt_meta->schedule->post = (OptimizerSchedule_post*)realloc(opt_meta->schedule->post, sizeof(OptimizerSchedule_post)*opt_meta->schedule->capacity);
 	}
 	opt_meta->schedule->optimizers[opt_meta->schedule->count] = opt;
-	opt_meta->schedule->parameters[opt_meta->schedule->count] = parameters;
+	opt_meta->schedule->parameters[opt_meta->schedule->count] = new_Parameters(Parameters_count(parameters));
+	Parameters_add_parameters(opt_meta->schedule->parameters[opt_meta->schedule->count], parameters);
 	opt_meta->schedule->rounds[opt_meta->schedule->count] = 1;
 	opt_meta->schedule->post[opt_meta->schedule->count] = opt_post;
 	opt_meta->schedule->count++;
@@ -238,6 +317,7 @@ OptimizerSchedule* opt_get_schedule(Optimizer *opt_meta){
 	}
 	return opt_meta->schedule;
 }
+
 
 // At least one of these conditions is sufficient to stop the optimization
 opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx ){

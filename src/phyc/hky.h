@@ -22,7 +22,7 @@
 
 #include "substmodel.h"
 
-SubstitutionModel * new_HKY();
+SubstitutionModel * new_HKY(Simplex* freqs);
 
 SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa );
 

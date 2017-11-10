@@ -1080,7 +1080,7 @@ bool ga_default_termination( GA *ga ){
 		fprintf(stdout, "2) To stop the GA\n");
 		fprintf(stdout, "3) Change maximum number of generations\n");
 		fprintf(stdout, "4) Change maximum number of generations without improvement\n");
-		fprintf(stdout, "5) Dump individuals for restart (TODO)\n");
+		//fprintf(stdout, "5) Dump individuals for restart (TODO)\n");
 		int answer = -1;
 		
 		while ( answer < 0 || answer > 4 ) {

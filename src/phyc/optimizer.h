@@ -102,6 +102,8 @@ Optimizer * new_Optimizer( opt_algorithm algorithm );
 
 void free_Optimizer( Optimizer *opt );
 
+Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters);
+
 
 opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin );
 
@@ -140,7 +142,7 @@ void opt_set_update_data_function( Optimizer *opt, opt_update_data uf );
 
 opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx );
 
-void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, Parameters* parameters);
+void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, const Parameters* parameters);
 
 OptimizerSchedule* opt_get_schedule(Optimizer *opt_meta);
 

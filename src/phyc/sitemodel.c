@@ -125,6 +125,15 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 	return clone;
 }
 
+static void _site_model_get_free_parameters(Model* model, Parameters* parameters){
+	SiteModel* m = (SiteModel*)model->obj;
+	if (m->rates != NULL) {
+		Parameters_add_free_parameters(parameters, m->rates);
+	}
+	Model* msimplex = (Model*)model->data;
+	msimplex->get_free_parameters(msimplex,parameters);
+}
+
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	Model *model = new_Model(name, sm);
@@ -140,6 +149,7 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	model->update = _site_model_handle_change;
 	model->free = _site_model_free;
 	model->clone = _site_model_clone;
+	model->get_free_parameters = _site_model_get_free_parameters;
 	model->data = substmodel;
 	substmodel->ref_count++;
 	return model;

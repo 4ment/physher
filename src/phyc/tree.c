@@ -608,6 +608,19 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 	return clone;
 }
 
+static void _tree_model_get_free_parameters(Model* model, Parameters* parameters){
+	Tree* mtree = (Tree*)model->obj;
+	for ( int i = 0; i < Tree_node_count(mtree); i++ ) {
+		Node* node = Tree_node(mtree, i);
+		if(Parameter_estimate(node->distance)){
+			Parameters_add(parameters, node->distance);
+		}
+		if(Parameter_estimate(node->height)){
+			Parameters_add(parameters, node->height);
+		}
+	}
+}
+
 // TreeModel listen to the height and distance parameters
 Model * new_TreeModel( const char* name, Tree *tree ){
 	Model *model = new_Model(name, tree);
@@ -615,10 +628,11 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 		tree->nodes[i]->distance->listeners->add(tree->nodes[i]->distance->listeners, model);
 		tree->nodes[i]->height->listeners->add(tree->nodes[i]->height->listeners, model);
 	}
-//	Node** nodes = Tree_nodes(tree);
+
 	model->update = _tree_handle_change;
 	model->free = _tree_model_free;
 	model->clone = _tree_model_clone;
+	model->get_free_parameters = _tree_model_get_free_parameters;
 	return model;
 }
 #endif
@@ -710,7 +724,7 @@ Tree * clone_Tree( const Tree *tree ){
     Tree_update_topology(newTree);
 	
 	newTree->dated = tree->dated;
-	
+	newTree->time_mode = tree->time_mode;
 	return newTree;
 }
 

@@ -57,9 +57,12 @@ static DistributionModel* _clone_dist(DistributionModel* dm){
 DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm, const Parameters* params, const Parameters* x, Simplex* simplex){
 	DistributionModel* clone = (DistributionModel*)malloc(sizeof(DistributionModel));
 	assert(clone);
-	clone->parameters = new_Parameters(Parameters_count(params));
-	for (int i = 0; i < Parameters_count(params); i++) {
-		Parameters_add(clone->parameters, Parameters_at(params, i));
+	clone->parameters = NULL;
+	if(Parameters_count(params) > 0){
+		clone->parameters = new_Parameters(Parameters_count(params));
+		for (int i = 0; i < Parameters_count(params); i++) {
+			Parameters_add(clone->parameters, Parameters_at(params, i));
+		}
 	}
 	clone->x = NULL;
 	clone->simplex = NULL;
@@ -70,7 +73,7 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 		}
 	}
 	else if(simplex != NULL){
-		clone->simplex = clone_Simplex(simplex);
+		clone->simplex = simplex;
 	}
 	clone->logP = dm->logP;
 	clone->dlogP = dm->dlogP;
@@ -86,7 +89,11 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 DistributionModel* new_DistributionModel(Parameters* p, const Parameters* x){
 	DistributionModel* dm = (DistributionModel*)malloc(sizeof(DistributionModel));
 	assert(dm);
-	dm->parameters = p;
+	dm->parameters = NULL;
+	if(p != NULL){
+		dm->parameters = new_Parameters(Parameters_count(p));
+		Parameters_add_parameters(dm->parameters, p);
+	}
 	dm->x = new_Parameters(Parameters_count(x));
 	Parameters_add_parameters(dm->x, x);
 	dm->simplex = NULL;
@@ -179,6 +186,7 @@ DistributionModel* new_IndependantGammaDistributionModel(const double shape, con
 	dm->logP = DistributionModel_log_gamma;
 	dm->dlogP = DistributionModel_dlog_gamma;
 	dm->clone = _clone_dist;
+	free_Parameters(ps);
 	return dm;
 }
 
@@ -189,6 +197,7 @@ DistributionModel* new_IndependantExpDistributionModel(const double lambda, cons
 	dm->logP = DistributionModel_log_exp;
 	dm->dlogP = DistributionModel_dlog_exp;
 	dm->clone = _clone_dist;
+	free_Parameters(ps);
 	return dm;
 }
 
@@ -214,6 +223,7 @@ DistributionModel* new_DirichletDistributionModel(const double* alpha, Simplex* 
 	for (int i = 0; i < simplex->K; i++) {
 		dm->tempp[i] = Parameters_value(dm->parameters, i);
 	}
+	free_Parameters(ps);
 	return dm;
 }
 
@@ -304,16 +314,27 @@ static Model* _dist_model_clone( Model *self, Hashtable* hash ){
 			}
 		}
 	}
-	
-	DistributionModel* dmclone = clone_DistributionModel_with_parameters(dm, params, x, (Simplex*)msimplexclone->obj);
+	Simplex* s = NULL;
+	if(msimplexclone != NULL){
+		s = (Simplex*)msimplexclone->obj;
+	}
+	DistributionModel* dmclone = clone_DistributionModel_with_parameters(dm, params, x, s);
 	
 	free_Parameters(params);
 	free_Parameters(x);
 	Model* clone = new_DistributionModel3(self->name, dmclone, msimplexclone);
 	Hashtable_add(hash, clone->name, clone);
-	msimplexclone->free(msimplexclone);
+	if(msimplexclone != NULL){
+		msimplexclone->free(msimplexclone);
+	}
 	
 	return clone;
+}
+
+static void _dist_model_get_free_parameters(Model* model, Parameters* parameters){
+	DistributionModel* dm = (DistributionModel*)model->obj;
+	
+	Model* msimplex = (Model*)model->data;
 }
 
 Model* new_DistributionModel2(const char* name, DistributionModel* dm){
@@ -322,16 +343,18 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 	model->dlogP = _dist_model_dlogP;
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
+	model->get_free_parameters = _dist_model_get_free_parameters;
 	return model;
 }
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex){
 	Model *model = new_Model(name, dm);
 	model->data = simplex;
-	simplex->ref_count++;
+	if(simplex != NULL) simplex->ref_count++;
 	model->logP = _dist_model_logP;
 	model->dlogP = _dist_model_dlogP;
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
+	model->get_free_parameters = _dist_model_get_free_parameters;
 	return model;
 }

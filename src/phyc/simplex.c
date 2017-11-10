@@ -182,6 +182,11 @@ static Model* _simplex_model_clone(Model* self, Hashtable *hash){
 	return clone;
 }
 
+static void _simplex_get_free_parameters(Model* model, Parameters* parameters){
+	Simplex* simplex = (Simplex*)model->obj;
+	Parameters_add_free_parameters(parameters, simplex->parameters);
+}
+
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SimplexModel( const char* name, Simplex *simplex ){
 	Model *model = new_Model(name, simplex);
@@ -196,5 +201,6 @@ Model * new_SimplexModel( const char* name, Simplex *simplex ){
 	model->update = _simplex_model_handle_change;
 	model->free = _simplex_model_free;
 	model->clone = _simplex_model_clone;
+	model->get_free_parameters = _simplex_get_free_parameters;
 	return model;
 }

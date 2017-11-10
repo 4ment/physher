@@ -51,10 +51,17 @@
  *  Return a Q matrix (pi+freq)
  */
 
-SubstitutionModel * new_GTR(){
-    double freqs[4] = {0.25, 0.25, 0.25, 0.25};
-    double rates[5] = {1,1,1,1,1};
-    return new_GTR_with_values(freqs, rates);
+
+SubstitutionModel * new_GTR(Simplex* freqs){
+	Parameters* rates = new_Parameters( 5 );
+	Parameters_move(rates, new_Parameter_with_postfix("gtr.a", "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(rates, new_Parameter_with_postfix("gtr.b", "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(rates, new_Parameter_with_postfix("gtr.c", "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(rates, new_Parameter_with_postfix("gtr.d", "model", 1, new_Constraint(0.001, 100) ) );
+	Parameters_move(rates, new_Parameter_with_postfix("gtr.e", "model", 1, new_Constraint(0.001, 100) ) );
+	SubstitutionModel* model = new_GTR_with_parameters(freqs, rates, 5);
+	free_Parameters(rates);
+	return model;
 }
 
 SubstitutionModel * new_GTR_with_values( const double *freqs, const double *rates ){

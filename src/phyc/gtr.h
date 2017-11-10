@@ -182,7 +182,7 @@
  * @brief A general time-reversible (GTR) substitution model.
  */
 
-SubstitutionModel * new_GTR();
+SubstitutionModel * new_GTR(Simplex* freqs);
 
 SubstitutionModel * new_GTR_with_parameters( Simplex *freqs, const Parameters *rates, int relativeTo );
 
