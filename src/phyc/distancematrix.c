@@ -67,43 +67,73 @@ static bool const IS_TRANSITION[4][4] = {
 
 
 void _distance_raw(const Sequences *sequences, double **matrix){
-    char *seq1 = NULL;
-    char *seq2 = NULL;
-   	int i,j;
-    int n1,n2;
-    
-    int length = 0;
-    
-    for ( i = 0; i < sequences->size; i++ ) {
-        matrix[i][i] = 0.0;
-        for ( j = i+1; j < sequences->size; j++ ) {
-            seq1 = sequences->seqs[i]->seq;
-            seq2 = sequences->seqs[j]->seq;
-            double d = 0;
-            int n = 0;
-            length = sequences->seqs[0]->length;
-            
-            while(length){
-                n1 = NUCLEOTIDE_STATES[*seq1];
-                n2 = NUCLEOTIDE_STATES[*seq2];
-                if(n1 < 4 && n2 < 4){
-                    if( n1 != n2 ){
-                        ++d;
-                    }
-                    ++n;
-                }
-                ++seq1;
-                ++seq2;
-                --length;
-            }
-            if( n == 0 ){
-                matrix[j][i] = matrix[i][j] = 1000.0;
-            }
-            else {
-                matrix[j][i] = matrix[i][j] = d/n;
-            }
-        }
-    }
+	char *seq1 = NULL;
+	char *seq2 = NULL;
+	int i,j;
+	int n1,n2;
+	
+	int length = 0;
+	
+	for ( i = 0; i < sequences->size; i++ ) {
+		matrix[i][i] = 0.0;
+		for ( j = i+1; j < sequences->size; j++ ) {
+			seq1 = sequences->seqs[i]->seq;
+			seq2 = sequences->seqs[j]->seq;
+			double d = 0;
+			int n = 0;
+			length = sequences->seqs[0]->length;
+			
+			while(length){
+				n1 = NUCLEOTIDE_STATES[*seq1];
+				n2 = NUCLEOTIDE_STATES[*seq2];
+				if(n1 < 4 && n2 < 4){
+					if( n1 != n2 ){
+						++d;
+					}
+					++n;
+				}
+				++seq1;
+				++seq2;
+				--length;
+			}
+			if( n == 0 ){
+				matrix[j][i] = matrix[i][j] = 1000.0;
+			}
+			else {
+				matrix[j][i] = matrix[i][j] = d/n;
+			}
+		}
+	}
+}
+
+void _distance_raw_patterns(const SitePattern *patterns, double **matrix){
+	int i,j;
+	int n1,n2;
+	
+	for ( i = 0; i < patterns->size; i++ ) {
+		matrix[i][i] = 0.0;
+		for ( j = i+1; j < patterns->size; j++ ) {
+			double d = 0;
+			int n = 0;
+			
+			for ( int site = 0; site < patterns->count; site++) {
+				n1 = patterns->patterns[site][i];
+				n2 = patterns->patterns[site][j];
+				if(n1 < 4 && n2 < 4){
+					if( n1 != n2 ){
+						d += patterns->weights[site];
+					}
+					n += patterns->weights[site];
+				}
+			}
+			if( n == 0 ){
+				matrix[j][i] = matrix[i][j] = 1000.0;
+			}
+			else {
+				matrix[j][i] = matrix[i][j] = d/n;
+			}
+		}
+	}
 }
 
 void _distance_raw_float(const Sequences *sequences, float **matrix){
@@ -111,9 +141,9 @@ void _distance_raw_float(const Sequences *sequences, float **matrix){
     char *seq2 = NULL;
    	int i,j;
     int n1,n2;
-    
+	
     int length = 0;
-    
+	
     for ( i = 0; i < sequences->size; i++ ) {
         matrix[i][i] = 0.f;
         for ( j = i+1; j < sequences->size; j++ ) {
@@ -148,48 +178,83 @@ void _distance_raw_float(const Sequences *sequences, float **matrix){
 
 
 void _distance_jc69(const Sequences *sequences, double **matrix){
-    char *seq1 = NULL;
-    char *seq2 = NULL;
-   	int i,j;
-    double d = 0;
-    int n = 0;
-    double fourThird = 4.f/3.f;
-    int length;
-    int n1,n2;
-    
-    for ( i = 0; i < sequences->size; i++ ) {
-        matrix[i][i] = 0.0;
-        for ( j = i+1; j < sequences->size; j++ ) {
-            seq1 = sequences->seqs[i]->seq;
-            seq2 = sequences->seqs[j]->seq;
-            d = 0.f;
-            n = 0;
-            
-            length = sequences->seqs[0]->length;
-            
-            while(length){
-                n1 = NUCLEOTIDE_STATES[*seq1];
-                n2 = NUCLEOTIDE_STATES[*seq2];
-                if(n1 < 4 && n2 < 4){
-                    if( n1 != n2 ){
-                        ++d;
-                    }
-                    ++n;
-                }
-                ++seq1;
-                ++seq2;
-                --length;
-            }
-            d /= n;
-            if( d >= 0.75 ){
-                fprintf(stderr, "Dissimilarity over 0.75 %s %s %f\n", sequences->seqs[i]->name,sequences->seqs[j]->name, d);
-                matrix[j][i] = matrix[i][j] = 1000.0;
-            }
-            else {
-                matrix[j][i] = matrix[i][j] = -0.75*log(1.-fourThird*d);
-            }
-        }
-    }
+	char *seq1 = NULL;
+	char *seq2 = NULL;
+	int i,j;
+	double d = 0;
+	int n = 0;
+	double fourThird = 4.f/3.f;
+	int length;
+	int n1,n2;
+	
+	for ( i = 0; i < sequences->size; i++ ) {
+		matrix[i][i] = 0.0;
+		for ( j = i+1; j < sequences->size; j++ ) {
+			seq1 = sequences->seqs[i]->seq;
+			seq2 = sequences->seqs[j]->seq;
+			d = 0.f;
+			n = 0;
+			
+			length = sequences->seqs[0]->length;
+			
+			while(length){
+				n1 = NUCLEOTIDE_STATES[*seq1];
+				n2 = NUCLEOTIDE_STATES[*seq2];
+				if(n1 < 4 && n2 < 4){
+					if( n1 != n2 ){
+						++d;
+					}
+					++n;
+				}
+				++seq1;
+				++seq2;
+				--length;
+			}
+			d /= n;
+			if( d >= 0.75 ){
+				fprintf(stderr, "Dissimilarity over 0.75 %s %s %f\n", sequences->seqs[i]->name,sequences->seqs[j]->name, d);
+				matrix[j][i] = matrix[i][j] = 1000.0;
+			}
+			else {
+				matrix[j][i] = matrix[i][j] = -0.75*log(1.-fourThird*d);
+			}
+		}
+	}
+}
+
+void _distance_jc69_patterns(const SitePattern *patterns, double **matrix){
+	int i,j;
+	double d = 0;
+	int n = 0;
+	double fourThird = 4.f/3.f;
+	int n1,n2;
+	
+	for ( i = 0; i < patterns->size; i++ ) {
+		matrix[i][i] = 0.0;
+		for ( j = i+1; j < patterns->size; j++ ) {
+			d = 0.f;
+			n = 0;
+			
+			for ( int site = 0; site < patterns->count; site++) {
+				n1 = patterns->patterns[site][i];
+				n2 = patterns->patterns[site][j];
+				if(n1 < 4 && n2 < 4){
+					if( n1 != n2 ){
+						d += patterns->weights[site];
+					}
+					n += patterns->weights[site];
+				}
+			}
+			d /= n;
+			if( d >= 0.75 ){
+				fprintf(stderr, "Dissimilarity over 0.75 %s %s %f\n", patterns->names[i], patterns->names[j], d);
+				matrix[j][i] = matrix[i][j] = 1000.0;
+			}
+			else {
+				matrix[j][i] = matrix[i][j] = -0.75*log(1.-fourThird*d);
+			}
+		}
+	}
 }
 
 void _distance_jc69_float(const Sequences *sequences, float **matrix){
@@ -201,7 +266,7 @@ void _distance_jc69_float(const Sequences *sequences, float **matrix){
     float fourThird = 4.f/3.f;
     int length;
     int n1,n2;
-    
+	
     for ( i = 0; i < sequences->size; i++ ) {
         matrix[i][i] = 0.0;
         for ( j = i+1; j < sequences->size; j++ ) {
@@ -275,6 +340,35 @@ void _distance_k2p(const Sequences *sequences, double **matrix){
     }
 }
 
+
+void _distance_k2p_patterns(const SitePattern *patterns, double **matrix){
+	double transition, transversion, n;
+	int i,j;
+	int n1,n2;
+	
+	for ( i = 0; i < patterns->size; i++ ) {
+		matrix[i][i] = 0.0;
+		for ( j = i+1; j < patterns->size; j++ ) {
+			transition = transversion = n = 0;
+			
+			for ( int site = 0; site < patterns->count; site++) {
+				n1 = patterns->patterns[site][i];
+				n2 = patterns->patterns[site][j];
+				if(n1 < 4 && n2 < 4){
+					if( IS_TRANSITION[n1][n2]){
+						transition += patterns->weights[site];
+					}
+					else if ( n1 != n2 ) {
+						transversion += patterns->weights[site];
+					}
+					n += patterns->weights[site];
+				}
+			}
+			matrix[j][i] = matrix[i][j] = 0.5 * log(1./(1.-(2.*transition-transversion)/n)) + 0.25*log(1./(1.-2.*transversion/n));
+		}
+	}
+}
+
 void _distance_k2p_float(const Sequences *sequences, float **matrix){
     char *seq1 = NULL;
     char *seq2 = NULL;
@@ -282,7 +376,7 @@ void _distance_k2p_float(const Sequences *sequences, float **matrix){
    	int i,j;
     int length;
     int n1,n2;
-    
+	
     for ( i = 0; i < sequences->size; i++ ) {
         matrix[i][i] = 0.0;
         for ( j = i+1; j < sequences->size; j++ ) {
@@ -346,13 +440,40 @@ void _distance_aa_kimura(const Sequences *sequences, double **matrix){
     }
 }
 
+void _distance_aa_kimura_patterns(const SitePattern *patterns, double **matrix){
+	int n1,n2;
+	int i,j;
+	double p, d,n;
+	DataType* datatype = patterns->datatype;
+	
+	for ( i = 0; i < patterns->size; i++ ) {
+		matrix[i][i] = 0.0;
+		for ( j = i+1; j < patterns->size; j++ ) {
+			n = d = 0;
+			
+			for ( int site = 0; site < patterns->count; site++) {
+				n1 = patterns->patterns[site][i];
+				n2 = patterns->patterns[site][j];
+				if ( n1 < datatype->state_count(datatype) && n2 < datatype->state_count(datatype) ) {
+					if( n1 != n2 ){
+						d+= patterns->weights[site];
+					}
+					n += patterns->weights[site];
+				}
+			}
+			p = d/n;
+			matrix[j][i] = matrix[i][j] = -log(1.0-p-0.2*p*p);
+		}
+	}
+}
+
 void _distance_aa_kimura_float(const Sequences *sequences, float **matrix){
     char *seq1 = NULL;
     char *seq2 = NULL;
    	int i,j;
     float d,n;
     int length;
-    
+	
     for ( i = 0; i < sequences->size; i++ ) {
         matrix[i][i] = 0.0;
         for ( j = i+1; j < sequences->size; j++ ) {
@@ -381,41 +502,62 @@ void _distance_aa_kimura_float(const Sequences *sequences, float **matrix){
 
 
 void _hamming_distance(const Sequences *sequences, double **matrix){
-    char *seq1 = NULL;
-    char *seq2 = NULL;
-   	int i,j;
-    
-    int length = 0;
-    
-    for ( i = 0; i < sequences->size; i++ ) {
-        matrix[i][i] = 0.f;
-        for ( j = i+1; j < sequences->size; j++ ) {
-            seq1 = sequences->seqs[i]->seq;
-            seq2 = sequences->seqs[j]->seq;
-            double d = 0;
-            length = sequences->seqs[0]->length;
-            
-            while(length){
-                if( *seq1 != *seq2 ){
-                    ++d;
-                }
-                
-                ++seq1;
-                ++seq2;
-                --length;
-            }
-            matrix[j][i] = matrix[i][j] = d/sequences->seqs[0]->length;
-        }
-    }
+	char *seq1 = NULL;
+	char *seq2 = NULL;
+	int i,j;
+	
+	int length = 0;
+	
+	for ( i = 0; i < sequences->size; i++ ) {
+		matrix[i][i] = 0.f;
+		for ( j = i+1; j < sequences->size; j++ ) {
+			seq1 = sequences->seqs[i]->seq;
+			seq2 = sequences->seqs[j]->seq;
+			double d = 0;
+			length = sequences->seqs[0]->length;
+			
+			while(length){
+				if( *seq1 != *seq2 ){
+					++d;
+				}
+				
+				++seq1;
+				++seq2;
+				--length;
+			}
+			matrix[j][i] = matrix[i][j] = d/sequences->seqs[0]->length;
+		}
+	}
+}
+
+void _hamming_distance_patterns(const SitePattern *patterns, double **matrix){
+	int i,j;
+	int n1,n2;
+	
+	for ( i = 0; i < patterns->size; i++ ) {
+		matrix[i][i] = 0.f;
+		for ( j = i+1; j < patterns->size; j++ ) {
+			double d = 0;
+			
+			for ( int site = 0; site < patterns->count; site++) {
+				n1 = patterns->patterns[site][i];
+				n2 = patterns->patterns[site][j];
+				if( n1 != n2 ){
+					d += patterns->weights[site];
+				}
+			}
+			matrix[j][i] = matrix[i][j] = d/patterns->count;
+		}
+	}
 }
 
 void _hamming_distance_float(const Sequences *sequences, float **matrix){
     char *seq1 = NULL;
     char *seq2 = NULL;
    	int i,j;
-    
+	
     int length = 0;
-    
+	
     for ( i = 0; i < sequences->size; i++ ) {
         matrix[i][i] = 0.f;
         for ( j = i+1; j < sequences->size; j++ ) {
@@ -493,5 +635,33 @@ float ** Sequences_distance_float( const Sequences *sequences, distancematrix_mo
         _hamming_distance_float(sequences, matrix);
     }
     return matrix;
+}
+
+double ** Patterns_distance( const SitePattern *patterns, distancematrix_model model ){
+	
+	double **matrix = dmatrix(patterns->size, patterns->size);
+	
+	if( patterns->datatype->type == DATA_TYPE_AMINO_ACID ){
+		_distance_aa_kimura_patterns(patterns, matrix);
+	}
+	else if( patterns->datatype->type == DATA_TYPE_NUCLEOTIDE || patterns->datatype->type == DATA_TYPE_CODON ){
+		switch (model) {
+			case DISTANCE_MATRIX_UNCORRECTED:
+				_distance_raw_patterns(patterns, matrix);
+				break;
+			case DISTANCE_MATRIX_JC69:
+				_distance_jc69_patterns(patterns, matrix);
+				break;
+			case DISTANCE_MATRIX_K2P:
+				_distance_k2p_patterns(patterns, matrix);
+				break;
+			default:
+				assert(0);
+		}
+	}
+	else {
+		_hamming_distance_patterns(patterns, matrix);
+	}
+	return matrix;
 }
 

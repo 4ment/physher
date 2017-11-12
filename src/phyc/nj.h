@@ -22,11 +22,11 @@
 #include "tree.h"
 
 
-Tree * new_NJ_float( const Sequences *sequences, float **matrix );
+struct Tree * new_NJ_float( const char **taxa, size_t dim, float **matrix );
 
 
-Tree * new_NJ( const Sequences *sequences, double **matrix );
+struct Tree * new_NJ( const char **taxa, size_t dim, double **matrix );
 
-Tree * new_NJ2( const Sequences *sequences, double **_matrix );
+struct Tree * new_NJ2( const char **taxa, size_t dim, double **_matrix );
 
 #endif

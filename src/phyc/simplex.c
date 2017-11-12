@@ -204,3 +204,29 @@ Model * new_SimplexModel( const char* name, Simplex *simplex ){
 	model->get_free_parameters = _simplex_get_free_parameters;
 	return model;
 }
+
+Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
+	json_node* values = get_json_node(node, "values");
+	Simplex* simplex = NULL;
+	
+	if(values != NULL){
+		double* x = dvector(values->child_count);
+		for (int i = 0; i < values->child_count; i++) {
+			json_node* child = values->children[i];
+			if(child->node_type != MJSON_PRIMITIVE){
+				fprintf(stderr, "sadf\n");
+				exit(1);
+			}
+			x[i] = atof((char*)child->value);
+		}
+		simplex = new_Simplex_with_values(x, values->child_count);
+		free(x);
+	}
+	else{
+		json_node* dimension = get_json_node(node, "dimension");
+		simplex = new_Simplex(atoi((char*)dimension));
+	}
+	Model* model = new_SimplexModel(node->id, simplex);
+	return model;
+}
+

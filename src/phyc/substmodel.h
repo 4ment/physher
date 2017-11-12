@@ -23,6 +23,8 @@
 #include "parameters.h"
 #include "simplex.h"
 
+#include "substmodels.h"
+
 typedef enum modeltype {
     // Nucleotide models
 	GTR  = 1,
@@ -121,6 +123,7 @@ void make_zero_rows( double **q, const int dim );
 
 void normalize_Q( double **m, const double *freqs, const int dim );
 
+Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash);
 
 SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, const datatype dtype, Simplex* freqs );
 
@@ -156,9 +159,9 @@ void bufferize_rates( StringBuffer *buffer, const SubstitutionModel *m );
 
 void compare_model( const SubstitutionModel *m1, const SubstitutionModel *m2 );
 
-/*bool SubstitutionModel_is_valid( const char* model );
+SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataType* datatype, Simplex* freqSimplex, const Parameters* rates, const char** assignment );
 
-SubstitutionModel * SubstitutionModel_factory( const char* model_string );
+/*SubstitutionModel * SubstitutionModel_factory( const char* model_string );
 
 SubstitutionModel * SubstitutionModel_nuc_factory_with_values( modeltype modtype, double *rates, double *freqs );
 

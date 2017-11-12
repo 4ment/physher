@@ -211,6 +211,40 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	return model;
 }
 
+Model * new_TreeLikelihoodModel_from_json(const char*json, json_node*node, Hashtable*hash){
+	Model* tree = NULL;
+	Model* sm = NULL;
+	SitePattern* sp = NULL;
+	Model*bm = NULL;
+	
+	for (int i = 0; i < node->child_count; i++) {
+		json_node* child = node->children[i];
+		if (strcasecmp("branchmodel", child->type) == 0) {
+			
+		}
+		else if (strcasecmp("tree", child->type) == 0) {
+			
+		}
+		else if (strcasecmp("sitemodel", child->type) == 0) {
+			
+		}
+		else if (strcasecmp("patterns", child->type) == 0) {
+			
+		}
+		else{
+			printf("json TreeLikelihoodModel unknown: (%s)\n", child->type);
+			exit(1);
+		}
+	}
+	BranchModel* bmodel = NULL;
+	if(bm != NULL){
+		bmodel = (BranchModel*)bm->obj;
+	}
+	SingleTreeLikelihood* tlk = new_SingleTreeLikelihood((Tree*)tree->obj, (SiteModel*)sm->obj, sp, bmodel);
+	Model* model = new_TreeLikelihoodModel(node->id, tlk, tree, sm, bm);
+	return model;
+}
+
 #pragma mark -
 // MARK: SingleTreeLikelihood
 

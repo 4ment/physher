@@ -20,7 +20,7 @@
 #include "matrix.h"
 
 
-bool isSymmetric(const unsigned *matrix, unsigned dim){
+bool isSymmetric(const unsigned *matrix, size_t dim){
     for ( int i = 0; i < dim; i++ ) {
         for ( int j = i+1; j < dim; j++ ) {
             if( matrix[i*dim+j] != matrix[j*dim+i]){
@@ -119,13 +119,8 @@ void _reversible_update_Q( SubstitutionModel *m ){
     m->need_update = false;
 }
 
-SubstitutionModel * new_GeneralModel( const unsigned *model, Simplex* freqs ){
-    SubstitutionModel *m = new_GeneralModel2(model, freqs, -1,true);
-    return m;
-}
-
-SubstitutionModel * new_GeneralModel2( const unsigned *model, Simplex* freqs, int relativeTo, bool normalize ){
-    bool sym = isSymmetric(model, freqs->K);
+SubstitutionModel * new_GeneralModel_with_parameters( DiscreteParameter* model, const Parameters* rates, Simplex* freqs, int relativeTo, bool normalize ){
+    bool sym = isSymmetric(model->values, freqs->K);
     SubstitutionModel *m = NULL;
     if(sym){
         m = create_general_model("GENERAL", REVERSIBLE, freqs);
@@ -139,23 +134,11 @@ SubstitutionModel * new_GeneralModel2( const unsigned *model, Simplex* freqs, in
     m->normalize = normalize;
 	m->relativeTo = relativeTo;
     
-    int len = freqs->K*freqs->K;
+    size_t len = freqs->K*freqs->K;
 	m->model = new_DiscreteParameter("general.model", len);
-    
-    int max = uimax_vector(model, len);
-    max++;
-    
-    
-    StringBuffer *buffer = new_StringBuffer(10);
-    
-    m->rates = new_Parameters( max);
-    for ( int i = 0; i < max; i++ ) {
-        StringBuffer_empty(buffer);
-        StringBuffer_append_format(buffer, "q.%d", i);
-        Parameters_move(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1.0, new_Constraint(0.00001, 1000) ) );
-    }
-    
-    free_StringBuffer(buffer);
+	
+	m->rates = new_Parameters(Parameters_count(rates));
+	Parameters_add_parameters(m->rates, rates);
     
     return m;
 }
@@ -166,34 +149,6 @@ SubstitutionModel * new_GeneralModel2( const unsigned *model, Simplex* freqs, in
 
 static void _rev_update_Q( SubstitutionModel *m );
 static void _rev_relative_update_Q( SubstitutionModel *m );
-
-SubstitutionModel * new_ReversibleModel( const int *model, Simplex* freqs ){
-    SubstitutionModel *m = NULL;
-    
-    m = create_general_model("reversible", REVERSIBLE, freqs);
-	int dim = freqs->K;
-    int len = dim*(dim-1)/2;
-    m->model = new_DiscreteParameter("reversible.model", dim*dim);
-    
-    int max = 0;
-    memcpy(m->model, model, len*sizeof(int));
-    max = imax_vector(model, len);
-    max++;
-    
-    m->update_Q = _rev_update_Q;
-    
-    StringBuffer *buffer = new_StringBuffer(10);
-    m->rates = new_Parameters( max);
-    for ( int i = 0; i < max; i++ ) {
-        StringBuffer_empty(buffer);
-        StringBuffer_append_format(buffer, "q.%d", i);
-        Parameters_move(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1.0, new_Constraint(0.00001, 1000) ) );
-    }
-    
-    free_StringBuffer(buffer);
-    
-    return m;
-}
 
 void _rev_update_Q( SubstitutionModel *m ){
     int index = 0;
@@ -250,32 +205,6 @@ void _rev_relative_update_Q( SubstitutionModel *m ){
 
 static void _genernal_update_Q( SubstitutionModel *m );
 
-SubstitutionModel * new_NonReversibleModel( const int *model, Simplex* freqs ){
-    SubstitutionModel *m = NULL;
-    
-    m = create_general_model("non.reversible", NONREVERSIBLE, freqs);
-	int dim = freqs->K;
-    int len = dim*dim-dim;
-	m->model = new_DiscreteParameter("non.reversible.model", len);
-    memcpy(m->model, model, len*sizeof(int));
-    int max = 0;
-    max = imax_vector(model, len);
-    max++;
-    
-    m->update_Q = _genernal_update_Q;
-    
-    StringBuffer *buffer = new_StringBuffer(10);
-    m->rates = new_Parameters( max);
-    for ( int i = 0; i < max; i++ ) {
-        StringBuffer_empty(buffer);
-        StringBuffer_append_format(buffer, "q.%d", i);
-        Parameters_move(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1.0, new_Constraint(0.00001, 1000) ) );
-    }
-    
-    free_StringBuffer(buffer);
-    
-    return m;
-}
 
 void _genernal_update_Q( SubstitutionModel *m ){
     int index = 0;

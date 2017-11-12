@@ -57,7 +57,7 @@ static double *_get_proportions_discrete( SiteModel *sm );
 
 static double _get_rate_cat( SiteModel *sm, const int index );
 
-static SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const unsigned int cat_count, sitemodel_heterogeneity type );
+static SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const size_t cat_count, sitemodel_heterogeneity type );
 
 
 static void _site_model_handle_change( Model *self, Model *model, int index ){
@@ -155,6 +155,72 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	return model;
 }
 
+Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
+	json_node* categories_node = get_json_node(node, "categories");
+	json_node* invariant_node = get_json_node(node, "invariant");
+	json_node* model_node = get_json_node(node, "model");
+	json_node* rates_node = get_json_node(node, "rates");
+	json_node* distribution_node = get_json_node(node, "distribution");
+	json_node* discretization_node = get_json_node(node, "discretization");
+	json_node* m_node = get_json_node(node, "substitutionmodel");
+
+	Model* mm = NULL;
+	if (m_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)m_node->value)) {
+		mm = Hashtable_get(hash, (char*)m_node->value);
+		mm->ref_count++;
+	}
+	else{
+		mm = new_SubstitutionModel_from_json(m_node, hash);
+	}
+	SubstitutionModel* m = (SubstitutionModel*)mm->obj;
+	
+	size_t cat = 1;
+	if (categories_node != NULL) {
+		cat = atoi((char*)categories_node->value);
+	}
+
+	Parameters* rates = NULL;
+	if (rates_node != NULL && rates_node->node_type == MJSON_ARRAY) {
+		rates = new_Parameters_from_json(rates_node, hash);
+	}
+	else if (rates_node != NULL && rates_node->node_type == MJSON_OBJECT) {
+		Parameter* p = new_Parameter_from_json(rates_node, hash);
+		Parameters_move(rates, p);
+	}
+	
+	SiteModel* sm = NULL;
+	// Distribution
+	if ( cat > 1 ) {
+		bool isgamma = (distribution_node == NULL || strcasecmp("gamma", (char*)distribution_node->value) == 0);
+		
+		// Just laguerre discretization
+		if(discretization_node != NULL || strcasecmp("laguerre", (char*)discretization_node->value) == 0){
+			sm = new_GammaLaguerreSiteModel_with_parameters(m, rates, cat);
+		}
+		// And invariant
+		else if (invariant_node != NULL) {
+			//swapsy
+			if (strcasecmp(Parameters_name(rates, 0), "invariant") == 0) {
+				Parameters_swap_index(rates, 0, 1);
+			}
+			sm = new_GammaPinvSiteModel_with_parameters(m, rates, cat);
+		}
+		// Just distribution
+		else{
+			sm = new_GammaSiteModel_with_parameters(m, rates, cat);
+		}
+	}
+	else if(invariant_node!= NULL  && strcasecmp("invariant", (char*)invariant_node->value) == 0){
+		sm = new_PinvSiteModel_with_parameters(m, rates);
+	}
+
+	Model* msm = new_SiteModel2(node->id, sm, mm);
+	
+	mm->free(mm);
+	free_Parameters(rates);
+	return msm;
+}
+
 #pragma mark -
 // MARK: Gamma SiteModel
 
@@ -185,7 +251,7 @@ SiteModel * new_GammaSiteModel( SubstitutionModel *m, const double shape, const 
 	return sm;
 }
 
-SiteModel * new_GammaSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const unsigned int cat_count ){
+SiteModel * new_GammaSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const size_t cat_count ){
 	assert( Parameters_value(shape, 0) >= SITEMODEL_ALPHA_MIN && Parameters_value(shape, 0) <= SITEMODEL_ALPHA_MAX );
 	return _new_SiteModel_with_parameters( m, shape, cat_count, SITEMODEL_GAMMA );
 }
@@ -219,7 +285,7 @@ SiteModel * new_GammaPinvSiteModel( SubstitutionModel *m, const double pinv, con
 	return sm;
 }
 
-SiteModel * new_GammaPinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* params, const unsigned int cat_count ){
+SiteModel * new_GammaPinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* params, const size_t cat_count ){
 	sitemodel_heterogeneity type = SITEMODEL_GAMMAINV;
 	if( Parameters_count(params) == 1 && cat_count > 1 ){
 		type = SITEMODEL_GAMMA;
@@ -240,7 +306,7 @@ SiteModel * new_GammaLaguerreSiteModel( SubstitutionModel *m, const double shape
 	return sm;
 }
 
-SiteModel * new_GammaLaguerreSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const unsigned int cat_count ){
+SiteModel * new_GammaLaguerreSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const size_t cat_count ){
 	assert( Parameters_value(shape, 0) >= SITEMODEL_ALPHA_MIN && Parameters_value(shape, 0) <= SITEMODEL_ALPHA_MAX );
 	return _new_SiteModel_with_parameters( m, shape, cat_count, SITEMODEL_GAMMA_LAGUERRE );
 }
@@ -252,7 +318,7 @@ void set_rate(SiteModel* sm, const int index, const double value){
 
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
-SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const unsigned int cat_count, sitemodel_heterogeneity type ){
+SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const size_t cat_count, sitemodel_heterogeneity type ){
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
 	sm->m = m;

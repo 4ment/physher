@@ -26,6 +26,7 @@
 #include "parser.h"
 #include "model.h"
 
+#include "mjson.h"
 #include "hashtable.h"
 
 #define PARAMETER_TINY 1.0e-25
@@ -134,6 +135,8 @@ Parameter * new_Parameter( const char *name, const double value, Constraint *con
 
 Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, const double value, Constraint *constr );
 
+Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash);
+
 void free_Parameter( Parameter *p );
 
 Parameter * clone_Parameter( Parameter *p );
@@ -149,6 +152,8 @@ void * Parameter_SML_to_object( SMLNode node );
 void * Parameter_SML_to_object_with_postfix( SMLNode node, const char *postfix );
 
 char * Parameter_name( const Parameter *p );
+
+void Parameter_set_name( Parameter *p, const char *name );
 
 void Parameter_set_value( Parameter *p, const double value );
 
@@ -188,6 +193,8 @@ void compare_parameter( const Parameter *p1, const Parameter *p2 );
 #pragma mark Parameters
 
 Parameters * new_Parameters( const size_t capacity );
+
+Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash);
 
 void free_Parameters( Parameters *ps );
 
@@ -271,15 +278,15 @@ void Parameters_sort_from_ivector( Parameters *p, int *s );
 #pragma mark -
 #pragma mark DiscreteParameter
 
-DiscreteParameter * new_DiscreteParameter( const char *name, int dim );
+DiscreteParameter * new_DiscreteParameter( const char *name, size_t dim );
 
-DiscreteParameter * new_DiscreteParameter_with_postfix( const char *name, const char *postfix, int dim );
+DiscreteParameter * new_DiscreteParameter_with_postfix( const char *name, const char *postfix, size_t dim );
 
-DiscreteParameter * new_DiscreteParameter_with_values( const char *name, const unsigned* values, int dim );
+DiscreteParameter * new_DiscreteParameter_with_values( const char *name, const unsigned* values, size_t dim );
 
-DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name, const char *postfix, const unsigned* values, int dim );
+DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name, const char *postfix, const unsigned* values, size_t dim );
 
-
+DiscreteParameter* new_DiscreteParameter_from_json(json_node* node, Hashtable* hash);
 
 struct _ListenerList {
 	Model** models;

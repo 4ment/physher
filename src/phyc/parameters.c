@@ -188,6 +188,41 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 	return p;
 }
 
+Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
+	if (node->node_type == MJSON_STRING) {
+		char* ref = (char*)node->value;
+		Parameter*p = Hashtable_get(hash, ref+1);
+		p->refCount++;
+		return p;
+	}
+	double value = 0;
+	json_node* value_node = get_json_node(node, "value");
+	if(value_node != NULL){
+		value = atof((char*)value_node->value);
+	}
+	double lower = -INFINITY;
+	double upper = INFINITY;
+	json_node* lower_node = get_json_node(node, "lower");
+	if(lower_node != NULL){
+		lower = atof((char*)lower_node->value);
+	}
+	json_node* upper_node = get_json_node(node, "upper");
+	if(upper_node != NULL){
+		upper = atof((char*)upper_node->value);
+	}
+	Constraint* cnstr = new_Constraint(lower, upper);
+	return new_Parameter(node->id, value, cnstr);
+}
+
+Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash){
+	Parameters* parameters = new_Parameters(node->child_count);
+	for (int i = 0; i < node->child_count; i++) {
+		json_node* child = node->children[i];
+		Parameter* p = new_Parameter_from_json(child, hash);
+	}
+	return parameters;
+}
+
 Parameter * clone_Parameter( Parameter *p ){
 	Parameter *pnew = NULL;
 	Constraint *cnstr = NULL;
@@ -834,19 +869,19 @@ static void _set_values_discrete(DiscreteParameter* p, const unsigned* values){
 	p->listeners->fire(p->listeners, NULL, -1);
 }
 
-DiscreteParameter * new_DiscreteParameter( const char *name, int dim ){
+DiscreteParameter * new_DiscreteParameter( const char *name, size_t dim ){
 	return new_DiscreteParameter_with_postfix(name, "", dim);
 }
 
-DiscreteParameter * new_DiscreteParameter_with_postfix( const char *name, const char *postfix, int dim ){
+DiscreteParameter * new_DiscreteParameter_with_postfix( const char *name, const char *postfix, size_t dim ){
 	return new_DiscreteParameter_with_postfix_values(name, postfix, NULL, dim);
 }
 
-DiscreteParameter * new_DiscreteParameter_with_values( const char *name, const unsigned* values, int dim ){
+DiscreteParameter * new_DiscreteParameter_with_values( const char *name, const unsigned* values, size_t dim ){
 	return new_DiscreteParameter_with_postfix_values(name, "", values, dim);
 }
 
-DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name, const char *postfix, const unsigned* values, int dim ){
+DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name, const char *postfix, const unsigned* values, size_t dim ){
 	DiscreteParameter *p = (DiscreteParameter *)malloc( sizeof(DiscreteParameter) );
 	assert(p);
 	size_t name_len    = strlen(name);
@@ -873,6 +908,23 @@ DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name,
 	p->listeners = new_ListenerList(1);
 	p->refCount = 1;
 	return p;
+}
+
+DiscreteParameter* new_DiscreteParameter_from_json(json_node* node, Hashtable* hash){
+	json_node* values = get_json_node(node, "values");
+	size_t K = values->child_count;
+	unsigned* x = uivector(K);
+	for (int i = 0; i < K; i++) {
+		json_node* child = values->children[i];
+		if(child->node_type != MJSON_PRIMITIVE){
+			fprintf(stderr, "sadf\n");
+			exit(1);
+		}
+		x[i] = atoi((char*)child->value);
+	}
+	DiscreteParameter* dp = new_DiscreteParameter_with_values(node->id, x, K);
+	free(x);
+	return dp;
 }
 
 static void dummyUpdate( Model *self, Model *model, int index ){}

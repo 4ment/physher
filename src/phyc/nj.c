@@ -31,18 +31,17 @@
 
 static Node * cluster( Node **nodes, double **matrix, int nTips );
 
-Tree * new_NJ2( const Sequences *sequences, double **matrix ){
-    int nTips = sequences->size;
-    assert(nTips > 3);
-    Node **nodes = (Node**)malloc(sizeof(Node*)*nTips);
+struct Tree * new_NJ2( const char **taxa, size_t dim, double **matrix ){
+    assert(dim > 3);
+    Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
     assert(nodes);
     
     int i = 0;
-    for ( ; i < nTips; i++ ) {
-        nodes[i] = new_Node(NULL, sequences->seqs[i]->name, i);
+    for ( ; i < dim; i++ ) {
+        nodes[i] = new_Node(NULL, taxa[i], i);
     }
     
-    Node *root = cluster(nodes, matrix, nTips);
+    Node *root = cluster(nodes, matrix, dim);
     free(nodes);
     
     return new_Tree2(root, false);
@@ -228,22 +227,21 @@ void findMinIndexes( double **matrix, int ncluster, double *r, int *alias, int *
     }
 }
 
-Tree * new_NJ( const Sequences *sequences, double **matrix ){
-    int nTips = sequences->size;
-    Node **nodes = (Node**)malloc(sizeof(Node*)*nTips);
+struct Tree * new_NJ( const char **taxa, size_t dim, double **matrix ){
+    Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
     assert(nodes);
-    int *alias = ivector(nTips);
-    double *r = dvector(nTips);
+    int *alias = ivector(dim);
+    double *r = dvector(dim);
     
     int imin=0;
     int jmin=0;
     
     int i = 0;
-    for ( ; i < nTips; i++ ) {
-        nodes[i] = new_Node(NULL, sequences->seqs[i]->name, i);
+    for ( ; i < dim; i++ ) {
+        nodes[i] = new_Node(NULL, taxa[i], i);
         alias[i] = i;
     }
-    int ncluster = nTips;
+    int ncluster = dim;
     
     while( ncluster > 2 ){
         // calculate net divergence
@@ -336,22 +334,21 @@ void findMinIndexes_float( float **matrix, int ncluster, float *r, int *alias, i
     }
 }
 
-Tree * new_NJ_float( const Sequences *sequences, float **matrix ){
-    int nTips = sequences->size;
-    Node **nodes = (Node**)malloc(sizeof(Node*)*nTips);
+struct Tree * new_NJ_float( const char **taxa, size_t dim, float **matrix ){
+    Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
     assert(nodes);
-    int *alias = ivector(nTips);
-    float *r = fvector(nTips);
+    int *alias = ivector(dim);
+    float *r = fvector(dim);
     
     int imin=0;
     int jmin=0;
     
     int i = 0;
-    for ( ; i < nTips; i++ ) {
-        nodes[i] = new_Node(NULL, sequences->seqs[i]->name, i);
+    for ( ; i < dim; i++ ) {
+        nodes[i] = new_Node(NULL, taxa[i], i);
         alias[i] = i;
     }
-    int ncluster = nTips;
+    int ncluster = dim;
     
     while( ncluster > 2 ){
         // calculate net divergence

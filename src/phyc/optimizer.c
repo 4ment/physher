@@ -378,7 +378,9 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 	}
 	opt_result result = OPT_SUCCESS;
 	
-	opt->dimension = Parameters_count(ps);
+	if(ps != NULL){
+		opt->dimension = Parameters_count(ps);
+	}
 	
 	// should probably moved somewhere else
 	opt->stop.oldx = dvector(opt->dimension);

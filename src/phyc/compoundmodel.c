@@ -10,6 +10,7 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 
 
 double _compoundModel_logP(CompoundModel* cm){
@@ -87,6 +88,9 @@ CompoundModel* clone_compound_model(CompoundModel* cm){
 	clone->free = cm->free;
 	return clone;
 }
+
+#pragma mark-
+#pragma mark Model
 
 static Model* _compound_model_clone( Model *self, Hashtable* hash ){
 	if (Hashtable_exists(hash, self->name)) {
@@ -172,5 +176,31 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->free = _compound_model_free;
 	model->clone = _compound_model_clone;
 	model->get_free_parameters = _compound_model_get_free_parameters;
+	return model;
+}
+
+Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
+	CompoundModel* cm = new_CompoundModel();
+	json_node* distributions = get_json_node(node, "distributions");
+	assert(distributions);
+	
+	for (int i = 0; i < distributions->child_count; i++) {
+		json_node* child = distributions->children[i];
+		if(child->type == NULL) continue;
+		
+		if(strcasecmp(child->type, "treelikelihood") == 0){
+			Model* likelihood = new_TreeLikelihoodModel_from_json(child, hash);
+			cm->add(cm, likelihood);
+			likelihood->free(likelihood);
+		}
+		else if (strcasecmp(child->type, "distribution") == 0){
+			
+		}
+		else{
+			printf("json CompoundModel unknown: (%s)\n", child->type);
+			exit(1);
+		}
+	}
+	Model* model = new_CompoundModel2(node->id, cm);
 	return model;
 }

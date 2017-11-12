@@ -43,4 +43,6 @@ void free_FileReader( FileReader *reader );
 
 double ** FileReader_csv_double( const char *filename, int nrow, int ncol );
 
+char* load_file(const char *filename);
+
 #endif

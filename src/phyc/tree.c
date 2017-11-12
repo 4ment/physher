@@ -618,16 +618,58 @@ static void _tree_model_get_free_parameters(Model* model, Parameters* parameters
 // TreeModel listen to the height and distance parameters
 Model * new_TreeModel( const char* name, Tree *tree ){
 	Model *model = new_Model(name, tree);
+	StringBuffer* buffer = new_StringBuffer(10);
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
+		StringBuffer_set_string(buffer, name);
+		StringBuffer_append_string(buffer, tree->nodes[i]->distance->name);
+		Parameter_set_name(tree->nodes[i]->distance, buffer->c);
+		StringBuffer_set_string(buffer, name);
+		StringBuffer_append_string(buffer, tree->nodes[i]->height->name);
+		Parameter_set_name(tree->nodes[i]->height, buffer->c);
 		tree->nodes[i]->distance->listeners->add(tree->nodes[i]->distance->listeners, model);
 		tree->nodes[i]->height->listeners->add(tree->nodes[i]->height->listeners, model);
 	}
-
+	free_StringBuffer(buffer);
 	model->update = _tree_handle_change;
 	model->free = _tree_model_free;
 	model->clone = _tree_model_clone;
 	model->get_free_parameters = _tree_model_get_free_parameters;
 	return model;
+}
+
+Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
+	json_node* newick_node = get_json_node(node, "newick");
+	json_node* file_node = get_json_node(node, "file");
+	json_node* init_node = get_json_node(node, "init");
+	json_node* patterns_node = get_json_node(node, "patterns");
+	
+	Model* mtree = NULL;
+	
+	if (newick_node != NULL) {
+		char* newick = (char*)newick_node->value;
+		Tree* tree = new_Tree(newick, true);
+		mtree = new_TreeModel(node->id, tree);
+	}
+	else if (file_node != NULL) {
+
+		
+	}
+	else if (init_node != NULL) {
+		json_node* type_node = get_json_node(node, "type");
+		json_node* model_node = get_json_node(node, "model");
+		char* type = (char*)type_node->value;
+		
+	}
+	else if (node->node_type != MJSON_STRING) {
+		char* ref = (char*)node->value;
+		mtree = Hashtable_get(hash, ref+1);
+		mtree->ref_count++;
+	}
+	else{
+		exit(1);
+	}
+	
+	return mtree;
 }
 
 static void free_Tree_aux( Node *n ){

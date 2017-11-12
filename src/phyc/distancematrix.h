@@ -21,6 +21,7 @@
 #include <stdio.h>
 
 #include "sequence.h"
+#include "sitepattern.h"
 
 typedef enum distancematrix_model{
     DISTANCE_MATRIX_UNCORRECTED,
@@ -33,5 +34,7 @@ typedef enum distancematrix_model{
 double ** Sequences_distance( const Sequences *sequences, distancematrix_model model );
 
 float ** Sequences_distance_float( const Sequences *sequences, distancematrix_model model );
+
+double ** Patterns_distance( const SitePattern *patterns, distancematrix_model model );
 
 #endif /* defined(__PhyC__distancematrix__) */

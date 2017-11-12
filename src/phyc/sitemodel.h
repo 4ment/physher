@@ -82,15 +82,15 @@ SiteModel * new_PinvSiteModel_with_parameters( SubstitutionModel *m, const Param
 
 SiteModel * new_GammaSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count );
 
-SiteModel * new_GammaSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const unsigned int cat_count );
+SiteModel * new_GammaSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const size_t cat_count );
 
 SiteModel * new_GammaPinvSiteModel( SubstitutionModel *m, const double pinv, const double shape, const unsigned int cat_count );
 
-SiteModel * new_GammaPinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* params, const unsigned int cat_count );
+SiteModel * new_GammaPinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* params, const size_t cat_count );
 
 SiteModel * new_GammaLaguerreSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count );
 
-SiteModel * new_GammaLaguerreSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const unsigned int cat_count );
+SiteModel * new_GammaLaguerreSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const size_t cat_count );
 
 
 void SiteModel_set_mu( SiteModel *sm, double mu );

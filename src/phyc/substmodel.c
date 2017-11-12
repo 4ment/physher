@@ -149,6 +149,79 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 	return model;
 }
 
+Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
+	json_node* model_node = get_json_node(node, "model");
+	json_node* freqs_node = get_json_node(node, "frequencies");
+	json_node* rates_node = get_json_node(node, "rates");
+	json_node* datatype_node = get_json_node(node, "datatype");
+	
+	// DataType
+	DataType* datatype = new_DataType_from_json(datatype_node, hash);
+
+	// Simplex
+	Model* freqs = NULL;
+	if (freqs_node!= NULL && freqs_node->node_type == MJSON_OBJECT) {
+		freqs = new_SimplexModel_from_json(freqs_node, hash);
+	}
+	else if(freqs_node!= NULL && freqs_node->node_type == MJSON_STRING){
+		char* ref = (char*)freqs_node->value;
+		// check it starts with a &
+		freqs = Hashtable_get(hash, ref+1);
+		freqs->ref_count++;
+	}
+	else{
+		exit(1);
+	}
+	
+	// Rates
+	Parameters* rates = NULL;
+	if (rates_node != NULL && rates_node->node_type == MJSON_ARRAY) {
+		rates = new_Parameters_from_json(rates_node, hash);
+	}
+	else if (rates_node != NULL && rates_node->node_type == MJSON_OBJECT) {
+		Parameter* p = new_Parameter_from_json(rates_node, hash);
+		Parameters_move(rates, p);
+	}
+	
+	// Rate assignment
+	char** assignment = NULL;
+	if (Parameters_count(rates) > 0) {
+		assignment = (char**)malloc(sizeof(char*)*rates_node->child_count);
+		for (int i = 0; i < rates_node->child_count; i++) {
+			json_node* child = rates_node->children[i];
+			assignment[i] = child->key;
+		}
+	}
+	
+	// Optional discrete model for general substitution model
+	DiscreteParameter* dp = NULL;
+	char* model_string = NULL;
+	// General model
+	if (model_node != NULL && model_node->node_type == MJSON_OBJECT) {
+		dp = new_DiscreteParameter_from_json(model_node, hash);
+		SubstitutionModel* m = new_GeneralModel_with_parameters(dp, rates, freqs, -1, false);
+		Model* mm = new_SubstitutionModel2(node->id, m, freqs);
+		free_Parameters(rates);
+		freqs->free(freqs);
+		if(assignment != NULL) free(assignment);
+		return mm;
+	}
+	else if(model_node != NULL && model_node->node_type == MJSON_STRING){
+		model_string = (char*)model_node->value;
+	}
+	else{
+		exit(1);
+	}
+	
+	SubstitutionModel* m = SubstitutionModel_factory(model_string, datatype, (Simplex*)freqs->obj, rates, assignment);
+	Model* mm = new_SubstitutionModel2(node->id, m, freqs);
+	free_Parameters(rates);
+	freqs->free(freqs);
+	if(assignment != NULL) free(assignment);
+	free(model_string);
+	return mm;
+}
+
 double get_frequency( SubstitutionModel *m, int base ){
 	return m->simplex->get_value(m->simplex, base);
 }
@@ -1143,35 +1216,103 @@ int nDNARates( const char *code ){
 	return max+1;
 }
 
-/*SubstitutionModel * SubstitutionModel_factory( const char* model_string ){
-	if (model_string == NULL ) {
-		return NULL;
-	}
+SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataType* datatype, Simplex* freqSimplex, const Parameters* rates, const char** assignment ){
+	SubstitutionModel *mod = NULL;
+	size_t K = freqSimplex->K;
 	
-	SubstitutionModel *model = NULL;
-	if ( strlen(model_string) == 5 ) {
-		if ( !Model_is_valid(model_string) ) {
-			error("Model invalid\n");
+	if (datatype->type == DATA_TYPE_NUCLEOTIDE) {
+		bool equal_frequencies = false;
+		for (int i = 0; i < K; i++) {
+			Parameter* p = Parameters_at(freqSimplex->parameters, i);
+			if (Parameter_estimate(p) != false || Parameter_value(p) != 0.25) {
+				equal_frequencies = true;
+				break;
+			}
 		}
-		else {
-			//double freqs[4] = {0.25,0.25,0.25,0.25};
+		char* model_string2 = NULL;
+		if( model_string[0] == '0' ){
+			if(strcasecmp("00000", model_string) == 0 && equal_frequencies){
+				model_string = String_clone("JC69");
+			}
+			else if( strcasecmp("01001", model_string) == 0 && equal_frequencies){
+				model_string = String_clone("K80");
+			}
+			else if(strcasecmp("00000", model_string) == 0){
+				model_string = String_clone("F81");
+			}
+			else if( strcasecmp("01001", model_string) == 0){
+				model_string = String_clone("HKY");
+			}
+			else if( strcasecmp("01234", model_string) == 0){
+				model_string = String_clone("GTR");
+			}
+		}
+		else{
+			model_string2 = String_clone(model_string);
+		}
+		
+		if( strcasecmp("JC69", model_string2) == 0 ){
+			mod = new_JC69(freqSimplex);
+		}
+		else if( strcasecmp("K80", model_string2) == 0 ){
+			mod = new_K80(freqSimplex);
+		}
+		else if( strcasecmp("F81", model_string2) == 0 ){
+			mod = new_F81(freqSimplex);
+		}
+		else if( strcasecmp("HKY", model_string2) == 0 ){
+			mod = new_HKY(freqSimplex);
+		}
+		else if( strcasecmp("GTR", model_string2) == 0 ){
+			mod = new_GTR(freqSimplex);
+		}
+		else if( strcasecmp("UREV", model_string2) == 0 ){
+			mod = new_UnrestrictedNucleotideModel();
+		}
+		else if( strcasecmp("NONSTAT", model_string2) == 0 ){
+			mod = new_NONSTATNucleotideModel(freqSimplex);
+		}
+		else{
+			mod = new_ReversibleNucleotideModel(model_string2, freqSimplex);
+		}
+		free(model_string2);
+	}
+	else if (datatype->type == DATA_TYPE_AMINO_ACID) {
+		if ( strcasecmp("LG", model_string) == 0) {
+			mod = new_LG_with_parameters(freqSimplex);
+		}
+		else if ( strcasecmp("WAG", model_string) == 0) {
+			mod = new_WAG_with_parameters(freqSimplex);
+		}
+		else if ( strcasecmp("DAYOFF", model_string) == 0) {
+			mod = new_DAYHOFF_with_parameters(freqSimplex);
+		}
+		else{
+			fprintf(stderr, "Amino acid Subsitution model unknown: %s\n", model_string);
+			exit(1);
 		}
 	}
-	else if( strcmp(model_string, "GTR") == 0 ){
-		model = new_GTR();
+	else if (datatype->type == DATA_TYPE_CODON) {
+		if ( strcasecmp("GY94", model_string) == 0) {
+			
+		}
+		else if ( strcasecmp("MG94", model_string) == 0) {
+			
+		}
+		else{
+			fprintf(stderr, "Codon Subsitution model unknown: %s\n", model_string);
+			exit(1);
+		}
 	}
-	else if( strcmp(model_string, "HKY") == 0 ){
-		model = new_HKY();
+	else if (datatype->type == DATA_TYPE_GENERIC) {
+		exit(1);
 	}
-	else if( strcmp(model_string, "JC69") == 0 ){
-		model = new_JC69();
+	else{
+		error("factory Susbtition model\n");
 	}
-	else if( strcmp(model_string, "K80") == 0 ){
-		model = new_K80();
-	}
-	
-	return model;
+	return mod;
 }
+/*
 
 SubstitutionModel * SubstitutionModel_nuc_factory_with_values( modeltype modtype, double *rates, double *freqs ){
 	SubstitutionModel *model = NULL;

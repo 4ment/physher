@@ -18,6 +18,9 @@
 #ifndef PhyC_datatype_h
 #define PhyC_datatype_h
 
+#include "mjson.h"
+#include "hashtable.h"
+
 typedef enum datatype{ DATA_TYPE_NUCLEOTIDE, DATA_TYPE_CODON, DATA_TYPE_AMINO_ACID, DATA_TYPE_GENERIC} datatype;
 
 static const int8_t NUCLEOTIDE_AMBIGUITY_STATES[18][4] = {
@@ -80,6 +83,7 @@ typedef struct DataType{
     int8_t genetic_code;
 }DataType;
 
+DataType* new_DataType_from_json(json_node* node, Hashtable* table);
 
 DataType * clone_DataType(const DataType *dataType);
 
@@ -89,7 +93,7 @@ DataType *new_AminoAcidDataType();
 
 DataType *new_CodonDataType(int genetic_code);
 
-DataType *new_GenericDataType( int count, const char **states) ;
+DataType *new_GenericDataType( size_t count, const char **states) ;
 
 void free_DataType( DataType *dataType);
 

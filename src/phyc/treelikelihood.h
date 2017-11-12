@@ -28,6 +28,7 @@
 #include "branchmodel.h"
 #include "optimizer.h"
 #include "treesearch.h"
+#include "mjson.h"
 
 //#define SCALING_THRESHOLD 1.0e-100
 
@@ -151,6 +152,8 @@ struct _SingleTreeLikelihood{
 };
 
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm );
+
+Model * new_TreeLikelihoodModel_from_json(const char*json, json_node*node, Hashtable*hash);
 
 #pragma mark -
 #pragma mark Optimizable

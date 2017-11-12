@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 #include "parameters.h"
-
+#include "mjson.h"
 
 
 struct _Simplex;
@@ -19,7 +19,7 @@ typedef struct _Simplex Simplex;
 
 
 struct _Simplex{
-	int K;
+	size_t K;
 	//Parameters* cparameters; // K parameters
 	Parameters* parameters; // K-1 parameters
 	double* values; // K double
@@ -40,5 +40,7 @@ void free_Simplex(Simplex* simplex);
 Simplex* clone_Simplex(const Simplex* simplex);
 
 Model * new_SimplexModel( const char* name, Simplex *simplex );
+
+Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash);
 
 #endif /* simplex_h */

@@ -95,6 +95,42 @@ const char * _state_string( const DataType *datatype, int encoding){
     return "?";
 }
 
+DataType* new_DataType_from_json(json_node* node, Hashtable* hash){
+	DataType* datatype = NULL;
+	if(node->node_type == MJSON_OBJECT){
+		json_node* states_node = get_json_node(node, "states");
+		size_t count = states_node->child_count;
+		const char** states = malloc(sizeof(char*)*count);
+		for (size_t i = 0; i < count; i++) {
+			states[i] = (char*)states_node->children[i];
+		}
+		datatype = new_GenericDataType(count, states);
+		free(states);
+	}
+	else if(node->node_type == MJSON_STRING){
+		char* ref = (char*)node->value;
+		if (ref[0] == '&') {
+			datatype = Hashtable_get(hash, ref+1);
+			datatype = clone_DataType(datatype);
+		}
+		else if(strcasecmp("nucleotide", ref) == 0){
+			datatype = new_NucleotideDataType();
+		}
+		else if(strcasecmp("codon", ref) == 0){
+			json_node* code_node = get_json_node(node, "code");
+			datatype = new_CodonDataType(atoi((char*)code_node->value));
+		}
+		else if(strcasecmp("aa", ref) == 0){
+			datatype = new_AminoAcidDataType();
+			//TODO
+		}
+		else{
+			
+		}
+	}
+	return datatype;
+}
+
 DataType * clone_DataType(const DataType *dataType){
     DataType *newDataType = malloc(sizeof(DataType));
     assert(dataType);
@@ -142,7 +178,7 @@ static int _encoding( DataType *datatype, char nuc){
     return i;
 }
 
-DataType *new_GenericDataType( int count, const char **states){
+DataType *new_GenericDataType( size_t count, const char **states){
     DataType *dataType = malloc(sizeof(DataType));
     assert(dataType);
     dataType->desc = String_clone("Generic");

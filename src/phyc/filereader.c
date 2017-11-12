@@ -291,3 +291,15 @@ double ** FileReader_csv_double( const char *filename, int nrow, int ncol ){
     return  matrix;
 }
 
+
+char* load_file(const char *filename){
+	FileReader* reader = new_FileReader(filename, 1000);
+	StringBuffer* buffer = new_StringBuffer(100);
+	while ( reader->read_line(reader) ) {
+		StringBuffer_append_string(buffer, reader->buffer->c);
+	}
+	free(reader);
+	char* content = StringBuffer_tochar(buffer);
+	free_StringBuffer(buffer);
+	return content;
+}

@@ -91,6 +91,7 @@
 
 #include "compoundmodel.h"
 #include "distmodel.h"
+#include "mjson.h"
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -1513,7 +1514,11 @@ void test2(Model* mpost){
 }
 
 int main(int argc, char* argv[]){
-    
+	const char* content = load_file("/Users/mathieu/Dropbox/physher/gtr.json");
+	json_node* json = create_json_tree(content);
+	json_tree_to_string(json);
+	exit(1);
+	
     bool overwrite = false;
     char *seq_file  = NULL;
     char *tree_file = NULL;

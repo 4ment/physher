@@ -21,6 +21,8 @@
 #include "utils.h"
 #include "parameters.h"
 #include "node.h"
+#include "mjson.h"
+#include "nj.h"
 
 typedef enum  treeorder {PREORDER, POSTORDER} treeorder;
 
