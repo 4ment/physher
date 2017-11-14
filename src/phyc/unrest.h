@@ -20,8 +20,8 @@
 
 #include "substmodel.h"
 
-SubstitutionModel * new_UnrestrictedNucleotideModel();
+struct SubstitutionModel * new_UnrestrictedNucleotideModel();
 
-SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters( const Parameters* rates );
+struct SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters( const Parameters* rates );
 
 #endif /* unrest_h */

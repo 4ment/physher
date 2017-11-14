@@ -21,7 +21,7 @@
 
 #include "substmodel.h"
 
-SubstitutionModel * new_F81(Simplex* freqs);
+struct SubstitutionModel * new_F81(Simplex* freqs);
 
 #endif /* f81_h */
 

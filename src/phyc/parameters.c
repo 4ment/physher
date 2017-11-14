@@ -211,7 +211,8 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 		upper = atof((char*)upper_node->value);
 	}
 	Constraint* cnstr = new_Constraint(lower, upper);
-	return new_Parameter(node->id, value, cnstr);
+	json_node* id_node = get_json_node(node, "id");
+	return new_Parameter((char*)id_node->value, value, cnstr);
 }
 
 Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash){
@@ -844,6 +845,7 @@ static void _free_DiscreteParameter( DiscreteParameter *p ){
 	if(p->refCount == 1){
 		free(p->name);
 		p->listeners->free(p->listeners);
+		free(p->values);
 		free(p);
 	}
 	else{

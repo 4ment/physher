@@ -70,7 +70,7 @@ typedef struct SubstitutionModel{
 	bool need_update;
 	
 	Parameters *rates;
-	//Parameters *freqs; // hold relative frequencies
+	Simplex* rates_simplex;
 
 	int relativeTo;
 	
@@ -111,7 +111,7 @@ typedef struct SubstitutionModel{
 	
 }SubstitutionModel;
 
-Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* simplex  );
+Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex );
 
 void generale_update_freqs( SubstitutionModel *model );
 
@@ -159,13 +159,7 @@ void bufferize_rates( StringBuffer *buffer, const SubstitutionModel *m );
 
 void compare_model( const SubstitutionModel *m1, const SubstitutionModel *m2 );
 
-SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataType* datatype, Simplex* freqSimplex, const Parameters* rates, const char** assignment );
-
-/*SubstitutionModel * SubstitutionModel_factory( const char* model_string );
-
-SubstitutionModel * SubstitutionModel_nuc_factory_with_values( modeltype modtype, double *rates, double *freqs );
-
-char * SubstitutionModel_get_string( modeltype modtype );*/
+SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataType* datatype, Simplex* freqSimplex, Simplex* rates_simplex, const Parameters* rates, const char** assignment );
 
 
 void print_P( double *p, int nstate );

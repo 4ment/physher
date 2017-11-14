@@ -637,7 +637,7 @@ float ** Sequences_distance_float( const Sequences *sequences, distancematrix_mo
     return matrix;
 }
 
-double ** Patterns_distance( const SitePattern *patterns, distancematrix_model model ){
+double ** SitePattern_distance( const SitePattern *patterns, distancematrix_model model ){
 	
 	double **matrix = dmatrix(patterns->size, patterns->size);
 	

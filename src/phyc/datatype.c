@@ -122,10 +122,10 @@ DataType* new_DataType_from_json(json_node* node, Hashtable* hash){
 		}
 		else if(strcasecmp("aa", ref) == 0){
 			datatype = new_AminoAcidDataType();
-			//TODO
 		}
 		else{
-			
+			printf("Datatype not recognixzed %s\n", ref);
+			exit(1);
 		}
 	}
 	return datatype;

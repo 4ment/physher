@@ -226,7 +226,8 @@ Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
 		json_node* dimension = get_json_node(node, "dimension");
 		simplex = new_Simplex(atoi((char*)dimension));
 	}
-	Model* model = new_SimplexModel(node->id, simplex);
+	json_node* id_node = get_json_node(node, "id");
+	Model* model = new_SimplexModel((char*)id_node->value, simplex);
 	return model;
 }
 

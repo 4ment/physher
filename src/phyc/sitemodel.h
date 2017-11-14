@@ -70,6 +70,8 @@ typedef struct SiteModel{
 
 Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel );
 
+Model* new_SiteModel_from_json(json_node*node, Hashtable*hash);
+
 #pragma mark -
 // MARK: Gamma SiteModel
 

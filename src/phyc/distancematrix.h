@@ -35,6 +35,6 @@ double ** Sequences_distance( const Sequences *sequences, distancematrix_model m
 
 float ** Sequences_distance_float( const Sequences *sequences, distancematrix_model model );
 
-double ** Patterns_distance( const SitePattern *patterns, distancematrix_model model );
+double ** SitePattern_distance( const SitePattern *patterns, distancematrix_model model );
 
 #endif /* defined(__PhyC__distancematrix__) */

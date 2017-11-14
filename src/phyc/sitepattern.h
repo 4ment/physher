@@ -27,6 +27,7 @@
 #include "parser.h"
 
 #include "datatype.h"
+#include "mjson.h"
 
 /*static char AMINO_ACIDS[20] = "ACDEFGHIKLMNPQRSTVWY";
 static int AMINO_ACID_STATES[128] = {
@@ -117,5 +118,7 @@ void SitePattern_sort( SitePattern *sitepattern, int *ordering );
 double ** SitePattern_rates( const SitePattern *sp );
 
 unsigned SitePattern_polymorphic_count(SitePattern *sp);
+
+SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash);
 
 #endif

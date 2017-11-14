@@ -20,6 +20,7 @@
 
 #include "sequence.h"
 #include "mstring.h"
+#include "mjson.h"
 
 Sequences * readSequences ( const char *infile );
 
@@ -41,5 +42,7 @@ void Sequences_save_phylip( const Sequences *sequences, const char *filename );
 char * File_stringify( const char *filename );
 
 StringBuffer * File_bufferize( StringBuffer *buffer, const char *filename );
+
+Sequences* new_Sequences_from_json(json_node* node, Hashtable* hash);
 
 #endif

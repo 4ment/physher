@@ -1263,10 +1263,15 @@ void run_Distance( const char* seq_file, const char* output_stem, const char* mo
         fprintf(stdout, "\n");
         fprintf(stdout, "Building tree... ");
         fflush(stdout);
-        
+		
+		char** taxa = malloc(sizeof(char*)*seqs->size);
+		for (int i = 0; i < seqs->size; i++) {
+			taxa[i] = seqs->seqs[i]->name;
+		}
+		
         switch (algorithm) {
             case CLUSTERING_NJ:
-                tree = new_NJ(seqs, matrix);
+                tree = new_NJ(taxa, seqs->size, matrix);
                 rooted = 'U';
                 break;
             case CLUSTERING_UPGMA:
@@ -1275,7 +1280,7 @@ void run_Distance( const char* seq_file, const char* output_stem, const char* mo
             default:
                 assert(0);
         }
-        
+		free(taxa);
         free_dmatrix(matrix, seqs->size);
     }
     else {
@@ -1290,10 +1295,15 @@ void run_Distance( const char* seq_file, const char* output_stem, const char* mo
         fprintf(stdout, "\n");
         fprintf(stdout, "Building tree... ");
         fflush(stdout);
-        
+		
+		char** taxa = malloc(sizeof(char*)*seqs->size);
+		for (int i = 0; i < seqs->size; i++) {
+			taxa[i] = seqs->seqs[i]->name;
+		}
+		
         switch (algorithm) {
             case CLUSTERING_NJ:
-                tree = new_NJ_float(seqs, matrix);
+                tree = new_NJ_float(taxa, seqs->size, matrix);
                 rooted = 'U';
                 break;
             case CLUSTERING_UPGMA:
@@ -1301,7 +1311,8 @@ void run_Distance( const char* seq_file, const char* output_stem, const char* mo
                 break;
             default:
                 break;
-        }
+		}
+		free(taxa);
         free_fmatrix(matrix, seqs->size);
     }
     time(&t2);
@@ -1514,10 +1525,26 @@ void test2(Model* mpost){
 }
 
 int main(int argc, char* argv[]){
-	const char* content = load_file("/Users/mathieu/Dropbox/physher/gtr.json");
+	char* content = load_file("/Users/mathieu/Dropbox/physher/gtr2.json");
 	json_node* json = create_json_tree(content);
-	json_tree_to_string(json);
-	exit(1);
+	free(content);
+	json_node* run_node = get_json_node(json, "run");
+	json_node* model_node = get_json_node(json, "model");
+	json_node* type_node = get_json_node(model_node, "type");
+	Hashtable* hash2 = new_Hashtable_string(100);
+	hashtable_set_key_ownership( hash2, false );
+	hashtable_set_value_ownership( hash2, false );
+	
+	if (strcasecmp((char*)type_node->value, "compound") == 0) {
+		Model* model = new_CompoundModel_from_json(model_node, hash2);
+		printf("%f\n", model->logP(model));
+		model->free(model);
+	}
+	free_Hashtable(hash2);
+	
+	//json_tree_to_string(json);
+	json_free_tree(json);
+	exit(0);
 	
     bool overwrite = false;
     char *seq_file  = NULL;
@@ -2019,17 +2046,22 @@ int main(int argc, char* argv[]){
         if( dataType->type == DATA_TYPE_AMINO_ACID ){
             model = DISTANCE_MATRIX_KIMURA;
         }
-        
+		char** taxa = malloc(sizeof(char*)*seqs->size);
+		for (int i = 0; i < seqs->size; i++) {
+			taxa[i] = seqs->seqs[i]->name;
+		}
+		
         if(use_double_distance){
             double** matrix = Sequences_distance(seqs,model);
-            tree = new_NJ(seqs, matrix);
+            tree = new_NJ(seqs, seqs->size, matrix);
             free_dmatrix(matrix, seqs->size);
         }
         else {
             float** matrix = Sequences_distance_float(seqs,model);
-            tree = new_NJ_float(seqs, matrix);
+            tree = new_NJ_float(seqs, seqs->size, matrix);
             free_fmatrix(matrix, seqs->size);
         }
+		free(taxa);
     }
     
 	if ( tree_scaler > 0 ) {
@@ -2449,7 +2481,7 @@ int main(int argc, char* argv[]){
 	
 	Model* mtree = new_TreeModel("tree", tree);
 	Model* mfreq = new_SimplexModel("simplex", freqSimplex);
-	Model* mmod = new_SubstitutionModel2("substmodel", mod, mfreq);
+	Model* mmod = new_SubstitutionModel2("substmodel", mod, mfreq, NULL);
 	Model* msm = new_SiteModel2("sitemodel", sm, mmod);
 	Model* mtlk = new_TreeLikelihoodModel("likelihood", tlk, mtree, msm, NULL);
 	mtree->free(mtree);

@@ -10,5 +10,13 @@
 #define substmodels_h
 
 #include "gensubst.h"
+#include "gtr.h"
+#include "jc69.h"
+#include "k80.h"
+#include "f81.h"
+#include "hky.h"
+#include "nucsubst.h"
+
+#include "unrest.h"
 
 #endif /* substmodels_h */

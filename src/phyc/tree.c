@@ -30,6 +30,8 @@
 #include "mathconstant.h"
 #include "node.h"
 
+#include "distancematrix.h"
+
 struct _Tree{
 	int id;
 	Node *root;
@@ -655,10 +657,42 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		
 	}
 	else if (init_node != NULL) {
-		json_node* type_node = get_json_node(node, "type");
-		json_node* model_node = get_json_node(node, "model");
-		char* type = (char*)type_node->value;
+		json_node* algorithm_node = get_json_node(init_node, "algorithm");
+		json_node* model_node = get_json_node(init_node, "model");
+		json_node* patterns_node = get_json_node(init_node, "sitepattern");
 		
+		if (algorithm_node != NULL) {
+			char* algorithm = (char*)algorithm_node->value;
+		}
+		char* patterns_ref = (char*)patterns_node->value;
+		
+		SitePattern* patterns = Hashtable_get(hash, patterns_ref+1);
+
+		distancematrix_model tt = DISTANCE_MATRIX_UNCORRECTED;
+		if (model_node != NULL) {
+			const char* model = (char*)model_node->value;
+			if (strcasecmp("raw", model) == 0) {
+				tt = DISTANCE_MATRIX_UNCORRECTED;
+			}
+			else if (strcasecmp("jc69", model) == 0) {
+				tt = DISTANCE_MATRIX_JC69;
+			}
+			else if (strcasecmp("k2p", model) == 0) {
+				tt = DISTANCE_MATRIX_K2P;
+			}
+			else if (strcasecmp("kimura", model) == 0) {
+				tt = DISTANCE_MATRIX_KIMURA;
+			}
+			else{
+				exit(1);
+			}
+		}
+		
+		double** matrix = SitePattern_distance(patterns, tt);
+		Tree* tree = new_NJ((const char**)patterns->names, patterns->size, matrix);
+		json_node* id = get_json_node(node, "id");
+		mtree = new_TreeModel((char*)id->value, tree);
+		free_dmatrix(matrix, patterns->size);
 	}
 	else if (node->node_type != MJSON_STRING) {
 		char* ref = (char*)node->value;

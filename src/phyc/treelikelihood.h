@@ -153,7 +153,7 @@ struct _SingleTreeLikelihood{
 
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm );
 
-Model * new_TreeLikelihoodModel_from_json(const char*json, json_node*node, Hashtable*hash);
+Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash);
 
 #pragma mark -
 #pragma mark Optimizable

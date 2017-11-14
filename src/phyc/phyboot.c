@@ -1926,9 +1926,13 @@ void Distance_resampling_openmp( const Sequences *sequences, resampling_scheme s
         }
         
         double **matrix = Sequences_distance(resampled, model);
+		char** taxa = malloc(sizeof(char*)*sequences->size);
+		for (int i = 0; i < sequences->size; i++) {
+			taxa[i] = sequences->seqs[i]->name;
+		}
         Tree *tree = NULL;
         if ( algorithm == CLUSTERING_NJ ) {
-            tree = new_NJ(sequences, matrix);
+            tree = new_NJ(taxa, sequences->size, matrix);
         }
         else if( algorithm == CLUSTERING_UPGMA){
             tree = new_UPGMA(resampled, matrix);
@@ -1937,7 +1941,8 @@ void Distance_resampling_openmp( const Sequences *sequences, resampling_scheme s
             error("clustering algorithm not yet implemented\n");
         }
         free_dmatrix(matrix, sequences->size);
-        
+		free(taxa);
+		
         #pragma omp critical
         {
             

@@ -491,3 +491,22 @@ void Sequences_save_phylip( const Sequences *sequences, const char *filename ){
 	fclose(pfile);
 }
 
+Sequences* new_Sequences_from_json(json_node* node, Hashtable* hash){
+	json_node* file_node = get_json_node(node, "file");
+	json_node* sequences_node = get_json_node(node, "sequences");
+	Sequences* sequences = NULL;
+	
+	if(sequences_node != NULL){
+		for (int i = 0; i < sequences_node->child_count; i++) {
+			json_node* child = sequences_node->children[i];
+		}
+	}
+	else if(file_node != NULL){
+		const char* filename = (const char*)file_node->value;
+		sequences = readSequences(filename);
+	}
+	else{
+		exit(1);
+	}
+	return sequences;
+}

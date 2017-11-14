@@ -707,3 +707,23 @@ unsigned SitePattern_polymorphic_count(SitePattern *sp){
     return polymorphisms;
 }
 
+
+SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
+	json_node* alignment_node = get_json_node(node, "alignment");
+	json_node* datatype_node = get_json_node(node, "datatype");
+	SitePattern* patterns = NULL;
+	
+	
+	if (alignment_node != NULL) {
+		DataType* datatype = new_DataType_from_json(datatype_node, hash);
+		Sequences* sequences = new_Sequences_from_json(alignment_node, hash);
+		sequences->datatype = datatype;
+		patterns = new_SitePattern(sequences);
+		free_Sequences(sequences);
+	}
+	else{
+		exit(1);
+	}
+	return patterns;
+}
+

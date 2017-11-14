@@ -16,7 +16,8 @@ typedef enum {
 	MJSON_ARRAY = 0,
 	MJSON_STRING = 1,
 	MJSON_PRIMITIVE = 2,
-	MJSON_OBJECT = 3
+	MJSON_OBJECT = 3,
+	MJSON_UNDEFINED = 4,
 } json_node_t;
 
 typedef struct json_node {
@@ -26,13 +27,13 @@ typedef struct json_node {
 	char* type;
 	char* key;
 	void*value;
-	size_t start;
-	size_t end;
 	size_t child_count;
 	json_node_t node_type;
 }json_node;
 
 json_node* create_json_tree(const char* json);
 json_node* get_json_node(json_node* node, const char* key);
+char* get_json_node_value_string(json_node* node, const char* key);
 void json_tree_to_string(json_node* node);
+void json_free_tree(json_node* node);
 #endif /* mjson_h */

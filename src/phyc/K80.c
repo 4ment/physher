@@ -82,14 +82,13 @@ SubstitutionModel * new_K80(){
 }
 
 SubstitutionModel * new_K80_with_values( const double kappa ){
-	Parameters * k = new_Parameters(1);
-	Parameters_move(k, new_Parameter_with_postfix("k80.kappa", "model", kappa, new_Constraint(0.0001, 100)));
+	Parameter * k = new_Parameter_with_postfix("k80.kappa", "model", kappa, new_Constraint(0.0001, 100));
 	SubstitutionModel* m = new_K80_with_parameters(k);
-	free_Parameters(k);
+	free_Parameter(k);
 	return m;
 }
 
-SubstitutionModel * new_K80_with_parameters( const Parameters* kappa ){
+SubstitutionModel * new_K80_with_parameters( Parameter* kappa ){
 	Simplex* freqs = new_Simplex(4);
 	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
 		Parameters_set_estimate(freqs->parameters, false, i);
@@ -99,7 +98,7 @@ SubstitutionModel * new_K80_with_parameters( const Parameters* kappa ){
 	m->update_Q = k80_update_Q;
 	
 	m->rates = new_Parameters( 1 );
-	Parameters_add(m->rates, Parameters_at(kappa, 0) );
+	Parameters_add(m->rates, kappa);
 	
 	return m;
 }

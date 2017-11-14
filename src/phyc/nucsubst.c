@@ -21,16 +21,20 @@
 
 static void nuc_sym_update_Q( SubstitutionModel *m );
 
-
-SubstitutionModel * new_ReversibleNucleotideModel( const char model[5], Simplex* freqs ){
+// we can give a string of 5 characters 00111 -> rates are relative to the last rate (gt)
+// we can give a string of 6 characters 0*0111 -> rates are relative to the second rate
+// use GTR if you want a simplex and 6 rates
+SubstitutionModel * new_ReversibleNucleotideModel_with_parameters( const char* model, Simplex* freqs, const Parameters* rates){
     SubstitutionModel *m = NULL;
     
     m = create_nucleotide_model("nucleotide", REVERSIBLE_DNA, freqs);
-	m->relativeTo = 5;
+	m->relativeTo = -1;
+	m->rates = new_Parameters(5);
     
     int max = 0;
 	m->model = new_DiscreteParameter("nucleotide.model", 5);
-    for ( int i = 0; i < 5; i++ ) {
+	int index = 0;
+    for ( int i = 0; i < strlen(model); i++ ) {
         int code = model[i];
         
         // lower case model e.g abaab
@@ -45,25 +49,26 @@ SubstitutionModel * new_ReversibleNucleotideModel( const char model[5], Simplex*
         else if( code >= 48 ){
             code -= 48;
         }
+		// relative to this one
+		else{
+			m->relativeTo = i;
+			continue;
+		}
         
-        m->model->values[i] = code;
+        m->model->values[index] = code;
         
         if ( code > max ) {
             max = code;
         }
+		index++;
     }
     max++;
+	
+	if(strlen(model) == 5) m->relativeTo = 5;
     
     if( max > 0 ){
-        StringBuffer *buffer = new_StringBuffer(10);
-        m->rates = new_Parameters( max );
-        for ( int i = 0; i < max; i++ ) {
-            StringBuffer_empty(buffer);
-            StringBuffer_append_format(buffer, "nuc.%d", i);
-            Parameters_move(m->rates, new_Parameter_with_postfix(buffer->c, "model", 1, new_Constraint(0.001, 100) ) );
-        }
-        free_StringBuffer(buffer);
-        
+		Parameters_add_parameters(m->rates, rates);
+		
         m->update_Q = nuc_sym_update_Q;
     }
     

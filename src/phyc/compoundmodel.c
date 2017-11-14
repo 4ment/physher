@@ -181,19 +181,31 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 
 Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 	CompoundModel* cm = new_CompoundModel();
-	json_node* distributions = get_json_node(node, "distributions");
-	assert(distributions);
-	
-	for (int i = 0; i < distributions->child_count; i++) {
-		json_node* child = distributions->children[i];
-		if(child->type == NULL) continue;
-		
-		if(strcasecmp(child->type, "treelikelihood") == 0){
-			Model* likelihood = new_TreeLikelihoodModel_from_json(child, hash);
+	json_node* distributions_node = get_json_node(node, "distributions");
+	char* id = get_json_node_value_string(node, "id");
+	assert(distributions_node);
+
+	for (int i = 0; i < distributions_node->child_count; i++) {
+		json_node* child = distributions_node->children[i];
+		char* type = get_json_node_value_string(child, "type");
+		printf("type %s\n", type);
+		if(strcasecmp(type, "treelikelihood") == 0){
+			Model* likelihood = NULL;
+			if (child->node_type == MJSON_OBJECT) {
+				likelihood = new_TreeLikelihoodModel_from_json(child, hash);
+			}
+			else if(child->node_type == MJSON_STRING){
+				char* ref = (char*)child->value;
+				likelihood = Hashtable_get(hash, ref+1);
+				likelihood->ref_count++;
+			}
+			else{
+				exit(1);
+			}
 			cm->add(cm, likelihood);
 			likelihood->free(likelihood);
 		}
-		else if (strcasecmp(child->type, "distribution") == 0){
+		else if (strcasecmp(type, "distribution") == 0){
 			
 		}
 		else{
@@ -201,6 +213,6 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			exit(1);
 		}
 	}
-	Model* model = new_CompoundModel2(node->id, cm);
+	Model* model = new_CompoundModel2(id, cm);
 	return model;
 }

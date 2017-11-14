@@ -78,7 +78,7 @@ SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa
 	return m;
 }
 
-SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, const Parameters* kappa ){
+SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, Parameter* kappa ){
 	
 	SubstitutionModel *m = create_nucleotide_model("HKY", HKY, freqs);
 	
@@ -90,7 +90,7 @@ SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, const Parameters* k
 	m->dp_dt_transpose = _hky_dp_dt_transpose;
 	
 	m->rates = new_Parameters( 1 );
-	Parameters_add(m->rates, Parameters_at(kappa, 0) );
+	Parameters_add(m->rates, kappa);
 	
 	return m;
 }

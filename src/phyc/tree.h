@@ -38,6 +38,8 @@ typedef struct _Tree Tree;
 
 Model * new_TreeModel( const char* name, Tree *tree );
 
+Model* new_TreeModel_from_json(json_node* node, Hashtable* hash);
+
 Tree * new_Tree( const char *nexus, bool containBL );
 
 Tree * new_Tree2( Node *root, bool containBL );

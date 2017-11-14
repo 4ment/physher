@@ -12,6 +12,7 @@
 #include "model.h"
 #include "parameters.h"
 #include "mjson.h"
+#include "treelikelihood.h"
 
 struct _CompoundModel;
 typedef struct _CompoundModel CompoundModel;
@@ -31,5 +32,7 @@ struct _CompoundModel{
 CompoundModel* new_CompoundModel();
 
 Model* new_CompoundModel2(const char* name, CompoundModel* cm);
+
+Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash);
 
 #endif /* compoundmodel_h */

@@ -157,7 +157,6 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	json_node* categories_node = get_json_node(node, "categories");
-	json_node* invariant_node = get_json_node(node, "invariant");
 	json_node* model_node = get_json_node(node, "model");
 	json_node* rates_node = get_json_node(node, "rates");
 	json_node* distribution_node = get_json_node(node, "distribution");
@@ -179,26 +178,32 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		cat = atoi((char*)categories_node->value);
 	}
 
+	bool invariant = false;
 	Parameters* rates = NULL;
 	if (rates_node != NULL && rates_node->node_type == MJSON_ARRAY) {
 		rates = new_Parameters_from_json(rates_node, hash);
 	}
 	else if (rates_node != NULL && rates_node->node_type == MJSON_OBJECT) {
-		Parameter* p = new_Parameter_from_json(rates_node, hash);
-		Parameters_move(rates, p);
+		rates = new_Parameters(rates_node->child_count);
+		for(int i = 0; i < rates_node->child_count; i++){
+			json_node* p_node = rates_node->children[i];
+			Parameter* p = new_Parameter_from_json(p_node, hash);
+			Parameters_move(rates, p);
+			if(strcasecmp(p_node->key, "invariant") == 0){
+				invariant = true;
+			}
+		}
 	}
 	
 	SiteModel* sm = NULL;
 	// Distribution
 	if ( cat > 1 ) {
-		bool isgamma = (distribution_node == NULL || strcasecmp("gamma", (char*)distribution_node->value) == 0);
-		
 		// Just laguerre discretization
-		if(discretization_node != NULL || strcasecmp("laguerre", (char*)discretization_node->value) == 0){
+		if(discretization_node != NULL && strcasecmp("laguerre", (char*)discretization_node->value) == 0){
 			sm = new_GammaLaguerreSiteModel_with_parameters(m, rates, cat);
 		}
 		// And invariant
-		else if (invariant_node != NULL) {
+		else if (invariant) {
 			//swapsy
 			if (strcasecmp(Parameters_name(rates, 0), "invariant") == 0) {
 				Parameters_swap_index(rates, 0, 1);
@@ -210,11 +215,15 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			sm = new_GammaSiteModel_with_parameters(m, rates, cat);
 		}
 	}
-	else if(invariant_node!= NULL  && strcasecmp("invariant", (char*)invariant_node->value) == 0){
+	else if(invariant){
 		sm = new_PinvSiteModel_with_parameters(m, rates);
 	}
+	else{
+		sm =new_SiteModel(m);
+	}
+	json_node* id_node = get_json_node(node, "id");
 
-	Model* msm = new_SiteModel2(node->id, sm, mm);
+	Model* msm = new_SiteModel2((char*)id_node->value, sm, mm);
 	
 	mm->free(mm);
 	free_Parameters(rates);

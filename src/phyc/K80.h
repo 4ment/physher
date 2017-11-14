@@ -22,10 +22,10 @@
 
 #include "substmodel.h"
 
-SubstitutionModel * new_K80();
+struct SubstitutionModel * new_K80();
 
-SubstitutionModel * new_K80_with_values( const double kappa );
+struct SubstitutionModel * new_K80_with_values( const double kappa );
 
-SubstitutionModel * new_K80_with_parameters( const Parameters* kappa );
+struct SubstitutionModel * new_K80_with_parameters( Parameter* kappa );
 
 #endif /* K80_h */

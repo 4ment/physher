@@ -20,6 +20,6 @@
 
 #include "substmodel.h"
 
-SubstitutionModel * new_ReversibleNucleotideModel( const char model[5], Simplex* freqs );
+struct SubstitutionModel * new_ReversibleNucleotideModel_with_parameters( const char* model, Simplex* freqs, const Parameters* rates);
 
 #endif /* nucsubst_h */

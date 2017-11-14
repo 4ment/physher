@@ -211,37 +211,74 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	return model;
 }
 
-Model * new_TreeLikelihoodModel_from_json(const char*json, json_node*node, Hashtable*hash){
-	Model* tree = NULL;
-	Model* sm = NULL;
-	SitePattern* sp = NULL;
-	Model*bm = NULL;
+Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
+	json_node* patterns_node = get_json_node(node, "sitepattern");
+	json_node* tree_node = get_json_node(node, "tree");
+	json_node* sm_node = get_json_node(node, "sitemodel");
+	json_node* bm_node = get_json_node(node, "branchmodel");
 	
-	for (int i = 0; i < node->child_count; i++) {
-		json_node* child = node->children[i];
-		if (strcasecmp("branchmodel", child->type) == 0) {
-			
-		}
-		else if (strcasecmp("tree", child->type) == 0) {
-			
-		}
-		else if (strcasecmp("sitemodel", child->type) == 0) {
-			
-		}
-		else if (strcasecmp("patterns", child->type) == 0) {
-			
+	Model* mtree = NULL;
+	Model* msm = NULL;
+	SitePattern* patterns = NULL;
+	Model* mbm = NULL;
+	BranchModel* bm = NULL;
+	
+	if(patterns_node->node_type == MJSON_STRING){
+		char* ref = (char*)patterns_node->value;
+		// check it starts with a &
+		patterns = Hashtable_get(hash, ref+1);
+		patterns->ref_count++;
+	}
+	else{
+		char* id = get_json_node_value_string(patterns_node, "id");
+		patterns = new_SitePattern_from_json(patterns_node, hash);
+		Hashtable_add(hash, id, patterns);
+	}
+	
+	if (tree_node->node_type == MJSON_STRING) {
+		char* ref = (char*)tree_node->value;
+		// check it starts with a &
+		mtree = Hashtable_get(hash, ref+1);
+		mtree->ref_count++;
+	}
+	else{
+		char* id = get_json_node_value_string(tree_node, "id");
+		mtree = new_TreeModel_from_json(tree_node, hash);
+		Hashtable_add(hash, id, mtree);
+	}
+	
+	if (sm_node->node_type == MJSON_STRING) {
+		char* ref = (char*)sm_node->value;
+		// check it starts with a &
+		msm = Hashtable_get(hash, ref+1);
+		msm->ref_count++;
+	}
+	else{
+		char* id = get_json_node_value_string(sm_node, "id");
+		msm = new_SiteModel_from_json(sm_node, hash);
+		Hashtable_add(hash, id, msm);
+	}
+	
+	if(bm_node != NULL){
+		if (bm_node->node_type == MJSON_STRING) {
+			char* ref = (char*)bm_node->value;
+			// check it starts with a &
+			mbm = Hashtable_get(hash, ref+1);
+			mbm->ref_count++;
 		}
 		else{
-			printf("json TreeLikelihoodModel unknown: (%s)\n", child->type);
-			exit(1);
+//			sm = new_SiteModel_from_json(sm_node, hash);
 		}
+		bm = mbm->obj;
 	}
-	BranchModel* bmodel = NULL;
-	if(bm != NULL){
-		bmodel = (BranchModel*)bm->obj;
-	}
-	SingleTreeLikelihood* tlk = new_SingleTreeLikelihood((Tree*)tree->obj, (SiteModel*)sm->obj, sp, bmodel);
-	Model* model = new_TreeLikelihoodModel(node->id, tlk, tree, sm, bm);
+	
+	SingleTreeLikelihood* tlk = new_SingleTreeLikelihood((Tree*)mtree->obj, (SiteModel*)msm->obj, patterns, bm);
+	char* id = get_json_node_value_string(node, "id");
+	Model* model = new_TreeLikelihoodModel(id, tlk, mtree, msm, mbm);
+	mtree->free(mtree);
+	msm->free(msm);
+	if(mbm != NULL) mbm->free(mbm);
+	
 	return model;
 }
 

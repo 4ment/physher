@@ -53,37 +53,46 @@
 
 
 SubstitutionModel * new_GTR(Simplex* freqs){
-	Parameters* rates = new_Parameters( 5 );
-	Parameters_move(rates, new_Parameter_with_postfix("gtr.a", "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(rates, new_Parameter_with_postfix("gtr.b", "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(rates, new_Parameter_with_postfix("gtr.c", "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(rates, new_Parameter_with_postfix("gtr.d", "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(rates, new_Parameter_with_postfix("gtr.e", "model", 1, new_Constraint(0.001, 100) ) );
-	SubstitutionModel* model = new_GTR_with_parameters(freqs, rates, 5);
-	free_Parameters(rates);
+	Parameter* ac = new_Parameter_with_postfix("gtr.a", "model", 1, new_Constraint(0.001, 100) );
+	Parameter* ag = new_Parameter_with_postfix("gtr.b", "model", 1, new_Constraint(0.001, 100) );
+	Parameter* at = new_Parameter_with_postfix("gtr.c", "model", 1, new_Constraint(0.001, 100) );
+	Parameter* cg = new_Parameter_with_postfix("gtr.d", "model", 1, new_Constraint(0.001, 100) );
+	Parameter* ct = new_Parameter_with_postfix("gtr.e", "model", 1, new_Constraint(0.001, 100) );
+	
+	SubstitutionModel* model = new_GTR_with_parameters(freqs, ac, ag, at, cg, ct, NULL);
+	
+	free_Parameter(ac);
+	free_Parameter(ag);
+	free_Parameter(at);
+	free_Parameter(cg);
+	free_Parameter(ct);
+	
 	return model;
 }
 
 SubstitutionModel * new_GTR_with_values( const double *freqs, const double *rates ){
     check_frequencies( freqs, 4 );
     
-    Parameters* ratess = new_Parameters( 5 );
-    Parameters_move(ratess, new_Parameter_with_postfix("gtr.a", "model", rates[0], new_Constraint(0.001, 100) ) );
-    Parameters_move(ratess, new_Parameter_with_postfix("gtr.b", "model", rates[1], new_Constraint(0.001, 100) ) );
-    Parameters_move(ratess, new_Parameter_with_postfix("gtr.c", "model", rates[2], new_Constraint(0.001, 100) ) );
-    Parameters_move(ratess, new_Parameter_with_postfix("gtr.d", "model", rates[3], new_Constraint(0.001, 100) ) );
-    Parameters_move(ratess, new_Parameter_with_postfix("gtr.e", "model", rates[4], new_Constraint(0.001, 100) ) );
-    
+	Parameter* ac = new_Parameter_with_postfix("gtr.a", "model", 1, new_Constraint(0.001, 100) );
+	Parameter* ag = new_Parameter_with_postfix("gtr.b", "model", 1, new_Constraint(0.001, 100) );
+	Parameter* at = new_Parameter_with_postfix("gtr.c", "model", 1, new_Constraint(0.001, 100) );
+	Parameter* cg = new_Parameter_with_postfix("gtr.d", "model", 1, new_Constraint(0.001, 100) );
+	Parameter* ct = new_Parameter_with_postfix("gtr.e", "model", 1, new_Constraint(0.001, 100) );
+	
     Simplex* sfreqs = new_Simplex(4);
 	sfreqs->set_values(sfreqs, freqs);
 	
-	SubstitutionModel *m = new_GTR_with_parameters(sfreqs, ratess, 5);
+	SubstitutionModel* model = new_GTR_with_parameters(sfreqs, ac, ag, at, cg, ct, NULL);
 
-	free_Parameters(ratess);
-    return m;
+	free_Parameter(ac);
+	free_Parameter(ag);
+	free_Parameter(at);
+	free_Parameter(cg);
+	free_Parameter(ct);
+    return model;
 }
 
-SubstitutionModel * new_GTR_with_parameters( Simplex* freqs, const Parameters* rates, int relativeTo ){
+SubstitutionModel * new_GTR_with_parameters( Simplex* freqs, Parameter* ac, Parameter* ag, Parameter* at, Parameter* cg, Parameter* ct, Parameter* gt){
 	
 	SubstitutionModel *m = create_nucleotide_model("GTR", GTR, freqs);
 	
@@ -91,12 +100,61 @@ SubstitutionModel * new_GTR_with_parameters( Simplex* freqs, const Parameters* r
 	
 	m->dPdp = gtr_dQ;
 	m->dQ = dvector(16);
-	m->relativeTo = relativeTo;
+	m->relativeTo = -1;
 	
-	m->rates = new_Parameters( Parameters_count(rates) );
-	for(int i = 0; i < Parameters_count(rates); i++){
-		Parameters_add(m->rates, Parameters_at(rates, i) );
+	m->rates = new_Parameters(5);
+	if (ac != NULL) {
+		Parameters_add(m->rates, ac);
 	}
+	else{
+		m->relativeTo = 0;
+	}
+	if (ag != NULL) {
+		Parameters_add(m->rates, ag);
+	}
+	else{
+		m->relativeTo = 1;
+	}
+	if (at != NULL) {
+		Parameters_add(m->rates, at);
+	}
+	else{
+		m->relativeTo = 2;
+	}
+	if (cg != NULL) {
+		Parameters_add(m->rates, cg);
+	}
+	else{
+		m->relativeTo = 3;
+	}
+	if (ct != NULL) {
+		Parameters_add(m->rates, ct);
+	}
+	else{
+		m->relativeTo = 4;
+	}
+	if (gt != NULL) {
+		Parameters_add(m->rates, gt);
+	}
+	else{
+		m->relativeTo = 5;
+	}
+	return m;
+}
+
+SubstitutionModel * new_GTR_with_simplexes( Simplex* freqs, Simplex* rates){
+	
+	SubstitutionModel *m = create_nucleotide_model("GTR", GTR, freqs);
+	
+	m->update_Q = gtr_update_Q;
+	
+	m->dPdp = gtr_dQ;
+	m->dQ = dvector(16);
+	
+	m->rates_simplex = rates;
+	m->rates = new_Parameters(5);
+	Parameters_add_parameters(m->rates, m->rates_simplex->parameters);
+	m->relativeTo = 5;
 	
 	return m;
 }
