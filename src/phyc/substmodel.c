@@ -34,11 +34,9 @@
 
 #include "model.h"
 
-#include "wag.h"
-#include "dayhoff.h"
-#include "lg.h"
-
 #include "hashtable.h"
+
+#include "sitepattern.h"
 
 #pragma mark Public function definition
 
@@ -293,6 +291,48 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	}
 	
 	SubstitutionModel* m = SubstitutionModel_factory(model_string, datatype, freqs_simplex, rates_simplex, rates, assignment);
+	
+	json_node* init_node = get_json_node(node, "init");
+	
+	if(init_node != NULL && datatype->type == DATA_TYPE_NUCLEOTIDE && Parameters_count(m->rates) >= 5){
+		json_node* patterns_node = get_json_node(init_node, "sitepattern");
+		char* patterns_ref = (char*)patterns_node->value;
+		SitePattern* patterns = Hashtable_get(hash, patterns_ref+1);
+		double** mat = SitePattern_rates(patterns);
+		double* v = dvector(6);
+		int index = 0;
+		for (int i = 0; i < 4; i++) {
+			for (int j = i+1; j < 4; j++) {
+				v[index++] = mat[i][j] + mat[j][i];
+			}
+		}
+		if ( m->relativeTo == -1) {
+			double sum = 0;
+			for (int i = 0; i < 6; i++) {
+				sum += v[i];
+			}
+			for (int i = 0; i < 6; i++) {
+				v[i] /= sum;
+			}
+		}
+		else{
+			for (int i = 0; i < 6; i++) {
+				v[i] /= v[m->relativeTo];
+			}
+			int moveCount = 6 - m->relativeTo - 1;
+			if(moveCount > 0){
+				memcpy(v+m->relativeTo, v+m->relativeTo+1, moveCount*sizeof(double));
+			}
+		}
+
+		m->set_rates(m, v);
+		for (int i = 0; i < 4; i++) {
+			v[i] = mat[i][i];
+		}
+		m->simplex->set_values(m->simplex, v);
+		free(v);
+		free_dmatrix(mat, datatype->state_count(datatype));
+	}
 	
 	free_DataType(datatype);//general should need it
 	char* id = get_json_node_value_string(node, "id");

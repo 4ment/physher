@@ -12,7 +12,6 @@
 #include "model.h"
 #include "parameters.h"
 #include "mjson.h"
-#include "treelikelihood.h"
 
 struct _CompoundModel;
 typedef struct _CompoundModel CompoundModel;

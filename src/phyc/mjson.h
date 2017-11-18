@@ -10,7 +10,7 @@
 #define mjson_h
 
 #include <stdio.h>
-
+#include <stdbool.h>
 
 typedef enum {
 	MJSON_ARRAY = 0,
@@ -34,6 +34,7 @@ typedef struct json_node {
 json_node* create_json_tree(const char* json);
 json_node* get_json_node(json_node* node, const char* key);
 char* get_json_node_value_string(json_node* node, const char* key);
+bool get_json_node_value_bool(json_node* node, const char* key);
 void json_tree_to_string(json_node* node);
 void json_free_tree(json_node* node);
 #endif /* mjson_h */

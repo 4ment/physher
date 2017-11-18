@@ -682,13 +682,24 @@ double ** SitePattern_rates( const SitePattern *sp ){
         for ( int j = i+1; j < sp->size; j++ ) {
     
             for ( int k = 0; k < sp->count; k++ ) {
-                if( sp->patterns[k][i] < sp->nstate && sp->patterns[k][j] < sp->nstate ){
-                    mat[sp->patterns[k][i]][sp->patterns[k][j]]++;
-                    mat[sp->patterns[k][j]][sp->patterns[k][i]]++;
-                }
+				int p1 = sp->patterns[k][i];
+				int p2 = sp->patterns[k][j];
+				if(p1 < sp->nstate && p2 < sp->nstate ){
+					if( p1 != p2 ){
+						mat[p1][p2] += sp->weights[k];
+					}
+					mat[p1][p1] += sp->weights[k];
+				}
             }
         }
     }
+	int sum = 0;
+	for (int i = 0; i < sp->nstate; i++) {
+		sum += mat[i][i];
+	}
+	for (int i = 0; i < sp->nstate; i++) {
+		mat[i][i] /= sum;
+	}
     return mat;
 }
 

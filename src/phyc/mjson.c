@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "mstring.h"
+#include "ctype.h"
 
 json_node* create_json_node(json_node* parent){
 	json_node* node = malloc(sizeof(json_node));
@@ -40,7 +41,6 @@ json_node* get_json_node(json_node* node, const char* key){
 			return node->children[i];
 		}
 	}
-	
 	return NULL;
 }
 
@@ -48,6 +48,14 @@ char* get_json_node_value_string(json_node* node, const char* key){
 	json_node* n = get_json_node(node, key);
 	if(n != NULL){
 		return (char*)n->value;
+	}
+	return NULL;
+}
+
+bool get_json_node_value_bool(json_node* node, const char* key){
+	json_node* n = get_json_node(node, key);
+	if(n != NULL){
+		return atoi((char*)n->value);
 	}
 	return NULL;
 }
@@ -167,6 +175,16 @@ json_node* create_json_tree(const char* json){
 				current->value = StringBuffer_tochar(buffer);
 				current->node_type = MJSON_PRIMITIVE;
 			}
+		}
+		else if( tolower(json[i]) == 't' ){
+			current->value = String_clone("1");
+			current->node_type = MJSON_PRIMITIVE;
+			i += 3;
+		}
+		else if( tolower(json[i]) == 'f' ){
+			current->value = String_clone("0");
+			current->node_type = MJSON_PRIMITIVE;
+			i+= 4;
 		}
 	}
 	free_StringBuffer(buffer);

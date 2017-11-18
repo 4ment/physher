@@ -14,6 +14,7 @@
 #include "model.h"
 #include "parameters.h"
 #include "simplex.h"
+#include "mjson.h"
 
 
 struct _DistributionModel;
@@ -42,5 +43,7 @@ DistributionModel* new_FlatDirichletDistributionModel(Simplex* simplex);
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex);
+
+Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash);
 
 #endif /* distmodel_h */

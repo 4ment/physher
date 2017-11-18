@@ -13,6 +13,8 @@
 #include <string.h>
 
 #include "matrix.h"
+#include "tree.h"
+
 #include "exponential.h"
 #include "gamma.h"
 #include "dirichlet.h"
@@ -86,7 +88,7 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	return clone;
 }
 
-DistributionModel* new_DistributionModel(Parameters* p, const Parameters* x){
+DistributionModel* new_DistributionModel(const Parameters* p, const Parameters* x){
 	DistributionModel* dm = (DistributionModel*)malloc(sizeof(DistributionModel));
 	assert(dm);
 	dm->parameters = NULL;
@@ -190,6 +192,14 @@ DistributionModel* new_IndependantGammaDistributionModel(const double shape, con
 	return dm;
 }
 
+DistributionModel* new_IndependantGammaDistributionModel_with_parameters(Parameters* parameters, const Parameters* x){
+	DistributionModel* dm = new_DistributionModel(parameters, x);
+	dm->logP = DistributionModel_log_gamma;
+	dm->dlogP = DistributionModel_dlog_gamma;
+	dm->clone = _clone_dist;
+	return dm;
+}
+
 DistributionModel* new_IndependantExpDistributionModel(const double lambda, const Parameters* x){
 	Parameters* ps = new_Parameters(1);
 	Parameters_move(ps, new_Parameter("exp.lambda", lambda, NULL));
@@ -198,6 +208,14 @@ DistributionModel* new_IndependantExpDistributionModel(const double lambda, cons
 	dm->dlogP = DistributionModel_dlog_exp;
 	dm->clone = _clone_dist;
 	free_Parameters(ps);
+	return dm;
+}
+
+DistributionModel* new_IndependantExpDistributionModel_with_parameters(Parameters* parameters, const Parameters* x){
+	DistributionModel* dm = new_DistributionModel(parameters, x);
+	dm->logP = DistributionModel_log_exp;
+	dm->dlogP = DistributionModel_dlog_exp;
+	dm->clone = _clone_dist;
 	return dm;
 }
 
@@ -224,6 +242,21 @@ DistributionModel* new_DirichletDistributionModel(const double* alpha, Simplex* 
 		dm->tempp[i] = Parameters_value(dm->parameters, i);
 	}
 	free_Parameters(ps);
+	return dm;
+}
+
+DistributionModel* new_DirichletDistributionModel_with_parameters(const Parameters* parameters, Simplex* simplex){
+	Parameters* ps = new_Parameters(simplex->K);
+	Parameters_add_parameters(ps, parameters);
+	DistributionModel* dm = new_DistributionModelSimplex(ps, simplex);// len(x)==len(alpha)
+	dm->logP = DistributionModel_log_dirichlet;
+	dm->dlogP = DistributionModel_dlog_dirichlet;
+	dm->clone = _clone_dist;
+	dm->tempx = dvector(simplex->K);
+	dm->tempp = dvector(simplex->K);
+	for (int i = 0; i < simplex->K; i++) {
+		dm->tempp[i] = Parameters_value(dm->parameters, i);
+	}
 	return dm;
 }
 
@@ -356,5 +389,156 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* si
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
 	model->get_free_parameters = _dist_model_get_free_parameters;
+	return model;
+}
+
+char** get_parameters(json_node* node, Hashtable* hash, Parameters* parameters){
+	json_node* parameters_node = get_json_node(node, "parameters");
+	char** param_names = NULL;
+	
+	if(parameters_node->node_type == MJSON_ARRAY){
+		for (int i = 0; i < parameters_node->child_count; i++) {
+			json_node* child = parameters_node->children[i];
+			// it's a ref
+			if (child->node_type == MJSON_STRING) {
+				char* ref = (char*)child->value;
+				Parameter* p = Hashtable_get(hash, ref+1);
+				Parameters_add(parameters, p);
+			}
+			// it's a value
+			else if(child->node_type == MJSON_PRIMITIVE){
+				double v = atof((char*)child->value);
+				Parameters_move(parameters, new_Parameter("anonymous", v, NULL));
+			}
+			else{
+				exit(1);
+			}
+		}
+	}
+	else if(parameters_node->node_type == MJSON_OBJECT){
+		param_names = malloc(sizeof(char*)*parameters_node->child_count);
+		for(int i = 0; i < parameters_node->child_count; i++){
+			json_node* p_node = parameters_node->children[i];
+			Parameter* p = new_Parameter_from_json(p_node, hash);
+			Parameters_move(parameters, p);
+			param_names[i] = p_node->key;
+		}
+	}
+	// it's a ref
+	else if(parameters_node->node_type == MJSON_STRING){
+		char* ref = (char*)parameters_node->value;
+		Parameter* p = Hashtable_get(hash, ref+1);
+		Parameters_add(parameters, p);
+	}
+	else{
+		exit(1);
+	}
+	return param_names;
+}
+
+void get_x(json_node* node, Hashtable* hash, Parameters* x){
+	json_node* x_node = get_json_node(node, "x");
+	
+	if(x_node->node_type == MJSON_ARRAY){
+		for (int i = 0; i < x_node->child_count; i++) {
+			json_node* child = x_node->children[i];
+			// it's a ref
+			if (child->node_type == MJSON_STRING) {
+				char* ref = (char*)child->value;
+				Parameter* p = Hashtable_get(hash, ref+1);
+				Parameters_add(x, p);
+			}
+			else{
+				exit(1);
+			}
+		}
+	}
+	// it's a ref
+	else if(x_node->node_type == MJSON_STRING){
+		char* ref = (char*)x_node->value;
+		Parameter* p = Hashtable_get(hash, ref+1);
+		Parameters_add(x, p);
+	}
+	else{
+		exit(1);
+	}
+}
+
+Model* get_simplex(json_node* node, Hashtable* hash){
+	json_node* x_node = get_json_node(node, "x");
+	char* ref = (char*)x_node->value;
+	return Hashtable_get(hash, ref+1);
+}
+
+Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
+	char* d_string = get_json_node_value_string(node, "distribution");
+	char* id = get_json_node_value_string(node, "id");
+	json_node* tree_node = get_json_node(node, "tree");
+	
+	Parameters* parameters = NULL;
+	Parameters* x = NULL;
+	DistributionModel* dm = NULL;
+	Model* model = NULL;
+	char** param_names = NULL;
+	
+	if (strcasecmp(d_string, "exponential") == 0) {
+		parameters = new_Parameters(1);
+		x = new_Parameters(1);
+		param_names = get_parameters(node, hash, parameters);
+		
+		if (tree_node != NULL) {
+			char* ref = (char*)tree_node->value;
+			Model* mtree = Hashtable_get(hash, ref+1);
+			Tree* tree = mtree->obj;
+			for (int i = 0; i < Tree_node_count(tree); i++) {
+				Node* n = Tree_node(tree, i);
+				if (!Node_isroot(n) && !(Node_isroot(n) && Node_right(Node_parent(n)) == n)) {
+					Parameters_add(x, n->distance);
+				}
+			}
+		}
+		else{
+			get_x(node, hash, x);
+		}
+		dm = new_IndependantExpDistributionModel_with_parameters(parameters, x);
+		model = new_DistributionModel2(id, dm);
+	}
+	else if (strcasecmp(d_string, "dirichlet") == 0) {
+		parameters = new_Parameters(1);
+		get_parameters(node, hash, parameters);
+		Model* simplex = get_simplex(node, hash);
+		int i = 0;
+		for ( ; i < Parameters_count(parameters); i++) {
+			if(Parameters_value(parameters, i) != 1) break;
+		}
+		if(i == Parameters_count(parameters)){
+			dm = new_FlatDirichletDistributionModel((Simplex*)simplex->obj);
+		}
+		else{
+			dm = new_DirichletDistributionModel_with_parameters(parameters, (Simplex*)simplex->obj);
+		}
+		Model* model = new_DistributionModel3(id, dm, simplex);
+		
+		free_Parameters(parameters);
+		free_Parameters(x);
+		return model;
+	}
+	else if (strcasecmp(d_string, "gamma") == 0) {
+		parameters = new_Parameters(1);
+		x = new_Parameters(1);
+		param_names = get_parameters(node, hash, parameters);
+		get_x(node, hash, x);
+		dm = new_IndependantGammaDistributionModel_with_parameters(parameters, x);
+		model = new_DistributionModel2(id, dm);
+	}
+	else{
+		printf("%s\n", d_string);
+		exit(10);
+	}
+	
+	free_Parameters(parameters);
+	free_Parameters(x);
+	if(param_names != NULL) free(param_names);
+	
 	return model;
 }

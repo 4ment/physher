@@ -12,7 +12,7 @@
 #include "gensubst.h"
 #include "gtr.h"
 #include "jc69.h"
-#include "k80.h"
+#include "K80.h"
 #include "f81.h"
 #include "hky.h"
 #include "nucsubst.h"

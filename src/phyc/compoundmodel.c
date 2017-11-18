@@ -12,6 +12,9 @@
 #include <assert.h>
 #include <string.h>
 
+#include "treelikelihood.h"
+#include "distmodel.h"
+
 
 double _compoundModel_logP(CompoundModel* cm){
 	double logP = 0;
@@ -206,7 +209,9 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			likelihood->free(likelihood);
 		}
 		else if (strcasecmp(type, "distribution") == 0){
-			
+			Model* model = new_DistributionModel_from_json(child, hash);
+			cm->add(cm, model);
+			model->free(model);
 		}
 		else{
 			printf("json CompoundModel unknown: (%s)\n", child->type);
