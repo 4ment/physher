@@ -132,10 +132,6 @@ struct _SingleTreeLikelihood{
 
     // Calculation using lower and upper
     bool use_upper;
-    double **partials_upper;
-	int partials_upper_dim;
-	double *node_pattern_lk;
-    //int index_upper;
     Node *node_upper;
     
 	void   (*update_partials_upper)( SingleTreeLikelihood *, Node * );
@@ -182,7 +178,6 @@ void free_SingleTreeLikelihood_share2( SingleTreeLikelihood *tlk, bool shared_tr
 
 void free_SingleTreeLikelihood_share( SingleTreeLikelihood *tlk, bool shared_sitepattern, bool shared_sitemodel );
 
-void SingleTreeLikelihood_free_upper( SingleTreeLikelihood *tlk );
 
 SingleTreeLikelihood * clone_SingleTreeLikelihood( SingleTreeLikelihood *tlk );
 
@@ -268,8 +263,6 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 #pragma mark -
 #pragma mark Second order Taylor series approximation
 
-void SingleTreeLikelihood_init_approximation( SingleTreeLikelihood *tlk, const double *a );
-
 void SingleTreeLikelihood_fisher_information( SingleTreeLikelihood *tlk, double *hessian );
 
 void SingleTreeLikelihood_covariance( SingleTreeLikelihood *tlk, double *hessian );
@@ -278,9 +271,6 @@ bool SingleTreeLikelihood_Hessian( SingleTreeLikelihood *tlk, double *hessian, d
 
 bool SingleTreeLikelihood_Hessian_diag( SingleTreeLikelihood *tlk, double *hessian, int *len );
 
-double SingleTreeLikelihood_d2_distance( SingleTreeLikelihood *tlk, Node *node );
-
-void SingleTreeLikelihood_dt( SingleTreeLikelihood *tlk, double *dlnls );
 
 #pragma mark -
 #pragma mark Upper Likelihood

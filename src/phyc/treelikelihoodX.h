@@ -39,7 +39,7 @@ void partials_states_and_undefined( const SingleTreeLikelihood *tlk, int idx1, c
 void partials_undefined_and_undefined( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 );
 
 
-void update_partials_general_transpose( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
+void update_partials_general_transpose( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );
 void partials_states_and_states_transpose( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, int idx2, const double *matrices2, double *partials );
 void partials_states_and_undefined_transpose( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 );
 

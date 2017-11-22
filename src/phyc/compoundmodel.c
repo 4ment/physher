@@ -196,6 +196,8 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			Model* likelihood = NULL;
 			if (child->node_type == MJSON_OBJECT) {
 				likelihood = new_TreeLikelihoodModel_from_json(child, hash);
+				char* id = get_json_node_value_string(child, "id");
+				Hashtable_add(hash, id, likelihood);
 			}
 			else if(child->node_type == MJSON_STRING){
 				char* ref = (char*)child->value;
@@ -212,6 +214,8 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			Model* model = new_DistributionModel_from_json(child, hash);
 			cm->add(cm, model);
 			model->free(model);
+			char* id = get_json_node_value_string(child, "id");
+			Hashtable_add(hash, id, model);
 		}
 		else{
 			printf("json CompoundModel unknown: (%s)\n", child->type);

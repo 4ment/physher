@@ -57,6 +57,7 @@ void partials_states_and_states_noexp_integrate_4( const SingleTreeLikelihood *t
 #pragma mark -
 #pragma mark OpenMP
 
+#ifdef _OPENMP
 void update_partials_4_openmp( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );
 
 void partials_states_and_states_4_openmp( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, int idx2, const double *matrices2, double *partials );
@@ -64,7 +65,7 @@ void partials_states_and_states_4_openmp( const SingleTreeLikelihood *tlk, int i
 void partials_states_and_undefined_4_openmp( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3);
 
 void partials_undefined_and_undefined_4_openmp( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3);
-
+#endif
 
 #pragma mark -
 #pragma mark SSE
@@ -77,6 +78,8 @@ void integrate_partials_4_SSE( const SingleTreeLikelihood *tlk, const double *in
 void node_log_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
 
 void node_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
+
+void calculate_branch_likelihood_4_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 #endif
 
 
@@ -106,11 +109,10 @@ void node_log_likelihoods_upper_4( const SingleTreeLikelihood *tlk, Node *node )
 #pragma mark -
 #pragma mark Upper Likelihood SSE
 
-void calculate_branch_likelihood_4_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
-
+#ifdef SSE3_ENABLED
 void update_partials_upper_sse_4( SingleTreeLikelihood *tlk, Node *node );
 
 void node_log_likelihoods_upper_sse_4( const SingleTreeLikelihood *tlk, Node *node );
-
+#endif
 
 #endif

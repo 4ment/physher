@@ -1528,18 +1528,40 @@ int main(int argc, char* argv[]){
 	char* content = load_file("/Users/mathieu/Dropbox/physher/gtr2.json");
 	json_node* json = create_json_tree(content);
 	free(content);
-	json_node* run_node = get_json_node(json, "run");
+	json_node* run_node = get_json_node(json, "physher");
 	json_node* model_node = get_json_node(json, "model");
 	json_node* type_node = get_json_node(model_node, "type");
 	Hashtable* hash2 = new_Hashtable_string(100);
 	hashtable_set_key_ownership( hash2, false );
 	hashtable_set_value_ownership( hash2, false );
 	
+	Model* model = NULL;
+	
 	if (strcasecmp((char*)type_node->value, "compound") == 0) {
-		Model* model = new_CompoundModel_from_json(model_node, hash2);
-		printf("%f\n", model->logP(model));
-		model->free(model);
+		model = new_CompoundModel_from_json(model_node, hash2);
+		
+		char* id = get_json_node_value_string(model_node, "id");
+		Hashtable_add(hash2, id, model);
+		printf("%s %f\n", id, model->logP(model));
 	}
+	
+	Model* treeee = Hashtable_get(hash2, "tree");
+	Tree* tt = treeee->obj;
+	double tot = Node_distance(Tree_root(tt)->right) + Node_distance(Tree_root(tt)->left);
+	Node_set_distance(Tree_root(tt)->right, 0);
+	Node_set_distance(Tree_root(tt)->left, tot);
+	//Tree_print_newick(stdout, treeee->obj, true);
+	
+	for (int i = 0; i < run_node->child_count; i++) {
+		json_node* child = run_node->children[i];
+		
+		Optimizer* opt = new_Optimizer_from_json(child, hash2);
+		double logP;
+		opt_optimize(opt, NULL, &logP);
+		free_Optimizer(opt);
+	}
+	
+	model->free(model);
 	free_Hashtable(hash2);
 	
 	//json_tree_to_string(json);
@@ -2543,17 +2565,19 @@ int main(int argc, char* argv[]){
 	if(Parameters_count(pp_bl) > 0){
 		Optimizer* opt_bl = new_Optimizer(OPT_SERIAL_BRENT);
 		opt_set_data(opt_bl, mpost);
+		opt_set_parameters(opt_bl, pp_bl);
 		opt_set_objective_function(opt_bl, _logP);
 		opt_set_tolx(opt_bl, 0.00000001);
-		opt_add_optimizer(opt_meta, opt_bl, pp_bl);
+		opt_add_optimizer(opt_meta, opt_bl);
 		schedule->rounds[schedule->count-1] = 2;
 	}
 	// Substitution model
 	if(Parameters_count(pp_m) > 0){
 		Optimizer* opt_m = new_Optimizer(OPT_SERIAL_BRENT);
 		opt_set_data(opt_m, mpost);
+		opt_set_parameters(opt_m, pp_m);
 		opt_set_objective_function(opt_m, _logP);
-		opt_add_optimizer(opt_meta, opt_m, pp_m);
+		opt_add_optimizer(opt_meta, opt_m);
 		schedule->post[schedule->count-1] = post_freqs;
 		schedule->rounds[schedule->count-1] = 20;
 	}
@@ -2562,8 +2586,9 @@ int main(int argc, char* argv[]){
 	if(Parameters_count(sm->rates) > 0){
 		Optimizer* opt_sm = new_Optimizer(OPT_SERIAL_BRENT);
 		opt_set_data(opt_sm, mpost);
+		opt_set_parameters(opt_sm, sm->rates);
 		opt_set_objective_function(opt_sm, _logP);
-		opt_add_optimizer(opt_meta, opt_sm, sm->rates);
+		opt_add_optimizer(opt_meta, opt_sm);
 	}
 	
 	opt_set_data(opt_meta, mpost);
@@ -2580,10 +2605,10 @@ int main(int argc, char* argv[]){
 	printf("LnL clone: %f\n", clone->logP(clone));
 
 	
-	double logP;
-	opt_optimize(opt_meta, pp_bl, &logP);
+	double logP2;
+	opt_optimize(opt_meta, pp_bl, &logP2);
 	//printf("LnL: %f logP: %f Prior: %f\n", mtlk->logP(mtlk), -logP, prior_branches->logP(prior_branches));
-	printf("LnL: %f logP: %f\n", mtlk->logP(mtlk), -logP);
+	printf("LnL: %f logP: %f\n", mtlk->logP(mtlk), -logP2);
 	
 	fprintf(stdout, "\nRates:\n\n");
 	print_rates(stdout, mod);
@@ -2596,8 +2621,8 @@ int main(int argc, char* argv[]){
 	free_Optimizer(opt_meta);
 	mpost->free(mpost);
 	
-	opt_optimize(opt_meta2, pp_bl, &logP);
-	printf("clone ML logP: %f\n", -logP);
+	opt_optimize(opt_meta2, pp_bl, &logP2);
+	printf("clone ML logP: %f\n", -logP2);
 	
 	free_Optimizer(opt_meta2);
 

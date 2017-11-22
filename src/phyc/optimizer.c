@@ -30,37 +30,19 @@
 #include "bfgs.h"
 #include "frpmrn.h"
 
+#include "tree.h"
+#include "treelikelihood.h"
+
+static double _logP( Parameters *params, double *grad, void *data ){
+	Model* model = (Model*)data;
+	//printf("%f\n", model->logP(model));
+	return -model->logP(model);
+}
+
 static bool dummy_update_data( void *data, Parameters *p){return false;}
 
 static bool xStop( const Parameters *x,  double *xold, const double tolx);
 static bool fxStop(double fx, double *fxold, const double tolfx);
-
-
-opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double *fmin, OptimizerSchedule* schedule ){
-	double lnl = f(NULL, NULL, data);
-	double fret = lnl;
-	for (stop->iter = 0; stop->iter < stop->iter_max; stop->iter++) {
-		for (int i = 0; i < schedule->count; i++) {
-			Optimizer* opt = schedule->optimizers[i];
-			Parameters* parameters = schedule->parameters[i];
-			double local_fret;
-			for (int k = 0; k < schedule->rounds[i]; k++){
-				local_fret = fret;
-				opt_result status = opt_optimize( opt, parameters, &fret);
-				bool stopit = schedule->post[i](schedule,local_fret, fret);
-//				printf("%s %f %f -> %f (%f)\n", Parameters_name(parameters, 0), Parameters_value(parameters, 0), lnl, fret, local_fret);
-				if(stopit) break;
-			}
-			printf("%s %f %f\n", Parameters_name(parameters, 0), -fret, -lnl);
-			if(  lnl-fret < stop->tolx ){
-				*fmin = fret;
-				return OPT_SUCCESS;
-			}
-			lnl = fret;
-		}
-	}
-	return OPT_MAXITER;
-}
 
 struct _Optimizer{
 	opt_algorithm algorithm;
@@ -68,6 +50,8 @@ struct _Optimizer{
 	
 	opt_func f;
 	void *data;
+	Parameters* parameters;
+	Model* treelikelihood;
 
 	OptStopCriterion stop;
 	
@@ -75,6 +59,79 @@ struct _Optimizer{
 	int verbosity;
 	OptimizerSchedule* schedule;
 };
+
+opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptStopCriterion *stop, double *fmin ){
+	Parameters* temp = new_Parameters(1);
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)mtlk->obj;
+	Tree* tree = tlk->tree;
+	Node** nodes = Tree_get_nodes(tree, POSTORDER);
+	tlk->node_upper = NULL;
+	tlk->use_upper = true;
+	if(Node_distance(Tree_root(tree)->right) != 0){
+		double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
+		Node_set_distance(Tree_root(tree)->right, 0);
+		Node_set_distance(Tree_root(tree)->left, tot);
+	}
+	tlk->calculate(tlk); // partials up to date
+	
+	//for(int j = 0; j < stop->iter_min; j++)
+	for(int i = 0; i < Tree_node_count(tree)-2; i++){
+		Parameters_add(temp, nodes[i]->distance);
+		stop->iter = 0;
+		stop->f_eval_current = 0;
+		stop->count = 0;
+		if ( stop->time_max != 0 ) {
+			time( &stop->time_start );
+		}
+		opt_result status = brent_optimize(temp, f, data, stop, fmin);
+		Parameters_pop(temp);
+		//printf("%s\n", nodes[i]->name);
+		//tlk->node_upper = nodes[i];
+	}
+	free_Parameters(temp);
+	tlk->use_upper = false;
+	return OPT_SUCCESS;
+}
+
+opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double *fmin, OptimizerSchedule* schedule ){
+	double lnl = f(NULL, NULL, data);
+	double fret = lnl;
+	for (stop->iter = 0; stop->iter < stop->iter_max; stop->iter++) {
+		for (int i = 0; i < schedule->count; i++) {
+			Optimizer* opt = schedule->optimizers[i];
+			double local_fret;
+			for (int k = 0; k < schedule->rounds[i]; k++){
+				local_fret = fret;
+				opt_result status;
+				if(opt->treelikelihood != NULL){
+					status = serial_brent_optimize_tree(opt->treelikelihood, opt->f, opt->data, &opt->stop, &fret);
+				}
+				else{
+					status = opt_optimize( opt, opt->parameters, &fret);
+				}
+				bool stopit = schedule->post[i](schedule,local_fret, fret);
+				//				printf("%s %f %f -> %f (%f)\n", Parameters_name(parameters, 0), Parameters_value(parameters, 0), lnl, fret, local_fret);
+				if(stopit) break;
+			}
+			if(opt->treelikelihood != NULL){
+//				SingleTreeLikelihood_update_all_nodes(opt->treelikelihood->obj);
+//				fret = _logP(NULL, NULL, data);
+				//printf("-== %f\n", _logP(NULL, NULL, data));
+				printf("tree %f %f\n", -fret, -lnl);
+			}
+			else{
+				printf("%s %f %f\n", Parameters_name(opt->parameters, 0), -fret, -lnl);
+			}
+			
+			if(  lnl-fret < stop->tolfx ){
+				*fmin = fret;printf("%f %f\n",lnl-fret, stop->tolfx);
+				return OPT_SUCCESS;
+			}
+			lnl = fret;
+		}
+	}
+	return OPT_MAXITER;
+}
 
 
 
@@ -85,6 +142,8 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->algorithm = algorithm;
 	opt->f = NULL;
 	opt->data = NULL;
+	opt->parameters = NULL;
+	opt->treelikelihood = NULL;
 	opt->dimension = 0;
 	
 	opt->stop.iter_min = 1;
@@ -147,13 +206,14 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 	clone->verbosity = opt->verbosity;
 	clone->update = opt->update;
 	clone->schedule = NULL;
+	clone->parameters = NULL;
+	clone->treelikelihood = NULL;
 	
 	if(opt->schedule != NULL){
 		clone->schedule = (OptimizerSchedule*)malloc(sizeof(OptimizerSchedule));
 		clone->schedule->capacity = opt->schedule->capacity;
 		clone->schedule->count = opt->schedule->count;
 		clone->schedule->optimizers = (Optimizer**)calloc(opt->schedule->capacity, sizeof(Optimizer*));
-		clone->schedule->parameters = (Parameters**)calloc(opt->schedule->capacity, sizeof(Parameters*));
 		clone->schedule->post = (OptimizerSchedule_post*)calloc(opt->schedule->capacity, sizeof(OptimizerSchedule_post));
 		clone->schedule->rounds = ivector(opt->schedule->capacity);
 		memcpy(clone->schedule->rounds, opt->schedule->rounds, sizeof(int)*opt->schedule->count);
@@ -161,14 +221,17 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 		for (int i = 0; i < clone->schedule->count; i++) {
 			clone->schedule->optimizers[i] = clone_Optimizer(opt->schedule->optimizers[i], data, parameters);
 			clone->schedule->post[i] = opt->schedule->post[i];
-			clone->schedule->parameters[i] = new_Parameters(Parameters_count(opt->schedule->parameters[i]));
+			
+			if(Parameters_count(opt->parameters) > 0){
+				opt->parameters = new_Parameters(Parameters_count(opt->parameters));
+			}
 			
 			// Find matching parameters
-			for (int j = 0; j < Parameters_count(opt->schedule->parameters[i]); j++) {
+			for (int j = 0; j < Parameters_count(opt->parameters); j++) {
 				int k = 0;
 				for (k = 0; k < Parameters_count(parameters); k++) {
-					if(strcmp(Parameters_name(opt->schedule->parameters[i], j), Parameters_name(parameters, k)) == 0){
-						Parameters_add(clone->schedule->parameters[i], Parameters_at(parameters, k));
+					if(strcmp(Parameters_name(opt->parameters, j), Parameters_name(parameters, k)) == 0){
+						Parameters_add(clone->parameters, Parameters_at(parameters, k));
 						break;
 					}
 				}
@@ -188,13 +251,13 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 
 void free_Optimizer( Optimizer *opt ){
 	opt->data = NULL;
+	free_Parameters(opt->parameters);
+	if(opt->treelikelihood != NULL) opt->treelikelihood->free(opt->treelikelihood);
 	if(opt->schedule != NULL){
 		for (int i = 0; i < opt->schedule->count; i++) {
 			free_Optimizer(opt->schedule->optimizers[i]);
-			free_Parameters(opt->schedule->parameters[i]);
 		}
 		free(opt->schedule->optimizers);
-		free(opt->schedule->parameters);
 		free(opt->schedule->rounds);
 		free(opt->schedule->post);
 		free(opt->schedule);
@@ -214,13 +277,22 @@ void opt_set_data( Optimizer *opt, void *data ){
 	}
 }
 
-void opt_set_max_evaluation( Optimizer *opt, const int maxeval ){
+void opt_set_parameters( Optimizer *opt, const Parameters *parameters ){
+	if( opt != NULL ){
+		if(opt->parameters == NULL){
+			opt->parameters = new_Parameters(Parameters_count(parameters));
+		}
+		Parameters_add_parameters(opt->parameters, parameters);
+	}
+}
+
+void opt_set_max_evaluation( Optimizer *opt, const size_t maxeval ){
 	if( opt != NULL ){
 		opt->stop.f_eval_max = maxeval;
 	}
 }
 
-void opt_set_max_iteration( Optimizer *opt, const int maxiter ){
+void opt_set_max_iteration( Optimizer *opt, const size_t maxiter ){
 	if( opt != NULL ){
 		opt->stop.iter_max = maxiter;
 	}
@@ -286,20 +358,17 @@ bool opt_post(OptimizerSchedule* schedule, double before, double after){
 	return false;
 }
 
-void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, const Parameters* parameters){
+void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt){
 	if(opt_meta->schedule == NULL){
 		opt_get_schedule(opt_meta);
 	}
 	else if(opt_meta->schedule->capacity == opt_meta->schedule->count){
 		opt_meta->schedule->capacity++;
 		opt_meta->schedule->optimizers = (Optimizer**)realloc(opt_meta->schedule->optimizers, sizeof(Optimizer*)*opt_meta->schedule->capacity);
-		opt_meta->schedule->parameters = (Parameters**)realloc(opt_meta->schedule->parameters, sizeof(Parameters*)*opt_meta->schedule->capacity);
 		opt_meta->schedule->rounds = (int*)realloc(opt_meta->schedule->rounds, sizeof(int)*opt_meta->schedule->capacity);
 		opt_meta->schedule->post = (OptimizerSchedule_post*)realloc(opt_meta->schedule->post, sizeof(OptimizerSchedule_post)*opt_meta->schedule->capacity);
 	}
 	opt_meta->schedule->optimizers[opt_meta->schedule->count] = opt;
-	opt_meta->schedule->parameters[opt_meta->schedule->count] = new_Parameters(Parameters_count(parameters));
-	Parameters_add_parameters(opt_meta->schedule->parameters[opt_meta->schedule->count], parameters);
 	opt_meta->schedule->rounds[opt_meta->schedule->count] = 1;
 	opt_meta->schedule->post[opt_meta->schedule->count] = opt_post;
 	opt_meta->schedule->count++;
@@ -309,7 +378,6 @@ OptimizerSchedule* opt_get_schedule(Optimizer *opt_meta){
 	if(opt_meta->schedule == NULL){
 		opt_meta->schedule = (OptimizerSchedule*)malloc(sizeof(OptimizerSchedule));
 		opt_meta->schedule->optimizers = (Optimizer**)malloc(sizeof(Optimizer*));
-		opt_meta->schedule->parameters = (Parameters**)malloc(sizeof(Parameters*));
 		opt_meta->schedule->post = (OptimizerSchedule_post*)malloc(sizeof(OptimizerSchedule_post));
 		opt_meta->schedule->rounds = ivector(1);
 		opt_meta->schedule->capacity = 1;
@@ -496,5 +564,99 @@ bool fxStop( double fx, double *fxold, const double tolfx){
 		*fxold = fx;
 		return true;
 	}
+}
+
+void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters){
+	json_node* x_node = get_json_node(node, "parameters");
+	
+	if(x_node->node_type == MJSON_ARRAY){
+		for (int i = 0; i < x_node->child_count; i++) {
+			json_node* child = x_node->children[i];
+			char* ref = (char*)child->value;
+			// it's a ref
+			if (child->node_type == MJSON_STRING) {
+				if (ref[0] == '&') {
+					Parameter* p = Hashtable_get(hash, ref+1);
+					Parameters_add(parameters, p);
+				}
+				else if (ref[0] == '%') {
+					Parameters* ps = Hashtable_get(hash, ref+1);
+					Parameters_add_parameters(parameters, ps);
+				}
+			}
+			else{
+				exit(1);
+			}
+		}
+	}
+	// it's a ref
+	else if(x_node->node_type == MJSON_STRING){
+		char* ref = (char*)x_node->value;
+		if (ref[0] == '&') {
+			Parameter* p = Hashtable_get(hash, ref+1);
+			Parameters_add(parameters, p);
+		}
+		else if (ref[0] == '%') {
+			Parameters* ps = Hashtable_get(hash, ref+1);
+			Parameters_add_parameters(parameters, ps);
+		}
+	}
+	else{
+		exit(1);
+	}
+}
+
+
+
+Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
+	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
+	size_t max = get_json_node_value_size_t(node, "max", 1000);
+	double precision = get_json_node_value_double(node, "precision", 0.001);
+	Parameters* parameters = new_Parameters(1);
+	Optimizer* opt = NULL;
+	
+	if (strcasecmp(algorithm_string, "meta") == 0) {
+		opt = new_Optimizer(OPT_META);
+		OptimizerSchedule* schedule = opt_get_schedule(opt);
+		json_node* list_node = get_json_node(node, "list");
+		for (int i = 0; i < list_node->child_count; i++) {
+			json_node* child = list_node->children[i];
+			Optimizer* opt_child = new_Optimizer_from_json(child, hash);
+			opt_add_optimizer(opt, opt_child);
+		}
+		opt_set_max_iteration(opt, max);
+		opt_set_tolfx(opt, precision);
+		
+	}
+	else if (strcasecmp(algorithm_string, "brent") == 0 || strcasecmp(algorithm_string, "serial") == 0) {
+		if (get_json_node(node, "treelikelihood") != NULL) {
+			const char* ref = get_json_node_value_string(node, "treelikelihood");
+			opt = new_Optimizer(OPT_SERIAL_BRENT);
+			opt->treelikelihood = Hashtable_get(hash, ref+1);
+			opt->treelikelihood->ref_count++;
+		}
+		else{
+			get_parameters_references(node, hash, parameters);
+			if (Parameters_count(parameters) == 1) {
+				opt = new_Optimizer(OPT_BRENT);
+			}
+			else{
+				opt = new_Optimizer(OPT_SERIAL_BRENT);
+			}
+			opt_set_parameters(opt, parameters);
+		}
+		opt_set_max_iteration(opt, max);
+		opt_set_tolfx(opt, precision);
+	}
+	const char* ref = get_json_node_value_string(node, "model");
+
+	if(ref != NULL){
+		Model* model = Hashtable_get(hash, ref+1);
+		opt_set_data(opt, model);
+	}
+	opt_set_objective_function(opt, _logP);
+	
+	free_Parameters(parameters);
+	return opt;
 }
 

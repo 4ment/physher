@@ -48,7 +48,7 @@ void _traverse2( SingleTreeLikelihood *tlk, Node *node, double *partials, int *i
                 }
                 SingleTreeLikelihood_update_all_nodes(tlk);
                 tlk->calculate(tlk);
-                partials = tlk->node_pattern_lk;
+                partials = tlk->pattern_lk + tlk->sp->count;
                 tot += partials[i*nstate+j];
                 //tot += tlk->node_pattern_lk[i*nstate+j];
                 memcpy(tlk->partials[Node_id(node)], backup, sizeof(double)*tlk->partials_size);

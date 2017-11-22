@@ -1028,5 +1028,82 @@ ListenerList * new_ListenerList( const unsigned capacity ){
 	return listeners;
 }
 
+double Model_mixed_derivative( Model *model, Parameter* p1, Parameter* p2 ) {
+	double eps = 0.001;
+	
+	double v1 = Parameter_value(p1);
+	double e1 = eps * v1;
+	double v2 = Parameter_value(p2);
+	double e2 = eps * v2;
+	
+	// + +
+	Parameter_set_value(p1, v1 + e1);
+	Parameter_set_value(p2, v2 + e2);
+	double pp = model->logP(model);
+	
+	// - -
+	Parameter_set_value(p1, v1 - e1);
+	Parameter_set_value(p2, v2 - e2);
+	double mm = model->logP(model);
+	
+	// + -
+	Parameter_set_value(p1, v1 + e1);
+	Parameter_set_value(p2, v2 - e2);
+	double pm = model->logP(model);
+	
+	// - +
+	Parameter_set_value(p1, v1 - e1);
+	Parameter_set_value(p2, v2 + e2);
+	double mp = model->logP(model);
+	
+	Parameter_set_value(p1, v1);
+	Parameter_set_value(p2, v2);
+	
+	return (pp + mm - pm - mp) / (4.0*e1*e2);
+}
+
+double Model_second_derivative( Model *model, Parameter* parameter, double* first ) {
+	//double eps = 0.00001;
+	double eps = 0.001;
+	
+	double lnl = model->logP(model);
+	
+	double v = Parameter_value(parameter);
+	double e = eps * v;
+	
+	// +
+	Parameter_set_value(parameter, v + e);
+	double p = model->logP(model);
+	
+	// -
+	Parameter_set_value(parameter, v - e);
+	double m = model->logP(model);
+	
+	Parameter_set_value(parameter, v);
+	
+	if (first != NULL) {
+		*first = (p - m)/(2.0*e);
+	}
+	
+	return (p + m -2*lnl)/(e*e);
+}
+
+// First derivative using central differences
+double Model_first_derivative( Model *model, Parameter* parameter ) {
+	double eps = 1.0e-8;
+	
+	double v = Parameter_value(parameter);
+	double e = eps * v;
+	
+	Parameter_set_value(parameter, v + e);
+	double pp = model->logP(model);
+	
+	Parameter_set_value(parameter, v - e);
+	double mm = model->logP(model);
+	
+	Parameter_set_value(parameter, v);
+	
+	return (pp - mm)/(2.0*e);
+}
 
 

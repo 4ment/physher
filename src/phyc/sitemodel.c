@@ -62,7 +62,7 @@ static SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const P
 
 static void _site_model_handle_change( Model *self, Model *model, int index ){
 	SiteModel *sm = (SiteModel*)self->obj;
-	if( model == NULL )sm->need_update = true;// one of the sitemodel parameters
+	sm->need_update = true;// one of the sitemodel parameters
 	self->listeners->fire( self->listeners, self, index );
 }
 
@@ -193,6 +193,10 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				invariant = true;
 			}
 		}
+	}
+	
+	for (int i = 0; i < Parameters_count(rates); i++) {
+		Hashtable_add(hash, Parameters_name(rates, i), Parameters_at(rates, i));
 	}
 	
 	SiteModel* sm = NULL;

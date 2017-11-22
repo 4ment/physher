@@ -60,13 +60,13 @@ typedef struct OptStopCriterion{
 	double time_max;
 	
 	// Number of iteration
-	int iter_min;
-	int iter_max;
-	int iter;
+	size_t iter_min;
+	size_t iter_max;
+	size_t iter;
 	
 	// Number of evaluation of objective function
-	int f_eval_max;
-	int f_eval_current;
+	size_t f_eval_max;
+	size_t f_eval_current;
 	
 	double tolfx;
 	double tolx;
@@ -90,7 +90,6 @@ typedef bool(*OptimizerSchedule_post)(OptimizerSchedule*, double before, double 
 
 struct _OptimizerSchedule{
 	Optimizer** optimizers;
-	Parameters** parameters;
 	OptimizerSchedule_post* post;
 	int* rounds;
 	int count;
@@ -117,9 +116,11 @@ void opt_set_objective_function( Optimizer *opt, opt_func f );
 
 void opt_set_data( Optimizer *opt, void *data );
 
-void opt_set_max_evaluation( Optimizer *opt, const int maxeval );
+void opt_set_parameters( Optimizer *opt, const Parameters *parameters );
 
-void opt_set_max_iteration( Optimizer *opt, const int maxiter );
+void opt_set_max_evaluation( Optimizer *opt, const size_t maxeval );
+
+void opt_set_max_iteration( Optimizer *opt, const size_t maxiter );
 
 void opt_set_time_max( Optimizer *opt, const double maxtime );
 void opt_set_time_max_minutes( Optimizer *opt, const double maxtime );
@@ -142,8 +143,9 @@ void opt_set_update_data_function( Optimizer *opt, opt_update_data uf );
 
 opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx );
 
-void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt, const Parameters* parameters);
+void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt);
 
 OptimizerSchedule* opt_get_schedule(Optimizer *opt_meta);
 
+Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash);
 #endif

@@ -52,12 +52,30 @@ char* get_json_node_value_string(json_node* node, const char* key){
 	return NULL;
 }
 
-bool get_json_node_value_bool(json_node* node, const char* key){
+bool get_json_node_value_bool(json_node* node, const char* key, bool defaultv){
 	json_node* n = get_json_node(node, key);
 	if(n != NULL){
 		return atoi((char*)n->value);
 	}
-	return NULL;
+	return defaultv;
+}
+
+double get_json_node_value_double(json_node* node, const char* key, double defaultv){
+	json_node* n = get_json_node(node, key);
+	if(n != NULL){
+		return atof((char*)n->value);
+	}
+	return defaultv;
+}
+
+size_t get_json_node_value_size_t(json_node* node, const char* key, size_t defaultv){
+	json_node* n = get_json_node(node, key);
+	if(n != NULL){
+		size_t v = 0;
+		int result = sscanf((char*)n->value, "%zu", &v);
+		return v;
+	}
+	return defaultv;
 }
 
 json_node* create_json_tree(const char* json){
@@ -77,12 +95,12 @@ json_node* create_json_tree(const char* json){
 			if(current->node_type == MJSON_ARRAY){
 				json_node* n = create_json_node(current);
 				add_json_node(current, n);
-				printf("Add object to array %s\n", current->key);
+				//printf("Add object to array %s\n", current->key);
 				current = n;
 				n->node_type = MJSON_OBJECT;
 			}
 			else{
-				printf("set %s as object\n", current->key);
+				//printf("set %s as object\n", current->key);
 				current->node_type = MJSON_OBJECT;
 			}
 		}
@@ -99,7 +117,7 @@ json_node* create_json_tree(const char* json){
 			
 			n->key = StringBuffer_tochar(buffer);
 			n->node_type = MJSON_UNDEFINED;
-			printf("key: %s\n", buffer->c);
+			//printf("key: %s\n", buffer->c);
 			current = n;
 		}
 		// string value
@@ -114,14 +132,14 @@ json_node* create_json_tree(const char* json){
 			// Value is a string
 			if (current->node_type == MJSON_UNDEFINED) {
 				
-				printf("Add string %s to %s\n", buffer->c, current->key);
+				//printf("Add string %s to %s\n", buffer->c, current->key);
 				current->node_type = MJSON_STRING;
 				current->value = StringBuffer_tochar(buffer);
 			}
 			// Value is part of an array
 			else if(current->node_type == MJSON_ARRAY){
 				
-				printf("Add string %s to array %s\n", buffer->c, current->key);
+				//printf("Add string %s to array %s\n", buffer->c, current->key);
 				json_node* n = create_json_node(current);
 				add_json_node(current, n);
 				n->value = StringBuffer_tochar(buffer);
@@ -132,11 +150,11 @@ json_node* create_json_tree(const char* json){
 		}
 		// array
 		else if(json[i] == '['){
-			printf("%s is an array\n", current->key);
+			//printf("%s is an array\n", current->key);
 			current->node_type = MJSON_ARRAY;
 		}
 		else if(json[i] == ']'){
-			printf("close array %s\n", current->key);
+			//printf("close array %s\n", current->key);
 			// allow empty array
 			if(current->child_count > 0) current = current->parent;
 			current = current->parent;
@@ -149,7 +167,7 @@ json_node* create_json_tree(const char* json){
 				free_StringBuffer(buffer);
 				return root;
 			}
-			printf("close object %s  %d\n", current->key, (current->parent == NULL));
+			//printf("close object %s  %d\n", current->key, (current->parent == NULL));
 			if(current->parent != NULL)
 				current = current->parent;
 		}
@@ -163,7 +181,7 @@ json_node* create_json_tree(const char* json){
 			i--;
 			
 			if (current->node_type == MJSON_ARRAY) {
-				printf("Add primitive %s to array %s\n", buffer->c,current->key);
+				//printf("Add primitive %s to array %s\n", buffer->c,current->key);
 				json_node* n = create_json_node(current);
 				add_json_node(current, n);
 				n->value = StringBuffer_tochar(buffer);
@@ -171,7 +189,7 @@ json_node* create_json_tree(const char* json){
 				current = n;
 			}
 			else{
-				printf("Add primitive %s to %s\n", buffer->c,current->key);
+				//printf("Add primitive %s to %s\n", buffer->c,current->key);
 				current->value = StringBuffer_tochar(buffer);
 				current->node_type = MJSON_PRIMITIVE;
 			}
@@ -195,13 +213,13 @@ json_node* create_json_tree(const char* json){
 void json_tree_to_string(json_node* node){
 	//printf("key: %s %s %s %zu %zu %zu %d\n", node->key, node->id, node->type, node->start, node->end, node->child_count, node->node_type);
 	if(node->node_type == MJSON_STRING){
-		printf("key %s value %s\n", node->key, (char*)node->value);
+		//printf("key %s value %s\n", node->key, (char*)node->value);
 	}
 	else if(node->node_type == MJSON_PRIMITIVE){
-		printf("key %s value %s*\n", node->key, (char*)node->value);
+		//printf("key %s value %s*\n", node->key, (char*)node->value);
 	}
 	else{
-		printf("key %s\n", node->key);
+		//printf("key %s\n", node->key);
 	}
 	for (int i = 0; i < node->child_count; i++) {
 		json_tree_to_string(node->children[i]);

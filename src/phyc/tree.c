@@ -44,6 +44,7 @@ struct _Tree{
 	bool topology_changed;
 	bool dated;
 	bool time_mode;
+	Parameters* distances;
 };
 
 static void tree_init_distance_parameters( Tree *t, Parameters *ps );
@@ -391,6 +392,14 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 		Tree_init_heights(atree);
 	}
 	
+	atree->distances = new_Parameters(Tree_node_count(atree)-2);
+	Node* root = Tree_root(atree);
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		Node* node = Tree_node(atree, i);
+		if ( node != root && root->right != node) {
+			Parameters_add(atree->distances, node->distance);
+		}
+	}
 	
 	free_StringBuffer(buffer);
 	
@@ -444,6 +453,13 @@ Tree * new_Tree2( Node *root, bool containBL ){
 		Tree_init_heights(atree);
 	}
 	
+	atree->distances = new_Parameters(Tree_node_count(atree)-2);
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		Node* node = Tree_node(atree, i);
+		if ( node != root && root->right != node) {
+			Parameters_add(atree->distances, node->distance);
+		}
+	}
 	return atree;
 }
 
@@ -693,6 +709,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		json_node* id = get_json_node(node, "id");
 		mtree = new_TreeModel((char*)id->value, tree);
 		free_dmatrix(matrix, patterns->size);
+		Hashtable_add(hash, get_json_node_value_string(node, "parameters"), tree->distances);
 	}
 	else if (node->node_type != MJSON_STRING) {
 		char* ref = (char*)node->value;
@@ -720,7 +737,8 @@ void free_Tree( Tree *t){
 	if ( t->preorder != NULL ) free(t->preorder);
 	t->postorder = NULL;
 	t->preorder = NULL;
-    free(t->nodes);
+	free(t->nodes);
+	free_Parameters(t->distances);
 	free(t);
 	t = NULL;
 }
@@ -792,6 +810,15 @@ Tree * clone_Tree( const Tree *tree ){
 	
 	newTree->dated = tree->dated;
 	newTree->time_mode = tree->time_mode;
+	
+	newTree->distances = new_Parameters(Tree_node_count(newTree)-2);
+	Node* root = Tree_root(newTree);
+	for (int i = 0; i < Tree_node_count(newTree); i++) {
+		Node* node = Tree_node(newTree, i);
+		if ( node != root && root->right != node) {
+			Parameters_add(newTree->distances, node->distance);
+		}
+	}
 	return newTree;
 }
 
@@ -830,6 +857,15 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
     Tree_update_topology(newTree);
     
 	newTree->dated = tree->dated;
+	
+	newTree->distances = new_Parameters(Tree_node_count(newTree)-2);
+	Node* root = Tree_root(newTree);
+	for (int i = 0; i < Tree_node_count(newTree); i++) {
+		Node* node = Tree_node(newTree, i);
+		if ( node != root && root->right != node) {
+			Parameters_add(newTree->distances, node->distance);
+		}
+	}
 	
 	return newTree;
 }

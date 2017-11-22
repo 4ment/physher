@@ -56,7 +56,7 @@ void update_partials_20_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int p
 		}
 		else {
 			partials_states_and_undefined_20_SSE(tlk,
-										  tlk->mapping[matrixIndex2],
+										  tlk->mapping[partialsIndex2],
 										  tlk->matrices[matrixIndex2],
 										  tlk->partials[partialsIndex1],
 										  tlk->matrices[matrixIndex1],
@@ -67,7 +67,7 @@ void update_partials_20_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int p
 	else{
 		if(  tlk->partials[partialsIndex2] != NULL ){
 			partials_states_and_undefined_20_SSE(tlk,
-										  tlk->mapping[matrixIndex1],
+										  tlk->mapping[partialsIndex1],
 										  tlk->matrices[matrixIndex1],
 										  tlk->partials[partialsIndex2],
 										  tlk->matrices[matrixIndex2],
@@ -76,9 +76,9 @@ void update_partials_20_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int p
 		}
 		else{
 			partials_states_and_states_20_SSE(tlk,
-									   tlk->mapping[matrixIndex1],
+									   tlk->mapping[partialsIndex1],
 									   tlk->matrices[matrixIndex1],
-									   tlk->mapping[matrixIndex2],
+									   tlk->mapping[partialsIndex2],
 									   tlk->matrices[matrixIndex2],
 									   tlk->partials[partialsIndex]);
 		}
@@ -1068,17 +1068,17 @@ void update_partials_upper_20( SingleTreeLikelihood *tlk, Node *node ){
 	const double* freqs = tlk->get_root_frequencies(tlk);
     if( Node_isroot(parent) ){
         if( Node_isleaf(sibling) ){
-            _update_upper_partials_root_and_state(tlk, tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], freqs, tlk->partials_upper[ Node_id(node) ] );
+            _update_upper_partials_root_and_state(tlk, tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
         }
         else {
-            _update_upper_partials_root_and_undefined(tlk, tlk->partials[ Node_id(sibling) ],  tlk->matrices[ Node_id(sibling) ], freqs, tlk->partials_upper[ Node_id(node) ] );
+            _update_upper_partials_root_and_undefined(tlk, tlk->partials[ Node_id(sibling) ],  tlk->matrices[ Node_id(sibling) ], freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
         }
     }
     else if( Node_isleaf(sibling) ){
-        _update_upper_partials_state(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials_upper[ Node_id(parent) ], tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->partials_upper[ Node_id(node) ]);
+        _update_upper_partials_state(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
     }
     else {
-        _update_upper_partials_undefined(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials_upper[ Node_id(parent) ], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials_upper[ Node_id(node) ]);
+        _update_upper_partials_undefined(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
     }
 }
                 
@@ -1289,10 +1289,10 @@ void node_log_likelihoods_upper_20( const SingleTreeLikelihood *tlk, Node *node 
     int node_index = Node_id(node);
     
     if ( !Node_isleaf(node) ) {
-        _partial_lower_upper(tlk, tlk->partials_upper[node_index], tlk->partials[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->node_pattern_lk );
+        _partial_lower_upper(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->partials[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
     }
     else {
-        _partial_lower_upper_leaf(tlk, tlk->partials_upper[node_index], tlk->mapping[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->node_pattern_lk );
+        _partial_lower_upper_leaf(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->mapping[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
     }
 }
                     
@@ -1785,19 +1785,19 @@ void update_partials_upper_sse_20( SingleTreeLikelihood *tlk, Node *node ){
     if( Node_isroot(parent) ){
         // The matrix of the sibling is transposed
         if( Node_isleaf(sibling) ){
-            _update_upper_partials_root_and_state_sse(tlk, tlk->matrices[Node_id(sibling) ], tlk->mapping[Node_id(sibling) ], freqs, tlk->partials_upper[Node_id(node) ] );
+            _update_upper_partials_root_and_state_sse(tlk, tlk->matrices[Node_id(sibling) ], tlk->mapping[Node_id(sibling) ], freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
         }
         else {
-            _update_upper_partials_root_and_undefined_sse(tlk, tlk->partials[Node_id(sibling) ],  tlk->matrices[Node_id(sibling) ],  freqs, tlk->partials_upper[Node_id(node) ] );
+            _update_upper_partials_root_and_undefined_sse(tlk, tlk->partials[Node_id(sibling) ],  tlk->matrices[Node_id(sibling) ],  freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
         }
     }
     // The matrix of the sibling is transposed
     // The pparent node cannot be leaf
     else if( Node_isleaf(sibling) ){
-        _update_upper_partials_state_sse(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials_upper[ Node_id(parent) ], tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->partials_upper[ Node_id(node) ]);
+        _update_upper_partials_state_sse(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
     }
     else {
-        _update_upper_partials_undefined_sse(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials_upper[ Node_id(parent) ], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials_upper[ Node_id(node) ]);
+        _update_upper_partials_undefined_sse(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
     }
 }
 
@@ -1961,10 +1961,10 @@ void node_log_likelihoods_upper_sse_20( const SingleTreeLikelihood *tlk, Node *n
     int node_index = Node_id(node);
     
     if ( !Node_isleaf(node) ) {
-        _partial_lower_upper_sse(tlk, tlk->partials_upper[node_index], tlk->partials[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->node_pattern_lk );
+        _partial_lower_upper_sse(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->partials[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
     }
     else {
-        _partial_lower_upper_leaf_sse(tlk, tlk->partials_upper[node_index], tlk->mapping[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->node_pattern_lk );
+        _partial_lower_upper_leaf_sse(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->mapping[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
     }
 }
 #endif
