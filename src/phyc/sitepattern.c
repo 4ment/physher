@@ -208,6 +208,91 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 	return sp;
 }
 
+SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int a, int b ){
+	SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );
+	assert(sp);
+	sp->id = 0;
+	
+	sp->datatype = clone_DataType(aln->datatype);
+	uint8_t **temp_patterns = NULL;
+	sp->nstate = sp->datatype->state_count(sp->datatype);
+	
+	if ( aln->datatype->type == DATA_TYPE_CODON) {
+		sp->nsites = length/3;
+		temp_patterns = ui8matrix( sp->nsites, aln->size);
+		_make_patterns_codon(aln, temp_patterns, start, length);
+	}
+	else if ( aln->datatype->type == DATA_TYPE_GENERIC) {
+		sp->nsites = 1;
+		temp_patterns = ui8matrix( sp->nsites, aln->size);
+		_make_patterns_generic( aln, temp_patterns );
+	}
+	else {
+		sp->nsites = length/3*2;
+		temp_patterns = ui8matrix( sp->nsites, aln->size);
+		_make_patterns( aln, temp_patterns, start+a, length, 3 );
+		_make_patterns( aln, temp_patterns+length/3, start+b, length, 3 );
+	}
+	
+	assert(sp->nsites);
+	sp->patterns = (uint8_t**)malloc(sp->nsites * sizeof(uint8_t *) );
+	assert(sp->patterns);
+	sp->indexes = ivector(sp->nsites);
+	sp->weights = dvector(sp->nsites);
+	sp->count = 0;
+	sp->size = aln->size;
+	
+	
+	int site, p;
+	for( site = 0; site < sp->nsites; site++ ){
+		for ( p = 0; p < sp->count; p++ ) {
+			if( compare_patterns( temp_patterns[site], sp->patterns[p], aln->size ) ){
+				sp->weights[p] += 1.;
+				sp->indexes[site] = p;
+				break;
+			}
+		}
+		if( p == sp->count ){
+			sp->weights[sp->count] = 1.;
+			sp->patterns[sp->count] = (uint8_t*)malloc(aln->size * sizeof(uint8_t) );
+			assert(sp->patterns[sp->count]);
+			memcpy( sp->patterns[sp->count], temp_patterns[site], aln->size * sizeof(uint8_t) );
+			sp->indexes[site] = sp->count;
+			sp->count++;
+		}
+	}
+	assert(sp->count);
+	sp->weights  = realloc(sp->weights, sp->count * sizeof(double) );
+	sp->patterns = realloc(sp->patterns, sp->count * sizeof(uint8_t*) );
+	
+	//	//
+	//	sp->patterns2 = (uint8_t**)malloc(aln->size * sizeof(uint8_t *) );
+	//	for ( int i = 0; i < aln->size; i++ ) {
+	//		sp->patterns2[i] = (uint8_t*)calloc(sp->count, sizeof(uint8_t) );
+	//	}
+	//	for ( int i = 0; i < sp->count; i++ ) {
+	//		for ( int j = 0; j < aln->size ; j++ ) {
+	//			sp->patterns2[j][i] = sp->patterns[i][j];
+	//		}
+	//	}
+	//	//
+	
+	sp->names = (char**)malloc( aln->size * sizeof(char*) );
+	assert(sp->names);
+	
+	for ( int i = 0; i < aln->size; i++) {
+		sp->names[i] = String_clone( aln->seqs[i]->name );
+	}
+	
+	for ( int i = 0; i < sp->nsites; i++) {
+		free(temp_patterns[i]);
+	}
+	free(temp_patterns);
+	sp->ref_count = 1;
+	
+	return sp;
+}
+
 void free_SitePattern( SitePattern *sp ){
 	if(sp->ref_count == 1){
 		if(sp->patterns != NULL ){
@@ -602,11 +687,12 @@ double unconstrained_lk( const SitePattern *sp, const unsigned int count){
 }
 
 void _make_patterns( const Sequences *aln, uint8_t **patterns, int start, int length, int every ){
-	int i;
+	int j = 0;
 	for( int site = start; site < length; site+=every ){
-		for( i = 0; i < aln->size; i++ ){
-			patterns[site][i] = aln->datatype->encoding(aln->datatype, aln->seqs[i]->seq[site]);
+		for( int i = 0; i < aln->size; i++ ){
+			patterns[j][i] = aln->datatype->encoding(aln->datatype, aln->seqs[i]->seq[site]);
 		}
+		j++;
 	}
 }
 
@@ -722,6 +808,9 @@ unsigned SitePattern_polymorphic_count(SitePattern *sp){
 SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 	json_node* alignment_node = get_json_node(node, "alignment");
 	json_node* datatype_node = get_json_node(node, "datatype");
+	json_node* start_node = get_json_node(node, "every");
+	json_node* length_node = get_json_node(node, "length");
+	json_node* every_node = get_json_node(node, "every");
 	SitePattern* patterns = NULL;
 	
 	
@@ -729,7 +818,27 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		DataType* datatype = new_DataType_from_json(datatype_node, hash);
 		Sequences* sequences = new_Sequences_from_json(alignment_node, hash);
 		sequences->datatype = datatype;
-		patterns = new_SitePattern(sequences);
+		if(every_node != NULL || start_node != NULL || length_node != NULL){
+			const char* every_string = (char*)every_node->value;
+			int start = get_json_node_value_size_t(node, "start", 0);
+			int length = get_json_node_value_size_t(node, "length", sequences->length);
+			if(strlen(every_string) == 1){
+				int every = atoi(every_string);
+				patterns = new_SitePattern2(sequences, start, length, every);
+			}
+			else{
+				char temp[2];
+				temp[1] = '\0';
+				temp[0] = every_string[0];
+				int a = atoi(temp);
+				temp[0] = every_string[1];
+				int b = atoi(temp);
+				patterns = new_SitePattern3(sequences, start, length, a, b);
+			}
+		}
+		else{
+			patterns = new_SitePattern(sequences);
+		}
 		free_Sequences(sequences);
 	}
 	else{

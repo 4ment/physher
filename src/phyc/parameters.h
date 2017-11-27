@@ -302,9 +302,11 @@ struct _ListenerList {
 struct _Model {
 	void *obj; // pointer to model
 	char *name;
+	char* type;
 	void* data;
 	double (*logP)( Model * );
 	double (*dlogP)( Model *, const Parameter* );
+	void (*gradient)( Model *, double* );
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, int );
@@ -317,12 +319,20 @@ struct _Model {
 
 #pragma mark -
 
-Model * new_Model( const char *name, void *obj );
+Model * new_Model( const char *type, const char *name, void *obj );
 
 void free_Model( Model *model );
+
+double Model_first_derivative( Model *model, Parameter* parameter, double eps );
 
 #pragma mark -
 
 ListenerList * new_ListenerList( const unsigned capacity );
+
+#pragma mark -
+
+void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters);
+
+
 
 #endif

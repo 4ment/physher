@@ -183,7 +183,7 @@ static void _branch_model_get_free_parameters(Model* model, Parameters* paramete
 
 // BranchModel2 listen to the rate parameters
 Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
-	Model *model = new_Model(name, bm);
+	Model *model = new_Model("branchmodel", name, bm);
 	for ( int i = 0; i < Parameters_count(bm->rates); i++ ) {
 		Parameters_at(bm->rates, i)->listeners->add( Parameters_at(bm->rates, i)->listeners, model );
 	}

@@ -89,9 +89,11 @@
 #include "phyc/PhyCConfig.h"
 #endif
 
-#include "compoundmodel.h"
-#include "distmodel.h"
-#include "mjson.h"
+#include "phyc/compoundmodel.h"
+#include "phyc/distmodel.h"
+#include "phyc/mjson.h"
+#include "phyc/logger.h"
+#include "phyc/vb.h"
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -1525,25 +1527,47 @@ void test2(Model* mpost){
 }
 
 int main(int argc, char* argv[]){
-	char* content = load_file("/Users/mathieu/Dropbox/physher/gtr2.json");
+	char* content = NULL;
+	printf("%d\n",argc);
+	if (argc == 1) {
+		content = load_file("/Users/mathieu/Dropbox/physher/gtr2.json");
+	}
+	else {
+		content = load_file(argv[1]);
+		printf("Reading file %s\n", argv[1]);
+	}
+	long seeed = time(NULL);
+	
 	json_node* json = create_json_tree(content);
 	free(content);
-	json_node* run_node = get_json_node(json, "physher");
-	json_node* model_node = get_json_node(json, "model");
-	json_node* type_node = get_json_node(model_node, "type");
+	
 	Hashtable* hash2 = new_Hashtable_string(100);
 	hashtable_set_key_ownership( hash2, false );
 	hashtable_set_value_ownership( hash2, false );
 	
-	Model* model = NULL;
-	
-	if (strcasecmp((char*)type_node->value, "compound") == 0) {
-		model = new_CompoundModel_from_json(model_node, hash2);
+	size_t model_count = json->child_count-1;
+	Model** models = calloc(model_count, sizeof(Model*));
+	for (int i = 0; i < json->child_count; i++) {
+		json_node* child = json->children[i];
+		if (strcasecmp(child->key, "physher") == 0) continue;
 		
-		char* id = get_json_node_value_string(model_node, "id");
-		Hashtable_add(hash2, id, model);
-		printf("%s %f\n", id, model->logP(model));
+		json_node* type_node = get_json_node(child, "type");
+		char* id = get_json_node_value_string(child, "id");
+		
+		if (strcasecmp((char*)type_node->value, "compound") == 0) {
+			models[i] = new_CompoundModel_from_json(child, hash2);
+			
+			printf("%s %f\n", id, models[i]->logP(models[i]));
+		}
+		else if(strcasecmp((char*)type_node->value, "variational") == 0){
+			models[i] = new_Variational_from_json(child, hash2);
+		}
+		
+		Hashtable_add(hash2, id, models[i]);
 	}
+	json_node* run_node = get_json_node(json, "physher");
+	
+	init_genrand(seeed);
 	
 	Model* treeee = Hashtable_get(hash2, "tree");
 	Tree* tt = treeee->obj;
@@ -1554,14 +1578,23 @@ int main(int argc, char* argv[]){
 	
 	for (int i = 0; i < run_node->child_count; i++) {
 		json_node* child = run_node->children[i];
-		
-		Optimizer* opt = new_Optimizer_from_json(child, hash2);
-		double logP;
-		opt_optimize(opt, NULL, &logP);
-		free_Optimizer(opt);
+		char* type = get_json_node_value_string(child, "type");
+		if (strcasecmp(type, "optimizer") == 0) {
+			//Optimizer* opt = new_Optimizer_from_json(child, hash2);
+			double logP;
+			//opt_optimize(opt, NULL, &logP);
+			//free_Optimizer(opt);
+		}
+		else if (strcasecmp(type, "logger") == 0) {
+			//struct Logger* logger = new_logger_from_json(child, hash2);
+			//logger->log(logger);
+			//free_Logger(logger);
+		}
 	}
-	
-	model->free(model);
+	for (int i = 0; i < model_count; i++) {
+		models[i]->free(models[i]);
+	}
+	free(models);
 	free_Hashtable(hash2);
 	
 	//json_tree_to_string(json);

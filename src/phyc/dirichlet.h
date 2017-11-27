@@ -24,11 +24,11 @@
 
 // Density function
 
-double ddirchlet( const double *x, const int dim, const double *alphas );
+double ddirchlet( const double *x, const size_t dim, const double *alphas );
 
-double ddirchletln( const double *x, const int dim, const double *alphas );
+double ddirchletln( const double *x, const size_t dim, const double *alphas );
 
 // Flat dirichlet with alpha == (1,1,..,1)
-double ddirchlet_flat( const int dim );
+double ddirchlet_flat( const size_t dim );
 
 #endif /* dirichlet_h */

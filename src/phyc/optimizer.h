@@ -47,11 +47,12 @@ typedef enum opt_algorithm {
 	OPT_SERIAL_BRENT,
 	OPT_BFGS,
 	OPT_CG_PR,
-	OPT_CG_FR,
-	OPT_META,
+    OPT_CG_FR,
+    OPT_META,
+    OPT_SG,
 }opt_algorithm;
 
-static const char *OPT_ALGORITHMS[5] = {"POWELL","BRENT","BFGS","CG_PR","CG_FR"};
+static const char *OPT_ALGORITHMS[7] = {"POWELL","BRENT","BFGS","CG_PR","CG_FR","META","SG"};
 
 typedef struct OptStopCriterion{
 	time_t time_start;
@@ -80,6 +81,7 @@ typedef struct OptStopCriterion{
 
 
 typedef double (*opt_func)( Parameters *x, double *gradient, void *data );
+typedef void (*opt_grad_func)( Parameters *x, double *gradient, void *data );
 
 typedef bool (*opt_update_data)( void *data, Parameters *p);
 

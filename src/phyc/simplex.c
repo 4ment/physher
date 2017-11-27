@@ -13,7 +13,7 @@
 #include "matrix.h"
 
 // free to constrained
-void inverse_transform(const Parameters* parameters, double* values){
+void _inverse_transform(const Parameters* parameters, double* values){
 	int N = Parameters_count(parameters); // n=K-1
 	values[N] = 1.0;
 	for (int i = 0; i < N; i++) {
@@ -26,7 +26,7 @@ void inverse_transform(const Parameters* parameters, double* values){
 }
 
 // constrained to free
-void transform(const double* values, Parameters* parameters){
+void _transform(const double* values, Parameters* parameters){
 	int N = Parameters_count(parameters); // N=K-1
 	for (int i = 0; i < N; i++) {
 		Parameters_set_value(parameters, i, values[i]/values[N]);
@@ -57,7 +57,7 @@ Simplex* clone_Simplex(const Simplex* simplex){
 
 void set_values(Simplex* simplex, const double* values){
 	memcpy(simplex->values, values, sizeof(double)*simplex->K);
-	transform(simplex->values, simplex->parameters);
+	_transform(simplex->values, simplex->parameters);
 }
 
 void set_parameter_value(Simplex* simplex, int index, double value){
@@ -68,7 +68,7 @@ void set_parameter_value(Simplex* simplex, int index, double value){
 const double* get_values(Simplex* simplex){
 	if (simplex->need_update) {
 //			print_dvector(simplex->values,4);
-		inverse_transform(simplex->parameters, simplex->values);
+		_inverse_transform(simplex->parameters, simplex->values);
 		simplex->need_update  = false;
 //		print_dvector(simplex->values,4);
 //		printf("--------------------------------\n");
@@ -78,7 +78,7 @@ const double* get_values(Simplex* simplex){
 
 double get_value(Simplex* simplex, int i){
 	if (simplex->need_update) {
-		inverse_transform(simplex->parameters, simplex->values);
+		_inverse_transform(simplex->parameters, simplex->values);
 		simplex->need_update  = false;
 	}
 	return simplex->values[i];
@@ -189,7 +189,7 @@ static void _simplex_get_free_parameters(Model* model, Parameters* parameters){
 
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SimplexModel( const char* name, Simplex *simplex ){
-	Model *model = new_Model(name, simplex);
+	Model *model = new_Model("simplex", name, simplex);
 	int i = 0;
 	
 	if ( simplex->parameters != NULL ) {

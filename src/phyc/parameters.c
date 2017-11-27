@@ -29,6 +29,8 @@
 #include "parser.h"
 #include "matrix.h"
 
+#include "simplex.h"
+
 #define STRINGIFY_PARAMETERS  "params"
 #define STRINGIFY_VALUE "value"
 #define STRINGIFY_CONSTRAINT "constraint"
@@ -936,10 +938,11 @@ static double _dlogP(Model *model, const Parameter* p){return 0;}
 #pragma mark -
 
 
-Model * new_Model( const char *name, void *obj ){
+Model * new_Model( const char *type, const char *name, void *obj ){
 	Model *model = (Model*)malloc(sizeof(Model));
 	assert(model);
 	model->name = String_clone(name);
+	model->type = String_clone(type);
 	model->obj = obj;
 	model->logP = _logP;
 	model->dlogP = _dlogP;
@@ -957,6 +960,7 @@ void free_Model( Model *model ){
 	assert(model->ref_count >= 1);
 	if(model->ref_count == 1){
 		free(model->name);
+		free(model->type);
 		model->listeners->free(model->listeners);
 		free(model);
 	}
@@ -1089,9 +1093,8 @@ double Model_second_derivative( Model *model, Parameter* parameter, double* firs
 }
 
 // First derivative using central differences
-double Model_first_derivative( Model *model, Parameter* parameter ) {
-	double eps = 1.0e-8;
-	
+// eps = 1.0e-8;
+double Model_first_derivative( Model *model, Parameter* parameter, double eps ) {	
 	double v = Parameter_value(parameter);
 	double e = eps * v;
 	
@@ -1106,4 +1109,59 @@ double Model_first_derivative( Model *model, Parameter* parameter ) {
 	return (pp - mm)/(2.0*e);
 }
 
+#pragma mark -
+
+void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters){
+    json_node* x_node = get_json_node(node, "parameters");
+    
+    if(x_node->node_type == MJSON_ARRAY){
+        for (int i = 0; i < x_node->child_count; i++) {
+            json_node* child = x_node->children[i];
+            char* ref = (char*)child->value;
+            // it's a ref
+            if (child->node_type == MJSON_STRING) {
+                if (ref[0] == '&') {
+                    Parameter* p = Hashtable_get(hash, ref+1);
+                    Parameters_add(parameters, p);
+                    
+                }
+                // tree
+                else if (ref[0] == '%') {
+                    Parameters* ps = Hashtable_get(hash, ref+1);
+                    Parameters_add_parameters(parameters, ps);
+                }
+                // simplex
+                else if (ref[0] == '$') {
+                    Model* msimplex = Hashtable_get(hash, ref+1);
+                    Simplex* simplex = msimplex->obj;
+                    Parameters_add_parameters(parameters, simplex->parameters);
+                }
+            }
+            else{
+                exit(1);
+            }
+        }
+    }
+    // it's a ref
+    else if(x_node->node_type == MJSON_STRING){
+        char* ref = (char*)x_node->value;
+        if (ref[0] == '&') {
+            Parameter* p = Hashtable_get(hash, ref+1);
+            Parameters_add(parameters, p);
+        }
+        else if (ref[0] == '%') {
+            Parameters* ps = Hashtable_get(hash, ref+1);
+            Parameters_add_parameters(parameters, ps);
+        }
+        // simplex
+        else if (ref[0] == '$') {
+            Model* msimplex = Hashtable_get(hash, ref+1);
+            Simplex* simplex = msimplex->obj;
+            Parameters_add_parameters(parameters, simplex->parameters);
+        }
+    }
+    else{
+        exit(1);
+    }
+}
 

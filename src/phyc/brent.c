@@ -53,7 +53,7 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 	
 	double tol = stop->tolx;
     //int *numFun = &stop.f_eval_current;
-    int *iter = &stop->iter;
+    size_t *iter = &stop->iter;
 
 	a = ( Parameters_lower(ps,0) < Parameters_upper(ps,0) ? Parameters_lower(ps,0) : Parameters_upper(ps,0));
 	b = ( Parameters_lower(ps,0) > Parameters_upper(ps,0) ? Parameters_lower(ps,0) : Parameters_upper(ps,0));

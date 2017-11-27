@@ -173,7 +173,7 @@ double _compoundModel_dlogP2(Model *self, const Parameter* p){
 }
 
 Model* new_CompoundModel2(const char* name, CompoundModel* cm){
-	Model *model = new_Model(name, cm);
+	Model *model = new_Model("compound", name, cm);
 	model->logP = _compoundModel_logP2;
 	model->dlogP = _compoundModel_dlogP2;
 	model->free = _compound_model_free;

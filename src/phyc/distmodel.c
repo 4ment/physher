@@ -371,7 +371,7 @@ static void _dist_model_get_free_parameters(Model* model, Parameters* parameters
 }
 
 Model* new_DistributionModel2(const char* name, DistributionModel* dm){
-	Model *model = new_Model(name, dm);
+	Model *model = new_Model("distribution",name, dm);
 	model->logP = _dist_model_logP;
 	model->dlogP = _dist_model_dlogP;
 	model->free = _dist_model_free;
@@ -381,7 +381,7 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 }
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex){
-	Model *model = new_Model(name, dm);
+	Model *model = new_Model("distribution",name, dm);
 	model->data = simplex;
 	if(simplex != NULL) simplex->ref_count++;
 	model->logP = _dist_model_logP;

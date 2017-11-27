@@ -156,7 +156,7 @@ json_node* create_json_tree(const char* json){
 		else if(json[i] == ']'){
 			//printf("close array %s\n", current->key);
 			// allow empty array
-			if(current->child_count > 0) current = current->parent;
+//			if(current->child_count > 0) current = current->parent;
 			current = current->parent;
 		}
 		else if(json[i] == ','){

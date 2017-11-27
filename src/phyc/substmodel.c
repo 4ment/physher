@@ -153,8 +153,7 @@ static void _substitution_model_get_free_parameters(Model* model, Parameters* pa
 
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex ){
-	Model *model = new_Model(name, sm);
-	
+	Model *model = new_Model("substitutionmodel", name, sm);
 	Model** simplexes = (Model**)calloc(2, sizeof(Model*));
 	model->data = simplexes;
 	simplexes[0] = freqs_simplex;

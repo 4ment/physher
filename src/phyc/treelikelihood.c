@@ -75,13 +75,13 @@ static bool _calculate_partials_noexp_integrate( SingleTreeLikelihood *tlk, Node
 void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 	SingleTreeLikelihood *tlk = (SingleTreeLikelihood*)self->obj;
 	//printf("%s %d\n", model->name, index);
-	if ( strcmp(model->name, "tree") == 0 ) {
+	if ( strcmp(model->type, "tree") == 0 ) {
 //		printf("node index %d\n", index);
 		//SingleTreeLikelihood_update_one_node(tlk, index);
 		tlk->update_nodes[index] = true;
 		tlk->update = true;
 	}
-	else if ( strcmp(model->name, "branchmodel") == 0 ) {
+	else if ( strcmp(model->type, "branchmodel") == 0 ) {
 		if(index == -1){
 			SingleTreeLikelihood_update_all_nodes(tlk);
 		}
@@ -90,10 +90,11 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 			tlk->update = true;
 		}
 	}
-	else if ( strcmp(model->name, "sitemodel") == 0 ) {
+	else if ( strcmp(model->type, "sitemodel") == 0 ) {
 		SingleTreeLikelihood_update_all_nodes(tlk);
 	}
 	else {
+		fprintf(stderr, "%s of type %s\n", model->name, model->type);
 		error("Unknown change in SingleLikelihood\n");
 	}
 }
@@ -190,7 +191,7 @@ static void _treeLikelihood_model_get_free_parameters(Model* model, Parameters* 
 
 // TreeLikelihood listen to the TreeModel, SiteModel, BranchModel
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm ){
-	Model *model = new_Model(name, tlk);
+	Model *model = new_Model("treelikelihood",name, tlk);
 
 	tree->listeners->add( tree->listeners, model );
 	if(bm != NULL)bm->listeners->add( bm->listeners, model );

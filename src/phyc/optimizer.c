@@ -33,10 +33,24 @@
 #include "tree.h"
 #include "treelikelihood.h"
 
+#include "vb.h"
+
 static double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
-	//printf("%f\n", model->logP(model));
+	//	printf("%f\n", model->logP(model));
+	return model->logP(model);
+}
+
+static double _negative_logP( Parameters *params, double *grad, void *data ){
+	Model* model = (Model*)data;
+	//	printf("%f\n", model->logP(model));
 	return -model->logP(model);
+}
+
+static void _gradient( Parameters *params, double *grad, void *data ){
+	Model* model = (Model*)data;
+//	printf("%f\n", model->logP(model));
+	model->gradient(model, grad);
 }
 
 static bool dummy_update_data( void *data, Parameters *p){return false;}
@@ -49,7 +63,9 @@ struct _Optimizer{
 	unsigned int dimension;
 	
 	opt_func f;
+    opt_grad_func grad_f;
 	void *data;
+//    Model* model;
 	Parameters* parameters;
 	Model* treelikelihood;
 
@@ -58,6 +74,11 @@ struct _Optimizer{
 	opt_update_data update;
 	int verbosity;
 	OptimizerSchedule* schedule;
+    
+    // for stochastic gradient
+    double eta;
+    bool ascent;
+    
 };
 
 opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptStopCriterion *stop, double *fmin ){
@@ -141,6 +162,7 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	assert(opt);
 	opt->algorithm = algorithm;
 	opt->f = NULL;
+    opt->grad_f = NULL;
 	opt->data = NULL;
 	opt->parameters = NULL;
 	opt->treelikelihood = NULL;
@@ -169,6 +191,9 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->verbosity = 0;
 	opt->update = dummy_update_data;
 	opt->schedule = NULL;
+    
+    opt->eta = 1;
+    opt->ascent = true;
 	return opt;
 }
 
@@ -208,6 +233,10 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 	clone->schedule = NULL;
 	clone->parameters = NULL;
 	clone->treelikelihood = NULL;
+    
+    clone->ascent = opt->ascent;
+    clone->eta = opt->eta;
+    clone->grad_f = opt->grad_f;
 	
 	if(opt->schedule != NULL){
 		clone->schedule = (OptimizerSchedule*)malloc(sizeof(OptimizerSchedule));
@@ -252,7 +281,7 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 void free_Optimizer( Optimizer *opt ){
 	opt->data = NULL;
 	free_Parameters(opt->parameters);
-	if(opt->treelikelihood != NULL) opt->treelikelihood->free(opt->treelikelihood);
+	//if(opt->treelikelihood != NULL) opt->treelikelihood->free(opt->treelikelihood);
 	if(opt->schedule != NULL){
 		for (int i = 0; i < opt->schedule->count; i++) {
 			free_Optimizer(opt->schedule->optimizers[i]);
@@ -440,6 +469,95 @@ opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx ){
 	return stopflag;
 }
 
+
+int compare (const void * a, const void * b){
+	return ( *(double*)a - *(double*)b );
+}
+
+opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, double *fmin){
+    int dim = Parameters_count(parameters);
+    double tau = 1;
+    double pre_factor  = 0.9;
+    double post_factor = 0.1;
+    double elbo = 0;
+    double elbo_prev = -INFINITY;
+    double elbo_best = -INFINITY;
+    double tol_rel_obj = 0.0001;
+    int eval_elbo = 100;
+    int max_conv = 3;
+    int conv = 0;
+	stop->iter = 0;
+    double *elbos = calloc(stop->iter_max/eval_elbo, sizeof(double));
+    double* grads = calloc(dim, sizeof(double));
+    double *history_grad_squared = calloc(dim, sizeof(double));
+	
+	opt_result result = OPT_SUCCESS;
+    
+    while(stop->iter++ < stop->iter_max){
+        grad_f(parameters, grads, data);
+//        var->grad_elbofn(var, r);
+        
+        double eta_scaled = eta / sqrt(stop->iter);
+        
+        // Update step-size
+        if (stop->iter == 1) {
+            for (int i = 0; i < dim; i++) {
+                history_grad_squared[i] = grads[i]*grads[i];
+            }
+        } else {
+            for (int i = 0; i < dim; i++) {
+                history_grad_squared[i] = pre_factor * history_grad_squared[i] + post_factor * grads[i]*grads[i];
+            }
+        }
+		// ascent
+		for (int i = 0; i < dim; i++) {
+			double v = Parameters_value(parameters, i) + eta_scaled * grads[i] / (tau + sqrt(history_grad_squared[i]));
+			Parameters_set_value(parameters, i, v);
+		}
+        
+        if (stop->iter % eval_elbo == 0) {
+//            for (int j = 0; j < dim; j++) {
+//                Parameter* p = Parameters_at(var->parameters, j);
+//                //Parameter_set_value(p, exp(parameters[i]));
+//                Parameter_set_value(p, exp(var->var_parameters[j]-var->var_parameters[j+dim]*var->var_parameters[j+dim])); // mode
+//            }
+            
+            elbo_prev = elbo;
+			elbo = f(parameters, NULL, data);
+			printf("%zu ELBO: %f (%f)\n", stop->iter, elbo, elbo_prev);
+//            printf("%d ELBO: %f (%f) logL: %f\n",iter, elbo, elbo_prev, var->posterior->logP(var->posterior));
+//            double cubo = cubo_meanfield(tlk, nodes, nodeCount, elbo_samples, parameters,r);
+//            printf("%d ELBO: %f (%f) cubo: %f\n",iter, elbo, elbo_prev, cubo);
+			
+            if (elbo > elbo_best){
+                elbo_best = elbo;
+            }
+            double delta_elbo = fabs((elbo_prev - elbo) / elbo);
+            size_t eval_count = stop->iter/eval_elbo;
+            elbos[eval_count-1] = delta_elbo;
+            qsort (elbos, eval_count, sizeof(double), compare);
+            size_t median = eval_count/2;
+            if(elbos[median] < tol_rel_obj && conv == max_conv){
+                //                for(int i = 0; i < parameterCount/2; i++){
+                //                    printf("%d grad: %f %f\n",i, grads[i], grads[dim+i]);
+                //                }
+                printf("ELBO converged: %f < %f  %f  %zu %zu\n",elbos[median], tol_rel_obj, delta_elbo, median, stop->iter);
+                break;
+            }
+            else if(elbos[median] < tol_rel_obj){
+                conv++;
+            }
+        }
+    }
+    free(grads);
+    free(elbos);
+    free(history_grad_squared);
+//	for (int i = 0; i < Parameters_count(parameters); i++) {
+//		printf("%s %f\n", Parameters_name(parameters, i), Parameters_value(parameters, i));
+//	}
+	return result;
+}
+
 opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 	if ( opt->stop.time_max != 0 ) {
 		time( &opt->stop.time_start );
@@ -480,11 +598,15 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 		case OPT_CG_FR:{
 			result = frprmn_optimize( ps, opt->f, opt->data, opt->stop, fmin, OPT_CG_FR );
 			break;
-		}
-		case OPT_CG_PR:{
-			result = frprmn_optimize( ps, opt->f, opt->data, opt->stop, fmin, OPT_CG_PR );
-			break;
-		}
+        }
+        case OPT_CG_PR:{
+            result = frprmn_optimize( ps, opt->f, opt->data, opt->stop, fmin, OPT_CG_PR );
+            break;
+        }
+        case OPT_SG:{
+			result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, opt->eta, opt->data, &opt->stop, fmin);
+            break;
+        }
 		default:
 			result = -100;
 			break;
@@ -566,47 +688,6 @@ bool fxStop( double fx, double *fxold, const double tolfx){
 	}
 }
 
-void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters){
-	json_node* x_node = get_json_node(node, "parameters");
-	
-	if(x_node->node_type == MJSON_ARRAY){
-		for (int i = 0; i < x_node->child_count; i++) {
-			json_node* child = x_node->children[i];
-			char* ref = (char*)child->value;
-			// it's a ref
-			if (child->node_type == MJSON_STRING) {
-				if (ref[0] == '&') {
-					Parameter* p = Hashtable_get(hash, ref+1);
-					Parameters_add(parameters, p);
-				}
-				else if (ref[0] == '%') {
-					Parameters* ps = Hashtable_get(hash, ref+1);
-					Parameters_add_parameters(parameters, ps);
-				}
-			}
-			else{
-				exit(1);
-			}
-		}
-	}
-	// it's a ref
-	else if(x_node->node_type == MJSON_STRING){
-		char* ref = (char*)x_node->value;
-		if (ref[0] == '&') {
-			Parameter* p = Hashtable_get(hash, ref+1);
-			Parameters_add(parameters, p);
-		}
-		else if (ref[0] == '%') {
-			Parameters* ps = Hashtable_get(hash, ref+1);
-			Parameters_add_parameters(parameters, ps);
-		}
-	}
-	else{
-		exit(1);
-	}
-}
-
-
 
 Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
@@ -633,7 +714,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 			const char* ref = get_json_node_value_string(node, "treelikelihood");
 			opt = new_Optimizer(OPT_SERIAL_BRENT);
 			opt->treelikelihood = Hashtable_get(hash, ref+1);
-			opt->treelikelihood->ref_count++;
+			//opt->treelikelihood->ref_count++;
 		}
 		else{
 			get_parameters_references(node, hash, parameters);
@@ -648,13 +729,48 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		opt_set_max_iteration(opt, max);
 		opt_set_tolfx(opt, precision);
 	}
-	const char* ref = get_json_node_value_string(node, "model");
-
-	if(ref != NULL){
-		Model* model = Hashtable_get(hash, ref+1);
+    // stochastic gradient
+    else if(strcasecmp(algorithm_string, "sg") == 0){
+        opt = new_Optimizer(OPT_SG);
+        double tol = get_json_node_value_double(node, "tol", 0.0001);
+        opt->eta = 1;
+        json_node* etas = get_json_node(node, "eta");
+        if (etas != NULL) {
+			if(etas->node_type == MJSON_ARRAY){
+				
+			}
+			else{
+				opt->eta = get_json_node_value_double(etas, "eta", 10.0);
+			}
+		}
+		opt_set_max_iteration(opt, max);
+    }
+	json_node* model_node = get_json_node(node, "model");
+    
+    // variational
+    if(model_node != NULL && model_node->node_type == MJSON_OBJECT){
+		const char* ref = get_json_node_value_string(node, "treelikelihood");
+        Model* model = new_Variational_from_json(model_node, hash);
+		struct variational_t* var = model->obj;
+		opt_set_data(opt, var);
+		opt_set_objective_function(opt, var->f);
+		opt->grad_f = var->grad_f;
+		opt->parameters = var->var_parameters;
+        
+    }
+    else if(model_node != NULL){
+        const char* ref = (char*)model_node->value;
+        Model* model = Hashtable_get(hash, ref+1);
 		opt_set_data(opt, model);
-	}
-	opt_set_objective_function(opt, _logP);
+		opt_set_objective_function(opt, _negative_logP);
+		opt->grad_f = _gradient;
+		
+		if(model->get_free_parameters != NULL && strcasecmp(algorithm_string, "sg") == 0){
+			model->get_free_parameters(model, parameters);
+			opt_set_parameters(opt, parameters);
+			opt_set_objective_function(opt, _logP);
+		}
+    }
 	
 	free_Parameters(parameters);
 	return opt;

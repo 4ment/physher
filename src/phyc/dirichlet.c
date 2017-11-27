@@ -19,27 +19,27 @@
 
 #include <math.h>
 
-double ddirchletln( const double *x, const int dim, const double *alphas ){
+double ddirchletln( const double *x, const size_t dim, const double *alphas ){
     double logp = 0;
     double sum = 0;
-    for (int i = 0; i < dim; i++) {
+    for (size_t i = 0; i < dim; i++) {
         logp += alphas[i]-1 + log(x[i]);
     }
-    for (int i = 0; i < dim; i++) {
+    for (size_t i = 0; i < dim; i++) {
         sum += alphas[i];
     }
     logp += gammln(sum);
     
-    for (int i = 0; i < dim; i++) {
+    for (size_t i = 0; i < dim; i++) {
         logp -= gammln(alphas[i]);
     }
     return logp;
 }
 
-double ddirchlet( const double *x, const int dim, const double *alphas ){
+double ddirchlet( const double *x, const size_t dim, const double *alphas ){
     return exp(ddirchletln(x, dim, alphas));
 }
 
-double ddirchlet_flat( const int dim ){
+double ddirchlet_flat( const size_t dim ){
     return gamm(dim);
 }

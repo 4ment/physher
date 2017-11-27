@@ -66,7 +66,7 @@ opt_result frprmn_optimize( Parameters *xvec, opt_func f, void *data, OptStopCri
 	
 	
 	// function value and gradient at current guess
-	int *numFun = &stop.f_eval_current;
+	size_t *numFun = &stop.f_eval_current;
 	double fx = 0;
 	//double numGrad = 0;
 	double *gvec = dvector(numArgs);

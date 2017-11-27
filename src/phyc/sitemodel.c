@@ -136,7 +136,7 @@ static void _site_model_get_free_parameters(Model* model, Parameters* parameters
 
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
-	Model *model = new_Model(name, sm);
+	Model *model = new_Model("sitemodel", name, sm);
 
 	if ( sm->rates != NULL ) {
 		for ( int i = 0; i < Parameters_count(sm->rates); i++ ) {
@@ -162,6 +162,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	json_node* distribution_node = get_json_node(node, "distribution");
 	json_node* discretization_node = get_json_node(node, "discretization");
 	json_node* m_node = get_json_node(node, "substitutionmodel");
+	json_node* mu_node = get_json_node(node, "mu");
 
 	Model* mm = NULL;
 	if (m_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)m_node->value)) {
@@ -223,11 +224,18 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		sm = new_PinvSiteModel_with_parameters(m, rates);
 	}
 	else{
-		sm =new_SiteModel(m);
+		sm = new_SiteModel(m);
 	}
-	json_node* id_node = get_json_node(node, "id");
 
-	Model* msm = new_SiteModel2((char*)id_node->value, sm, mm);
+	char* id_string = get_json_node_value_string(node, "id");
+
+	Model* msm = new_SiteModel2(id_string, sm, mm);
+	
+	if (mu_node != NULL) {
+		sm->mu = new_Parameter_from_json(mu_node, hash);
+		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
+		sm->mu->listeners->add( sm->mu->listeners, msm );
+	}
 	
 	mm->free(mm);
 	free_Parameters(rates);
