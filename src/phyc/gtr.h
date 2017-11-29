@@ -105,7 +105,7 @@
  * \frac{\partial}{\partial \phi_k}\frac{Q_{i,i}}{C} &=& -\frac{Q_{i,j}}{C^2}  \frac{\partial C}{\partial \phi_k}
  * \f}
  * \f{eqnarray*}
- * \frac{\partial}{\partial \phi_k}\frac{Q_{i,j}}{C} &=& \frac{C \frac{\partial Q_{i,j}}{\partial \phi_k} - Q_{i,j} \frac{\partial C}{\partial \phi_1}}{C^2}
+ * \frac{\partial}{\partial \phi_k}\frac{Q_{i,j}}{C} &=& \frac{C \frac{\partial Q_{i,j}}{\partial \phi_k} - Q_{i,j} \frac{\partial C}{\partial \phi_k}}{C^2}
  * \f}
  *
  */

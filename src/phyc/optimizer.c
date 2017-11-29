@@ -475,7 +475,7 @@ int compare (const void * a, const void * b){
 }
 
 opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, double *fmin){
-    int dim = Parameters_count(parameters);
+    size_t dim = Parameters_count(parameters);
     double tau = 1;
     double pre_factor  = 0.9;
     double post_factor = 0.1;
@@ -552,9 +552,7 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
     free(grads);
     free(elbos);
     free(history_grad_squared);
-//	for (int i = 0; i < Parameters_count(parameters); i++) {
-//		printf("%s %f\n", Parameters_name(parameters, i), Parameters_value(parameters, i));
-//	}
+
 	return result;
 }
 
@@ -733,14 +731,14 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
     else if(strcasecmp(algorithm_string, "sg") == 0){
         opt = new_Optimizer(OPT_SG);
         double tol = get_json_node_value_double(node, "tol", 0.0001);
-        opt->eta = 1;
+        opt->eta = 10;
         json_node* etas = get_json_node(node, "eta");
         if (etas != NULL) {
 			if(etas->node_type == MJSON_ARRAY){
 				
 			}
 			else{
-				opt->eta = get_json_node_value_double(etas, "eta", 10.0);
+				opt->eta = get_json_node_value_double(node, "eta", 10.0);
 			}
 		}
 		opt_set_max_iteration(opt, max);

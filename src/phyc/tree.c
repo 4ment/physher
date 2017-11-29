@@ -639,10 +639,10 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 	StringBuffer* buffer = new_StringBuffer(10);
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
 		StringBuffer_set_string(buffer, name);
-		StringBuffer_append_string(buffer, tree->nodes[i]->distance->name);
+		StringBuffer_append_strings(buffer, 2, ".", tree->nodes[i]->distance->name);
 		Parameter_set_name(tree->nodes[i]->distance, buffer->c);
 		StringBuffer_set_string(buffer, name);
-		StringBuffer_append_string(buffer, tree->nodes[i]->height->name);
+		StringBuffer_append_strings(buffer, 2, ".", tree->nodes[i]->height->name);
 		Parameter_set_name(tree->nodes[i]->height, buffer->c);
 		tree->nodes[i]->distance->listeners->add(tree->nodes[i]->distance->listeners, model);
 		tree->nodes[i]->height->listeners->add(tree->nodes[i]->height->listeners, model);
@@ -666,7 +666,9 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	if (newick_node != NULL) {
 		char* newick = (char*)newick_node->value;
 		Tree* tree = new_Tree(newick, true);
-		mtree = new_TreeModel(node->id, tree);
+		char* id = get_json_node_value_string(node, "id");
+		mtree = new_TreeModel(id, tree);
+		Hashtable_add(hash, get_json_node_value_string(node, "parameters"), tree->distances);
 	}
 	else if (file_node != NULL) {
 
@@ -2075,10 +2077,10 @@ void Tree_print_parameters( Tree *tree ){
 	Node **nodes = Tree_nodes( tree );
 	for ( int i = 0; i < tree->nNodes; i++ ) {
 		fprintf(stderr, "%d] postidx %d - %s height=%f [%f-%f] %d\n",
-				i,nodes[i]->id, nodes[i]->name, nodes[i]->height->value,
-				Parameter_lower(nodes[i]->height) ,
-				Parameter_upper(nodes[i]->height),
-				Parameter_estimate(nodes[i]->height) );
+				i,nodes[i]->id, nodes[i]->name, nodes[i]->distance->value,
+				Parameter_lower(nodes[i]->distance) ,
+				Parameter_upper(nodes[i]->distance),
+				Parameter_estimate(nodes[i]->distance) );
 	}
 }
 

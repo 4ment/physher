@@ -25,8 +25,7 @@ static double jc69_pij_t( SubstitutionModel *m, const int i, const int j, const 
 static void jc69_dp_dt( SubstitutionModel *m, const double t, double *P );
 static void jc69_d2p_dt2( SubstitutionModel *m, const double t, double *P );
 
-SubstitutionModel * new_JC69(){
-	Simplex* freqs = new_Simplex(4);
+SubstitutionModel * new_JC69(Simplex* freqs){
 	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
 		Parameters_set_estimate(freqs->parameters, false, i);
 	}

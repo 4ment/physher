@@ -28,6 +28,10 @@ struct variational_t{
     size_t grad_samples;
 	double (*f)( Parameters *x, double *gradient, void *data );
 	void (*grad_f)( Parameters *x, double *gradient, void *data );
+	bool initialized;
+	FILE* file;
+	size_t iter;
+	//char* filename;
     //gsl_rng* rng;
     // transforms
 };

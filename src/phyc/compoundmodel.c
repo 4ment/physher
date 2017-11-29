@@ -205,7 +205,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 				likelihood->ref_count++;
 			}
 			else{
-				exit(1);
+				exit(10);
 			}
 			cm->add(cm, likelihood);
 			likelihood->free(likelihood);

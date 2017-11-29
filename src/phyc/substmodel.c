@@ -186,6 +186,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	json_node* freqs_node = get_json_node(node, "frequencies");
 	json_node* rates_node = get_json_node(node, "rates");
 	json_node* datatype_node = get_json_node(node, "datatype");
+	char* id = get_json_node_value_string(node, "id");
 	
 	// DataType
 	DataType* datatype = NULL;
@@ -214,9 +215,11 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 		mfreqs_simplex_clone->ref_count++;
 	}
 	else{
+		fprintf(stderr, "No simplex specified in substitution model %s\n", id);
 		exit(1);
 	}
-	Simplex* freqs_simplex = (Simplex*)mfreqs_simplex_clone->obj;
+	
+	Simplex* freqs_simplex =  (Simplex*)mfreqs_simplex_clone->obj;
 	
 	// Rates
 	Parameters* rates = NULL;
@@ -334,7 +337,6 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	}
 	
 	free_DataType(datatype);//general should need it
-	char* id = get_json_node_value_string(node, "id");
 	Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex_clone, mrates_simplex_clone);
 	free_Parameters(rates);
 	mfreqs_simplex_clone->free(mfreqs_simplex_clone);
@@ -1344,7 +1346,7 @@ int nDNARates( const char *code ){
 
 SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataType* datatype, Simplex* freqSimplex, Simplex* rates_simplex, const Parameters* rates, const char** assignment ){
 	SubstitutionModel *mod = NULL;
-	size_t K = freqSimplex->K;
+	size_t K = datatype->state_count(datatype);
 	
 	if (datatype->type == DATA_TYPE_NUCLEOTIDE) {
 		bool equal_frequencies = false;
@@ -1381,7 +1383,7 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 		}
 		
 		if( strcasecmp("JC69", model_string2) == 0 ){
-			mod = new_JC69();
+			mod = new_JC69(freqSimplex);
 		}
 		else if( strcasecmp("K80", model_string2) == 0 ){
 			mod = new_K80_with_parameters(Parameters_at(rates, 0));

@@ -325,6 +325,10 @@ void free_Model( Model *model );
 
 double Model_first_derivative( Model *model, Parameter* parameter, double eps );
 
+double Model_second_derivative( Model *model, Parameter* parameter, double* first, double eps );
+
+double Model_mixed_derivative( Model *model, Parameter* p1, Parameter* p2 );
+
 #pragma mark -
 
 ListenerList * new_ListenerList( const unsigned capacity );

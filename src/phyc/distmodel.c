@@ -134,7 +134,12 @@ double DistributionModel_log_gamma(DistributionModel* dm){
 }
 
 double DistributionModel_dlog_gamma(DistributionModel* dm, const Parameter* p){
-	return (Parameters_value(dm->parameters, 0)-1.0)/Parameter_value(p) - Parameters_value(dm->parameters, 1);
+	for (int i = 0; i < Parameters_count(dm->x); i++) {
+		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
+			return (Parameters_value(dm->parameters, 0)-1.0)/Parameter_value(p) - Parameters_value(dm->parameters, 1);
+		}
+	}
+	return 0;
 }
 
 double DistributionModel_log_exp(DistributionModel* dm){
@@ -146,7 +151,12 @@ double DistributionModel_log_exp(DistributionModel* dm){
 }
 
 double DistributionModel_dlog_exp(DistributionModel* dm, const Parameter* p){
-	return -Parameters_value(dm->parameters, 0);
+	for (int i = 0; i < Parameters_count(dm->x); i++) {
+		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
+			return -Parameters_value(dm->parameters, 0);
+		}
+	}
+	return 0;
 }
 
 // Flat dirichlet

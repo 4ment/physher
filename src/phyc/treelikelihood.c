@@ -104,6 +104,32 @@ double _singleTreeLikelihood_logP(Model *self){
 	return tlk->calculate(tlk);
 }
 
+double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+	
+	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
+	
+	if(tlk->update){
+		tlk->calculate(tlk); // make sure it is updated
+		calculate_upper(tlk, Tree_root(tlk->tree));
+		
+		for (int i = 0; i < tlk->sp->count; i++) {
+			pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
+		}
+	}
+	Node* node = NULL;
+	for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+		node = Tree_node(tlk->tree, i);
+		if (strcmp(node->distance->name, Parameter_name(p)) == 0) {
+			break;
+		}
+	}
+	assert(node);
+	double* pattern_dlikelihoods = tlk->pattern_lk + 2*tlk->sp->count;
+	calculate_dldt_uppper(tlk, node, pattern_dlikelihoods);
+	return dlnldt_uppper(tlk, node, pattern_likelihoods, pattern_dlikelihoods);
+}
+
 static void _treeLikelihood_model_free( Model *self ){
 	if(self->ref_count == 1){
 		printf("Free treelikelihood model %s\n", self->name);
@@ -198,6 +224,7 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	sm->listeners->add( sm->listeners, model );
 
 	model->logP = _singleTreeLikelihood_logP;
+	model->dlogP = _singleTreeLikelihood_dlogP;
 	model->update = _treelikelihood_handle_change;
 	model->free = _treeLikelihood_model_free;
 	model->clone = _treeLikelihood_model_clone;
@@ -1079,7 +1106,14 @@ double _calculate( SingleTreeLikelihood *tlk ){
 	for ( ; i < tlk->sp->count; i++) {
 		tlk->lk += tlk->pattern_lk[i] * tlk->sp->weights[i];
 	}
-	
+//	if(isinf(tlk->lk) || isnan(tlk->lk)){
+//		Tree_print_parameters(tlk->tree);
+//		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+//			
+//		}
+//			printf("%f\n", tlk->lk);exit(1);
+//	}
+//printf("%f\n", tlk->lk);
 	//if ( tlk->lk == -INFINITY ) {
 	if( isinf(tlk->lk) ){
 		fprintf(stdout, "_calculate: rescaling %f\n", tlk->lk);

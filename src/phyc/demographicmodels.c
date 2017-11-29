@@ -184,37 +184,16 @@ double _constant_calculate( Coalescent* coal ){
     double theta = Parameters_value(coal->p, 0);
  
 	for( int i = 0; i< coal->n; i++  ){
-        lnl -= choose(coal->lineages[i], 2) * coal->times[i] / theta;
+		double lambda = choose(coal->lineages[i], 2)/theta;
+        lnl -= lambda * coal->times[i];
         
         if( coal->iscoalescent[i] ){
-            lnl -= log(theta);
+            lnl -= log(lambda);
         }
         
 	}
     return lnl;
 }
-
-
-double _constant_calculate2( Coalescent* coal ){
-    if ( coal->need_update ) {
-        _update_intervals(coal);
-    }
-	double lnl = 0;
-    double theta = Parameters_value(coal->p, 0);
-    int n = 0 ;
-	for( int i = 0; i< coal->n; i++  ){
-		lnl += ( (-coal->lineages[i]*(coal->lineages[i]-1)*coal->times[i]) / (2*theta) );
-        //printf("coal %f %f\n", lnl, theta);
-        if( coal->iscoalescent[i] ){
-            n++;
-        }
-        
-	}
-	//printf("theta %f %d\n", theta, n);
-    return lnl -= log( pow(theta, n) );
-}
-
-
 
 
 exponentialdemography * new_exponentialdemography( double n0, double r ){

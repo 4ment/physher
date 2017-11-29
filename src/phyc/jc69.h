@@ -22,6 +22,6 @@
 #include "substmodel.h"
 
 
-struct SubstitutionModel * new_JC69();
+struct SubstitutionModel * new_JC69(Simplex* freqs);
 
 #endif /* jc69_h */

@@ -1066,9 +1066,8 @@ double Model_mixed_derivative( Model *model, Parameter* p1, Parameter* p2 ) {
 	return (pp + mm - pm - mp) / (4.0*e1*e2);
 }
 
-double Model_second_derivative( Model *model, Parameter* parameter, double* first ) {
+double Model_second_derivative( Model *model, Parameter* parameter, double* first, double eps ) {
 	//double eps = 0.00001;
-	double eps = 0.001;
 	
 	double lnl = model->logP(model);
 	

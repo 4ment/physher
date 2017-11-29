@@ -1530,13 +1530,16 @@ int main(int argc, char* argv[]){
 	char* content = NULL;
 	printf("%d\n",argc);
 	if (argc == 1) {
-		content = load_file("/Users/mathieu/Dropbox/physher/gtr2.json");
+		content = load_file("/Users/mathieu/Dropbox/physher/jc69.json");
 	}
 	else {
 		content = load_file(argv[1]);
 		printf("Reading file %s\n", argv[1]);
 	}
-	long seeed = time(NULL);
+	printf("done\n\n");
+	long seeed = 1511933911;//time(NULL);
+	printf("%ld\n", seeed);
+	init_genrand(seeed);
 	
 	json_node* json = create_json_tree(content);
 	free(content);
@@ -1567,31 +1570,31 @@ int main(int argc, char* argv[]){
 	}
 	json_node* run_node = get_json_node(json, "physher");
 	
-	init_genrand(seeed);
 	
 	Model* treeee = Hashtable_get(hash2, "tree");
 	Tree* tt = treeee->obj;
 	double tot = Node_distance(Tree_root(tt)->right) + Node_distance(Tree_root(tt)->left);
 	Node_set_distance(Tree_root(tt)->right, 0);
 	Node_set_distance(Tree_root(tt)->left, tot);
-	//Tree_print_newick(stdout, treeee->obj, true);
+	Tree_print_newick(stdout, treeee->obj, true);
 	
 	for (int i = 0; i < run_node->child_count; i++) {
 		json_node* child = run_node->children[i];
 		char* type = get_json_node_value_string(child, "type");
 		if (strcasecmp(type, "optimizer") == 0) {
-			//Optimizer* opt = new_Optimizer_from_json(child, hash2);
+			Optimizer* opt = new_Optimizer_from_json(child, hash2);
 			double logP;
-			//opt_optimize(opt, NULL, &logP);
-			//free_Optimizer(opt);
+			opt_optimize(opt, NULL, &logP);
+			free_Optimizer(opt);
 		}
 		else if (strcasecmp(type, "logger") == 0) {
-			//struct Logger* logger = new_logger_from_json(child, hash2);
-			//logger->log(logger);
-			//free_Logger(logger);
+			struct Logger* logger = new_logger_from_json(child, hash2);
+			logger->log(logger);
+			free_Logger(logger);
 		}
 	}
 	for (int i = 0; i < model_count; i++) {
+		printf("%f\n", models[i]->logP(models[i]));
 		models[i]->free(models[i]);
 	}
 	free(models);
