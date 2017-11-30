@@ -113,6 +113,9 @@ EigenDecomposition * clone_EigenDecomposition( EigenDecomposition *eigen ){
  lapack_int ldz, lapack_int* isuppz );
  */
 void EigenDecomposition_decompose( double **a, EigenDecomposition *eigen ){
+	
+	eigen->failed = false;
+	
 #ifdef LAPACK_ENABLED
     /* Negative abstol means using the default value */
     double abstol = -1.0;
@@ -237,8 +240,9 @@ void EigenDecomposition_decompose( double **a, EigenDecomposition *eigen ){
         
         int r = hqr2(eigen->dim, H, eigen->eval, eigen->evali, V, 10000);
         if( r == 0 ){
-            print_dmatrix(stderr, (const double **)a, eigen->dim, eigen->dim, ' ');
-            error("Too many iterations in hqr2. Called from EigenDecomposition_decompose");
+			eigen->failed = true;
+//            print_dmatrix(stderr, (const double **)a, eigen->dim, eigen->dim, ' ');
+//            error("Too many iterations in hqr2. Called from EigenDecomposition_decompose");
         }
         
         for ( i = 0; i < eigen->dim; i++ ) {
@@ -252,9 +256,9 @@ void EigenDecomposition_decompose( double **a, EigenDecomposition *eigen ){
         free(H);
         free(V);
     }
-	inverse(eigen->Invevec, eigen->dim);
-	
-    
+	if(!eigen->failed){
+		inverse(eigen->Invevec, eigen->dim);
+	}
 	
 #endif
 }

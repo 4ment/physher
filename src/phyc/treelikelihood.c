@@ -118,13 +118,16 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 		}
 	}
 	Node* node = NULL;
-	for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+	int i = 0;
+	for (; i < Tree_node_count(tlk->tree); i++) {
 		node = Tree_node(tlk->tree, i);
 		if (strcmp(node->distance->name, Parameter_name(p)) == 0) {
 			break;
 		}
 	}
-	assert(node);
+	if(Tree_node_count(tlk->tree) == i){
+		return Model_first_derivative(self, p, 0.001);
+	}
 	double* pattern_dlikelihoods = tlk->pattern_lk + 2*tlk->sp->count;
 	calculate_dldt_uppper(tlk, node, pattern_dlikelihoods);
 	return dlnldt_uppper(tlk, node, pattern_likelihoods, pattern_dlikelihoods);

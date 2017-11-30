@@ -22,6 +22,7 @@
 //#define LAPACK_ENABLED 1
 
 #include <string.h>
+#include <stdbool.h>
 
 typedef struct EigenDecomposition{
 	double **evec;
@@ -29,6 +30,7 @@ typedef struct EigenDecomposition{
 	double *eval;
 	double *evali; // imaginary part of eigenvalues
 	size_t dim;
+	bool failed;
 #ifdef LAPACK_ENABLED
     int *isuppz;
     double *M;
