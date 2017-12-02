@@ -205,11 +205,12 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 	double lower = -INFINITY;
 	double upper = INFINITY;
 	json_node* lower_node = get_json_node(node, "lower");
-	if(lower_node != NULL){
+	if(lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0){
 		lower = atof((char*)lower_node->value);
+		
 	}
 	json_node* upper_node = get_json_node(node, "upper");
-	if(upper_node != NULL){
+	if(upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0){
 		upper = atof((char*)upper_node->value);
 	}
 	Constraint* cnstr = new_Constraint(lower, upper);
@@ -443,7 +444,8 @@ double check_value( Constraint *cnstr, double value ){
 
 
 void Parameter_print( const Parameter *p ){
-	fprintf(stderr, "%s %e [%e - %e] estimate = %d lower_fixed = %d upper_fixed = %d\n",p->name, p->value, p->cnstr->lower, p->cnstr->upper, p->estimate, p->cnstr->lower_fixed, p->cnstr->upper_fixed);
+	if(p->cnstr != NULL)fprintf(stderr, "%s %e [%e - %e] estimate = %d lower_fixed = %d upper_fixed = %d\n",p->name, p->value, p->cnstr->lower, p->cnstr->upper, p->estimate, p->cnstr->lower_fixed, p->cnstr->upper_fixed);
+	else fprintf(stderr, "%s %e estimate = %d\n",p->name, p->value, p->estimate);
 }
 
 void compare_parameter( const Parameter *p1, const Parameter *p2 ){
@@ -676,12 +678,20 @@ Constraint * Parameters_constraint( const Parameters *p, const int index ){
 	return Parameter_constraint( Parameters_at(p, index) );
 }
 
+double Parameters_fupper( const Parameters *p, const int index ){
+	return Constraint_fupper( Parameters_at(p, index)->cnstr );
+}
+
+double Parameters_flower( const Parameters *p, const int index ){
+	return Constraint_flower( Parameters_at(p, index)->cnstr );
+}
+
 double Parameters_upper( const Parameters *p, const int index ){
 	return Parameter_upper( Parameters_at(p, index) );
 }
 
 double Parameters_lower( const Parameters *p, const int index ){
-	return Parameter_lower( Parameters_at(p, index) );	
+	return Parameter_lower( Parameters_at(p, index) );
 }
 
 void Parameters_set_upper( Parameters *p, const int index, const double value ){
@@ -837,6 +847,23 @@ void Parameters_sort_from_ivector( Parameters *p, int *s ){
 			}
 		}
 		size--;
+	}
+}
+
+void check_constraint(Parameter* rate, double lower, double upper, double flower, double fupper){
+	if (isinf(Constraint_lower(rate->cnstr))) {
+		Constraint_set_lower(rate->cnstr, lower);
+		Constraint_set_flower(rate->cnstr, flower);
+	}
+	if (isinf(Constraint_upper(rate->cnstr))) {
+		Constraint_set_upper(rate->cnstr, upper);
+		Constraint_set_fupper(rate->cnstr, fupper);
+	}
+}
+
+void check_constraints(Parameters* rates, double lower, double upper, double flower, double fupper){
+	for (int i = 0; i <Parameters_count(rates); i++) {
+		check_constraint(Parameters_at(rates, i), lower, upper, flower, fupper);
 	}
 }
 

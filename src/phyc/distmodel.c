@@ -126,9 +126,14 @@ DistributionModel* new_DistributionModelSimplex(Parameters* p, Simplex* simplex)
 }
 
 double DistributionModel_log_gamma(DistributionModel* dm){
-	double logP = 0;
+	double alpha = Parameters_value(dm->parameters, 0);
+	double beta = Parameters_value(dm->parameters, 1);
+	double logP = -gammln(alpha) * Parameters_count(dm->x);
+	double beta_alpha = pow(beta, alpha);
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
-		logP += dloggamma(Parameters_value(dm->x, i), Parameters_value(dm->parameters, 0), Parameters_value(dm->parameters, 1));
+		double x = Parameters_value(dm->x, i);
+		logP += log(beta_alpha*pow(x,alpha-1.0)) - beta*x;
+//		logP += dloggamma(Parameters_value(dm->x, i), alpha, beta);
 	}
 	return logP;
 }
@@ -143,9 +148,11 @@ double DistributionModel_dlog_gamma(DistributionModel* dm, const Parameter* p){
 }
 
 double DistributionModel_log_exp(DistributionModel* dm){
-	double logP = 0;
+	double lambda = Parameters_value(dm->parameters, 0);
+	double logP = log(lambda) * Parameters_count(dm->x);
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
-		logP += log(dexp(Parameters_value(dm->x, i), Parameters_value(dm->parameters, 0)));
+		//logP += log(dexp(Parameters_value(dm->x, i), Parameters_value(dm->parameters, 0)));
+		logP -= lambda * Parameters_value(dm->x, i);
 	}
 	return logP;
 }

@@ -183,6 +183,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	Parameters* rates = NULL;
 	if (rates_node != NULL && rates_node->node_type == MJSON_ARRAY) {
 		rates = new_Parameters_from_json(rates_node, hash);
+		check_constraints(rates, 0, INFINITY, 0.001, 100);
 	}
 	else if (rates_node != NULL && rates_node->node_type == MJSON_OBJECT) {
 		rates = new_Parameters(rates_node->child_count);
@@ -194,6 +195,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				invariant = true;
 			}
 		}
+		check_constraints(rates, 0, INFINITY, 0.001, 100);
 	}
 	
 	for (int i = 0; i < Parameters_count(rates); i++) {
@@ -233,6 +235,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	
 	if (mu_node != NULL) {
 		sm->mu = new_Parameter_from_json(mu_node, hash);
+		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
 		sm->mu->listeners->add( sm->mu->listeners, msm );
 	}

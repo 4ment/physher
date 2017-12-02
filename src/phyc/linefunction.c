@@ -96,12 +96,12 @@ bool LineFunction_force_within_bounds( const LineFunction *lf, Parameters *p ){
 	//fprintf(stderr, "-------------------------\nLineFunction_check_point\n");
 	for (int i = 0; i < lf->dim; i++){
 		//fprintf(stderr, "%s %f\n",Parameters_name(p, i) , Parameters_value(p, i));
-		if( Parameters_value(p, i) < Parameters_lower(lf->parameters,i) ){
-			Parameters_set_value(p, i, Parameters_lower(lf->parameters,i) );
+		if( Parameters_value(p, i) < Parameters_flower(lf->parameters,i) ){
+			Parameters_set_value(p, i, Parameters_flower(lf->parameters,i) );
 			modified = true;
 		}
-		if( Parameters_value(p, i) > Parameters_upper(lf->parameters,i) ){
-			Parameters_set_value(p, i, Parameters_upper(lf->parameters,i) );
+		if( Parameters_value(p, i) > Parameters_fupper(lf->parameters,i) ){
+			Parameters_set_value(p, i, Parameters_fupper(lf->parameters,i) );
 			modified = true;
 		}
 	}
@@ -124,13 +124,13 @@ int LineFunction_set_active_parameters( const LineFunction *lf, const Parameters
 	//fprintf(stderr, "-------------------------\nLineFunction_check_variables\n");
 	for (int i = 0; i < lf->dim; i++){
 		active[i] = true;
-		if ( Parameters_value(p, i) <= Parameters_lower(lf->parameters,i)+EPS ){
+		if ( Parameters_value(p, i) <= Parameters_flower(lf->parameters,i)+EPS ){
 			// no search towards lower boundary
 			if ( grad[i] > 0 ){
 				active[i] = false;
 			}
 		}
-		else if ( Parameters_value(p, i) >= Parameters_upper(lf->parameters,i)-EPS ){
+		else if ( Parameters_value(p, i) >= Parameters_fupper(lf->parameters,i)-EPS ){
 			// no search towards upper boundary
 			if ( grad[i] < 0 ){
 				active[i] = false;
@@ -150,14 +150,14 @@ int LineFunction_constrain_direction( const LineFunction *lf, const Parameters *
 	int n = 0;
 	for (int i = 0; i < lf->dim; i++){
 		// no search towards lower boundary
-		if (  Parameters_value(p, i) <= Parameters_lower(lf->parameters,i)+ EPS ){
+		if (  Parameters_value(p, i) <= Parameters_flower(lf->parameters,i)+ EPS ){
 			if( dir[i] < 0 ){
 				dir[i] = 0;
 				n++;
 			}
 		}
 		// no search towards upper boundary
-		else if ( Parameters_value(p, i) >= Parameters_upper(lf->parameters,i) - EPS ){
+		else if ( Parameters_value(p, i) >= Parameters_fupper(lf->parameters,i) - EPS ){
 			if( dir[i] > 0 ){
 				dir[i] = 0;
 				n++;
@@ -173,8 +173,8 @@ void _LineFunction_compute_bounds( LineFunction *lf ){
 	double upper, lower;
 	for (int i = 0; i < lf->dim; i++){
 		if ( lf->xi[i] != 0){
-			upper = ( Parameters_upper(lf->parameters,i) - lf->s[i])/lf->xi[i];
-			lower = ( Parameters_lower(lf->parameters,i) - lf->s[i])/lf->xi[i];
+			upper = ( Parameters_fupper(lf->parameters,i) - lf->s[i])/lf->xi[i];
+			lower = ( Parameters_flower(lf->parameters,i) - lf->s[i])/lf->xi[i];
 			if (lower > upper){
 				dswap(&upper, &lower);
 			}

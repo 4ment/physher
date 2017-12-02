@@ -75,11 +75,11 @@ opt_result dfpmin_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 		sum  += Parameters_value(p,i)*Parameters_value(p,i);
 		
 		// force the parameters to be active
-		if( Parameters_value(pnew, i) < Parameters_lower(pnew,i) ){
-			Parameters_set_value(pnew, i, Parameters_lower(pnew,i) );
+		if( Parameters_value(pnew, i) < Parameters_flower(pnew,i) ){
+			Parameters_set_value(pnew, i, Parameters_flower(pnew,i) );
 		}
-		else if( Parameters_value(pnew, i) > Parameters_upper(pnew,i) ){
-			Parameters_set_value(pnew, i, Parameters_upper(pnew,i) );
+		else if( Parameters_value(pnew, i) > Parameters_fupper(pnew,i) ){
+			Parameters_set_value(pnew, i, Parameters_fupper(pnew,i) );
 		}
 		active[i] = true;
 	}
@@ -217,13 +217,13 @@ int check_variables( const Parameters *p, const double *grad, bool *active, doub
 	int j = 0;
 	for ( int i = 0; i < n; i++ ){
 		active[i] = true;
-		if ( active[i] && Parameters_value(p, i) <= Parameters_lower(p,i)+EPS ){
+		if ( active[i] && Parameters_value(p, i) <= Parameters_flower(p,i)+EPS ){
 			// no search towards lower boundary
 			if ( grad[i] > 0 ){
 				active[i] = false;
 			}
 		}
-		else if ( active[i] && Parameters_value(p, i) >= Parameters_upper(p,i)-EPS ){
+		else if ( active[i] && Parameters_value(p, i) >= Parameters_fupper(p,i)-EPS ){
 			// no search towards upper boundary
 			if ( grad[i] < 0 ){
 				active[i] = false;

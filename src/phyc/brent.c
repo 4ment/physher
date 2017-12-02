@@ -55,8 +55,8 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
     //int *numFun = &stop.f_eval_current;
     size_t *iter = &stop->iter;
 
-	a = ( Parameters_lower(ps,0) < Parameters_upper(ps,0) ? Parameters_lower(ps,0) : Parameters_upper(ps,0));
-	b = ( Parameters_lower(ps,0) > Parameters_upper(ps,0) ? Parameters_lower(ps,0) : Parameters_upper(ps,0));
+	a = ( Parameters_flower(ps,0) < Parameters_fupper(ps,0) ? Parameters_flower(ps,0) : Parameters_fupper(ps,0));
+	b = ( Parameters_flower(ps,0) > Parameters_fupper(ps,0) ? Parameters_flower(ps,0) : Parameters_fupper(ps,0));
 	x = Parameters_value(ps,0);
     
 //    // x is equal to its lower bound

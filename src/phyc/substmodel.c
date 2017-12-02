@@ -1349,6 +1349,7 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 	size_t K = datatype->state_count(datatype);
 	
 	if (datatype->type == DATA_TYPE_NUCLEOTIDE) {
+		check_constraints(rates, 0, INFINITY, 0.001, 100);
 		bool equal_frequencies = false;
 		for (int i = 0; i < K; i++) {
 			Parameter* p = Parameters_at(freqSimplex->parameters, i);

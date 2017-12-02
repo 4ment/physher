@@ -170,6 +170,10 @@ bool Parameter_estimate( const Parameter *p );
 
 void Parameter_set_estimate( Parameter *p, const bool estimate );
 
+double Parameters_fupper( const Parameters *p, const int index );
+
+double Parameters_flower( const Parameters *p, const int index );
+
 double Parameter_upper( const Parameter *p );
 
 double Parameter_lower( const Parameter *p );
@@ -274,6 +278,10 @@ void Parameters_swap( Parameter **a, Parameter **b );
 void Parameters_swap_index( Parameters *ps, unsigned a, unsigned b );
 
 void Parameters_sort_from_ivector( Parameters *p, int *s );
+
+void check_constraint(Parameter* rate, double lower, double upper, double flower, double fupper);
+
+void check_constraints(Parameters* rates, double lower, double upper, double flower, double fupper);
 
 #pragma mark -
 #pragma mark DiscreteParameter
