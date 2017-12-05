@@ -31,4 +31,6 @@ double ddirchletln( const double *x, const size_t dim, const double *alphas );
 // Flat dirichlet with alpha == (1,1,..,1)
 double ddirchlet_flat( const size_t dim );
 
+void rdirichlet(double*x, const size_t dim, const double* alphas);
+
 #endif /* dirichlet_h */

@@ -78,6 +78,16 @@ size_t get_json_node_value_size_t(json_node* node, const char* key, size_t defau
 	return defaultv;
 }
 
+int get_json_node_value_int(json_node* node, const char* key, int defaultv){
+	json_node* n = get_json_node(node, key);
+	if(n != NULL){
+		size_t v = 0;
+		int result = atoi((char*)n->value);
+		return v;
+	}
+	return defaultv;
+}
+
 json_node* create_json_tree(const char* json){
 	json_node* current = create_json_node(NULL);
 	json_node* root = current;

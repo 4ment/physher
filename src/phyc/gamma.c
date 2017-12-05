@@ -22,6 +22,8 @@
 #include <float.h>
 
 #include "utils.h"
+#include "gaussian.h"
+#include "random.h"
 
 #define ITMAX 100
 #define FPMIN 1.0e-30
@@ -55,6 +57,37 @@ double qgamma( const double p, const double alpha, const double beta ){
 	return invgammp(p,alpha)/beta;
 }
 
+double rgamma(double aa) {
+	double a = aa;
+	if(aa < 1.0){
+		a += 1.0;
+	}
+	double d, c, x, v, u;
+	d = a - 1. / 3.;
+	c = 1. / sqrt(9. * d);
+	for (;;) {
+		do {
+			x = rnorm();
+			v = 1. + c * x;
+		} while (v <= 0.);
+		v = v * v * v;
+		u = random_double();
+		if (u < 1. - 0.0331 * (x * x) * (x * x)) {
+			break;
+		}
+		if (log(u) < 0.5 * x * x + d * (1. - v + log(v))) {
+			break;
+		}
+	}
+	if(aa < 1.0){
+		double u;
+		do{
+			u = random_double();
+		} while(u == 0);
+		return (d * v) * pow(u, 1.0/aa);
+	}
+	return (d * v);
+}
 
 #pragma mark -
 #pragma mark Incomplete Gamma function

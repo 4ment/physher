@@ -11,7 +11,7 @@ SRCDIR = src
 
 PHYCDIR = $(SRCDIR)/phyc
 
-INCLUDES = -I$(PHYCDIR)
+INCLUDES = -I$(PHYCDIR) -I/opt/local/include
 
 OBJDIR = obj
 BINDIR = bin
@@ -30,7 +30,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -lm
+LIBS = -lm -L/opt/local/lib -lgsl -lgslcblas
 MKDIR_P = mkdir -p
 
 .PHONY: directories

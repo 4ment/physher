@@ -9,9 +9,8 @@
 #ifndef mcmc_h
 #define mcmc_h
 
-#include <stdio.h>
-
 #include "parameters.h"
+#include "operator.h"
 
 typedef struct Log{
 	Parameters* x;
@@ -25,22 +24,6 @@ typedef struct Log{
 	bool append;
 	void(*write)(struct Log* logger, size_t);
 }Log;
-
-typedef struct Operator{
-	char* name;
-	Parameters* x;
-	Model* simplex;
-	int index;
-	double* storage;
-	double* parameters;
-	double weight;
-	size_t rejected_count;
-	size_t accepted_count;
-	bool (*propose)(struct Operator*, double*);
-	void (*store)(struct Operator*);
-	void (*restore)(struct Operator*);
-	void (*optimize)(struct Operator*, double);
-}Operator;
 
 typedef struct MCMC{
 	Model* model;

@@ -669,6 +669,9 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		char* id = get_json_node_value_string(node, "id");
 		mtree = new_TreeModel(id, tree);
 		Hashtable_add(hash, get_json_node_value_string(node, "parameters"), tree->distances);
+		for (int i = 0; i < Parameters_count(tree->distances); i++) {
+			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
+		}
 	}
 	else if (file_node != NULL) {
 
@@ -712,6 +715,9 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		mtree = new_TreeModel((char*)id->value, tree);
 		free_dmatrix(matrix, patterns->size);
 		Hashtable_add(hash, get_json_node_value_string(node, "parameters"), tree->distances);
+		for (int i = 0; i < Parameters_count(tree->distances); i++) {
+			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
+		}
 	}
 	else if (node->node_type != MJSON_STRING) {
 		char* ref = (char*)node->value;

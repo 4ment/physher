@@ -182,6 +182,7 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 		strcpy(p->name+name_len+1, postfix);
 	}
 	p->value = value;
+	p->stored_value = value;
 	p->cnstr = constr;
 	p->estimate = true;
 	p->id = 0;
@@ -347,6 +348,14 @@ void Parameter_set_value( Parameter *p, const double value ){
 
 double Parameter_value( const Parameter *p ){
 	return p->value;
+}
+
+void Parameter_store(Parameter *p){
+	p->stored_value = p->value;
+}
+
+void Parameter_restore(Parameter *p){
+	Parameter_set_value(p, p->stored_value);
 }
 
 void assign_value( Parameter *p, const double value ){
@@ -1138,7 +1147,11 @@ double Model_first_derivative( Model *model, Parameter* parameter, double eps ) 
 #pragma mark -
 
 void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters){
-    json_node* x_node = get_json_node(node, "parameters");
+	get_parameters_references2(node, hash, parameters, "parameters");
+}
+
+void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* parameters, const char* tag){
+    json_node* x_node = get_json_node(node, tag);
     
     if(x_node->node_type == MJSON_ARRAY){
         for (int i = 0; i < x_node->child_count; i++) {

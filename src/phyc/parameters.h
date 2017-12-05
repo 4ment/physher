@@ -65,6 +65,7 @@ struct _Parameter{
 	char *name;
 	int id;
 	double value;
+	double stored_value;
 	Constraint *cnstr;
 	bool estimate;
 	ListenerList *listeners;
@@ -158,6 +159,10 @@ void Parameter_set_name( Parameter *p, const char *name );
 void Parameter_set_value( Parameter *p, const double value );
 
 double Parameter_value( const Parameter *p );
+
+void Parameter_store(Parameter *p);
+
+void Parameter_restore(Parameter *p);
 
 double check_value( Constraint *cnstr, double value );
 
@@ -345,6 +350,7 @@ ListenerList * new_ListenerList( const unsigned capacity );
 
 void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters);
 
+void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* parameters, const char* tag);
 
 
 #endif

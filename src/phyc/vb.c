@@ -17,10 +17,12 @@
 #include "solve.h"
 #include "tree.h"
 
+#include <gsl/gsl_randist.h>
+
 #define MY_PI acos(-1.0)
 #define LOG_TWO_PI (log(2.0)+log(MY_PI))
 
-void init_fullrank_normal(struct variational_t* var){return;
+void init_fullrank_normal(variational_t* var){return;
 	Model* posterior = var->posterior;
 	size_t dim = Parameters_count(var->parameters);
 	size_t n = 2*dim+(dim*(dim-1))/2;
@@ -101,9 +103,18 @@ void init_fullrank_normal(struct variational_t* var){return;
 	free(diag);
 }
 
-void init_meanfield_normal(struct variational_t* var){return;
-	Model* posterior = var->posterior;
+void init_meanfield_normal(variational_t* var){
 	size_t dim = Parameters_count(var->parameters);
+	for (int i = 0; i < dim; i++) {
+		Parameter* p = Parameters_at(var->parameters, i);
+		if(Parameter_value(p) < 1.0e-4){
+			p->estimate = false;
+		}
+	}
+	
+	return;
+	
+	Model* posterior = var->posterior;
 	for (int i = 0; i < dim; i++) {
 //		printf("%s %e", Parameters_name(var->parameters, i), Parameters_value(var->parameters, i));
 //		printf("bl: %e", Parameters_value(var->parameters, i));
@@ -146,7 +157,7 @@ void init_meanfield_normal(struct variational_t* var){return;
 }
 
 // Mean-field
-double elbo_meanfield(struct variational_t* var){
+double elbo_meanfield(variational_t* var){
 	if (var->initialized == false) {
 		init_meanfield_normal(var);
 		var->initialized = true;
@@ -157,10 +168,15 @@ double elbo_meanfield(struct variational_t* var){
 	Model* posterior = var->posterior;
 	
 	// Entropy: 0.5(1 + log(2 \pi s^2))
-	double entropy = 0.5 * dim * (1.0 + LOG_TWO_PI);
+	size_t count = 0;
+	double entropy = 0;
 	for (size_t i = 0; i < dim; i++) {
-		entropy += Parameters_value(var->var_parameters, dim+i);
+		if(Parameters_estimate(var->var_parameters, dim+i)){
+			entropy += Parameters_value(var->var_parameters, dim+i);
+			count++;
+		}
 	}
+	entropy = 0.5 * count * (1.0 + LOG_TWO_PI);
 	int inf_count = 0;
 	
 	for (int i = 0; i < var->elbo_samples; i++) {
@@ -168,6 +184,7 @@ double elbo_meanfield(struct variational_t* var){
 		
 		for (int j = 0; j < dim; j++) {
 			Parameter* p = Parameters_at(var->parameters, j);
+			if(!p->estimate) continue;
 			double var_mean = Parameters_value(var->var_parameters, j);
 			double var_sd = Parameters_value(var->var_parameters, dim+j);
 			double zeta = rnorm() * exp(var_sd) + var_mean;
@@ -185,9 +202,13 @@ double elbo_meanfield(struct variational_t* var){
 	return elbo/(var->elbo_samples-inf_count) + entropy;
 }
 
-void grad_elbo_meanfield(struct variational_t* var, double* grads){
+void grad_elbo_meanfield(variational_t* var, double* grads){
 	if (var->initialized == false) {
 		init_meanfield_normal(var);
+		// save for later
+		for (int i = 0; i < Parameters_count(var->parameters); i++) {
+			Parameter_store(Parameters_at(var->parameters, i));
+		}
 		var->initialized = true;
 	}
 
@@ -199,6 +220,7 @@ void grad_elbo_meanfield(struct variational_t* var, double* grads){
 	
 	for (int i = 0; i < var->grad_samples; i++) {
 		for ( int j = 0; j < dim; j++) {
+			if(!Parameters_estimate(var->parameters, j)) continue;
 			double var_mean = Parameters_value(var->var_parameters, j);
 			double var_sd = Parameters_value(var->var_parameters, dim+j);
 			eta[j] = rnorm();
@@ -211,6 +233,7 @@ void grad_elbo_meanfield(struct variational_t* var, double* grads){
 		
 		for ( int j = 0; j < dim; j++) {
 			Parameter* p = Parameters_at(var->parameters, j);
+			if(!p->estimate) continue;
 //			double dlogP = Model_first_derivative(posterior, p, 0.001);
 			double dlogP = posterior->dlogP(posterior, p);
 //			printf("%f %f %s\n", dlogP, Model_first_derivative(posterior, p, 0.001), Parameter_name(p));
@@ -245,9 +268,13 @@ void grad_elbo_meanfield(struct variational_t* var, double* grads){
 }
 
 
-double elbo_fullrank(struct variational_t* var){
+double elbo_fullrank(variational_t* var){
 	if (var->initialized == false) {
 		init_fullrank_normal(var);
+		// save for later
+		for (int i = 0; i < Parameters_count(var->parameters); i++) {
+			Parameter_store(Parameters_at(var->parameters, i));
+		}
 		var->initialized = true;
 	}
 	
@@ -310,7 +337,7 @@ double elbo_fullrank(struct variational_t* var){
 	return elbo/var->elbo_samples + entropy;
 }
 
-void grad_elbo_fullrank(struct variational_t* var, double* grads){
+void grad_elbo_fullrank(variational_t* var, double* grads){
 	if (var->initialized == false) {
 		init_fullrank_normal(var);
 		var->initialized = true;
@@ -401,6 +428,84 @@ void grad_elbo( Parameters *params, double *grad, void *data ){
 	model->gradient(model, grad);
 }
 
+// check success
+bool variational_sample_meanfield(variational_t* var, double* values){
+	int dim = Parameters_count(var->parameters);
+	for (int i = 0; i < dim; i++) {
+		Parameter* p = Parameters_at(var->parameters, i);
+		if (!p->estimate) {
+			values[i] = 0;
+			continue;
+		}
+		double mu = Parameters_value(var->var_parameters, i);
+		double sd = Parameters_value(var->var_parameters, i+dim);
+		const double zeta = rnorm() * exp(sd) + mu;
+		values[i] = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+	}
+	return true;
+}
+
+bool variational_sample_some_meanfield(variational_t* var, const Parameters* parameters, double* values){
+	size_t dim = Parameters_count(var->parameters);
+	size_t dim2 = Parameters_count(parameters);
+	for (int i = 0; i < dim2; i++) {
+		Parameter* p = Parameters_at(parameters, i);
+		for (int j = 0; j < dim; j++) {
+			Parameter* p2 = Parameters_at(var->parameters, j);
+			if (p == p2) {
+				if (!p->estimate) {
+					values[i] = 0;
+				}
+				else{
+					double mu = Parameters_value(var->var_parameters, j);
+					double sd = Parameters_value(var->var_parameters, j+dim);
+					const double zeta = rnorm() * exp(sd) + mu;
+					values[i] = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+				}
+				break;
+			}
+		}
+	}
+	return true;
+}
+
+bool variational_sample_fullrank(variational_t* var, double* values){
+	size_t dim = Parameters_count(var->parameters);
+	
+	gsl_vector * mu = gsl_vector_calloc(dim);
+	gsl_matrix * L = gsl_matrix_calloc(dim, dim);
+	gsl_vector * samples = gsl_vector_calloc(dim);
+	
+	size_t row = dim;
+	for (int i = 0; i < dim; i++) {
+		gsl_vector_set(mu, i, Parameters_value(var->var_parameters, i));
+		for (int j = 0; j <= i; j++) {
+			gsl_matrix_set(L, i, j, Parameters_value(var->var_parameters, row));
+			row++;
+		}
+	}
+	
+	gsl_ran_multivariate_gaussian(var->rng, mu, L, samples);
+	
+	for (int i = 0; i < dim; i++) {
+		values[i] = gsl_vector_get(samples, i);
+	}
+	
+	gsl_vector_free(mu);
+	gsl_vector_free(samples);
+	gsl_matrix_free(L);
+	return true;
+}
+
+//double variational_sample_meanfield(variational_t* var, const Parameter* p){
+//	int index = 0;
+//	for (; index < Parameters_count(var->parameters); index++) {
+//		if(strcmp(p->name, Parameters_at(var->parameters, index)) == 0) break
+//			}
+//	const double zeta = rnorm() * var->var_parameters[index+Parameters_count(var->parameters)] + var->var_parameters[index]
+//	return inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+//}
+
 Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	const char* posterior_string = get_json_node_value_string(node, "posterior");
 	const char* var_string = get_json_node_value_string(node, "var");
@@ -410,8 +515,10 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	json_node* parameters_node = get_json_node(node, "parameters");
 	json_node* tree_node = get_json_node(node, "tree");
 	
-	struct variational_t* var = malloc(sizeof(struct variational_t));
+	variational_t* var = malloc(sizeof(variational_t));
 	var->file = NULL;
+	var->sample = NULL;
+	var->sample_some = NULL;
 	var->parameters = new_Parameters(1);
 	if(parameters_node){
 		get_parameters_references(node, hash, var->parameters);
@@ -437,6 +544,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	
 	StringBuffer* buffer = new_StringBuffer(10);
 	if(strcasecmp(var_string, "meanfield") == 0){
+		printf("Creating meanfield variational model\n");
 		var->var_parameters = new_Parameters(dim*2); // mean + sd
 		for(int i = 0; i < dim; i++){
 			StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
@@ -456,8 +564,10 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		var->grad_elbofn = grad_elbo_meanfield;
 		var->f = elbo;
 		var->grad_f = grad_elbo;
+		var->sample = variational_sample_meanfield;
 	}
 	else if(strcasecmp(var_string, "fullrank") == 0){
+		printf("Creating fullrank variational model\n");
 		size_t n = 2*dim+(dim*dim-dim)/2; // mus, vars, covs
 		var->var_parameters = new_Parameters(n);
 		json_node* init_node = get_json_node(node, "init");
@@ -520,30 +630,32 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		}
 		
 		// this is run at startup so not useful here
-		if(init_node != NULL){
-			char* model = get_json_node_value_string(init_node, "model");
-			Model* mvar = Hashtable_get(hash, model+1);
-			struct variational_t* var2 = mvar->obj;
-			for(int i = 0; i < dim; i++){
-				if(strcmp(Parameters_name(var->var_parameters, i), Parameters_name(var2->var_parameters, i)) != 0){
-					printf("%s %s\n", Parameters_name(var->var_parameters, i), Parameters_name(var2->var_parameters, i));
-					exit(81);
-				}
-				Parameters_set_value(var->var_parameters, i, Parameters_value(var2->var_parameters, i));
-			}
-			int r = 0;
-			for(int i = 0; i < dim; i++){
-				r += i;
-				//printf("%s %s\n", Parameters_name(var->var_parameters, r+dim), Parameters_name(var2->var_parameters, i+dim));
-				Parameters_set_value(var->var_parameters, r+dim, Parameters_value(var2->var_parameters, i+dim));
-				r++;
-			}
-		}
+//		if(init_node != NULL){
+//			char* model = get_json_node_value_string(init_node, "model");
+//			Model* mvar = Hashtable_get(hash, model+1);
+//			variational_t* var2 = mvar->obj;
+//			for(int i = 0; i < dim; i++){
+//				if(strcmp(Parameters_name(var->var_parameters, i), Parameters_name(var2->var_parameters, i)) != 0){
+//					printf("%s %s\n", Parameters_name(var->var_parameters, i), Parameters_name(var2->var_parameters, i));
+//					exit(81);
+//				}
+//				Parameters_set_value(var->var_parameters, i, Parameters_value(var2->var_parameters, i));
+//			}
+//			int r = 0;
+//			for(int i = 0; i < dim; i++){
+//				r += i;
+//				//printf("%s %s\n", Parameters_name(var->var_parameters, r+dim), Parameters_name(var2->var_parameters, i+dim));
+//				Parameters_set_value(var->var_parameters, r+dim, Parameters_value(var2->var_parameters, i+dim));
+//				r++;
+//			}
+//		}
 		var->elbofn = elbo_fullrank;
 		var->grad_elbofn = grad_elbo_fullrank;
 		var->f = elbo;
 		var->grad_f = grad_elbo;
+		var->sample = variational_sample_fullrank;
 	}
+	
 	var->initialized = false;
 	var->iter = 0;
 	if (filename != NULL) {
@@ -559,13 +671,14 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	}
 	
 	free_StringBuffer(buffer);
+	var->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return new_VariationalModel(id, var);
 }
 
 static void _variational_model_free( Model *self ){
 	if(self->ref_count == 1){
 		printf("Free variational model %s\n", self->name);
-		struct variational_t* var = (struct variational_t*)self->obj;
+		variational_t* var = (variational_t*)self->obj;
 //		for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
 //			printf("%s %f\n", Parameters_name(var->var_parameters, i), Parameters_value(var->var_parameters, i));
 //		}
@@ -582,7 +695,7 @@ static void _variational_model_free( Model *self ){
 }
 
 static void _variational_model_handle_change( Model *self, Model *model, int index ){
-	struct variational_t* var = (struct variational_t*)self->obj;
+	variational_t* var = (variational_t*)self->obj;
 	size_t i = index;
 	if(index >= Parameters_count(var->parameters)){
 		index -= Parameters_count(var->parameters);
@@ -600,23 +713,23 @@ static Model* _variational_model_clone(Model* self, Hashtable *hash){
 }
 
 static double _variational_model_logP(Model *self){
-	struct variational_t* var = (struct variational_t*)self->obj;
+	variational_t* var = (variational_t*)self->obj;
 	return var->elbofn(var);
 }
 
 static void _variational_model_gradient(Model *self, double* grad){
-	struct variational_t* var = (struct variational_t*)self->obj;
+	variational_t* var = (variational_t*)self->obj;
 	return var->grad_elbofn(var, grad);
 }
 
 static void _variational_model_get_free_parameters(Model* self, Parameters* parameters){
-	struct variational_t* var = (struct variational_t*)self->obj;
+	variational_t* var = (variational_t*)self->obj;
 //	Parameters_add_free_parameters(parameters, var->var_parameters);
 	Parameters_add_parameters(parameters, var->var_parameters);
 
 }
 
-Model* new_VariationalModel(const char* name, struct variational_t* var){
+Model* new_VariationalModel(const char* name, variational_t* var){
 	Model *model = new_Model("variational", name, var);
 	model->free = _variational_model_free;
 	model->clone = _variational_model_clone;
@@ -630,7 +743,7 @@ Model* new_VariationalModel(const char* name, struct variational_t* var){
 	return model;
 }
 
-void free_Variational(struct variational_t* var){
+void free_Variational(variational_t* var){
 //	for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
 //		printf("%s %f\n", Parameters_name(var->var_parameters, i), Parameters_value(var->var_parameters, i));
 //	}

@@ -94,6 +94,8 @@
 #include "phyc/mjson.h"
 #include "phyc/logger.h"
 #include "phyc/vb.h"
+#include "phyc/mcmc.h"
+#include "phyc/hessian.h"
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -1537,9 +1539,12 @@ int main(int argc, char* argv[]){
 		printf("Reading file %s\n", argv[1]);
 	}
 	printf("done\n\n");
-	long seeed = 1512096066;//time(NULL);
+	long seeed = time(NULL);
 	printf("%ld\n", seeed);
 	init_genrand(seeed);
+	
+	gsl_rng * r = gsl_rng_alloc (gsl_rng_taus);
+	gsl_rng_set(r, seeed);
 	
 	json_node* json = create_json_tree(content);
 	free(content);
@@ -1547,6 +1552,9 @@ int main(int argc, char* argv[]){
 	Hashtable* hash2 = new_Hashtable_string(100);
 	hashtable_set_key_ownership( hash2, false );
 	hashtable_set_value_ownership( hash2, false );
+	
+	char* rand_key = "RANDOM_GENERATOR!@";
+	Hashtable_add(hash2, rand_key, r);
 	
 	size_t model_count = json->child_count-1;
 	Model** models = calloc(model_count, sizeof(Model*));
@@ -1592,6 +1600,16 @@ int main(int argc, char* argv[]){
 			logger->log(logger);
 			free_Logger(logger);
 		}
+		else if(strcasecmp(type, "mcmc") == 0){
+			MCMC* mcmc = new_MCMC_from_json(child, hash2);
+			mcmc->run(mcmc);
+			free_MCMC(mcmc);
+		}
+		else if(strcasecmp(type, "hessian") == 0){
+			Hessian* hessian = new_Hessian_from_json(child, hash2);
+			hessian->calculate(hessian);
+			print_hessian(hessian);
+		}
 	}
 	for (int i = 0; i < model_count; i++) {
 		printf("%f\n", models[i]->logP(models[i]));
@@ -1602,6 +1620,7 @@ int main(int argc, char* argv[]){
 	
 	//json_tree_to_string(json);
 	json_free_tree(json);
+	gsl_rng_free(r);
 	exit(0);
 	
     bool overwrite = false;

@@ -34,6 +34,7 @@ double pgamma( const double x, const double alpha, const double beta );
 // Inverse cumulative distribution function of Gamma function
 double qgamma( const double p, const double alpha, const double beta );
 
+double rgamma(double a);
 
 /*****************************************************
  * Incomplete Gamma function

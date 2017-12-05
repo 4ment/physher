@@ -9,14 +9,13 @@
 #include "mcmc.h"
 
 #include <strings.h>
+#include <stdio.h>
 
 #include "random.h"
 #include "matrix.h"
 #include "compoundmodel.h"
 #include "treelikelihood.h"
-#include "gamma.h"
-#include "dirichlet.h"
-#include "simplex.h"
+
 
 void log_log(Log* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
@@ -112,7 +111,7 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 		else if (simplexes_node->node_type == MJSON_STRING) {
 			char* ref = simplexes_node->value;
 			logger->simplexes = malloc(sizeof(Model*));
-			logger->simplexes[0] = Hashtable_get(hash, ref+1);;
+			logger->simplexes[0] = Hashtable_get(hash, ref+1);
 			logger->simplex_count++;
 		}
 	}
@@ -148,151 +147,6 @@ void free_Log(Log* logger){
 		free(logger->models);
 	}
 	free(logger);
-}
-
-double tune(int accepted, int count, double target, double tuner, double min, double max, bool inverse){
-	double delta = 1./sqrt(count);
-	//delta = fmin(0.01, delta);
-	double logTuner = log(tuner);
-	double accRatio = (double)accepted/count;
-	if (inverse) {
-		delta = -delta;
-	}
-	if(accRatio > target){
-		logTuner += delta;
-	}
-	else {
-		logTuner -= delta;
-	}
-	double t = exp(logTuner);
-	
-	if (t <= min || t >= max)
-		t = tuner;
-	return t;
-}
-
-double getDeltaP(int count, double logAlpha, double target){
-	return ((1.0 / count) * (exp(fmin(logAlpha, 0.)) - target));
-}
-
-double optimizeScaleFactor(double scaleFactor, int count, double logAlpha, double target ){
-	double delta = getDeltaP(count, logAlpha, target);
-	delta += log(1./scaleFactor-1.0);
-	return 1./(exp(delta)+1);
-}
-
-void operator_store(Operator* op){
-	if(op->x != NULL){
-		Parameters_store_value(op->x, op->storage);
-	}
-	else if(op->simplex != NULL){
-		memcpy(op->storage, ((Simplex*)op->simplex->obj)->values, sizeof(double)*((Simplex*)op->simplex->obj)->K);
-	}
-}
-
-void operator_restore(Operator* op){
-	if(op->x != NULL){
-		if(op->index >= 0){
-			Parameters_set_value(op->x, op->index, op->storage[op->index]);
-		}
-		else{
-			Parameters_restore_value(op->x, op->storage);
-		}
-	}
-	else if(op->simplex != NULL){
-		Simplex* simplex = op->simplex->obj;
-		simplex->set_values(simplex, op->storage);
-	}
-}
-
-bool operator_scaler(Operator* op, double* logHR){
-	op->index = random_int(Parameters_count(op->x)-1);
-	Parameter* p = Parameters_at(op->x, op->index);
-	double scaler_scaleFactor = op->parameters[0];
-	double v = Parameter_value(p);
-	double vv = v;
-	double s = (scaler_scaleFactor + (random_double() * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
-	vv *= s;
-	*logHR = -log(s);
-	if ( vv > Parameter_upper(p) || vv < Parameter_lower(p ) ) {
-		op->rejected_count++;
-		return false;
-	}
-	Parameter_set_value(p, vv);
-	return true;
-}
-
-bool operator_slider(Operator* op, double* logHR){
-	op->index = random_int(Parameters_count(op->x)-1);
-	Parameter* p = Parameters_at(op->x, op->index);
-	double v = Parameter_value(p);
-	double vv = v;
-	double w = (random_double() - 0.5)*op->parameters[0];//slider_delta;
-	vv += w;
-//	printf("%s %f %f ", Parameter_name(p), w, Parameter_value(p));
-	if ( vv > Parameter_upper(p) ) {
-		vv = 2.0*Parameter_upper(p) - vv;
-	}
-	else if ( vv < Parameter_lower(p ) ) {
-		vv = 2.0*Parameter_lower(p) - vv;
-	}
-	*logHR = 0;
-	if ( vv > Parameter_upper(p) || vv < Parameter_lower(p) ) {
-		op->rejected_count++;
-		return false;
-	}
-	Parameter_set_value(p, vv);
-//	printf("%f\n", Parameter_value(p));
-	return true;
-}
-
-bool operator_dirichlet(Operator* op, double* logHR){
-	Simplex* simplex = op->simplex->obj;
-	double alpha = op->parameters[0];
-	double sum = 0;
-	double* scaledOld = dvector(simplex->K);
-	double* newScaled = dvector(simplex->K);
-	double* newValues = dvector(simplex->K);
-	for (int i = 0; i < simplex->K; i++) {
-		scaledOld[i] = alpha*simplex->values[i];
-		newValues[i] = rgamma(scaledOld[i]);
-		sum += newValues[i];
-	}
-	for (int i = 0; i < simplex->K; i++) {
-		newValues[i] /= sum;
-		newScaled[i] = alpha*newValues[i];
-	}
-	
-	for (int i = 0; i < simplex->K; i++) {
-		if (isnan(newValues[i])) {
-			free(scaledOld);
-			free(newValues);
-			free(newScaled);
-			return false;
-		}
-	}
-	simplex->set_values(simplex, newValues);
-	
-	double f = ddirchletln(newValues, simplex->K, scaledOld);
-	double b = ddirchletln(simplex->values, simplex->K, newScaled);
-	*logHR = b-f;
-	free(scaledOld);
-	free(newValues);
-	free(newScaled);
-	return true;
-}
-
-
-void operator_scaler_optimize(Operator* op, double alpha){
-	op->parameters[0] = optimizeScaleFactor(op->parameters[0], op->accepted_count+op->rejected_count+1, alpha, 0.24);
-}
-
-void operator_slider_optimize(Operator* op, double alpha){
-	op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.0001, 20, false);
-}
-
-void operator_dirichlet_optimize(Operator* op, double alpha){
-	op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.1, 10000, true);
 }
 
 void run(MCMC* mcmc){
@@ -341,20 +195,22 @@ void run(MCMC* mcmc){
 		
 		// accept
 		if ( alpha >=  0 || alpha > log(random_double()) ) {
-//			printf("%d %f %f\n", iter, logP, proposed_logP);
+//			printf("%zu %f %f\n", iter, logP, proposed_logP);
 			logP = proposed_logP;
 			op->accepted_count++;
 		}
 		// reject
 		else {
-//			printf("%d %f %f *\n", iter, logP, proposed_logP);
+//			printf("%zu %f %f *\n", iter, logP, proposed_logP);
 			op->restore(op);
 			op->rejected_count++;
 		}
 		
 		iter++;
 		
-		op->optimize(op, alpha);
+		if(op->optimize != NULL){
+			op->optimize(op, alpha);
+		}
 		
 		for (int i = 0; i < mcmc->log_count; i++) {
 			if(iter % mcmc->logs[i]->every == 0){
@@ -370,62 +226,6 @@ void run(MCMC* mcmc){
 	}
 	free(weights);
 	free_StringBuffer(buffer);
-}
-
-Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
-	Operator* op = malloc(sizeof(Operator));
-	const char* id_string = get_json_node_value_string(node, "id");
-	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
-	const char* x_string = get_json_node_value_string(node, "x");
-	op->x = NULL;
-	op->weight = get_json_node_value_double(node, "weight", 1);
-	op->name = String_clone(id_string);
-	op->store = operator_store;
-	op->restore = operator_restore;
-	op->parameters = NULL;
-	op->simplex = NULL;
-
-	if (strcasecmp(algorithm_string, "scaler") == 0) {
-		op->x = new_Parameters(1);
-		get_parameters_references2(node, hash, op->x, "x");
-		op->storage = dvector(Parameters_count(op->x));
-		op->propose = operator_scaler;
-		op->optimize = operator_scaler_optimize;
-		op->parameters = dvector(1);
-		op->parameters[0] = 0.9;
-		
-	}
-	else if (strcasecmp(algorithm_string, "slider") == 0) {
-		op->x = new_Parameters(1);
-		get_parameters_references2(node, hash, op->x, "x");
-		op->storage = dvector(Parameters_count(op->x));
-		op->propose = operator_slider;
-		op->optimize = operator_slider_optimize;
-		op->parameters = dvector(1);
-		op->parameters[0] = 0.001;
-	}
-	else if (strcasecmp(algorithm_string, "dirichlet") == 0) {
-		char* ref = get_json_node_value_string(node, "x");
-		op->simplex = Hashtable_get(hash, ref+1);
-		op->simplex->ref_count++;
-		op->storage = dvector(((Simplex*)op->simplex->obj)->K);
-		op->propose = operator_dirichlet;
-		op->optimize = operator_dirichlet_optimize;
-		op->parameters = dvector(1);
-		op->parameters[0] = 1000;
-	}
-	op->rejected_count = 0;
-	op->accepted_count = 0;
-	return op;
-}
-
-void free_Operator(Operator* op){
-	if(op->parameters != NULL) free(op->parameters);
-	if(op->simplex != NULL) op->simplex->free(op->simplex);
-	free(op->storage);
-	free_Parameters(op->x);
-	free(op->name);
-	free(op);
 }
 
 MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
