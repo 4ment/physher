@@ -17,7 +17,7 @@
 #include "tree.h"
 #include "matrix.h"
 #include "treesearch.h"
-#include "vb.h"
+#include "opvb.h"
 
 double tune(int accepted, int count, double target, double tuner, double min, double max, bool inverse){
 	double delta = 1./sqrt(count);
@@ -52,8 +52,8 @@ double optimizeScaleFactor(double scaleFactor, int count, double logAlpha, doubl
 
 void operator_store(Operator* op){
 	Parameters* ps = op->x;
-	if(op->model != NULL){
-		ps = ((Simplex*)op->model->obj)->parameters;
+	if(op->models[0] != NULL){
+		ps = ((Simplex*)op->models[0]->obj)->parameters;
 	}
 	for(int i = 0; i < Parameters_count(ps); i++){
 		Parameter_store(Parameters_at(ps, i));
@@ -66,8 +66,8 @@ void operator_snni_store(Operator* op){
 
 void operator_restore(Operator* op){
 	Parameters* ps = op->x;
-	if(op->model != NULL){
-		ps = ((Simplex*)op->model->obj)->parameters;
+	if(op->models != NULL){
+		ps = ((Simplex*)op->models[0]->obj)->parameters;
 	}
 	for(int i = 0; i < Parameters_count(ps); i++){
 		Parameter_restore(Parameters_at(ps, i));
@@ -75,13 +75,14 @@ void operator_restore(Operator* op){
 }
 
 void operator_snni_restore(Operator* op){
-	Tree* tree = op->model->obj;
+	Tree* tree = op->models[0]->obj;
 	Node* node1 = Tree_node(tree, op->indexes[0]);
 	Node* node2 = Tree_node(tree, op->indexes[1]);
 	NNI_move(tree, node1, node2);
 	node1->distance->listeners->fire(node1->distance->listeners, NULL, Node_id(node1));
 	node2->distance->listeners->fire(node2->distance->listeners, NULL, Node_id(node2));
 }
+
 
 bool operator_scaler(Operator* op, double* logHR){
 	op->index = random_int(Parameters_count(op->x)-1);
@@ -125,7 +126,7 @@ bool operator_slider(Operator* op, double* logHR){
 }
 
 bool operator_dirichlet(Operator* op, double* logHR){
-	Simplex* simplex = op->model->obj;
+	Simplex* simplex = op->models[0]->obj;
 	double alpha = op->parameters[0];
 	double sum = 0;
 	double* scaledOld = dvector(simplex->K);
@@ -163,7 +164,7 @@ bool operator_dirichlet(Operator* op, double* logHR){
 
 // stochastic NNI
 bool operator_sNNI(Operator* op, double* logHR){
-	Tree* tree = op->model->obj;
+	Tree* tree = op->models[0]->obj;
 	Node* root = Tree_root(tree);
 	Node* left_root = Tree_root(tree)->left;
 	Node* right_root = Tree_root(tree)->right;
@@ -205,20 +206,6 @@ bool operator_sNNI(Operator* op, double* logHR){
 	return true;
 }
 
-bool operator_vb(Operator* op, double* logHR){
-	variational_t* var = op->model->obj;
-	size_t dim = Parameters_count(var->parameters);
-	double* values = dvector(dim);
-	var->sample(var, values);
-	for (int i = 0; i < dim; i++) {
-		Parameters_set_value(var->parameters, i, values[i]);
-	}
-//	Parameters_print(var->parameters);
-	free(values);
-	*logHR = 0;
-	return true;
-}
-
 void operator_scaler_optimize(Operator* op, double alpha){
 	op->parameters[0] = optimizeScaleFactor(op->parameters[0], op->accepted_count+op->rejected_count+1, alpha, 0.24);
 }
@@ -232,9 +219,14 @@ void operator_dirichlet_optimize(Operator* op, double alpha){
 }
 
 Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
+	
+	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
+	if (strcasecmp(algorithm_string, "vb") == 0) {
+		return new_VariationalOperator_from_json(node, hash);
+	}
+	
 	Operator* op = malloc(sizeof(Operator));
 	const char* id_string = get_json_node_value_string(node, "id");
-	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
 	const char* x_string = get_json_node_value_string(node, "x");
 	op->x = NULL;
 	op->weight = get_json_node_value_double(node, "weight", 1);
@@ -243,7 +235,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	op->restore = operator_restore;
 	op->parameters = NULL;
 	op->indexes = NULL;
-	op->model = NULL;
+	op->models = NULL;
 	
 	if (strcasecmp(algorithm_string, "scaler") == 0) {
 		op->x = new_Parameters(1);
@@ -264,8 +256,10 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	}
 	else if (strcasecmp(algorithm_string, "dirichlet") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
-		op->model = Hashtable_get(hash, ref+1);
-		op->model->ref_count++;
+		op->model_count = 1;
+		op->models = malloc(op->model_count*sizeof(Model*));
+		op->models[0] = Hashtable_get(hash, ref+1);
+		op->models[0]->ref_count++;
 		op->propose = operator_dirichlet;
 		op->optimize = operator_dirichlet_optimize;
 		op->parameters = dvector(1);
@@ -273,8 +267,10 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	}
 	else if (strcasecmp(algorithm_string, "nni") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
-		op->model = Hashtable_get(hash, ref+1);
-		op->model->ref_count++;
+		op->model_count = 1;
+		op->models = malloc(op->model_count*sizeof(Model*));
+		op->models[0] = Hashtable_get(hash, ref+1);
+		op->models[0]->ref_count++;
 		op->propose = operator_sNNI;
 		op->store = operator_snni_store;
 		op->restore = operator_snni_restore;
@@ -283,23 +279,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->indexes = ivector(2);
 		op->parameters[0] = 1000;
 	}
-	else if (strcasecmp(algorithm_string, "vb") == 0) {
-		char* ref = get_json_node_value_string(node, "x");
-		op->model = Hashtable_get(hash, ref+1);
-		op->model->ref_count++;
-		op->propose = operator_vb;
-		op->store = operator_store;
-		op->restore = operator_restore;
-		op->optimize = NULL;
-		op->parameters = dvector(1);
-		op->parameters[0] = 1000;
-		variational_t* var = op->model->obj;
-		int dim = Parameters_count(var->parameters);
-
-		for (int i = 0; i < dim; i++) {
-			Parameter_restore(Parameters_at(var->parameters, i));
-		}
-	}
+	
 	op->rejected_count = 0;
 	op->accepted_count = 0;
 	return op;
@@ -307,7 +287,12 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 
 void free_Operator(Operator* op){
 	if(op->parameters != NULL) free(op->parameters);
-	if(op->model != NULL) op->model->free(op->model);
+	if(op->models != NULL){
+		for (int i = 0; i < op->model_count; i++) {
+			op->models[i]->free(op->models[i]);
+		}
+		free(op->models);
+	}
 	if(op->indexes != NULL) free(op->indexes);
 	free_Parameters(op->x);
 	free(op->name);

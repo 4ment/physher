@@ -20,15 +20,15 @@
 void log_log(Log* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
-		fprintf(logger->file, ",%e", logger->models[i]->logP(logger->models[i]));
+		fprintf(logger->file, "\t%e", logger->models[i]->logP(logger->models[i]));
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
-		fprintf(logger->file, ",%e", Parameters_value(logger->x, i));
+		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));
 	}
 	for (int i = 0; i < logger->simplex_count; i++) {
 		Simplex* simplex = logger->simplexes[i]->obj;
 		for (int j = 0; j < simplex->K; j++) {
-			fprintf(logger->file, ",%e", simplex->get_value(simplex, j));
+			fprintf(logger->file, "\t%e", simplex->get_value(simplex, j));
 		}
 	}
 	
@@ -118,10 +118,10 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	
 	fprintf(logger->file, "iter");
 	for (int i = 0; i < logger->model_count; i++) {
-		fprintf(logger->file, ",%s", logger->models[i]->name);
+		fprintf(logger->file, "\t%s", logger->models[i]->name);
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
-		fprintf(logger->file, ",%s", Parameters_name(logger->x, i));
+		fprintf(logger->file, "\t%s", Parameters_name(logger->x, i));
 	}
 	StringBuffer* buffer = new_StringBuffer(10);
 	for (int i = 0; i < logger->simplex_count; i++) {
@@ -129,7 +129,7 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 		for (int j = 0; j < simplex->K; j++) {
 			StringBuffer_set_string(buffer, logger->simplexes[i]->name);
 			StringBuffer_append_format(buffer, "%d", (j+1));
-			fprintf(logger->file, ",%s", buffer->c);
+			fprintf(logger->file, "\t%s", buffer->c);
 		}
 	}
 	free_StringBuffer(buffer);
@@ -138,8 +138,10 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 }
 
 void free_Log(Log* logger){
+	printf("free logger");
 	free_Parameters(logger->x);
 	if (logger->filename != NULL) {
+		printf("close logger");
 		free(logger->filename);
 		fclose(logger->file);
 	}
@@ -172,6 +174,10 @@ void run(MCMC* mcmc){
 	}
 	
 	StringBuffer *buffer = new_StringBuffer(20);
+	
+	for (int i = 0; i < mcmc->log_count; i++) {
+		mcmc->logs[i]->write(mcmc->logs[i], iter);
+	}
 	
 	while ( iter < mcmc->chain_length) {
 		

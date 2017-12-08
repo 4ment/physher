@@ -16,7 +16,8 @@
 typedef struct Operator{
 	char* name;
 	Parameters* x;
-	Model* model;
+	Model** models;
+	size_t model_count;
 	int index;
 	double* parameters;
 	int* indexes;

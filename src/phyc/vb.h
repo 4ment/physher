@@ -29,7 +29,9 @@ typedef struct variational_t{
 	void (*grad_f)( Parameters *x, double *gradient, void *data );
 	bool (*sample)( struct variational_t*, double* values );
 	bool (*sample_some)( struct variational_t*, const Parameters* parameters, double* values );
+	void (*finalize)( struct variational_t* );
 	bool initialized;
+	bool ready_to_sample;
 	FILE* file;
 	size_t iter;
 	//char* filename;

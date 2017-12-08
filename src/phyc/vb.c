@@ -105,16 +105,35 @@ void init_fullrank_normal(variational_t* var){return;
 
 void init_meanfield_normal(variational_t* var){
 	size_t dim = Parameters_count(var->parameters);
+	Model* posterior = var->posterior;
+	
 	for (int i = 0; i < dim; i++) {
 		Parameter* p = Parameters_at(var->parameters, i);
-		if(Parameter_value(p) < 1.0e-4){
-			p->estimate = false;
+		// fix mu when value is small
+		// mu will be set such that mu-sigma*sigma = -10
+		if(Parameter_value(p) < 1.0e-6){
+//			printf("%e %s\n", Parameter_value(p), Parameter_name(p));
+			Parameter* var_p_mu = Parameters_at(var->var_parameters, i);
+			Parameter* var_p_sigma = Parameters_at(var->var_parameters, i+dim);
+			Parameter_set_estimate(var_p_mu, false);
+		}
+		else{
+			Parameter* var_p_mu = Parameters_at(var->var_parameters, i);
+			double dlogP;
+			double d2logP = Model_second_derivative(posterior, Parameters_at(var->parameters, i), &dlogP, 0.001);
+			double mu = Parameters_value(var->parameters, i); // mean = mode of normal
+			double v = -1.0/d2logP; // variance of normal
+			
+			double q_var = log(sqrt(log(exp(log(v)-2.0*log(mu))+1.0)));
+			double q_mu = log(mu) - q_var*0.5;
+			Parameters_set_value(var->var_parameters, i, q_mu);
+			Parameters_set_value(var->var_parameters, i+dim, q_var);
+//			Parameter_set_estimate(var_p_mu, false);
 		}
 	}
 	
 	return;
-	
-	Model* posterior = var->posterior;
+
 	for (int i = 0; i < dim; i++) {
 //		printf("%s %e", Parameters_name(var->parameters, i), Parameters_value(var->parameters, i));
 //		printf("bl: %e", Parameters_value(var->parameters, i));
@@ -184,10 +203,24 @@ double elbo_meanfield(variational_t* var){
 		
 		for (int j = 0; j < dim; j++) {
 			Parameter* p = Parameters_at(var->parameters, j);
-			if(!p->estimate) continue;
-			double var_mean = Parameters_value(var->var_parameters, j);
-			double var_sd = Parameters_value(var->var_parameters, dim+j);
-			double zeta = rnorm() * exp(var_sd) + var_mean;
+			Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
+			Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
+			
+			double mu;
+			double sigma = exp(Parameter_value(var_p_sigma));
+			
+			if(Parameter_estimate(var_p_mu)){
+				mu = Parameter_value(var_p_mu);
+			}
+			else{
+//				if(Parameter_value(p) < 1.0e-6){
+					mu = -10 + sigma * sigma;
+//				}
+//				else{
+//					mu = log(Parameter_value(p)) + sigma*sigma;
+//				}
+			}
+			double zeta = rnorm() * sigma + mu;
 			double theta = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), &jacobian);
 			Parameter_set_value(p, theta);
 		}
@@ -195,7 +228,7 @@ double elbo_meanfield(variational_t* var){
 		double logP = posterior->logP(posterior);
 		if(!isinf(logP))elbo += posterior->logP(posterior) + jacobian;
 		
-		if(isinf(elbo)){
+		if(isinf(elbo) || isnan(elbo)){
 			return elbo;
 		}
 	}
@@ -220,20 +253,36 @@ void grad_elbo_meanfield(variational_t* var, double* grads){
 	
 	for (int i = 0; i < var->grad_samples; i++) {
 		for ( int j = 0; j < dim; j++) {
-			if(!Parameters_estimate(var->parameters, j)) continue;
-			double var_mean = Parameters_value(var->var_parameters, j);
-			double var_sd = Parameters_value(var->var_parameters, dim+j);
-			eta[j] = rnorm();
-			zeta[j] = eta[j] * exp(var_sd) + var_mean;
-			
 			Parameter* p = Parameters_at(var->parameters, j);
+			Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
+			Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
+			
+			double mu;
+			double sigma = exp(Parameter_value(var_p_sigma));
+			
+			if(Parameter_estimate(var_p_mu)){
+				mu = Parameter_value(var_p_mu);
+			}
+			else{
+//				if(Parameter_value(p) < 1.0e-6){
+					mu = -10 + sigma * sigma;
+//				}
+//				else{
+//					mu = log(Parameter_value(p)) + sigma*sigma;
+//				}
+			}
+			
+			eta[j] = rnorm();
+			zeta[j] = eta[j] * sigma + mu;
+			
 			double theta = inverse_transform2(zeta[j], Parameter_lower(p), Parameter_upper(p));
+//						printf("%f %f %f %d\n", mu, sigma, theta, Parameters_at(var->var_parameters, j)->estimate);
 			Parameter_set_value(p, theta);
 		}
-		
+//		exit(1);
 		for ( int j = 0; j < dim; j++) {
 			Parameter* p = Parameters_at(var->parameters, j);
-			if(!p->estimate) continue;
+			
 //			double dlogP = Model_first_derivative(posterior, p, 0.001);
 			double dlogP = posterior->dlogP(posterior, p);
 //			printf("%f %f %s\n", dlogP, Model_first_derivative(posterior, p, 0.001), Parameter_name(p));
@@ -430,6 +479,10 @@ void grad_elbo( Parameters *params, double *grad, void *data ){
 
 // check success
 bool variational_sample_meanfield(variational_t* var, double* values){
+	if(!var->ready_to_sample){
+		var->finalize(var);
+		var->ready_to_sample = true;
+	}
 	int dim = Parameters_count(var->parameters);
 	for (int i = 0; i < dim; i++) {
 		Parameter* p = Parameters_at(var->parameters, i);
@@ -446,6 +499,10 @@ bool variational_sample_meanfield(variational_t* var, double* values){
 }
 
 bool variational_sample_some_meanfield(variational_t* var, const Parameters* parameters, double* values){
+	if(!var->ready_to_sample){
+		var->finalize(var);
+		var->ready_to_sample = true;
+	}
 	size_t dim = Parameters_count(var->parameters);
 	size_t dim2 = Parameters_count(parameters);
 	for (int i = 0; i < dim2; i++) {
@@ -470,6 +527,10 @@ bool variational_sample_some_meanfield(variational_t* var, const Parameters* par
 }
 
 bool variational_sample_fullrank(variational_t* var, double* values){
+	if(!var->ready_to_sample){
+		var->finalize(var);
+		var->ready_to_sample = true;
+	}
 	size_t dim = Parameters_count(var->parameters);
 	
 	gsl_vector * mu = gsl_vector_calloc(dim);
@@ -505,6 +566,29 @@ bool variational_sample_fullrank(variational_t* var, double* values){
 //	const double zeta = rnorm() * var->var_parameters[index+Parameters_count(var->parameters)] + var->var_parameters[index]
 //	return inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
 //}
+
+static void _variational_finalize(variational_t* var){
+	size_t dim = Parameters_count(var->parameters);
+	
+	for (int i = 0; i < dim; i++) {
+		Parameter_restore(Parameters_at(var->parameters, i));
+	}
+	
+	for (int i = 0; i < dim; i++) {
+		double sigma = exp(Parameters_value(var->var_parameters, i+dim));
+		if(!Parameters_at(var->var_parameters, i)->estimate){
+			Parameters_set_value(var->var_parameters, i, -10 + sigma);
+		}
+//		double mu = Parameters_value(var->var_parameters, i);
+//		if(!Parameters_at(var->var_parameters, i)->estimate){
+//			mu = -10 + sigma;
+//		}
+////		double mean = exp(mu + sigma*sigma/2.0);
+////		double mode = exp(mu - sigma*sigma);
+////		printf("%f %f %f %f %s\n", Parameters_value(var->parameters, i), mode,
+////			   mu, sigma, Parameters_name(var->parameters, i));
+	}
+}
 
 Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	const char* posterior_string = get_json_node_value_string(node, "posterior");
@@ -565,6 +649,8 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		var->f = elbo;
 		var->grad_f = grad_elbo;
 		var->sample = variational_sample_meanfield;
+		var->sample_some = variational_sample_some_meanfield;
+		var->finalize = _variational_finalize;
 	}
 	else if(strcasecmp(var_string, "fullrank") == 0){
 		printf("Creating fullrank variational model\n");
@@ -657,6 +743,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	}
 	
 	var->initialized = false;
+	var->ready_to_sample = false;
 	var->iter = 0;
 	if (filename != NULL) {
 		var->file = fopen(filename, "w");
@@ -679,9 +766,6 @@ static void _variational_model_free( Model *self ){
 	if(self->ref_count == 1){
 		printf("Free variational model %s\n", self->name);
 		variational_t* var = (variational_t*)self->obj;
-//		for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
-//			printf("%s %f\n", Parameters_name(var->var_parameters, i), Parameters_value(var->var_parameters, i));
-//		}
 		var->posterior->free(var->posterior);
 		free_Parameters(var->var_parameters);
 		free_Parameters(var->parameters);
