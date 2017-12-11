@@ -22,7 +22,13 @@
 #define MY_PI acos(-1.0)
 #define LOG_TWO_PI (log(2.0)+log(MY_PI))
 
-void init_fullrank_normal(variational_t* var){return;
+void init_fullrank_normal(variational_t* var){
+	
+	for (int i = 0; i < Parameters_count(var->parameters); i++) {
+		Parameter_store(Parameters_at(var->parameters, i));
+	}
+	return;
+	
 	Model* posterior = var->posterior;
 	size_t dim = Parameters_count(var->parameters);
 	size_t n = 2*dim+(dim*(dim-1))/2;
@@ -106,6 +112,11 @@ void init_fullrank_normal(variational_t* var){return;
 void init_meanfield_normal(variational_t* var){
 	size_t dim = Parameters_count(var->parameters);
 	Model* posterior = var->posterior;
+	
+	// for reuse
+	for (int i = 0; i < Parameters_count(var->parameters); i++) {
+		Parameter_store(Parameters_at(var->parameters, i));
+	}
 	
 	for (int i = 0; i < dim; i++) {
 		Parameter* p = Parameters_at(var->parameters, i);
@@ -239,9 +250,9 @@ void grad_elbo_meanfield(variational_t* var, double* grads){
 	if (var->initialized == false) {
 		init_meanfield_normal(var);
 		// save for later
-		for (int i = 0; i < Parameters_count(var->parameters); i++) {
-			Parameter_store(Parameters_at(var->parameters, i));
-		}
+//		for (int i = 0; i < Parameters_count(var->parameters); i++) {
+//			Parameter_store(Parameters_at(var->parameters, i));
+//		}
 		var->initialized = true;
 	}
 
@@ -604,6 +615,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	var->sample = NULL;
 	var->sample_some = NULL;
 	var->parameters = new_Parameters(1);
+	
 	if(parameters_node){
 		get_parameters_references(node, hash, var->parameters);
 	}
@@ -813,6 +825,27 @@ static void _variational_model_get_free_parameters(Model* self, Parameters* para
 
 }
 
+#include "compoundmodel.h"
+#include "treelikelihood.h"
+
+void _variational_model_reset(Model* self){
+	variational_t* var = (variational_t*)self->obj;
+	if(var->initialized){
+		// Restore the parameters of the posterior
+		for (int i = 0; i < Parameters_count(var->parameters); i++) {
+			Parameter_restore(Parameters_at(var->parameters, i));
+		}
+		var->ready_to_sample = false;
+		var->initialized = false;
+//		printf("reset restore\n");
+	}
+//	else{
+//		
+//		printf("reset store\n");
+//	}
+
+}
+
 Model* new_VariationalModel(const char* name, variational_t* var){
 	Model *model = new_Model("variational", name, var);
 	model->free = _variational_model_free;
@@ -820,6 +853,7 @@ Model* new_VariationalModel(const char* name, variational_t* var){
 	model->logP = _variational_model_logP;
 	model->gradient = _variational_model_gradient;
 	model->get_free_parameters = _variational_model_get_free_parameters;
+	model->reset = _variational_model_reset;
 	
 	for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
 		Parameters_at(var->var_parameters, i)->listeners->add( Parameters_at(var->var_parameters, i)->listeners, model );

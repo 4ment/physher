@@ -324,6 +324,7 @@ struct _Model {
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, int );
 	void (*get_free_parameters)(Model*, Parameters*);
+	void (*reset)(Model*);
 	
 	ListenerList *listeners;
 	int ref_count;

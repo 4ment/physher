@@ -8,9 +8,100 @@
 
 #include "gradascent.h"
 
+#include <string.h>
+
+#include "matrix.h"
 
 int compare (const void * a, const void * b){
 	return ( *(double*)a - *(double*)b );
+}
+
+opt_result optimize_stochastic_gradient_adapt(Parameters* parameters, opt_func f, opt_grad_func grad_f, void(*reset)(void*),
+											  double* etas, size_t eta_count, void *data,
+											  OptStopCriterion *stop, double *fmin){
+	size_t dim = Parameters_count(parameters);
+	double tau = 1;
+	double pre_factor  = 0.9;
+	double post_factor = 0.1;
+	double* grads = calloc(dim, sizeof(double));
+	double *history_grad_squared = calloc(dim, sizeof(double));
+//	double etas[5] = {100.0, 10, 1, 0.1, 0.01};
+//	double etas[5] = {1, 0.1, 10, 0.01, 100};
+//	size_t eta_count = sizeof(etas)/sizeof(double);
+	double* elbos = dvector(eta_count);
+	for (int i = 0; i < eta_count; i++) {
+		elbos[i] = -INFINITY;
+	}
+	
+	for (int i = 0; i < dim; i++) {
+		Parameter_store(Parameters_at(parameters, i));
+	}
+	
+	int max_iter = 50;
+	
+	opt_result result = OPT_SUCCESS;
+	for (int j = 0; j < eta_count; j++) {
+		int iter = 0;
+		double eta = etas[j];
+		memset(grads, 0, sizeof(double)*dim);
+		memset(history_grad_squared, 0, sizeof(double)*dim);
+		
+		for (int i = 0; i < dim; i++) {
+			Parameter_restore(Parameters_at(parameters, i));
+		}
+		reset(data);
+		
+		
+		while(iter++ < max_iter){
+			grad_f(parameters, grads, data);
+			
+			double eta_scaled = eta / sqrt(iter);
+			
+			// Update step-size
+			if (stop->iter == 1) {
+				for (int i = 0; i < dim; i++) {
+					history_grad_squared[i] = grads[i]*grads[i];
+				}
+			} else {
+				for (int i = 0; i < dim; i++) {
+					history_grad_squared[i] = pre_factor * history_grad_squared[i] + post_factor * grads[i]*grads[i];
+				}
+			}
+
+			for (int i = 0; i < dim; i++) {
+				if (Parameters_estimate(parameters, i)) {
+					double v = Parameters_value(parameters, i) + eta_scaled * grads[i] / (tau + sqrt(history_grad_squared[i]));
+					Parameters_set_value(parameters, i, v);
+				}
+			}
+			
+			double elbo = f(parameters, NULL, data);
+//			printf("elbo %f\n", elbo);
+			if (isnan(elbo)) {
+				elbo = -INFINITY;
+			}
+			elbos[j] = dmax(elbos[j], elbo);
+		}
+		
+		printf("eta %f elbo %f\n", eta, elbos[j]);
+	}
+	free(grads);
+	free(history_grad_squared);
+	
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameter_restore(Parameters_at(parameters, i));
+	}
+	
+	double elbo_max = -INFINITY;
+	int elbo_max_index = -1;
+	for (int i = 0; i < eta_count; i++) {
+		if(elbos[i] > elbo_max){
+			elbo_max = elbos[i];
+			elbo_max_index = i;
+		}
+	}
+	*fmin = etas[elbo_max_index];
+	return result;
 }
 
 opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, double *fmin){
@@ -31,7 +122,10 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 	double *history_grad_squared = calloc(dim, sizeof(double));
 	
 	opt_result result = OPT_SUCCESS;
-
+	
+	double elbo0 = f(parameters, NULL, data);
+	printf("%zu ELBO: %f\n", stop->iter, elbo0);
+	
 	while(stop->iter++ < stop->iter_max){
 		grad_f(parameters, grads, data);
 		

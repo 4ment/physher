@@ -14,4 +14,9 @@
 
 opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, double *fmin);
 
+
+opt_result optimize_stochastic_gradient_adapt(Parameters* parameters, opt_func f, opt_grad_func grad_f, void(*reset)(void*),
+											  double* etas, size_t eta_count, void *data,
+											  OptStopCriterion *stop, double *fmin);
+
 #endif /* gradascent_h */

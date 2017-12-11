@@ -54,6 +54,11 @@ static void _gradient( Parameters *params, double *grad, void *data ){
 	model->gradient(model, grad);
 }
 
+static void _reset(void* data){
+	Model* model = (Model*)data;
+	model->reset(model);
+}
+
 static bool dummy_update_data( void *data, Parameters *p){return false;}
 
 static bool xStop( const Parameters *x,  double *xold, const double tolx);
@@ -65,6 +70,7 @@ struct _Optimizer{
 	
 	opt_func f;
     opt_grad_func grad_f;
+	void (*reset)(void*);
 	void *data;
 //    Model* model;
 	Parameters* parameters;
@@ -77,7 +83,8 @@ struct _Optimizer{
 	OptimizerSchedule* schedule;
     
     // for stochastic gradient
-    double eta;
+    double* etas;
+	size_t eta_count;
     bool ascent;
     
 };
@@ -193,7 +200,8 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->update = dummy_update_data;
 	opt->schedule = NULL;
     
-    opt->eta = 1;
+    opt->etas = NULL;
+	opt->eta_count = 0;
     opt->ascent = true;
 	return opt;
 }
@@ -236,7 +244,8 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 	clone->treelikelihood = NULL;
     
     clone->ascent = opt->ascent;
-    clone->eta = opt->eta;
+	clone->etas = clone_dvector(opt->etas, opt->eta_count);
+	clone->eta_count = opt->eta_count;
     clone->grad_f = opt->grad_f;
 	
 	if(opt->schedule != NULL){
@@ -282,6 +291,9 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 void free_Optimizer( Optimizer *opt ){
 	opt->data = NULL;
 	free_Parameters(opt->parameters);
+	if(opt->etas != NULL){
+		free(opt->etas);
+	}
 	//if(opt->treelikelihood != NULL) opt->treelikelihood->free(opt->treelikelihood);
 	if(opt->schedule != NULL){
 		for (int i = 0; i < opt->schedule->count; i++) {
@@ -516,7 +528,14 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
             break;
         }
         case OPT_SG:{
-			result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, opt->eta, opt->data, &opt->stop, fmin);
+			double eta = *opt->etas;
+			if(opt->eta_count > 1){
+				optimize_stochastic_gradient_adapt(opt->parameters, opt->f, opt->grad_f, opt->reset, opt->etas, opt->eta_count, opt->data, &opt->stop, &eta);
+			}
+			opt->reset(opt->data);
+			printf("Stochastic gradient ascent using eta: %f\n", eta);
+			result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, fmin);
+			opt->reset(opt->data);
             break;
         }
 		default:
@@ -619,7 +638,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		}
 		opt_set_max_iteration(opt, max);
 		opt_set_tolfx(opt, precision);
-		
+		opt->reset = NULL;
 	}
 	else if (strcasecmp(algorithm_string, "brent") == 0 || strcasecmp(algorithm_string, "serial") == 0) {
 		if (get_json_node(node, "treelikelihood") != NULL) {
@@ -640,20 +659,25 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		}
 		opt_set_max_iteration(opt, max);
 		opt_set_tolfx(opt, precision);
+		opt->reset = NULL;
 	}
     // stochastic gradient
     else if(strcasecmp(algorithm_string, "sg") == 0){
         opt = new_Optimizer(OPT_SG);
         double tol = get_json_node_value_double(node, "tol", 0.0001);
-        opt->eta = 10;
         json_node* etas = get_json_node(node, "eta");
-        if (etas != NULL) {
-			if(etas->node_type == MJSON_ARRAY){
-				
+        if (etas != NULL && etas->node_type == MJSON_ARRAY) {
+			opt->etas = dvector(etas->child_count);
+			for (int i = 0; i < etas->child_count; i++) {
+				json_node* child = etas->children[i];
+				opt->etas[i] = atof((char*)child->value);
 			}
-			else{
-				opt->eta = get_json_node_value_double(node, "eta", 10.0);
-			}
+			opt->eta_count = etas->child_count;
+		}
+		else{
+			opt->etas = dvector(1);
+			opt->etas[0] = get_json_node_value_double(node, "eta", 1.0);
+			opt->eta_count = 1;
 		}
 		
 		opt_set_max_iteration(opt, max);
@@ -683,6 +707,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 			opt_set_parameters(opt, parameters);
 			opt_set_objective_function(opt, _logP);
 		}
+		opt->reset = _reset;
     }
 	
 	free_Parameters(parameters);

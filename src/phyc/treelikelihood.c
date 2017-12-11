@@ -110,7 +110,12 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	
 	if(tlk->update){
-		tlk->calculate(tlk); // make sure it is updated
+					SingleTreeLikelihood_update_all_nodes(tlk);
+
+		double logP = tlk->calculate(tlk); // make sure it is updated
+		if (isnan(logP) || isinf(logP)) {
+			return logP;
+		}
 		calculate_upper(tlk, Tree_root(tlk->tree));
 		
 		for (int i = 0; i < tlk->sp->count; i++) {
@@ -1117,8 +1122,14 @@ double _calculate( SingleTreeLikelihood *tlk ){
 //			printf("%f\n", tlk->lk);exit(1);
 //	}
 //printf("%f\n", tlk->lk);
-	//if ( tlk->lk == -INFINITY ) {
-	if( isinf(tlk->lk) ){
+
+	if(isnan(tlk->lk)){
+//		printf("NAN %f\n", tlk->lk);
+		for ( i = 0; i < Tree_node_count(tlk->tree); i++) tlk->update_nodes[i] = true;
+		tlk->update = true;
+		tlk->update_upper = true;
+	}
+	else if( isinf(tlk->lk) ){
 		fprintf(stdout, "_calculate: rescaling %f\n", tlk->lk);
 		SingleTreeLikelihood_use_rescaling(tlk, true );
 		
@@ -1678,7 +1689,7 @@ void calculate_all_df_dt( SingleTreeLikelihood *tlk, double **df ){
             //tlk->pattern_lk[k] = log(tlk->pattern_lk[k]);
             
             if ( tlk->scale ) {
-                printf("scaling\n");
+                //printf("scaling\n");
                 tlk->pattern_lk[k] += getLogScalingFactor( tlk, k);
             }
         }
@@ -1774,7 +1785,7 @@ void calculate_all_dlnl_dt( SingleTreeLikelihood *tlk, double *dlnl ){
 			//tlk->pattern_lk[k] = log(tlk->pattern_lk[k]);
 			
 			if ( tlk->scale ) {
-				printf("scaling\n");
+				//printf("scaling\n");
 				tlk->pattern_lk[k] += getLogScalingFactor( tlk, k);
 			}
 			dlnl[Node_id(n)] += tlk->pattern_lk[k]/lnls[k] * tlk->sp->weights[k];
@@ -1870,7 +1881,7 @@ void calculate_all_d2lnl_d2t( SingleTreeLikelihood *tlk, double *d2lnl ){
             //tlk->pattern_lk[k] = log(tlk->pattern_lk[k]);
             
             if ( tlk->scale ) {
-                printf("scaling\n");
+                //printf("scaling\n");
                 tlk->pattern_lk[k] += getLogScalingFactor( tlk, k);
             }
         }
@@ -1975,7 +1986,7 @@ void calculate_hessian_branches( SingleTreeLikelihood *tlk, double *d2lnl ){
             //tlk->pattern_lk[k] = log(tlk->pattern_lk[k]);
             
             if ( tlk->scale ) {
-                printf("scaling\n");
+                //printf("scaling\n");
                 tlk->pattern_lk[k] += getLogScalingFactor( tlk, k);
             }
         }
@@ -2077,7 +2088,7 @@ void calculate_hessian_branches( SingleTreeLikelihood *tlk, double *d2lnl ){
                 //tlk->pattern_lk[k] = log(tlk->pattern_lk[k]);
                 
                 if ( tlk->scale ) {
-                    printf("scaling\n");
+                    //printf("scaling\n");
                     tlk->pattern_lk[k] += getLogScalingFactor( tlk, k);
                 }
             }
@@ -2266,7 +2277,7 @@ double dldt_uppper2( SingleTreeLikelihood *tlk, Node *node ){
 		}
 		
 		if ( tlk->scale ) {
-			printf("scaling\n");
+			//printf("scaling\n");
 			pattern_dlnl[k] += getLogScalingFactor( tlk, k);
 		}
 		dl += pattern_dlnl[k] * tlk->sp->weights[k];
@@ -2339,7 +2350,7 @@ void calculate_dldt_uppper( SingleTreeLikelihood *tlk, Node *node, double* patte
 		}
 		
 		if ( tlk->scale ) {
-			printf("scaling\n");
+			//printf("scaling\n");
 			pattern_dlikelihoods[k] += getLogScalingFactor( tlk, k);
 		}
 	}
@@ -2405,7 +2416,7 @@ double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pat
 		}
 		
 		if ( tlk->scale ) {
-			printf("scaling\n");
+			//printf("scaling\n");
 			pattern_d2lnl[k] += getLogScalingFactor( tlk, k);
 		}
 		//((tlk->pattern_lk[i] * lks[i] - (dfi[Node_id(n)][i]*dfi[Node_id(n)][i])) / (lks[i]*lks[i])) * tlk->sp->weights[i];
@@ -2638,7 +2649,7 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
                 }
                 
                 if ( tlk->scale ) {
-                    printf("scaling\n");
+                    //printf("scaling\n");
                     tlk->pattern_lk[k] += getLogScalingFactor( tlk, k);
                 }
             }
@@ -3302,7 +3313,7 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
     
     //TODO
 	if ( tlk->lk == -INFINITY ) {
-		fprintf(stderr, "_calculate: rescaling\n");
+		fprintf(stderr, "_calculate_upper: rescaling\n");
         //		SingleTreeLikelihood_use_rescaling(tlk, true );
         //
         //		SingleTreeLikelihood_update_all_nodes( tlk );

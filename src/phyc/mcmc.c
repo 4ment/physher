@@ -160,8 +160,6 @@ void run(MCMC* mcmc){
 	
 	size_t iter = 0;
 	
-	int operator = 1;
-	
 	int tuneFrequency = 10;
 	
 	double* weights = dvector(mcmc->operator_count);

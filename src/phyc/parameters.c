@@ -970,7 +970,7 @@ DiscreteParameter* new_DiscreteParameter_from_json(json_node* node, Hashtable* h
 static void dummyUpdate( Model *self, Model *model, int index ){}
 static double _logP(Model *model){return 0;}
 static double _dlogP(Model *model, const Parameter* p){return 0;}
-
+static void _dummy_reset(Model* m){}
 #pragma mark -
 
 
@@ -989,6 +989,7 @@ Model * new_Model( const char *type, const char *name, void *obj ){
 	model->clone = NULL;
 	model->get_free_parameters = NULL;
 	model->ref_count = 1;
+	model->reset = _dummy_reset;
 	return model;
 }
 
