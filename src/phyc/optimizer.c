@@ -196,7 +196,7 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->stop.oldfx = 0;
 	
 	opt->stop.count = 0;
-	opt->verbosity = 0;
+	opt->verbosity = 1;
 	opt->update = dummy_update_data;
 	opt->schedule = NULL;
     
@@ -529,13 +529,19 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
         }
         case OPT_SG:{
 			double eta = *opt->etas;
+			opt_result eta_adapt_result = OPT_SUCCESS;
 			if(opt->eta_count > 1){
-				optimize_stochastic_gradient_adapt(opt->parameters, opt->f, opt->grad_f, opt->reset, opt->etas, opt->eta_count, opt->data, &opt->stop, &eta);
+				eta_adapt_result = optimize_stochastic_gradient_adapt(opt->parameters, opt->f, opt->grad_f, opt->reset, opt->etas, opt->eta_count, opt->data, &opt->stop, opt->verbosity, &eta);
 			}
 			opt->reset(opt->data);
-			printf("Stochastic gradient ascent using eta: %f\n", eta);
-			result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, fmin);
-			opt->reset(opt->data);
+			if(eta_adapt_result == OPT_SUCCESS){
+				if(opt->verbosity > 0) printf("Stochastic gradient ascent using eta: %f\n", eta);
+				result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin);
+				opt->reset(opt->data);
+			}
+			else{
+				result = OPT_FAIL;
+			}
             break;
         }
 		default:
@@ -709,7 +715,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		}
 		opt->reset = _reset;
     }
-	
+	opt->verbosity = get_json_node_value_int(node, "verbosity", 1);
 	free_Parameters(parameters);
 	return opt;
 }

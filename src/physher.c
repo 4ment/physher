@@ -1539,6 +1539,7 @@ int main(int argc, char* argv[]){
 		printf("Reading file %s\n", argv[1]);
 	}
 	printf("done\n\n");
+	//long seeed = 1513138202;//time(NULL);
 	long seeed = time(NULL);
 	printf("%ld\n", seeed);
 	init_genrand(seeed);

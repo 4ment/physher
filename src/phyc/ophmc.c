@@ -15,9 +15,9 @@
 
 void operator_hmc_store(Operator* op){
 	Parameters* ps = op->x;
-//	if(op->models[0] != NULL){
-//		ps = ((Simplex*)op->models[0]->obj)->parameters;
-//	}
+	if(op->model_count > 1){
+		ps = ((Simplex*)op->models[1]->obj)->parameters;
+	}
 	for(int i = 0; i < Parameters_count(ps); i++){
 		Parameter_store(Parameters_at(ps, i));
 	}
@@ -26,9 +26,9 @@ void operator_hmc_store(Operator* op){
 
 void operator_hmc_restore(Operator* op){
 	Parameters* ps = op->x;
-//	if(op->models != NULL){
-//		ps = ((Simplex*)op->models[0]->obj)->parameters;
-//	}
+	if(op->model_count > 1){
+		ps = ((Simplex*)op->models[1]->obj)->parameters;
+	}
 	for(int i = 0; i < Parameters_count(ps); i++){
 		Parameter_restore(Parameters_at(ps, i));
 	}

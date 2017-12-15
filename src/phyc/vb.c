@@ -18,6 +18,8 @@
 #include "tree.h"
 
 #include <gsl/gsl_randist.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_matrix.h>
 
 #define MY_PI acos(-1.0)
 #define LOG_TWO_PI (log(2.0)+log(MY_PI))
@@ -137,8 +139,17 @@ void init_meanfield_normal(variational_t* var){
 			
 			double q_var = log(sqrt(log(exp(log(v)-2.0*log(mu))+1.0)));
 			double q_mu = log(mu) - q_var*0.5;
+			
+			// d2logp could be non negative are create a nan
+			if (isnan(q_mu)) {
+				q_mu = 1;
+			}
+			if (isnan(q_var)) {
+				q_var = 0;
+			}
 			Parameters_set_value(var->var_parameters, i, q_mu);
 			Parameters_set_value(var->var_parameters, i+dim, q_var);
+//			printf("%f %f  %f %f %s\n", mu, d2logP, q_mu, q_var, p->name);
 //			Parameter_set_estimate(var_p_mu, false);
 		}
 	}
@@ -217,6 +228,8 @@ double elbo_meanfield(variational_t* var){
 			Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
 			Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
 			
+			if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
+			
 			double mu;
 			double sigma = exp(Parameter_value(var_p_sigma));
 			
@@ -268,6 +281,8 @@ void grad_elbo_meanfield(variational_t* var, double* grads){
 			Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
 			Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
 			
+			if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
+			
 			double mu;
 			double sigma = exp(Parameter_value(var_p_sigma));
 			
@@ -290,9 +305,13 @@ void grad_elbo_meanfield(variational_t* var, double* grads){
 //						printf("%f %f %f %d\n", mu, sigma, theta, Parameters_at(var->var_parameters, j)->estimate);
 			Parameter_set_value(p, theta);
 		}
-//		exit(1);
+
 		for ( int j = 0; j < dim; j++) {
 			Parameter* p = Parameters_at(var->parameters, j);
+			Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
+			Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
+			
+			if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
 			
 //			double dlogP = Model_first_derivative(posterior, p, 0.001);
 			double dlogP = posterior->dlogP(posterior, p);
@@ -307,6 +326,12 @@ void grad_elbo_meanfield(variational_t* var, double* grads){
 	}
 	
 	for (int j = 0; j < dim; j++) {
+		
+		Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
+		Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
+		
+		if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
+		
 		grads[j] /= var->grad_samples;
 		grads[dim+j] = grads[dim+j]/var->grad_samples + 1.0;
 		//printf("gradient %f %f\n", grads[i] ,grads[dim+i] );
@@ -640,7 +665,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	
 	StringBuffer* buffer = new_StringBuffer(10);
 	if(strcasecmp(var_string, "meanfield") == 0){
-		printf("Creating meanfield variational model\n");
+//		printf("Creating meanfield variational model\n");
 		var->var_parameters = new_Parameters(dim*2); // mean + sd
 		for(int i = 0; i < dim; i++){
 			StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
@@ -665,7 +690,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		var->finalize = _variational_finalize;
 	}
 	else if(strcasecmp(var_string, "fullrank") == 0){
-		printf("Creating fullrank variational model\n");
+//		printf("Creating fullrank variational model\n");
 		size_t n = 2*dim+(dim*dim-dim)/2; // mus, vars, covs
 		var->var_parameters = new_Parameters(n);
 		json_node* init_node = get_json_node(node, "init");
@@ -776,7 +801,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 
 static void _variational_model_free( Model *self ){
 	if(self->ref_count == 1){
-		printf("Free variational model %s\n", self->name);
+//		printf("Free variational model %s\n", self->name);
 		variational_t* var = (variational_t*)self->obj;
 		var->posterior->free(var->posterior);
 		free_Parameters(var->var_parameters);

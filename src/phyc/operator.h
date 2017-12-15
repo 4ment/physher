@@ -24,6 +24,7 @@ typedef struct Operator{
 	double weight;
 	size_t rejected_count;
 	size_t accepted_count;
+	size_t failure_count;
 	bool (*propose)(struct Operator*, double*);
 	void (*store)(struct Operator*);
 	void (*restore)(struct Operator*);

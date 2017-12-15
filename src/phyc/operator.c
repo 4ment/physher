@@ -286,6 +286,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	
 	op->rejected_count = 0;
 	op->accepted_count = 0;
+	op->failure_count = 0;
 	return op;
 }
 
