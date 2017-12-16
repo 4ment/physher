@@ -277,6 +277,46 @@ DistributionModel* new_DirichletDistributionModel_with_parameters(const Paramete
 	return dm;
 }
 
+//MARK: tree prior
+
+double logFactorial(int n){
+    double logF = 0;
+    for (int i = 2; i < n; i++) {
+        logF += log(i);
+    }
+    return logF;
+}
+
+
+double DistributionModel_log_uniform_tree(DistributionModel* dm){
+    Tree* tree = ((Model*)dm->data)->obj;
+    int n = Tree_tip_count(tree);
+    return -logFactorial(n*2-5) + logFactorial(n-3) + (n-3)*log(2);
+}
+
+double DistributionModel_dlog_uniform_tree(DistributionModel* dm, const Parameter* p){
+    return 0.0;
+}
+
+DistributionModel* new_UniformTreeDistribution(Model* tree){
+    DistributionModel* dm = (DistributionModel*)malloc(sizeof(DistributionModel));
+    assert(dm);
+    dm->parameters = NULL;
+    dm->x = NULL;
+    dm->simplex = NULL;
+    dm->logP = NULL;
+    dm->dlogP = NULL;
+    dm->free = _free_dist;
+    dm->clone = _clone_dist;
+    dm->data = tree;
+    dm->tempx = NULL;
+    dm->tempp = NULL;
+    dm->logP = DistributionModel_log_uniform_tree;
+    dm->dlogP = DistributionModel_dlog_uniform_tree;
+    dm->clone = _clone_dist;
+    return dm;
+}
+
 static double _dist_model_logP(Model *self){
 	DistributionModel* cm = (DistributionModel*)self->obj;
 	return cm->logP(cm);
@@ -294,7 +334,7 @@ static double _dist_model_dlogP(Model *self, const Parameter* p){
 
 static void _dist_model_free( Model *self ){
 	if(self->ref_count == 1){
-		printf("Free distribution model %s\n", self->name);
+		//printf("Free distribution model %s\n", self->name);
 		DistributionModel* cm = (DistributionModel*)self->obj;
 		Model* msimplex = (Model*)self->data;
 		if(msimplex != NULL){
@@ -407,6 +447,18 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* si
 	model->clone = _dist_model_clone;
 	model->get_free_parameters = _dist_model_get_free_parameters;
 	return model;
+}
+
+Model* new_TreeDistributionModel(const char* name, DistributionModel* dm, Model* tree){
+    Model *model = new_Model("distribution",name, dm);
+    model->data = tree;
+    tree->ref_count++;
+    model->logP = _dist_model_logP;
+    model->dlogP = _dist_model_dlogP;
+    model->free = _dist_model_free;
+    model->clone = _dist_model_clone;
+    model->get_free_parameters = _dist_model_get_free_parameters;
+    return model;
 }
 
 char** get_parameters(json_node* node, Hashtable* hash, Parameters* parameters){
@@ -539,15 +591,21 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		free_Parameters(parameters);
 		free_Parameters(x);
 		return model;
-	}
-	else if (strcasecmp(d_string, "gamma") == 0) {
-		parameters = new_Parameters(1);
-		x = new_Parameters(1);
-		param_names = get_parameters(node, hash, parameters);
-		get_x(node, hash, x);
-		dm = new_IndependantGammaDistributionModel_with_parameters(parameters, x);
-		model = new_DistributionModel2(id, dm);
-	}
+    }
+    else if (strcasecmp(d_string, "gamma") == 0) {
+        parameters = new_Parameters(1);
+        x = new_Parameters(1);
+        param_names = get_parameters(node, hash, parameters);
+        get_x(node, hash, x);
+        dm = new_IndependantGammaDistributionModel_with_parameters(parameters, x);
+        model = new_DistributionModel2(id, dm);
+    }
+    else if (strcasecmp(d_string, "topology") == 0) {
+        char* ref = get_json_node_value_string(node, "tree");
+        Model* mtree = Hashtable_get(hash, ref+1);
+        dm = new_UniformTreeDistribution(mtree);
+        model = new_TreeDistributionModel(id, dm, mtree);
+    }
 	else{
 		printf("%s\n", d_string);
 		exit(10);

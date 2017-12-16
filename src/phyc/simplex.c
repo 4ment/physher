@@ -156,7 +156,7 @@ static void _simplex_model_handle_change( Model *self, Model *model, int index )
 
 static void _simplex_model_free( Model *self ){
 	if(self->ref_count == 1){
-		printf("Free simplex model %s\n", self->name);
+		//printf("Free simplex model %s\n", self->name);
 		Simplex* simplex = (Simplex*)self->obj;
 		free_Simplex(simplex);
 		free_Model(self);

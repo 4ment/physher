@@ -990,6 +990,7 @@ Model * new_Model( const char *type, const char *name, void *obj ){
 	model->get_free_parameters = NULL;
 	model->ref_count = 1;
 	model->reset = _dummy_reset;
+	model->temperature = 1;
 	return model;
 }
 

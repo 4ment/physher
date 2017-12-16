@@ -325,6 +325,7 @@ struct _Model {
 	void (*update)( Model *, Model *, int );
 	void (*get_free_parameters)(Model*, Parameters*);
 	void (*reset)(Model*);
+	double temperature;
 	
 	ListenerList *listeners;
 	int ref_count;

@@ -588,7 +588,7 @@ void _tree_handle_change( Model *self, Model *model, int index ){
 
 static void _tree_model_free( Model *self ){
 	if(self->ref_count == 1){
-		printf("Free tree model %s\n", self->name);
+		//printf("Free tree model %s\n", self->name);
 		Tree *tree = (Tree*)self->obj;
 		free_Tree(tree);
 		free_Model(self);
@@ -655,6 +655,7 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 	return model;
 }
 
+#include "treeio.h"
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	json_node* newick_node = get_json_node(node, "newick");
 	json_node* file_node = get_json_node(node, "file");
@@ -674,8 +675,17 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	else if (file_node != NULL) {
+        const char* filename = (const char*)file_node->value;
+        char* tree_string = readTree(filename);
+        Tree *tree = new_Tree( tree_string, true );
+        free(tree_string);
+        char* id = get_json_node_value_string(node, "id");
+        mtree = new_TreeModel(id, tree);
+        Hashtable_add(hash, get_json_node_value_string(node, "parameters"), tree->distances);
+        for (int i = 0; i < Parameters_count(tree->distances); i++) {
+            Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
+        }
 
-		
 	}
 	else if (init_node != NULL) {
 		json_node* algorithm_node = get_json_node(init_node, "algorithm");

@@ -40,9 +40,14 @@ DistributionModel* new_IndependantExpDistributionModel(const double lambda, cons
 
 DistributionModel* new_FlatDirichletDistributionModel(Simplex* simplex);
 
+DistributionModel* new_UniformTreeDistribution(Model* tree);
+
+
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex);
+
+Model* new_TreeDistributionModel(const char* name, DistributionModel* dm, Model* tree);
 
 Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash);
 

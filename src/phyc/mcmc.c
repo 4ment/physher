@@ -138,7 +138,7 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 }
 
 void free_Log(Log* logger){
-	printf("free logger");
+	//printf("free logger");
 	free_Parameters(logger->x);
 	if (logger->filename != NULL) {
 		printf("close logger");
@@ -153,8 +153,6 @@ void free_Log(Log* logger){
 
 void run(MCMC* mcmc){
 	Model* model = mcmc->model;
-	
-//	double logTau = logTopologyPrior(Tree_tip_count(tlk->tree));
 
 	double logP = model->logP(model);
 	
@@ -283,17 +281,20 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	}
 	
 	mcmc->log_count = 0;
-	for (int i = 0; i < logs->child_count; i++) {
-		json_node* child = logs->children[i];
-		if(mcmc->log_count == 0){
-			mcmc->logs = malloc(sizeof(Log*));
-		}
-		else{
-			mcmc->logs = realloc(mcmc->logs, sizeof(Log*)*(mcmc->log_count+1));
-		}
-		mcmc->logs[i] = new_Log_from_json(child, hash);
-		mcmc->log_count++;
-	}
+    if(logs != NULL){
+        for (int i = 0; i < logs->child_count; i++) {
+            json_node* child = logs->children[i];
+            if(mcmc->log_count == 0){
+                mcmc->logs = malloc(sizeof(Log*));
+            }
+            else{
+                mcmc->logs = realloc(mcmc->logs, sizeof(Log*)*(mcmc->log_count+1));
+            }
+            mcmc->logs[i] = new_Log_from_json(child, hash);
+            mcmc->log_count++;
+        }
+    }
+	mcmc->chain_temperature = get_json_node_value_double(node, "temperature", -1);
 	return mcmc;
 }
 

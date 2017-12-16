@@ -127,7 +127,7 @@ static void _branchmodel_handle_change( Model *self, Model *model, int index ){
 
 static void _branch_model_free( Model *self ){
 	if(self->ref_count == 1){
-		printf("Free branch model %s\n", self->name);
+		//printf("Free branch model %s\n", self->name);
 		BranchModel *bm = (BranchModel*)self->obj;
 		Model* mm = (Model*)self->data;
 		mm->free(mm); // tree model

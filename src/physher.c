@@ -1530,7 +1530,6 @@ void test2(Model* mpost){
 
 int main(int argc, char* argv[]){
 	char* content = NULL;
-	printf("%d\n",argc);
 	if (argc == 1) {
 		content = load_file("/Users/mathieu/Dropbox/physher/jc69.json");
 	}
@@ -1541,7 +1540,7 @@ int main(int argc, char* argv[]){
 	printf("done\n\n");
 	//long seeed = 1513138202;//time(NULL);
 	long seeed = time(NULL);
-	printf("%ld\n", seeed);
+	printf("seed: %ld\n", seeed);
 	init_genrand(seeed);
 	
 	gsl_rng * r = gsl_rng_alloc (gsl_rng_taus);
@@ -1588,8 +1587,12 @@ int main(int argc, char* argv[]){
 	Tree_print_newick(stdout, treeee->obj, true);
 	
 	for (int i = 0; i < run_node->child_count; i++) {
-		json_node* child = run_node->children[i];
-		char* type = get_json_node_value_string(child, "type");
+        json_node* child = run_node->children[i];
+        char* type = get_json_node_value_string(child, "type");
+        bool ignore = get_json_node_value_bool(child, "ignore", false);
+        
+        if(ignore) continue;
+        
 		if (strcasecmp(type, "optimizer") == 0) {
 			Optimizer* opt = new_Optimizer_from_json(child, hash2);
 			double logP;

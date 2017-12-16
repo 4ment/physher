@@ -151,7 +151,7 @@ CompoundModel* new_CompoundModel(){
 static void _compound_model_free( Model *self ){
 	assert(self->ref_count >= 1);
 	if(self->ref_count == 1){
-		printf("Free compound model %s\n", self->name);
+		//printf("Free compound model %s\n", self->name);
 		CompoundModel* cm = (CompoundModel*)self->obj;
 		cm->free(cm);
 		free_Model(self);
@@ -191,7 +191,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 	for (int i = 0; i < distributions_node->child_count; i++) {
 		json_node* child = distributions_node->children[i];
 		char* type = get_json_node_value_string(child, "type");
-		printf("type %s\n", type);
+		//printf("type %s\n", type);
 		if(strcasecmp(type, "treelikelihood") == 0){
 			Model* likelihood = NULL;
 			if (child->node_type == MJSON_OBJECT) {

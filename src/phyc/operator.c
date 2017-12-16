@@ -53,7 +53,7 @@ double optimizeScaleFactor(double scaleFactor, int count, double logAlpha, doubl
 
 void operator_store(Operator* op){
 	Parameters* ps = op->x;
-	if(op->models[0] != NULL){
+	if(op->models!= NULL){
 		ps = ((Simplex*)op->models[0]->obj)->parameters;
 	}
 	for(int i = 0; i < Parameters_count(ps); i++){

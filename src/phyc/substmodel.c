@@ -50,7 +50,7 @@ static void _substitution_model_handle_change( Model *self, Model *model, int in
 
 static void _substitution_model_free( Model *self ){
 	if(self->ref_count == 1){
-		printf("Free subsitution model %s\n", self->name);
+		//printf("Free subsitution model %s\n", self->name);
 		SubstitutionModel* m = (SubstitutionModel*)self->obj;
 		Model** msimplex = (Model**)self->data;
 		msimplex[0]->free(msimplex[0]);

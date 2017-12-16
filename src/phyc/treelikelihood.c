@@ -101,7 +101,7 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 
 double _singleTreeLikelihood_logP(Model *self){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
-	return tlk->calculate(tlk);
+	return tlk->calculate(tlk) * self->temperature;
 }
 
 double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
@@ -163,7 +163,7 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 
 static void _treeLikelihood_model_free( Model *self ){
 	if(self->ref_count == 1){
-		printf("Free treelikelihood model %s\n", self->name);
+		//printf("Free treelikelihood model %s\n", self->name);
 		SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 		int count = (tlk->bm==NULL?2:3);
 		Model** list = (Model**)self->data;
@@ -338,6 +338,8 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	mtree->free(mtree);
 	msm->free(msm);
 	if(mbm != NULL) mbm->free(mbm);
+	
+	model->temperature = get_json_node_value_double(node, "temperature", 1);
 	
 	return model;
 }
