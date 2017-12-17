@@ -95,6 +95,7 @@
 #include "phyc/logger.h"
 #include "phyc/vb.h"
 #include "phyc/mcmc.h"
+#include "phyc/mmcmc.h"
 #include "phyc/hessian.h"
 
 double _logP( Parameters *params, double *grad, void *data ){
@@ -1608,6 +1609,11 @@ int main(int argc, char* argv[]){
 			MCMC* mcmc = new_MCMC_from_json(child, hash2);
 			mcmc->run(mcmc);
 			free_MCMC(mcmc);
+		}
+		else if(strcasecmp(type, "mmcmc") == 0){
+			MMCMC* mmcmc = new_MMCMC_from_json(child, hash2);
+			mmcmc->run(mmcmc);
+			free_MMCMC(mmcmc);
 		}
 		else if(strcasecmp(type, "hessian") == 0){
 			Hessian* hessian = new_Hessian_from_json(child, hash2);

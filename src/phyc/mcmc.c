@@ -35,9 +35,28 @@ void log_log(Log* logger, size_t iter){
 	fprintf(logger->file, "\n");
 }
 
+void log_log_with(Log* logger, size_t iter, const char* more){
+	fprintf(logger->file, "%zu", iter);
+	for (int i = 0; i < logger->model_count; i++) {
+		fprintf(logger->file, "\t%e", logger->models[i]->logP(logger->models[i]));
+	}
+	for (int i = 0; i < Parameters_count(logger->x); i++) {
+		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));
+	}
+	for (int i = 0; i < logger->simplex_count; i++) {
+		Simplex* simplex = logger->simplexes[i]->obj;
+		for (int j = 0; j < simplex->K; j++) {
+			fprintf(logger->file, "\t%e", simplex->get_value(simplex, j));
+		}
+	}
+	
+	fprintf(logger->file, "\t%s\n", more);
+}
+
 Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	Log* logger = malloc(sizeof(Log));
 	logger->x = new_Parameters(1);
+	json_node* header_node = get_json_node(node, "header");
 	json_node* x_node = get_json_node(node, "x");
 	if (x_node != NULL) {
 		get_parameters_references2(node, hash, logger->x, "x");
@@ -46,6 +65,7 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	logger->every = get_json_node_value_size_t(node, "every", 1000);
 	json_node* filename_node = get_json_node(node, "file");
 	logger->write = log_log;
+	logger->write_with = log_log_with;
 	logger->file = stdout;
 	logger->filename = NULL;
 	if (filename_node != NULL) {
@@ -132,6 +152,9 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 			fprintf(logger->file, "\t%s", buffer->c);
 		}
 	}
+	if(header_node != NULL){
+		fprintf(logger->file, "\t%s", (char*)header_node->value);
+	}
 	free_StringBuffer(buffer);
 	fprintf(logger->file, "\n");
 	return logger;
@@ -153,8 +176,6 @@ void free_Log(Log* logger){
 
 void run(MCMC* mcmc){
 	Model* model = mcmc->model;
-
-	double logP = model->logP(model);
 	
 	size_t iter = 0;
 	
@@ -170,9 +191,27 @@ void run(MCMC* mcmc){
 	}
 	
 	StringBuffer *buffer = new_StringBuffer(20);
+	double logP;
+	double logP2; // not heated
 	
-	for (int i = 0; i < mcmc->log_count; i++) {
-		mcmc->logs[i]->write(mcmc->logs[i], iter);
+	if(mcmc->chain_temperature < 0){
+		logP = model->logP(model);
+		for (int i = 0; i < mcmc->log_count; i++) {
+			mcmc->logs[i]->write(mcmc->logs[i], iter);
+		}
+	}
+	else{
+		CompoundModel* cm = (CompoundModel*)model->obj;
+		logP2 = cm->models[0]->logP(cm->models[0]);
+		logP = logP2 * mcmc->chain_temperature;
+		for (int i = 1; i < cm->count; i++) {
+			logP += cm->models[i]->logP(cm->models[i]);
+		}
+		StringBuffer_empty(buffer);
+		StringBuffer_append_format(buffer, "%f", logP2);
+		for (int i = 0; i < mcmc->log_count; i++) {
+			mcmc->logs[i]->write_with(mcmc->logs[i], iter, buffer->c);
+		}
 	}
 	
 	while ( iter < mcmc->chain_length) {
@@ -191,7 +230,19 @@ void run(MCMC* mcmc){
 			iter++;
 			continue;
 		}
-		double proposed_logP = model->logP(model);
+		double proposed_logP;
+		double proposed_logP2;
+		if(mcmc->chain_temperature < 0){
+			proposed_logP = model->logP(model);
+		}
+		else{
+			CompoundModel* cm = (CompoundModel*)model->obj;
+			proposed_logP2 = cm->models[0]->logP(cm->models[0]);
+			proposed_logP = proposed_logP2 * mcmc->chain_temperature;
+			for (int i = 1; i < cm->count; i++) {
+				proposed_logP += cm->models[i]->logP(cm->models[i]);
+			}
+		}
 		
 		double alpha = proposed_logP - logP + logHR;
 		
@@ -199,6 +250,7 @@ void run(MCMC* mcmc){
 		if ( alpha >=  0 || alpha > log(random_double()) ) {
 //			printf("%zu %f %f\n", iter, logP, proposed_logP);
 			logP = proposed_logP;
+			logP2 = proposed_logP2;
 			op->accepted_count++;
 		}
 		// reject
@@ -210,13 +262,26 @@ void run(MCMC* mcmc){
 		
 		iter++;
 		
-		if(op->optimize != NULL){
+		if(op->optimize != NULL && iter % tuneFrequency == 0){
 			op->optimize(op, alpha);
 		}
 		
-		for (int i = 0; i < mcmc->log_count; i++) {
-			if(iter % mcmc->logs[i]->every == 0){
-				mcmc->logs[i]->write(mcmc->logs[i], iter);
+		if(mcmc->chain_temperature < 0){
+			for (int i = 0; i < mcmc->log_count; i++) {
+				if(iter % mcmc->logs[i]->every == 0){
+					mcmc->logs[i]->write(mcmc->logs[i], iter);
+				}
+			}
+		}
+		else{
+			StringBuffer_empty(buffer);
+			StringBuffer_append_format(buffer, "%f", proposed_logP2);
+			for (int i = 0; i < mcmc->log_count; i++) {
+				for (int i = 0; i < mcmc->log_count; i++) {
+					if(iter % mcmc->logs[i]->every == 0){
+						mcmc->logs[i]->write_with(mcmc->logs[i], iter, buffer->c);
+					}
+				}
 			}
 		}
 	}
@@ -294,7 +359,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
             mcmc->log_count++;
         }
     }
-	mcmc->chain_temperature = get_json_node_value_double(node, "temperature", -1);
+	mcmc->chain_temperature = -1;
 	return mcmc;
 }
 

@@ -23,6 +23,7 @@ typedef struct Log{
 	size_t every;
 	bool append;
 	void(*write)(struct Log* logger, size_t);
+	void(*write_with)(struct Log* logger, size_t, const char*);
 }Log;
 
 typedef struct MCMC{
@@ -31,6 +32,7 @@ typedef struct MCMC{
 	Operator** operators;
 	size_t operator_count;
 	size_t chain_length;
+	double chain_temperature;
 	Log** logs;
 	size_t log_count;
 	int verbose;
