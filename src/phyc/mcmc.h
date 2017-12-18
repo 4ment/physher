@@ -22,6 +22,8 @@ typedef struct Log{
 	char* filename;
 	size_t every;
 	bool append;
+	void(*initialize)(struct Log* logger);
+	void(*finalize)(struct Log* logger);
 	void(*write)(struct Log* logger, size_t);
 	void(*write_with)(struct Log* logger, size_t, const char*);
 }Log;

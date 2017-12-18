@@ -173,6 +173,10 @@ double * Vector_data( Vector *v ){
 	return v->vector;
 }
 
+void Vector_pack(Vector* v){
+	v->vector = realloc(v->vector, sizeof(double)*v->count);
+	v->capacity = v->count;
+}
 
 void free_Vector( Vector *v ){
 	free(v->vector);

@@ -77,6 +77,8 @@ double * Vector_data( Vector *v );
 
 void free_Vector( Vector *v );
 
+void Vector_pack(Vector* v);
+
 #pragma mark -
 // MARK: iVector
 

@@ -53,6 +53,20 @@ void log_log_with(Log* logger, size_t iter, const char* more){
 	fprintf(logger->file, "\t%s\n", more);
 }
 
+void log_initialize(Log* logger){
+	if (logger->filename != NULL) {
+		char a[2] = "w";
+		if(logger->append) a[0] = 'a';
+		logger->file = fopen(logger->filename, a);
+	}
+}
+
+void log_finalize(Log* logger){
+	if (logger->filename != NULL) {
+		fclose(logger->file);
+	}
+}
+
 Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	Log* logger = malloc(sizeof(Log));
 	logger->x = new_Parameters(1);
@@ -75,10 +89,8 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 		}
 		else if (strcasecmp(filename, "stdout") != 0) {
 			logger->filename = String_clone(filename);
-			char a[2] = "w";
-			bool append = get_json_node_value_bool(node, "append", false);
-			if(append) a[0] = 'a';
-			logger->file = fopen(logger->filename, a);
+			logger->append = get_json_node_value_bool(node, "append", false);
+			logger->file = NULL;
 		}
 	}
 	
@@ -136,6 +148,29 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	
+	logger->initialize = log_initialize;
+	logger->finalize = log_finalize;
+	
+	return logger;
+}
+
+void free_Log(Log* logger){
+	//printf("free logger");
+	free_Parameters(logger->x);
+	if (logger->filename != NULL) {
+//		printf("close logger");
+		free(logger->filename);
+	}
+	if(logger->file != NULL){
+		fclose(logger->file);
+	}
+	if(logger->model_count > 0){
+		free(logger->models);
+	}
+	free(logger);
+}
+
+void _mcmc_write_header(Log* logger, bool save_cold_ll){
 	fprintf(logger->file, "iter");
 	for (int i = 0; i < logger->model_count; i++) {
 		fprintf(logger->file, "\t%s", logger->models[i]->name);
@@ -152,26 +187,11 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 			fprintf(logger->file, "\t%s", buffer->c);
 		}
 	}
-	if(header_node != NULL){
-		fprintf(logger->file, "\t%s", (char*)header_node->value);
+	if(save_cold_ll){
+		fprintf(logger->file, "\t%s", "coldll");
 	}
 	free_StringBuffer(buffer);
 	fprintf(logger->file, "\n");
-	return logger;
-}
-
-void free_Log(Log* logger){
-	//printf("free logger");
-	free_Parameters(logger->x);
-	if (logger->filename != NULL) {
-		printf("close logger");
-		free(logger->filename);
-		fclose(logger->file);
-	}
-	if(logger->model_count > 0){
-		free(logger->models);
-	}
-	free(logger);
 }
 
 void run(MCMC* mcmc){
@@ -194,9 +214,16 @@ void run(MCMC* mcmc){
 	double logP;
 	double logP2; // not heated
 	
+	// Initialize loggers
+	for (int i = 0; i < mcmc->log_count; i++) {
+		mcmc->logs[i]->initialize(mcmc->logs[i]);
+	}
+	
+	// loggers log headers
 	if(mcmc->chain_temperature < 0){
 		logP = model->logP(model);
 		for (int i = 0; i < mcmc->log_count; i++) {
+			_mcmc_write_header(mcmc->logs[i], false);
 			mcmc->logs[i]->write(mcmc->logs[i], iter);
 		}
 	}
@@ -207,9 +234,11 @@ void run(MCMC* mcmc){
 		for (int i = 1; i < cm->count; i++) {
 			logP += cm->models[i]->logP(cm->models[i]);
 		}
+
 		StringBuffer_empty(buffer);
-		StringBuffer_append_format(buffer, "%f", logP2);
+		StringBuffer_append_format(buffer, "%e", logP2);
 		for (int i = 0; i < mcmc->log_count; i++) {
+			_mcmc_write_header(mcmc->logs[i], true);
 			mcmc->logs[i]->write_with(mcmc->logs[i], iter, buffer->c);
 		}
 	}
@@ -262,7 +291,7 @@ void run(MCMC* mcmc){
 		
 		iter++;
 		
-		if(op->optimize != NULL && iter % tuneFrequency == 0){
+		if(op->optimize != NULL){// && iter % tuneFrequency == 0){
 			op->optimize(op, alpha);
 		}
 		
@@ -275,16 +304,19 @@ void run(MCMC* mcmc){
 		}
 		else{
 			StringBuffer_empty(buffer);
-			StringBuffer_append_format(buffer, "%f", proposed_logP2);
+			StringBuffer_append_format(buffer, "%e", logP2);
 			for (int i = 0; i < mcmc->log_count; i++) {
-				for (int i = 0; i < mcmc->log_count; i++) {
-					if(iter % mcmc->logs[i]->every == 0){
-						mcmc->logs[i]->write_with(mcmc->logs[i], iter, buffer->c);
-					}
+				if(iter % mcmc->logs[i]->every == 0){
+					mcmc->logs[i]->write_with(mcmc->logs[i], iter, buffer->c);
 				}
 			}
 		}
 	}
+	
+	for (int i = 0; i < mcmc->log_count; i++) {
+		mcmc->logs[i]->finalize(mcmc->logs[i]);
+	}
+	
 	if( mcmc->verbose > 0){
 		for (int i = 0; i < mcmc->operator_count; i++) {
 			Operator* op = mcmc->operators[i];

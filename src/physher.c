@@ -1528,8 +1528,64 @@ void test2(Model* mpost){
 //	
 //	mpost->free(mpost);
 }
+#include "matrix.h"
+#include "filereader.h"
+#include "marginal.h"
+
+Vector* read_log_last_column2( const char *filename, size_t burnin ){
+	int count = 0;
+	char *ptr = NULL;
+	double *temp = NULL;
+	int l;
+	Vector* vec = new_Vector(1000);
+	
+	FileReader *reader = new_FileReader(filename, 1000);
+	reader->read_line(reader);// discard header
+	
+	while ( reader->read_line(reader) ) {
+		StringBuffer_trim(reader->buffer);
+		
+		if ( reader->buffer->length == 0){
+			continue;
+		}
+		if ( count >= burnin){
+			ptr = reader->line;
+			l = 0;
+			temp = String_split_char_double( ptr, '\t', &l );
+			Vector_push(vec, temp[l-1]);
+			free(temp);
+		}
+		count++;
+	}
+	free_FileReader(reader);
+	Vector_pack(vec);
+	return  vec;
+}
 
 int main(int argc, char* argv[]){
+	char* filename = "tree0.log";
+	double tempratures[6] ={1.000000000, 0.475298697, 0.182181456, 0.047155603, 0.004678428, 0.000000000};
+	double temperatures2[6];
+	StringBuffer* buffer11 = new_StringBuffer(10);
+	int temperature_count = 6;
+	Vector** lls = malloc(temperature_count*sizeof(Vector*));
+	double* lrssk = malloc(temperature_count*sizeof(double));
+	int burnin = 0;
+	
+	for (int i = 0; i < temperature_count; i++) {
+		StringBuffer_empty(buffer11);
+		StringBuffer_append_format(buffer11, "%d%s",i, filename);
+		lls[temperature_count-i-1] = read_log_last_column2(buffer11->c, burnin);
+		temperatures2[temperature_count-i-1] = tempratures[i];
+		if(i == 0) printf("Harmonic mean: %f\n", log_harmonic_mean(lls[temperature_count-i-1]));
+	}
+	double lrss = log_marginal_stepping_stone(lls, temperature_count, temperatures2, lrssk);
+	printf("Stepping stone marginal likelihood: %f\n", lrss);
+	for (int i = 1; i < temperature_count; i++) {
+		printf("%f: %f\n", temperatures2[i-1], lrssk[i]);
+	}
+	
+	exit(11);
 	char* content = NULL;
 	if (argc == 1) {
 		content = load_file("/Users/mathieu/Dropbox/physher/jc69.json");
