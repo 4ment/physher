@@ -1563,29 +1563,29 @@ Vector* read_log_last_column2( const char *filename, size_t burnin ){
 }
 
 int main(int argc, char* argv[]){
-	char* filename = "tree0.log";
-	double tempratures[6] ={1.000000000, 0.475298697, 0.182181456, 0.047155603, 0.004678428, 0.000000000};
-	double temperatures2[6];
-	StringBuffer* buffer11 = new_StringBuffer(10);
-	int temperature_count = 6;
-	Vector** lls = malloc(temperature_count*sizeof(Vector*));
-	double* lrssk = malloc(temperature_count*sizeof(double));
-	int burnin = 0;
-	
-	for (int i = 0; i < temperature_count; i++) {
-		StringBuffer_empty(buffer11);
-		StringBuffer_append_format(buffer11, "%d%s",i, filename);
-		lls[temperature_count-i-1] = read_log_last_column2(buffer11->c, burnin);
-		temperatures2[temperature_count-i-1] = tempratures[i];
-		if(i == 0) printf("Harmonic mean: %f\n", log_harmonic_mean(lls[temperature_count-i-1]));
-	}
-	double lrss = log_marginal_stepping_stone(lls, temperature_count, temperatures2, lrssk);
-	printf("Stepping stone marginal likelihood: %f\n", lrss);
-	for (int i = 1; i < temperature_count; i++) {
-		printf("%f: %f\n", temperatures2[i-1], lrssk[i]);
-	}
-	
-	exit(11);
+//	char* filename = "tree0.log";
+//	double tempratures[6] ={1.000000000, 0.475298697, 0.182181456, 0.047155603, 0.004678428, 0.000000000};
+//	double temperatures2[6];
+//	StringBuffer* buffer11 = new_StringBuffer(10);
+//	int temperature_count = 6;
+//	Vector** lls = malloc(temperature_count*sizeof(Vector*));
+//	double* lrssk = malloc(temperature_count*sizeof(double));
+//	int burnin = 0;
+//	
+//	for (int i = 0; i < temperature_count; i++) {
+//		StringBuffer_empty(buffer11);
+//		StringBuffer_append_format(buffer11, "%d%s",i, filename);
+//		lls[temperature_count-i-1] = read_log_last_column2(buffer11->c, burnin);
+//		temperatures2[temperature_count-i-1] = tempratures[i];
+//		if(i == 0) printf("Harmonic mean: %f\n", log_harmonic_mean(lls[temperature_count-i-1]));
+//	}
+//	double lrss = log_marginal_stepping_stone(lls, temperature_count, temperatures2, lrssk);
+//	printf("Stepping stone marginal likelihood: %f\n", lrss);
+//	for (int i = 1; i < temperature_count; i++) {
+//		printf("%f: %f\n", temperatures2[i-1], lrssk[i]);
+//	}
+//	
+//	exit(11);
 	char* content = NULL;
 	if (argc == 1) {
 		content = load_file("/Users/mathieu/Dropbox/physher/jc69.json");
@@ -1678,7 +1678,7 @@ int main(int argc, char* argv[]){
 		}
 	}
 	for (int i = 0; i < model_count; i++) {
-		printf("%f\n", models[i]->logP(models[i]));
+//		printf("%f\n", models[i]->logP(models[i]));
 		models[i]->free(models[i]);
 	}
 	free(models);

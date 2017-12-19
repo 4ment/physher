@@ -29,6 +29,10 @@ double dnorm( const double x, const double mu, const double sigma ) {
 	return a * exp(-b);
 }
 
+double dnorml( const double x, const double mu, const double sigma ) {
+    return -log( SQRT_2PI * sigma ) - pow(x - mu, 2) / ( 2.0 *  sigma * sigma );
+}
+
 double pnorm( const double x, const double mu, const double sigma ) {
 	double a = (x - mu) / ( sigma * sqrt(2.0) );
 	return 0.5 * (1.0 + erf(a));

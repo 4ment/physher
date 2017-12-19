@@ -22,6 +22,9 @@
 // PDF
 double dnorm( const double x, const double mu, const double sigma );
 
+// Log PDF
+double dnorml( const double x, const double mu, const double sigma );
+
 // CDF
 double pnorm( const double x, const double mu, const double sigma );
 

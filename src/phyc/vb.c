@@ -16,6 +16,7 @@
 #include "transforms.h"
 #include "solve.h"
 #include "tree.h"
+#include "utils.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
@@ -513,6 +514,46 @@ void grad_elbo( Parameters *params, double *grad, void *data ){
 	model->gradient(model, grad);
 }
 
+double variational_meanfield_logP(variational_t* var, double* values){
+	int dim = Parameters_count(var->parameters);
+	double logP = 0;
+	for (int i = 0; i < dim; i++) {
+		Parameter* p = Parameters_at(var->parameters, i);
+		double mu = Parameters_value(var->var_parameters, i);
+		double sd = exp(Parameters_value(var->var_parameters, i+dim));
+		double zeta = transform(values[i], Parameter_lower(p), Parameter_upper(p));
+		logP += dnorml(zeta, mu, sd);
+	}
+	return logP;
+}
+
+double variational_fullrank_logP(variational_t* var, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    gsl_vector * mu = gsl_vector_calloc(dim);
+    gsl_matrix * L = gsl_matrix_calloc(dim, dim);
+    gsl_vector * x = gsl_vector_calloc(dim);
+    gsl_vector * work = gsl_vector_calloc(dim);
+    
+    size_t row = dim;
+    for (int i = 0; i < dim; i++) {
+        gsl_vector_set(mu, i, Parameters_value(var->var_parameters, i));
+        gsl_vector_set(x, i, values[i]);
+        for (int j = 0; j <= i; j++) {
+            gsl_matrix_set(L, i, j, Parameters_value(var->var_parameters, row));
+            row++;
+        }
+    }
+    double logP = 0;
+    gsl_ran_multivariate_gaussian_log_pdf (x,  mu, L, &logP, work);
+    
+    gsl_vector_free(mu);
+    gsl_matrix_free(L);
+    gsl_vector_free(x);
+    gsl_vector_free(work);
+    
+    return logP;
+}
+
 // check success
 bool variational_sample_meanfield(variational_t* var, double* values){
 	if(!var->ready_to_sample){
@@ -527,8 +568,8 @@ bool variational_sample_meanfield(variational_t* var, double* values){
 			continue;
 		}
 		double mu = Parameters_value(var->var_parameters, i);
-		double sd = Parameters_value(var->var_parameters, i+dim);
-		const double zeta = rnorm() * exp(sd) + mu;
+		double sd = exp(Parameters_value(var->var_parameters, i+dim));
+		const double zeta = rnorm() * sd + mu;
 		values[i] = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
 	}
 	return true;
@@ -688,6 +729,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		var->sample = variational_sample_meanfield;
 		var->sample_some = variational_sample_some_meanfield;
 		var->finalize = _variational_finalize;
+		var->logP = variational_meanfield_logP;
 	}
 	else if(strcasecmp(var_string, "fullrank") == 0){
 //		printf("Creating fullrank variational model\n");
@@ -777,6 +819,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		var->f = elbo;
 		var->grad_f = grad_elbo;
 		var->sample = variational_sample_fullrank;
+		var->logP = variational_fullrank_logP;
 	}
 	
 	var->initialized = false;
@@ -803,6 +846,21 @@ static void _variational_model_free( Model *self ){
 	if(self->ref_count == 1){
 //		printf("Free variational model %s\n", self->name);
 		variational_t* var = (variational_t*)self->obj;
+        
+        Model* posterior = var->posterior;
+        size_t dim = Parameters_count(var->parameters);
+        double* samples = dvector(dim);
+        double sum = -DBL_MAX;
+        int n = 100000;
+        for(long i = 0; i < n; i++){
+            var->sample(var, samples);
+            Parameters_restore_value(var->parameters, samples);
+            double logP = posterior->logP(posterior);
+            double logQ = var->logP(var, samples);
+            sum = logaddexp(sum, logP-logQ);
+        }
+        printf("%f %f\n", sum, sum-log(n));
+        
 		var->posterior->free(var->posterior);
 		free_Parameters(var->var_parameters);
 		free_Parameters(var->parameters);

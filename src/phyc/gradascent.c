@@ -118,7 +118,7 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 	double elbo_best = -INFINITY;
 	double tol_rel_obj = 0.0001;
 	int eval_elbo = 100;
-	int max_conv = 0;
+	int max_conv = 3;
 	int conv = 0;
 	stop->iter = 0;
 	double *elbos = calloc(stop->iter_max/eval_elbo, sizeof(double));
