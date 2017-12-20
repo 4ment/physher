@@ -40,6 +40,13 @@ void print_hessian(Hessian* hessian){
 	}
 }
 
+void _free_Hessian(Hessian* hessian){
+	free(hessian->hessian);
+	free_Parameters(hessian->parameters);
+	hessian->likelihood->free(hessian->likelihood);
+	free(hessian);
+}
+
 Hessian* new_Hessian_from_json(json_node* node, Hashtable* hash){
 	char* ref = get_json_node_value_string(node, "model");
 	Hessian* hessian = malloc(sizeof(Hessian));
@@ -49,12 +56,7 @@ Hessian* new_Hessian_from_json(json_node* node, Hashtable* hash){
 	get_parameters_references(node, hash, hessian->parameters);
 	hessian->hessian = dvector(Parameters_count(hessian->parameters));
 	hessian->calculate = calculate_hessian;
+	hessian->free = _free_Hessian;
 	return hessian;
 }
 
-void free_Hessian(Hessian* hessian){
-	free(hessian->hessian);
-	free_Parameters(hessian->parameters);
-	hessian->likelihood->free(hessian->likelihood);
-	free(hessian);
-}

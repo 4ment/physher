@@ -77,6 +77,8 @@ bool operator_vb(Operator* op, double* logHR){
 //		Parameters_print(var->parameters);
 	free_Parameters(ps);
 	free(values);
+    //TODO: this should be proposal(x)/proposal(x')
+    error("operator_vb\n");
 	*logHR = 0;
 	return true;
 }
@@ -172,12 +174,23 @@ bool operator_vb_on_the_fly(Operator* op, double* logHR){
 	
 	if(result == OPT_SUCCESS){
 		double values[3];
-		variational_t* var = mvar->obj;
+        
+        variational_t* var = mvar->obj;
+        
+        Parameter_set_value(node->distance, values[0]);
+        Parameter_set_value(Node_left(node)->distance, values[1]);
+        Parameter_set_value(Node_right(node)->distance, values[2]);
+        double olLogQ = var->logP(var, values);
+        
 		var->sample_some(var, ps, values);
+        double newLogQ = var->logP(var, values);
 		
 		Parameter_set_value(node->distance, values[0]);
 		Parameter_set_value(Node_left(node)->distance, values[1]);
 		Parameter_set_value(Node_right(node)->distance, values[2]);
+        
+        *logHR = olLogQ/newLogQ;
+        
 //		for (int i = 0; i < 3; i++) {
 //			printf("* %f %s\n", Parameters_value(ps, i), Parameters_name(ps, i));
 //		}
@@ -192,7 +205,6 @@ bool operator_vb_on_the_fly(Operator* op, double* logHR){
 	free_Optimizer(opt);
 	free_Hashtable(hash);
 	mvar->free(mvar);
-	*logHR = 0;
 	return true;
 }
 

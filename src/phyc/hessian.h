@@ -20,6 +20,7 @@ typedef struct Hessian{
 	Parameters* parameters;
 	double* hessian;
 	void(*calculate)(struct Hessian*);
+	void(*free)(struct Hessian*);
 	// something print
 }Hessian;
 

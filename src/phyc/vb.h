@@ -30,6 +30,7 @@ typedef struct variational_t{
 	bool (*sample)( struct variational_t*, double* values );
 	bool (*sample_some)( struct variational_t*, const Parameters* parameters, double* values );
 	double (*logP)( struct variational_t*, double* x );
+    double (*parameters_logP)( struct variational_t*, const Parameters* parameters );
 	void (*finalize)( struct variational_t* );
 	bool initialized;
 	bool ready_to_sample;

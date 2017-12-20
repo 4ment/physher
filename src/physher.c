@@ -97,6 +97,7 @@
 #include "phyc/mcmc.h"
 #include "phyc/mmcmc.h"
 #include "phyc/hessian.h"
+#include "phyc/vbis.h"
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -1675,6 +1676,12 @@ int main(int argc, char* argv[]){
 			Hessian* hessian = new_Hessian_from_json(child, hash2);
 			hessian->calculate(hessian);
 			print_hessian(hessian);
+			hessian->free(hessian);
+		}
+		else if(strcasecmp(type, "vbis") == 0){
+			marginal_vb_t* mvb = new_Marginal_VB_from_json(child, hash2);
+			printf("Marginal likelihood using VB: %f\n", mvb->calculate(mvb));
+			mvb->free(mvb);
 		}
 	}
 	for (int i = 0; i < model_count; i++) {

@@ -522,9 +522,29 @@ double variational_meanfield_logP(variational_t* var, double* values){
 		double mu = Parameters_value(var->var_parameters, i);
 		double sd = exp(Parameters_value(var->var_parameters, i+dim));
 		double zeta = transform(values[i], Parameter_lower(p), Parameter_upper(p));
-		logP += dnorml(zeta, mu, sd);
+		logP += dnorml(zeta, mu, sd) - zeta;
 	}
 	return logP;
+}
+
+double variational_meanfield_parameters_logP(variational_t* var, const Parameters* parameters){
+    size_t dim = Parameters_count(var->parameters);
+    size_t dim2 = Parameters_count(parameters);
+    double logP = 0;
+    for (int i = 0; i < dim2; i++) {
+        Parameter* p = Parameters_at(parameters, i);
+        for (int j = 0; j < dim; j++) {
+            Parameter* p2 = Parameters_at(var->parameters, j);
+            if (p == p2) {
+                double mu = Parameters_value(var->var_parameters, i);
+                double sd = exp(Parameters_value(var->var_parameters, i+dim));
+                double zeta = transform(Parameter_value(p), Parameter_lower(p), Parameter_upper(p));
+                logP += dnorml(zeta, mu, sd) - zeta;
+                break;
+            }
+        }
+    }
+    return logP;
 }
 
 double variational_fullrank_logP(variational_t* var, double* values){
@@ -534,10 +554,14 @@ double variational_fullrank_logP(variational_t* var, double* values){
     gsl_vector * x = gsl_vector_calloc(dim);
     gsl_vector * work = gsl_vector_calloc(dim);
     
+    double logJac = 0;
     size_t row = dim;
     for (int i = 0; i < dim; i++) {
+        Parameter* p = Parameters_at(var->parameters, i);
+        double zeta = transform(values[i], Parameter_lower(p), Parameter_upper(p));
+        gsl_vector_set(x, i, zeta);
+        logJac += zeta;
         gsl_vector_set(mu, i, Parameters_value(var->var_parameters, i));
-        gsl_vector_set(x, i, values[i]);
         for (int j = 0; j <= i; j++) {
             gsl_matrix_set(L, i, j, Parameters_value(var->var_parameters, row));
             row++;
@@ -551,7 +575,13 @@ double variational_fullrank_logP(variational_t* var, double* values){
     gsl_vector_free(x);
     gsl_vector_free(work);
     
-    return logP;
+    return logP + logJac;
+}
+
+double variational_fullrank_parameters_logP(variational_t* var, const Parameters* parameters){
+    //TODO: need to rethink this function. Does not make sense in multivariate case
+    error("variational_fullrank_parameters_logP\n");
+    return 0;
 }
 
 // check success
@@ -730,6 +760,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		var->sample_some = variational_sample_some_meanfield;
 		var->finalize = _variational_finalize;
 		var->logP = variational_meanfield_logP;
+        var->parameters_logP = variational_meanfield_parameters_logP;
 	}
 	else if(strcasecmp(var_string, "fullrank") == 0){
 //		printf("Creating fullrank variational model\n");
@@ -820,6 +851,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		var->grad_f = grad_elbo;
 		var->sample = variational_sample_fullrank;
 		var->logP = variational_fullrank_logP;
+        var->parameters_logP = variational_fullrank_parameters_logP;
 	}
 	
 	var->initialized = false;
@@ -846,21 +878,6 @@ static void _variational_model_free( Model *self ){
 	if(self->ref_count == 1){
 //		printf("Free variational model %s\n", self->name);
 		variational_t* var = (variational_t*)self->obj;
-        
-        Model* posterior = var->posterior;
-        size_t dim = Parameters_count(var->parameters);
-        double* samples = dvector(dim);
-        double sum = -DBL_MAX;
-        int n = 100000;
-        for(long i = 0; i < n; i++){
-            var->sample(var, samples);
-            Parameters_restore_value(var->parameters, samples);
-            double logP = posterior->logP(posterior);
-            double logQ = var->logP(var, samples);
-            sum = logaddexp(sum, logP-logQ);
-        }
-        printf("%f %f\n", sum, sum-log(n));
-        
 		var->posterior->free(var->posterior);
 		free_Parameters(var->var_parameters);
 		free_Parameters(var->parameters);
@@ -907,9 +924,6 @@ static void _variational_model_get_free_parameters(Model* self, Parameters* para
 	Parameters_add_parameters(parameters, var->var_parameters);
 
 }
-
-#include "compoundmodel.h"
-#include "treelikelihood.h"
 
 void _variational_model_reset(Model* self){
 	variational_t* var = (variational_t*)self->obj;
