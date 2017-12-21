@@ -38,12 +38,12 @@ double log_marginal_stepping_stone(const Vector** values, size_t temp_count, con
 		double tempdiff = temperatures[i]-temperatures[i-1];
 		double logmaxll = dmax_vector(Vector_data(values[i]), Vector_length(values[i]));
 		double* previousll = Vector_data(values[i-1]);
-		double temp = 0;
+		double temp = -DBL_MAX;
 		int size = Vector_length(values[i-1]);
 		for (int j = 0; j < size; j++) {
-			temp += exp(tempdiff*(previousll[j]-logmaxll));
+			temp = logaddexp(temp, tempdiff*(previousll[j]-logmaxll));
 		}
-		lrssk[i] = tempdiff*logmaxll + log(temp/size);
+		lrssk[i] = tempdiff*logmaxll + temp - log(size);
 		lrss += lrssk[i];
 	}
 	return lrss;
