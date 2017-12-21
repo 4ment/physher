@@ -84,6 +84,18 @@ void mmcmc_run(MMCMC* mmcmc){
 	for (int i = 1; i < mmcmc->temperature_count; i++) {
 		printf("%f: %f\n", temperatures[i-1], lrssk[i]);
 	}
+	
+	double lrps = log_marginal_path_sampling(lls, mmcmc->temperature_count, temperatures, lrssk);
+	printf("Path sampling marginal likelihood: %f\n", lrps);
+	for (int i = 0; i < mmcmc->temperature_count; i++) {
+		printf("%f: %f\n", temperatures[i], lrssk[i]);
+	}
+	lrps = log_marginal_path_sampling_modified(lls, mmcmc->temperature_count, temperatures, lrssk);
+	printf("Modified Path sampling marginal likelihood: %f\n", lrps);
+	for (int i = 0; i < mmcmc->temperature_count; i++) {
+		printf("%f: %f\n", temperatures[i], lrssk[i]);
+	}
+	
 	// Leave it as a standard mcmc with original loggers
 	mcmc->chain_temperature = -1;
 	for (int j = 0; j < mcmc->log_count; j++) {
