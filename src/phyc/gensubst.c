@@ -94,48 +94,71 @@ void _nonreversible_update_Q2( SubstitutionModel *m ){
 
 
 void _reversible_update_Q( SubstitutionModel *m ){
-	const double* freqs = m->simplex->get_values(m->simplex);
-    double temp;
 	const unsigned* model = m->model->values;
+	double temp;
 	int index = 0;
-    for ( int i = 0; i < m->nstate; i++ )  {
-		index += i+1;
-        for ( int j = i + 1; j < m->nstate; j++ ) {
-//            temp = Parameters_value(m->rates, model[i*m->nstate+j]);
-			if(m->relativeTo != index){
-				temp = Parameters_value(m->rates, model[index++]);
+	
+	if(m->simplex != NULL){
+		const double* freqs = m->simplex->get_values(m->simplex);
+		for ( int i = 0; i < m->nstate; i++ )  {
+			index += i+1;
+			for ( int j = i + 1; j < m->nstate; j++ ) {
+				if(m->relativeTo != model[index]){
+					temp = Parameters_value(m->rates, model[index]);
+				}
+				else{
+					temp = 1;
+				}
+				index++;
+				m->Q[i][j] = temp * freqs[j];
+				m->Q[j][i] = temp * freqs[i];
 			}
-			else{
-				temp = 1;
+		}
+		make_zero_rows( m->Q, m->nstate);
+		if(m->normalize)
+			normalize_Q( m->Q, freqs, m->nstate );
+	}
+	else{
+		for ( int i = 0; i < m->nstate; i++ )  {
+			index += i+1;
+			for ( int j = i + 1; j < m->nstate; j++ ) {
+				if(m->relativeTo != model[index]){
+					temp = Parameters_value(m->rates, model[index]);
+				}
+				else{
+					temp = 1;
+				}
+				index++;
+				m->Q[i][j] = temp;
+				m->Q[j][i] = temp;
 			}
-            m->Q[i][j] = temp * freqs[j];
-            m->Q[j][i] = temp * freqs[i];
-        }
-    }
-    make_zero_rows( m->Q, m->nstate);
-    if(m->normalize)normalize_Q( m->Q, freqs, m->nstate );
+		}
+		make_zero_rows( m->Q, m->nstate);
+	}
     EigenDecomposition_decompose(m->Q, m->eigendcmp);
     
     m->need_update = false;
 }
 
 SubstitutionModel * new_GeneralModel_with_parameters( DiscreteParameter* model, const Parameters* rates, Simplex* freqs, int relativeTo, bool normalize ){
-    bool sym = isSymmetric(model->values, freqs->K);
+    //bool sym = isSymmetric(model->values, freqs->K);
+		size_t dim = sqrt(model->length);
+	bool sym = isSymmetric(model->values, dim);
     SubstitutionModel *m = NULL;
     if(sym){
-        m = create_general_model("GENERAL", REVERSIBLE, freqs);
+        m = create_general_model("GENERAL", REVERSIBLE, freqs, dim);
         m->update_Q = _reversible_update_Q;
     }
-    else{
-        m = create_general_model("UREVGENERAL", NONREVERSIBLE, freqs);
+	else{
+        m = create_general_model("UREVGENERAL", NONREVERSIBLE, freqs, dim);
         m->update_Q = _nonreversible_update_Q;
         m->reversible = false;
     }
     m->normalize = normalize;
 	m->relativeTo = relativeTo;
     
-    size_t len = freqs->K*freqs->K;
-	m->model = new_DiscreteParameter("general.model", len);
+	m->model = model;
+	model->refCount++;
 	
 	m->rates = new_Parameters(Parameters_count(rates));
 	Parameters_add_parameters(m->rates, rates);

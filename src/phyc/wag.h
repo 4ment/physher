@@ -47,8 +47,8 @@ static const double AMINO_ACID_MODEL_WAG[20][20] = {
 static const double AMINO_ACID_MODEL_WAG_FREQUENCIES[20] = {0.0866279, 0.0193078, 0.0570451, 0.0580589, 0.0384319, 0.0832518, 0.0244313, 0.048466, 0.0620286, 0.086209, 0.0195027, 0.0390894, 0.0457631, 0.0367281, 0.043972, 0.0695179, 0.0610127, 0.0708956, 0.0143859, 0.0352742};
 
 
-SubstitutionModel * new_WAG();
+struct SubstitutionModel * new_WAG();
 
-SubstitutionModel * new_WAG_with_parameters( Simplex *freqs );
+struct SubstitutionModel * new_WAG_with_parameters( Simplex *freqs );
 
 #endif

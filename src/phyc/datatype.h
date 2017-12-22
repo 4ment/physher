@@ -68,7 +68,7 @@ static const int8_t NUCLEOTIDE_AMBIGUITY_STATES[18][4] = {
 
 
 typedef struct DataType{
-    char *desc;
+    char *name;
     datatype type;
     int stateCount;
     int symbolLength; //1 for nucletoide and aa. 3 for codon and whatever for general DataType
@@ -81,6 +81,7 @@ typedef struct DataType{
     
     int (*state_count)( struct DataType *  );
     int8_t genetic_code;
+	int ref_count;
 }DataType;
 
 DataType* new_DataType_from_json(json_node* node, Hashtable* table);
@@ -93,7 +94,7 @@ DataType *new_AminoAcidDataType();
 
 DataType *new_CodonDataType(int genetic_code);
 
-DataType *new_GenericDataType( size_t count, const char **states) ;
+DataType *new_GenericDataType( const char* name, size_t count, const char **states) ;
 
 void free_DataType( DataType *dataType);
 

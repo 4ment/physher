@@ -47,8 +47,8 @@ static const double AMINO_ACID_MODEL_LG[20][20] = {
 static const double AMINO_ACID_MODEL_LG_FREQUENCIES[20] = {0.079066, 0.0129369, 0.0530516, 0.0715863, 0.0423017, 0.0573372, 0.0223546, 0.0621565, 0.0646003, 0.099081, 0.0229506, 0.0419774, 0.0440395, 0.0407668, 0.0559413, 0.0611971, 0.0532871, 0.0691469, 0.0120656, 0.0341554};
 
 
-SubstitutionModel * new_LG();
+struct SubstitutionModel * new_LG();
 
-SubstitutionModel * new_LG_with_parameters(Simplex* freqs);
+struct SubstitutionModel * new_LG_with_parameters(Simplex* freqs);
 
 #endif

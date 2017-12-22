@@ -940,6 +940,7 @@ DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name,
 	else{
 		p->values = uivector(dim);
 	}
+	p->length = dim;
 	p->set_value = _set_value_discrete;
 	p->set_values = _set_values_discrete;
 	p->free = _free_DiscreteParameter;
@@ -952,6 +953,7 @@ DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name,
 
 DiscreteParameter* new_DiscreteParameter_from_json(json_node* node, Hashtable* hash){
 	json_node* values = get_json_node(node, "values");
+	char* id = get_json_node_value_string(node, "id");
 	size_t K = values->child_count;
 	unsigned* x = uivector(K);
 	for (int i = 0; i < K; i++) {
@@ -962,7 +964,7 @@ DiscreteParameter* new_DiscreteParameter_from_json(json_node* node, Hashtable* h
 		}
 		x[i] = atoi((char*)child->value);
 	}
-	DiscreteParameter* dp = new_DiscreteParameter_with_values(node->id, x, K);
+	DiscreteParameter* dp = new_DiscreteParameter_with_values(id, x, K);
 	free(x);
 	return dp;
 }

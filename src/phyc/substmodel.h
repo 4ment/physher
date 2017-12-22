@@ -133,7 +133,7 @@ SubstitutionModel * create_codon_model( const char *name, const modeltype modeln
 
 SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Simplex* freqs );
 
-SubstitutionModel * create_general_model( const char *name, const modeltype modelname, Simplex* freqs );
+SubstitutionModel * create_general_model( const char *name, const modeltype modelname, Simplex* freqs, size_t dim );
 
 
 SubstitutionModel * clone_substitution_model(SubstitutionModel *m);

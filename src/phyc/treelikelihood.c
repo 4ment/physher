@@ -339,6 +339,14 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	msm->free(msm);
 	if(mbm != NULL) mbm->free(mbm);
 	
+	bool root_freqs_unknown = get_json_node_value_bool(node, "root_frequencies", false);
+	if(root_freqs_unknown){
+		tlk->get_root_frequencies = get_root_frequencies_fixed;
+		tlk->root_frequencies = dvector(tlk->sm->nstate);
+		for (int i = 0; i < tlk->sm->nstate; i++) {
+			tlk->root_frequencies[i] = 1;
+		}
+	}
 	return model;
 }
 
@@ -538,7 +546,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 }
 
 void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk ){
-	if(tlk->scaling_factors != NULL ) free_dmatrix( tlk->scaling_factors, Tree_node_count(tlk->tree));
+	if(tlk->scaling_factors != NULL ) free_dmatrix( tlk->scaling_factors, tlk->partials_dim);
 	
 	for ( int i = 0; i < tlk->partials_dim; i++ ) {
 		if( tlk->partials[i] != NULL ){

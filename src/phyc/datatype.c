@@ -99,12 +99,14 @@ DataType* new_DataType_from_json(json_node* node, Hashtable* hash){
 	DataType* datatype = NULL;
 	if(node->node_type == MJSON_OBJECT){
 		json_node* states_node = get_json_node(node, "states");
+		char* name = get_json_node_value_string(node, "id");
 		size_t count = states_node->child_count;
 		const char** states = malloc(sizeof(char*)*count);
 		for (size_t i = 0; i < count; i++) {
-			states[i] = (char*)states_node->children[i];
+			json_node* child = states_node->children[i];
+			states[i] = String_clone((char*)child->value);
 		}
-		datatype = new_GenericDataType(count, states);
+		datatype = new_GenericDataType(name, count, states);
 		free(states);
 	}
 	else if(node->node_type == MJSON_STRING){
@@ -128,13 +130,15 @@ DataType* new_DataType_from_json(json_node* node, Hashtable* hash){
 			exit(1);
 		}
 	}
+	datatype->ref_count = 1;
 	return datatype;
 }
 
 DataType * clone_DataType(const DataType *dataType){
+	printf("clone datatype\n");
     DataType *newDataType = malloc(sizeof(DataType));
     assert(dataType);
-    newDataType->desc = String_clone(dataType->desc);
+    newDataType->name = String_clone(dataType->name);
     newDataType->type = dataType->type;
     newDataType->stateCount = dataType->stateCount;
     newDataType->symbolLength = dataType->symbolLength;
@@ -150,7 +154,7 @@ DataType * clone_DataType(const DataType *dataType){
     newDataType->encoding_string = dataType->encoding_string;
     newDataType->state_string    = dataType->state_string;
     newDataType->state_count = dataType->state_count;
-    
+	newDataType->ref_count = 1;
     return newDataType;
 }
 
@@ -178,10 +182,11 @@ static int _encoding( DataType *datatype, char nuc){
     return i;
 }
 
-DataType *new_GenericDataType( size_t count, const char **states){
+DataType *new_GenericDataType( const char* name, size_t count, const char **states){
+	printf("new datatype\n");
     DataType *dataType = malloc(sizeof(DataType));
     assert(dataType);
-    dataType->desc = String_clone("Generic");
+    dataType->name = String_clone(name);
     dataType->type = DATA_TYPE_GENERIC;
     dataType->genetic_code = 0;
     dataType->stateCount = count;
@@ -204,14 +209,20 @@ DataType *new_GenericDataType( size_t count, const char **states){
 
 
 void free_DataType( DataType *dataType ){
-    if(dataType->states != NULL ){
-        for ( int i = 0; i < dataType->stateCount; i++ ) {
-            free(dataType->states[i]);
-        }
-        free(dataType->states);
-    }
-    free(dataType->desc);
-    free(dataType);
+	if(dataType->ref_count == 1){
+		printf("free datatype\n");
+		if(dataType->states != NULL ){
+			for ( int i = 0; i < dataType->stateCount; i++ ) {
+				free(dataType->states[i]);
+			}
+			free(dataType->states);
+		}
+		free(dataType->name);
+		free(dataType);
+	}
+	else{
+		dataType->ref_count--;
+	}
 }
 
 
@@ -222,7 +233,7 @@ void free_DataType( DataType *dataType ){
 DataType *new_NucleotideDataType(){
     DataType *dataType = (DataType*)malloc(sizeof(DataType));
     assert(dataType);
-    dataType->desc = String_clone("Nucleotide");
+    dataType->name = String_clone("Nucleotide");
     dataType->type = DATA_TYPE_NUCLEOTIDE;
     dataType->genetic_code = 0;
     dataType->stateCount = 4;
@@ -270,7 +281,7 @@ const char * _nucleotide_state_string( const DataType *datatype, int encoding){
 DataType *new_AminoAcidDataType(){
     DataType *dataType = malloc(sizeof(DataType));
     assert(dataType);
-    dataType->desc = String_clone("Amino Acid");
+    dataType->name = String_clone("Amino Acid");
     dataType->type = DATA_TYPE_AMINO_ACID;
     dataType->genetic_code = 0;
     dataType->stateCount = 20;
@@ -317,7 +328,7 @@ const char * _aa_state_string( const DataType *datatype, int encoding){
 DataType *new_CodonDataType( int genetic_code ){
     DataType *dataType = malloc(sizeof(DataType));
     assert(dataType);
-    dataType->desc = String_clone("Codon");
+    dataType->name = String_clone("Codon");
     dataType->type = DATA_TYPE_CODON;
     dataType->genetic_code = genetic_code;
     dataType->stateCount = NUMBER_OF_CODONS[genetic_code];

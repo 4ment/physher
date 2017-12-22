@@ -52,10 +52,14 @@ static void _substitution_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free subsitution model %s\n", self->name);
 		SubstitutionModel* m = (SubstitutionModel*)self->obj;
-		Model** msimplex = (Model**)self->data;
-		msimplex[0]->free(msimplex[0]);
-		if(msimplex[1] != NULL){
-			msimplex[1]->free(msimplex[1]);
+		if(self->data != NULL){
+			Model** msimplex = (Model**)self->data;
+			for (int i = 0; i < 2; i++) {
+				if(msimplex[i] != NULL){
+					msimplex[i]->free(msimplex[i]);
+				}
+			}
+			free(msimplex);
 		}
 		free(m->name);
 		if( m->eigendcmp != NULL ) free_EigenDecomposition(m->eigendcmp);
@@ -65,7 +69,6 @@ static void _substitution_model_free( Model *self ){
 		if( m->model != NULL ) m->model->free(m->model);
 		if( m->dQ != NULL ) free(m->dQ);
 		free(m);
-		free(msimplex);
 		
 		free_Model(self);
 	}
@@ -79,27 +82,32 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 		return Hashtable_get(hash, self->name);
 	}
 	SubstitutionModel* subst = (SubstitutionModel*)self->obj;
-	Model** msimplex = (Model**)self->data;
 	
 	Model* msimplex_freq_clone = NULL;
-	if (Hashtable_exists(hash, msimplex[0]->name)) {
-		msimplex_freq_clone = Hashtable_get(hash, msimplex[0]->name);
-		msimplex_freq_clone->ref_count++;
-	}
-	else{
-		msimplex_freq_clone = msimplex[0]->clone(msimplex[0], hash);
-		Hashtable_add(hash, msimplex_freq_clone->name, msimplex_freq_clone);
-	}
-
 	Model* msimplex_rates_clone = NULL;
-	if(subst->rates_simplex != NULL){
-		if (Hashtable_exists(hash, msimplex[1]->name)) {
-			msimplex_rates_clone = Hashtable_get(hash, msimplex[1]->name);
-			msimplex_rates_clone->ref_count++;
+	
+	if(self->data != NULL){
+		Model** msimplex = (Model**)self->data;
+		if(subst->simplex != NULL){
+			if (Hashtable_exists(hash, msimplex[0]->name)) {
+				msimplex_freq_clone = Hashtable_get(hash, msimplex[0]->name);
+				msimplex_freq_clone->ref_count++;
+			}
+			else{
+				msimplex_freq_clone = msimplex[0]->clone(msimplex[0], hash);
+				Hashtable_add(hash, msimplex_freq_clone->name, msimplex_freq_clone);
+			}
 		}
-		else{
-			msimplex_rates_clone = msimplex[1]->clone(msimplex[1], hash);
-			Hashtable_add(hash, msimplex_rates_clone->name, msimplex_rates_clone);
+		
+		if(subst->rates_simplex != NULL){
+			if (Hashtable_exists(hash, msimplex[1]->name)) {
+				msimplex_rates_clone = Hashtable_get(hash, msimplex[1]->name);
+				msimplex_rates_clone->ref_count++;
+			}
+			else{
+				msimplex_rates_clone = msimplex[1]->clone(msimplex[1], hash);
+				Hashtable_add(hash, msimplex_rates_clone->name, msimplex_rates_clone);
+			}
 		}
 	}
 	
@@ -119,9 +127,13 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 			}
 		}
 	}
-	
-	
-	SubstitutionModel* mclone = clone_substitution_model_with(subst, ps, (Simplex*)msimplex_freq_clone->obj);
+	SubstitutionModel* mclone = NULL;
+	if(msimplex_freq_clone != NULL){
+		mclone = clone_substitution_model_with(subst, ps, (Simplex*)msimplex_freq_clone->obj);
+	}
+	else{
+		mclone = clone_substitution_model_with(subst, ps, NULL);
+	}
 	
 	if (msimplex_rates_clone != NULL) {
 		mclone->rates_simplex = (Simplex*)msimplex_rates_clone->obj;
@@ -132,7 +144,7 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 	}
 	Model *clone = new_SubstitutionModel2(self->name, mclone, msimplex_freq_clone, msimplex_rates_clone);
 	Hashtable_add(hash, clone->name, clone);
-	msimplex_freq_clone->free(msimplex_freq_clone);
+	if(msimplex_freq_clone != NULL) msimplex_freq_clone->free(msimplex_freq_clone);
 	free_Parameters(ps);
 	return clone;
 }
@@ -156,8 +168,12 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 	Model *model = new_Model("substitutionmodel", name, sm);
 	Model** simplexes = (Model**)calloc(2, sizeof(Model*));
 	model->data = simplexes;
-	simplexes[0] = freqs_simplex;
-	freqs_simplex->ref_count++;
+	if(freqs_simplex != NULL){
+		simplexes[0] = freqs_simplex;
+		freqs_simplex->ref_count++;
+		freqs_simplex->listeners->add( freqs_simplex->listeners, model );
+	}
+	
 	int i = 0;
 	if ( sm->rates != NULL ) {
 		for ( i = 0; i < Parameters_count(sm->rates); i++ ) {
@@ -170,9 +186,6 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 		rates_simplex->ref_count++;
 		rates_simplex->listeners->add( rates_simplex->listeners, model );
 	}
-	
-	// Listen to frequency simplex
-	freqs_simplex->listeners->add( freqs_simplex->listeners, model );
 	
 	model->update = _substitution_model_handle_change;
 	model->free = _substitution_model_free;
@@ -192,38 +205,35 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	DataType* datatype = NULL;
 	
 	if (datatype_node->node_type == MJSON_STRING && ((char*)datatype_node->value)[0] == '&') {
-		char* ref = (char*)freqs_node->value;
+		char* ref = (char*)datatype_node->value;
 		// check it starts with a &
 		datatype = Hashtable_get(hash, ref+1);
-		datatype = clone_DataType(datatype);
+		datatype->ref_count++;
 	}
 	else{
 		datatype = new_DataType_from_json(datatype_node, hash);
 	}
 
 	// Simplex Frequencies
-	Model* mfreqs_simplex_clone = NULL;
+	Model* mfreqs_simplex = NULL;
+	Simplex* freqs_simplex = NULL;
 	if (freqs_node!= NULL && freqs_node->node_type == MJSON_OBJECT) {
-		mfreqs_simplex_clone = new_SimplexModel_from_json(freqs_node, hash);
+		mfreqs_simplex = new_SimplexModel_from_json(freqs_node, hash);
 		json_node* id_node = get_json_node(freqs_node, "id");
-		Hashtable_add(hash, (char*)id_node->value, mfreqs_simplex_clone);
+		Hashtable_add(hash, (char*)id_node->value, mfreqs_simplex);
+		freqs_simplex =  (Simplex*)mfreqs_simplex->obj;
 	}
 	else if(freqs_node!= NULL && freqs_node->node_type == MJSON_STRING){
 		char* ref = (char*)freqs_node->value;
 		// check it starts with a &
-		mfreqs_simplex_clone = Hashtable_get(hash, ref+1);
-		mfreqs_simplex_clone->ref_count++;
+		mfreqs_simplex = Hashtable_get(hash, ref+1);
+		mfreqs_simplex->ref_count++;
+		freqs_simplex =  (Simplex*)mfreqs_simplex->obj;
 	}
-	else{
-		fprintf(stderr, "No simplex specified in substitution model %s\n", id);
-		exit(1);
-	}
-	
-	Simplex* freqs_simplex =  (Simplex*)mfreqs_simplex_clone->obj;
 	
 	// Rates
 	Parameters* rates = NULL;
-	Model* mrates_simplex_clone = NULL;
+	Model* mrates_simplex = NULL;
 	Simplex* rates_simplex = NULL;
 	
 	// Rates is made of doubles
@@ -231,21 +241,21 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 		rates = new_Parameters_from_json(rates_node, hash);
 	}
 	else if (rates_node != NULL && rates_node->node_type == MJSON_OBJECT) {
-		char* simplex_node = get_json_node_value_string(rates_node, "type");
+		char* rate_simplex_ref = get_json_node_value_string(rates_node, "type");
 		// Rates is a simplex
-		if (simplex_node != NULL) {
+		if (rate_simplex_ref != NULL) {
 			if (rates_node->node_type == MJSON_OBJECT) {
-				mrates_simplex_clone = new_SimplexModel_from_json(rates_node, hash);
+				mrates_simplex = new_SimplexModel_from_json(rates_node, hash);
 				char* id = get_json_node_value_string(rates_node, "id");
-				Hashtable_add(hash, id, mrates_simplex_clone);
+				Hashtable_add(hash, id, mrates_simplex);
 			}
 			else if(rates_node->node_type == MJSON_STRING){
 				char* ref = (char*)rates_node->value;
 				// check it starts with a &
-				mrates_simplex_clone = Hashtable_get(hash, ref+1);
-				mrates_simplex_clone->ref_count++;
+				mrates_simplex = Hashtable_get(hash, ref+1);
+				mrates_simplex->ref_count++;
 			}
-			rates_simplex = (Simplex*)mrates_simplex_clone->obj;
+			rates_simplex = (Simplex*)mrates_simplex->obj;
 		}
 		// Rates is made of parameters
 		else{
@@ -271,17 +281,21 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 		}
 	}
 	
-	// Optional discrete model for general substitution model
-	DiscreteParameter* dp = NULL;
 	char* model_string = NULL;
 	// General model
+	//TODO: use rate simplex
 	if (model_node != NULL && model_node->node_type == MJSON_OBJECT) {
-		dp = new_DiscreteParameter_from_json(model_node, hash);
-		SubstitutionModel* m = new_GeneralModel_with_parameters(dp, rates, freqs_simplex, -1, false);
-		Model* mm = new_SubstitutionModel2(node->id, m, mfreqs_simplex_clone, mrates_simplex_clone);
+		DiscreteParameter* dp = new_DiscreteParameter_from_json(model_node, hash);
+		check_constraints(rates, 0, INFINITY, 0.001, 1000);
+		bool normalize = get_json_node_value_bool(node, "normalize", true);
+		SubstitutionModel* m = new_GeneralModel_with_parameters(dp, rates, freqs_simplex, -1, normalize);
+		Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex, mrates_simplex);
+
+		free_DataType(datatype);
 		free_Parameters(rates);
-		mfreqs_simplex_clone->free(mfreqs_simplex_clone);
-		if(mrates_simplex_clone != NULL) mfreqs_simplex_clone->free(mfreqs_simplex_clone);
+		dp->free(dp);
+		if(mfreqs_simplex != NULL) mfreqs_simplex->free(mfreqs_simplex);
+		if(mrates_simplex != NULL) mrates_simplex->free(mrates_simplex);
 		if(assignment != NULL) free(assignment);
 		return mm;
 	}
@@ -336,11 +350,11 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 		free_dmatrix(mat, datatype->state_count(datatype));
 	}
 	
-	free_DataType(datatype);//general should need it
-	Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex_clone, mrates_simplex_clone);
+	free_DataType(datatype);
+	Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex, mrates_simplex);
 	free_Parameters(rates);
-	mfreqs_simplex_clone->free(mfreqs_simplex_clone);
-	if(mrates_simplex_clone != NULL) mrates_simplex_clone->free(mrates_simplex_clone);
+	if(mfreqs_simplex != NULL) mfreqs_simplex->free(mfreqs_simplex);
+	if(mrates_simplex != NULL) mrates_simplex->free(mrates_simplex);
 	if(assignment != NULL) free(assignment);
 	free(model_string);
 	return mm;
@@ -820,9 +834,9 @@ SubstitutionModel * create_aa_model( const char *name, const modeltype modelname
     return m;
 }
 
-SubstitutionModel * create_general_model( const char *name, const modeltype modelname, Simplex* freqs ){
+SubstitutionModel * create_general_model( const char *name, const modeltype modelname, Simplex* freqs, size_t dim ){
     SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_GENERIC, freqs);
-    m->nstate = freqs->K;
+    m->nstate = dim;
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);
     m->eigendcmp = new_EigenDecomposition(m->nstate);
@@ -1430,10 +1444,10 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 			}
 		}
 		else if( strcasecmp("UREV", model_string2) == 0 ){
-			mod = new_UnrestrictedNucleotideModel_with_parameters(rates);
+			mod = new_UnrestrictedNucleotideModel_with_parameters(freqSimplex, rates);
 		}
 		else if( strcasecmp("NONSTAT", model_string2) == 0 ){
-			mod = new_NONSTATNucleotideModel(freqSimplex);
+			mod = new_NONSTATNucleotideModel_with_parameters(freqSimplex, rates);
 		}
 		else{
 			mod = new_ReversibleNucleotideModel_with_parameters(model_string2, freqSimplex, rates);

@@ -85,8 +85,7 @@ SubstitutionModel * new_UnrestrictedNucleotideModel( ){
 	return m;
 }
 
-SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters( const Parameters* rates ){
-	Simplex* freqs = new_Simplex(4);
+SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters(Simplex* freqs, const Parameters* rates ){
 	SubstitutionModel *m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA, freqs);
 	
 	m->rates = new_Parameters(11);

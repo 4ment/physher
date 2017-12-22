@@ -1631,6 +1631,10 @@ int main(int argc, char* argv[]){
 		else if(strcasecmp((char*)type_node->value, "variational") == 0){
 			models[i] = new_Variational_from_json(child, hash2);
 		}
+		else if(strcasecmp((char*)type_node->value, "treelikelihood") == 0){
+			models[i] = new_TreeLikelihoodModel_from_json(child, hash2);
+			printf("%f\n", models[i]->logP(models[i]));
+		}
 		
 		Hashtable_add(hash2, id, models[i]);
 	}
@@ -1642,8 +1646,9 @@ int main(int argc, char* argv[]){
 	double tot = Node_distance(Tree_root(tt)->right) + Node_distance(Tree_root(tt)->left);
 	Node_set_distance(Tree_root(tt)->right, 0);
 	Node_set_distance(Tree_root(tt)->left, tot);
-	Tree_print_newick(stdout, treeee->obj, true);
+//	Tree_print_newick(stdout, treeee->obj, true);
 	
+	if(run_node != NULL)
 	for (int i = 0; i < run_node->child_count; i++) {
         json_node* child = run_node->children[i];
         char* type = get_json_node_value_string(child, "type");
@@ -2054,7 +2059,7 @@ int main(int argc, char* argv[]){
     
     if( markov_states != NULL ){
         char ** states = String_to_string_array( markov_states, ',', &matrixDimension );
-        dataType = new_GenericDataType(matrixDimension, (const char**)states);
+        dataType = new_GenericDataType("generic", matrixDimension, (const char**)states);
         for ( int i = 0; i < matrixDimension; i++ ) {
             free(states[i]);
         }
@@ -2126,8 +2131,8 @@ int main(int argc, char* argv[]){
     
     seqs->datatype = clone_DataType(dataType);
 	
-	fprintf(stdout, "Sequence type: %s (State count: %d)\n", dataType->desc, dataType->state_count(dataType) );
-    StringBuffer_append_format(info, "Sequence type: %s (State count: %d)\n", dataType->desc, dataType->state_count(dataType));
+	fprintf(stdout, "Sequence type: %s (State count: %d)\n", dataType->name, dataType->state_count(dataType) );
+    StringBuffer_append_format(info, "Sequence type: %s (State count: %d)\n", dataType->name, dataType->state_count(dataType));
     
     if( markov_states != NULL ){
         StringBuffer_append_format(info, "States: %s\n\n", markov_states);

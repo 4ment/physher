@@ -450,7 +450,7 @@ void Sequences_save_nexus_with_comment( const Sequences *sequences, const char *
     if( comment != NULL )  fprintf(pfile, "%s\n\n\n",comment);
 	fprintf(pfile, "Begin DATA;\n");
 	fprintf(pfile, "\tDimensions ntax=%d nchar=%d;\n", sequences->size, sequences->length);
-	fprintf(pfile, "\tFormat datatype=%s gap=-;\n", sequences->datatype->desc);
+	fprintf(pfile, "\tFormat datatype=%s gap=-;\n", sequences->datatype->name);
 	fprintf(pfile, "\tMatrix\n");
     
 	int max_name = 0;

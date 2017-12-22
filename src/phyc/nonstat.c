@@ -45,9 +45,7 @@ SubstitutionModel * new_NONSTATNucleotideModel(){
 }
 
 SubstitutionModel * new_NONSTATNucleotideModel_with_parameters( Simplex* freqs, const Parameters *rates ){
-	SubstitutionModel *m = NULL;
-	
-	m = create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA, freqs);
+	SubstitutionModel *m = create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA, freqs);
 	
 	m->rates = new_Parameters( Parameters_count(rates) );
 	for(int i = 0; i < Parameters_count(rates); i++){

@@ -85,6 +85,8 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	clone->tempx = NULL;
 	if(dm->tempp != NULL) clone->tempp = clone_dvector(dm->tempp, Parameters_count(dm->parameters));
 	if(dm->tempx != NULL) clone->tempx = clone_dvector(dm->tempx, Parameters_count(dm->x));
+	clone->lp = dm->lp;
+	clone->need_update = dm->need_update;
 	return clone;
 }
 
@@ -289,9 +291,13 @@ double logFactorial(int n){
 
 
 double DistributionModel_log_uniform_tree(DistributionModel* dm){
-    Tree* tree = ((Model*)dm->data)->obj;
-    int n = Tree_tip_count(tree);
-    return -logFactorial(n*2-5) + logFactorial(n-3) + (n-3)*log(2);
+	if(dm->need_update){
+		Tree* tree = ((Model*)dm->data)->obj;
+		int n = Tree_tip_count(tree);
+		dm->lp = -logFactorial(n*2-5) + logFactorial(n-3) + (n-3)*log(2);
+		dm->need_update = false;
+	}
+	return dm->lp;
 }
 
 double DistributionModel_dlog_uniform_tree(DistributionModel* dm, const Parameter* p){
@@ -314,6 +320,7 @@ DistributionModel* new_UniformTreeDistribution(Model* tree){
     dm->logP = DistributionModel_log_uniform_tree;
     dm->dlogP = DistributionModel_dlog_uniform_tree;
     dm->clone = _clone_dist;
+	dm->need_update = true;
     return dm;
 }
 

@@ -18,5 +18,10 @@
 #include "nucsubst.h"
 
 #include "unrest.h"
+#include "nonstat.h"
+
+#include "wag.h"
+#include "dayhoff.h"
+#include "lg.h"
 
 #endif /* substmodels_h */

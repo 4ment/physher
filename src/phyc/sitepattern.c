@@ -44,7 +44,8 @@ SitePattern * new_SitePattern( const Sequences *aln ){
 	assert(sp);
 	sp->id = 0;
 	
-	sp->datatype = clone_DataType(aln->datatype);
+	sp->datatype = aln->datatype;
+	sp->datatype->ref_count++;
 	uint8_t **temp_patterns = NULL;
 	sp->nstate = sp->datatype->state_count(sp->datatype);
 	
@@ -129,7 +130,8 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 	assert(sp);
 	sp->id = 0;
 	
-	sp->datatype = clone_DataType(aln->datatype);
+	sp->datatype = aln->datatype;
+	sp->datatype->ref_count++;
 	uint8_t **temp_patterns = NULL;
 	sp->nstate = sp->datatype->state_count(sp->datatype);
 	
@@ -213,7 +215,8 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 	assert(sp);
 	sp->id = 0;
 	
-	sp->datatype = clone_DataType(aln->datatype);
+	sp->datatype = aln->datatype;
+	sp->datatype->ref_count++;
 	uint8_t **temp_patterns = NULL;
 	sp->nstate = sp->datatype->state_count(sp->datatype);
 	
@@ -321,7 +324,8 @@ SitePattern * clone_SitePattern( const SitePattern *sp ){
     
     newsp->id = sp->id;
     newsp->id++;
-    newsp->datatype = clone_DataType(sp->datatype);
+    newsp->datatype = sp->datatype;
+	newsp->datatype->ref_count++;
     
     newsp->patterns = ui8matrix(sp->count, sp->size);
     for ( int p = 0; p < sp->count; p++ ) {
@@ -815,9 +819,23 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 	
 	
 	if (alignment_node != NULL) {
-		DataType* datatype = new_DataType_from_json(datatype_node, hash);
+		DataType* datatype = NULL;
+		if(datatype_node->node_type == MJSON_STRING && (strcasecmp((char*)datatype_node->value, "nucleotide") == 0 ||
+		   strcasecmp((char*)datatype_node->value, "codon") == 0 || strcasecmp((char*)datatype_node->value, "aa") == 0)){
+			datatype = new_DataType_from_json(datatype_node, hash);
+		}
+		else if (datatype_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)datatype_node->value)) {
+			datatype = Hashtable_get(hash, (char*)datatype_node->value);
+			datatype->ref_count++;
+		}
+		else{
+			datatype = new_DataType_from_json(datatype_node, hash);
+			Hashtable_add(hash, datatype->name, datatype);
+		}
+		
 		Sequences* sequences = new_Sequences_from_json(alignment_node, hash);
 		sequences->datatype = datatype;
+		datatype->ref_count++;
 		if(every_node != NULL || start_node != NULL || length_node != NULL){
 			const char* every_string = (char*)every_node->value;
 			int start = get_json_node_value_size_t(node, "start", 0);

@@ -31,6 +31,8 @@ struct _DistributionModel{
 	void (*free)(DistributionModel*);
 	DistributionModel* (*clone)(DistributionModel*);
 	void* data;
+	double lp;
+	bool need_update;
 };
 
 

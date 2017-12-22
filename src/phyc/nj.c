@@ -31,7 +31,7 @@
 
 static Node * cluster( Node **nodes, double **matrix, int nTips );
 
-struct Tree * new_NJ2( const char **taxa, size_t dim, double **matrix ){
+struct _Tree * new_NJ2( const char **taxa, size_t dim, double **matrix ){
     assert(dim > 3);
     Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
     assert(nodes);
@@ -227,7 +227,7 @@ void findMinIndexes( double **matrix, int ncluster, double *r, int *alias, int *
     }
 }
 
-struct Tree * new_NJ( const char **taxa, size_t dim, double **matrix ){
+struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix ){
     Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
     assert(nodes);
     int *alias = ivector(dim);
@@ -334,7 +334,7 @@ void findMinIndexes_float( float **matrix, int ncluster, float *r, int *alias, i
     }
 }
 
-struct Tree * new_NJ_float( const char **taxa, size_t dim, float **matrix ){
+struct _Tree * new_NJ_float( const char **taxa, size_t dim, float **matrix ){
     Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
     assert(nodes);
     int *alias = ivector(dim);

@@ -901,7 +901,7 @@ static void _variational_model_handle_change( Model *self, Model *model, int ind
 
 static Model* _variational_model_clone(Model* self, Hashtable *hash){
 	//TODO: _variational_model_clone
-	error(_variational_model_clone);
+	error("_variational_model_clone");
 	if (Hashtable_exists(hash, self->name)) {
 		return Hashtable_get(hash, self->name);
 	}

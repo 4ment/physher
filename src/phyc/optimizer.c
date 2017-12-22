@@ -44,7 +44,7 @@ static double _logP( Parameters *params, double *grad, void *data ){
 
 static double _negative_logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
-	//	printf("%f\n", model->logP(model));
+//		printf("%f\n", model->logP(model));
 	return -model->logP(model);
 }
 
@@ -153,7 +153,7 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 			}
 			
 			if(  lnl-fret < stop->tolfx ){
-				*fmin = fret;printf("%f %f\n",lnl-fret, stop->tolfx);
+				*fmin = fret;
 				return OPT_SUCCESS;
 			}
 			lnl = fret;
