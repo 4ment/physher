@@ -18,6 +18,8 @@
 #include "tree.h"
 #include "utils.h"
 
+#include "gamvi.h"
+
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
@@ -737,30 +739,63 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	StringBuffer* buffer = new_StringBuffer(10);
 	if(strcasecmp(var_string, "meanfield") == 0){
 //		printf("Creating meanfield variational model\n");
-		var->var_parameters = new_Parameters(dim*2); // mean + sd
-		for(int i = 0; i < dim; i++){
-			StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
-			StringBuffer_append_string(buffer, ".mean");
-			Parameter* p = new_Parameter(buffer->c, 0, NULL);
-			p->id = i;
-			Parameters_move(var->var_parameters, p);
+		if (strcasecmp(dist_string, "normal") == 0) {
+			var->var_parameters = new_Parameters(dim*2); // mean + sd
+			for(int i = 0; i < dim; i++){
+				StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
+				StringBuffer_append_string(buffer, ".mean");
+				Parameter* p = new_Parameter(buffer->c, 0, NULL);
+				p->id = i;
+				Parameters_move(var->var_parameters, p);
+			}
+			for(int i = 0; i < dim; i++){
+				StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
+				StringBuffer_append_string(buffer, ".sd");
+				Parameter* p = new_Parameter(buffer->c, 0, NULL);
+				p->id = i+dim;
+				Parameters_move(var->var_parameters, p);
+			}
+			var->elbofn = elbo_meanfield;
+			var->grad_elbofn = grad_elbo_meanfield;
+			var->f = elbo;
+			var->grad_f = grad_elbo;
+			var->sample = variational_sample_meanfield;
+			var->sample_some = variational_sample_some_meanfield;
+			var->finalize = _variational_finalize;
+			var->logP = variational_meanfield_logP;
+			var->parameters_logP = variational_meanfield_parameters_logP;
 		}
-		for(int i = 0; i < dim; i++){
-			StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
-			StringBuffer_append_string(buffer, ".sd");
-			Parameter* p = new_Parameter(buffer->c, 0, NULL);
-			p->id = i+dim;
-			Parameters_move(var->var_parameters, p);
+		else if (strcasecmp(dist_string, "gamma") == 0) {
+			var->var_parameters = new_Parameters(dim*2); // alpha + beta
+			for(int i = 0; i < dim; i++){
+				StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
+				StringBuffer_append_string(buffer, ".alpha");
+				Parameter* p = new_Parameter(buffer->c, 0, NULL);
+				p->id = i;
+				Parameters_move(var->var_parameters, p);
+			}
+			for(int i = 0; i < dim; i++){
+				StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
+				StringBuffer_append_string(buffer, ".beta");
+				Parameter* p = new_Parameter(buffer->c, 0, NULL);
+				p->id = i+dim;
+				Parameters_move(var->var_parameters, p);
+			}
+			var->elbofn = elbo_gamma_meanfield;
+			var->grad_elbofn = grad_elbo_gamma_meanfield;
+			var->f = elbo;
+			var->grad_f = grad_elbo;
+			//TODO: implement functions below for gamma
+			var->sample = variational_sample_meanfield;
+			var->sample_some = variational_sample_some_meanfield;
+			var->finalize = _variational_finalize;
+			var->logP = variational_meanfield_logP;
+			var->parameters_logP = variational_meanfield_parameters_logP;
 		}
-		var->elbofn = elbo_meanfield;
-		var->grad_elbofn = grad_elbo_meanfield;
-		var->f = elbo;
-		var->grad_f = grad_elbo;
-		var->sample = variational_sample_meanfield;
-		var->sample_some = variational_sample_some_meanfield;
-		var->finalize = _variational_finalize;
-		var->logP = variational_meanfield_logP;
-        var->parameters_logP = variational_meanfield_parameters_logP;
+		else{
+			fprintf(stderr, "distribution %s not recognized\n", dist_string);
+			exit(1);
+		}
 	}
 	else if(strcasecmp(var_string, "fullrank") == 0){
 //		printf("Creating fullrank variational model\n");

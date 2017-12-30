@@ -22,10 +22,50 @@
 // Uses the Generalized Reparameterization Gradient
 
 void init_meanfield_gamma(variational_t* var){
+	size_t dim = Parameters_count(var->parameters);
+	Model* posterior = var->posterior;
+	
 	// for reuse
-	for (int i = 0; i < Parameters_count(var->parameters); i++) {
+	for (int i = 0; i < dim; i++) {
 		Parameter_store(Parameters_at(var->parameters, i));
 	}
+
+//	Parameters_set_all_value(var->var_parameters, 2);
+	for (int i = 0; i < dim; i++) {
+		Parameter* p = Parameters_at(var->parameters, i);
+		
+//		if(Parameter_value(p) < 1.0e-6){
+//			Parameter* var_p_alpha = Parameters_at(var->var_parameters, i);
+//			Parameter* var_p_beta = Parameters_at(var->var_parameters, i+dim);
+//			Parameter_set_estimate(var_p_alpha, false);
+//			Parameter_set_value(var_p_alpha, 0); // alpha == 1
+//			Parameter_set_value(var_p_beta, log(20));
+//			// This is an exponential distribution with mean 1/20
+//			return;
+//		}
+
+		Parameter* var_p_mu = Parameters_at(var->var_parameters, i);
+		double dlogP;
+		double d2logP = Model_second_derivative(posterior, Parameters_at(var->parameters, i), &dlogP, 0.001);
+		double mu = Parameters_value(var->parameters, i); // mean = mode of normal
+		double v = -1.0/d2logP; // variance of normal
+//		printf("%f %s\n", mu, Parameter_name(var_p_mu));
+		double q_beta = log(0.5*(mu + sqrt(mu*mu + 4.0*v))/(2.0*v));
+		double q_alpha = log((mu * q_beta + 1.0)*2);
+		
+		if (isnan(q_alpha)) {
+			q_alpha = 0;
+		}
+		if (isnan(q_beta)) {
+			q_beta = log(1000);
+		}
+		
+		Parameters_set_value(var->var_parameters, i, q_alpha);
+		Parameters_set_value(var->var_parameters, i+dim, q_beta);
+//					printf("%f %f  %f %f %s\n", mu, d2logP, q_alpha, q_beta, p->name);
+		//			Parameter_set_estimate(var_p_mu, false);
+	}
+	
 }
 
 void grad_elbo_gamma_meanfield(variational_t* var, double* grads){
@@ -50,14 +90,16 @@ void grad_elbo_gamma_meanfield(variational_t* var, double* grads){
 			z[j] = gsl_ran_gamma(var->rng, alpha, 1.0/beta);
 			Parameter* p = Parameters_at(var->parameters, j);
 			Parameter_set_value(p, z[j]);
+//			printf("%d a: %f b: %f z: %f\n", j, alpha, beta, z[j]);
         }
 		
 		double logP = posterior->logP(posterior);
         
 		for (int k = 0; k < dim; k++){
 			Parameter* p = Parameters_at(var->parameters, k);
-			
-            double dlogP =  posterior->dlogP(posterior, p);
+
+			double dlogP = Model_first_derivative(posterior, p, 0.001);
+//            double dlogP =  posterior->dlogP(posterior, p);
 			
 			double alpha = exp(Parameters_value(var->var_parameters, k));
 			double beta = exp(Parameters_value(var->var_parameters, k+dim));
@@ -126,7 +168,7 @@ double elbo_gamma_meanfield(variational_t* var){
     }
     elbo /= var->elbo_samples;
     
-    // Entropy of gamma: H(X) = alpha - ln(beta) lngamma(alpha) + (1-a)psi(alpha)
+    // Entropy of gamma: H(X) = alpha - ln(beta) + lngamma(alpha) + (1-alpha)psi(alpha)
 	for (int j = 0; j < dim; j++) {
 		double alpha = exp(Parameters_value(var->var_parameters, j));
 		double lbeta = Parameters_value(var->var_parameters, j+dim);
