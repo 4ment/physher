@@ -210,7 +210,7 @@ DataType *new_GenericDataType( const char* name, size_t count, const char **stat
 
 void free_DataType( DataType *dataType ){
 	if(dataType->ref_count == 1){
-		printf("free datatype\n");
+//		printf("free datatype\n");
 		if(dataType->states != NULL ){
 			for ( int i = 0; i < dataType->stateCount; i++ ) {
 				free(dataType->states[i]);

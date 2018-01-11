@@ -18,6 +18,8 @@ struct Logger{
 	Parameters* parameters;
 	Model** simplexes;
 	Model* tree;
+	Model** models;
+	size_t model_count;
 	size_t simplexCount;
 	void (*log)(struct Logger*);
 	FILE* file;
