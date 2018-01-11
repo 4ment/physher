@@ -32,6 +32,9 @@ typedef struct _Vector Vector;
 struct _iVector;
 typedef struct _iVector iVector;
 
+struct _cVector;
+typedef struct _cVector cVector;
+
 struct _dVector;
 typedef struct _dVector dVector;
 
@@ -101,6 +104,29 @@ void iVector_remove( iVector *v, int index );
 void iVector_swap( iVector *v, int a, int b );
 
 void free_iVector( iVector *v );
+
+#pragma mark -
+// MARK: cVector
+
+cVector * new_cVector( const size_t length );
+
+size_t cVector_length( cVector *v );
+
+void cVector_push( cVector *v, const char* value );
+
+void cVector_insert( cVector *v, const char* value, size_t index );
+
+char* cVector_at( cVector *v, size_t index );
+
+char* cVector_peek( cVector *v );
+
+char* cVector_pop( cVector *v );
+
+void cVector_remove_all( cVector *v );
+
+void cVector_remove( cVector *v, size_t index );
+
+void free_cVector( cVector *v );
 
 
 #pragma mark -

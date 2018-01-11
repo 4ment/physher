@@ -25,6 +25,7 @@
 
 #include "mathconstant.h"
 #include "hessenberg.h" // for det
+#include "mstring.h"
 
 void cholesky(long N, double *A, double *diag){
     long i,j,k;
@@ -187,74 +188,153 @@ void free_Vector( Vector *v ){
 #pragma mark iVector
 
 struct _iVector{
-    size_t count;
-    size_t capacity;
-    int *vector;
+	size_t count;
+	size_t capacity;
+	int *vector;
 };
 
 iVector * new_iVector( const size_t length ){
-    iVector *v = (iVector *)malloc(sizeof(iVector));
-    assert(v);
-    v->vector = ivector(length);
-    v->count	= 0;
-    v->capacity = length;
-    if (!v) error("allocation failure in vector()");
-    return v;
+	iVector *v = (iVector *)malloc(sizeof(iVector));
+	assert(v);
+	v->vector = ivector(length);
+	v->count	= 0;
+	v->capacity = length;
+	if (!v) error("allocation failure in vector()");
+	return v;
 }
 
 int iVector_length( iVector *v ){
-    return v->count;
+	return v->count;
 }
 
 void iVector_push( iVector *v, int value ){
-    if( v->count == v->capacity ){
-        v->capacity++;
-        v->vector = realloc(v->vector, v->capacity*sizeof(int));
-    }
-    v->vector[v->count] = value;
-    v->count++;
+	if( v->count == v->capacity ){
+		v->capacity++;
+		v->vector = realloc(v->vector, v->capacity*sizeof(int));
+	}
+	v->vector[v->count] = value;
+	v->count++;
 }
 
 void iVector_insert( iVector *v, int value, int index ){
-    if( v->count == v->capacity ){
-        v->capacity++;
-        v->vector = realloc(v->vector, v->capacity*sizeof(int));
-    }
-    memcpy(v->vector+1, v->vector, v->count*sizeof(int));
-    v->vector[0] = value;
+	if( v->count == v->capacity ){
+		v->capacity++;
+		v->vector = realloc(v->vector, v->capacity*sizeof(int));
+	}
+	memcpy(v->vector+1, v->vector, v->count*sizeof(int));
+	v->vector[0] = value;
 }
 
 int iVector_at( iVector *v, int index ){
-    return v->vector[index];
+	return v->vector[index];
 }
 
 int iVector_pop( iVector *v ){
-    if ( v->count == 0 ) {
-        return 0;
-    }
-    int val = v->vector[v->count-1];
-    v->count--;
-    return val;
+	if ( v->count == 0 ) {
+		return 0;
+	}
+	int val = v->vector[v->count-1];
+	v->count--;
+	return val;
 }
 
 void iVector_remove_all( iVector *v ){
-    v->count = 0;
+	v->count = 0;
 }
 
 void iVector_remove( iVector *v, int index ){
-    memcpy( v->vector+index, v->vector+index+1, (v->count-index-1)*sizeof(int));
-    v->count--;
+	memcpy( v->vector+index, v->vector+index+1, (v->count-index-1)*sizeof(int));
+	v->count--;
 }
 
 void iVector_swap( iVector *v, int a, int b ){
-    int temp = v->vector[a];
-    v->vector[a] = v->vector[b];
-    v->vector[b] = temp;
+	int temp = v->vector[a];
+	v->vector[a] = v->vector[b];
+	v->vector[b] = temp;
 }
 
 void free_iVector( iVector *v ){
-    free(v->vector);
-    free(v);
+	free(v->vector);
+	free(v);
+}
+
+
+#pragma mark -
+#pragma mark cVector
+
+struct _cVector{
+	size_t count;
+	size_t capacity;
+	char** vector;
+};
+
+cVector * new_cVector( const size_t length ){
+	cVector *v = (cVector *)malloc(sizeof(cVector));
+	assert(v);
+	v->vector = calloc(length, sizeof(char*));
+	v->count	= 0;
+	v->capacity = length;
+	if (!v) error("allocation failure in cVector()");
+	return v;
+}
+
+size_t cVector_length( cVector *v ){
+	return v->count;
+}
+
+void cVector_push( cVector *v, const char* value ){
+	if( v->count == v->capacity ){
+		v->capacity++;
+		v->vector = realloc(v->vector, v->capacity*sizeof(char*));
+	}
+	v->vector[v->count] = String_clone(value);
+	v->count++;
+}
+
+void cVector_insert( cVector *v, const char* value, size_t index ){
+	if( v->count == v->capacity ){
+		v->capacity++;
+		v->vector = realloc(v->vector, v->capacity*sizeof(char*));
+	}
+	memmove(v->vector+1, v->vector, v->count*sizeof(char*));
+	v->vector[0] = String_clone(value);
+}
+
+char* cVector_at( cVector *v, size_t index ){
+	return v->vector[index];
+}
+
+char* cVector_peek( cVector *v ){
+	return v->vector[v->count-1];
+}
+
+char* cVector_pop( cVector *v ){
+	if ( v->count == 0 ) {
+		return 0;
+	}
+	char* val = v->vector[v->count-1];
+	v->vector[v->count-1] = NULL;
+	v->count--;
+	return val;
+}
+
+void cVector_remove_all( cVector *v ){
+	for (int i = 0; i < v->count; i++) {
+		free(v->vector[i]);
+		v->vector[i] = NULL;
+	}
+	v->count = 0;
+}
+
+void cVector_remove( cVector *v, size_t index ){
+	free(v->vector+index);
+	memmove( v->vector+index, v->vector+index+1, (v->count-index-1)*sizeof(char*));
+	v->count--;
+}
+
+void free_cVector( cVector *v ){
+	free(v->vector);
+	free(v);
 }
 
 
