@@ -37,6 +37,10 @@
 
 double logaddexp(double x, double y);
 
+double logFactorial(int n);
+
+double logDoubleFactorial(int n);
+
 #pragma mark -
 #pragma mark double
 

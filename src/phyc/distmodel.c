@@ -47,6 +47,7 @@ static DistributionModel* _clone_dist(DistributionModel* dm){
 	}
 	clone->logP = dm->logP;
 	clone->dlogP = dm->dlogP;
+	clone->d2logP = dm->d2logP;
 	clone->clone = dm->clone;
 	clone->free = dm->free;
 	clone->tempp = NULL;
@@ -79,6 +80,7 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	}
 	clone->logP = dm->logP;
 	clone->dlogP = dm->dlogP;
+	clone->d2logP = dm->d2logP;
 	clone->clone = dm->clone;
 	clone->free = dm->free;
 	clone->tempp = NULL;
@@ -103,6 +105,7 @@ DistributionModel* new_DistributionModel(const Parameters* p, const Parameters* 
 	dm->simplex = NULL;
 	dm->logP = NULL;
 	dm->dlogP = NULL;
+	dm->d2logP = NULL;
 	dm->free = _free_dist;
 	dm->clone = _clone_dist;
 	dm->data = NULL;
@@ -119,6 +122,7 @@ DistributionModel* new_DistributionModelSimplex(Parameters* p, Simplex* simplex)
 	dm->simplex = simplex;
 	dm->logP = NULL;
 	dm->dlogP = NULL;
+	dm->d2logP = NULL;
 	dm->free = _free_dist;
 	dm->clone = _clone_dist;
 	dm->data = NULL;
@@ -149,6 +153,15 @@ double DistributionModel_dlog_gamma(DistributionModel* dm, const Parameter* p){
 	return 0;
 }
 
+double DistributionModel_d2log_gamma(DistributionModel* dm, const Parameter* p){
+	for (int i = 0; i < Parameters_count(dm->x); i++) {
+		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
+			return -(Parameters_value(dm->parameters, 0)-1.0)/Parameter_value(p)/Parameter_value(p);
+		}
+	}
+	return 0;
+}
+
 double DistributionModel_log_exp(DistributionModel* dm){
 	double lambda = Parameters_value(dm->parameters, 0);
 	double logP = log(lambda) * Parameters_count(dm->x);
@@ -168,12 +181,20 @@ double DistributionModel_dlog_exp(DistributionModel* dm, const Parameter* p){
 	return 0;
 }
 
+double DistributionModel_d2log_exp(DistributionModel* dm, const Parameter* p){
+	return 0;
+}
+
 // Flat dirichlet
 double DistributionModel_log_flat_dirichlet(DistributionModel* dm){
 	return log(ddirchlet_flat(dm->simplex->K));
 }
 
 double DistributionModel_dlog_flat_dirichlet(DistributionModel* dm, const Parameter* p){
+	return 0.0;
+}
+
+double DistributionModel_d2log_flat_dirichlet(DistributionModel* dm, const Parameter* p){
 	return 0.0;
 }
 
@@ -199,6 +220,12 @@ double DistributionModel_dlog_dirichlet(DistributionModel* dm, const Parameter* 
 	return 0;
 }
 
+//TODO: implement
+double DistributionModel_d2log_dirichlet(DistributionModel* dm, const Parameter* p){
+	exit(1);
+	return 0;
+}
+
 DistributionModel* new_IndependantGammaDistributionModel(const double shape, const double rate, const Parameters* x){
 	Parameters* ps = new_Parameters(2);
 	Parameters_move(ps, new_Parameter("gamma.shape", shape, NULL));
@@ -206,6 +233,7 @@ DistributionModel* new_IndependantGammaDistributionModel(const double shape, con
 	DistributionModel* dm = new_DistributionModel(ps, x);
 	dm->logP = DistributionModel_log_gamma;
 	dm->dlogP = DistributionModel_dlog_gamma;
+	dm->d2logP = DistributionModel_d2log_gamma;
 	dm->clone = _clone_dist;
 	free_Parameters(ps);
 	return dm;
@@ -215,6 +243,7 @@ DistributionModel* new_IndependantGammaDistributionModel_with_parameters(Paramet
 	DistributionModel* dm = new_DistributionModel(parameters, x);
 	dm->logP = DistributionModel_log_gamma;
 	dm->dlogP = DistributionModel_dlog_gamma;
+	dm->d2logP = DistributionModel_d2log_gamma;
 	dm->clone = _clone_dist;
 	return dm;
 }
@@ -225,6 +254,7 @@ DistributionModel* new_IndependantExpDistributionModel(const double lambda, cons
 	DistributionModel* dm = new_DistributionModel(ps, x);
 	dm->logP = DistributionModel_log_exp;
 	dm->dlogP = DistributionModel_dlog_exp;
+	dm->d2logP = DistributionModel_d2log_exp;
 	dm->clone = _clone_dist;
 	free_Parameters(ps);
 	return dm;
@@ -234,6 +264,7 @@ DistributionModel* new_IndependantExpDistributionModel_with_parameters(Parameter
 	DistributionModel* dm = new_DistributionModel(parameters, x);
 	dm->logP = DistributionModel_log_exp;
 	dm->dlogP = DistributionModel_dlog_exp;
+	dm->d2logP = DistributionModel_d2log_exp;
 	dm->clone = _clone_dist;
 	return dm;
 }
@@ -242,6 +273,7 @@ DistributionModel* new_FlatDirichletDistributionModel(Simplex* simplex){
 	DistributionModel* dm = new_DistributionModelSimplex(NULL, simplex);
 	dm->logP = DistributionModel_log_flat_dirichlet;
 	dm->dlogP = DistributionModel_dlog_flat_dirichlet;
+	dm->d2logP = DistributionModel_d2log_flat_dirichlet;
 	dm->clone = _clone_dist;
 	return dm;
 }
@@ -254,6 +286,7 @@ DistributionModel* new_DirichletDistributionModel(const double* alpha, Simplex* 
 	DistributionModel* dm = new_DistributionModelSimplex(ps, simplex);// len(x)==len(alpha)
 	dm->logP = DistributionModel_log_dirichlet;
 	dm->dlogP = DistributionModel_dlog_dirichlet;
+	dm->d2logP = DistributionModel_d2log_dirichlet;
 	dm->clone = _clone_dist;
 	dm->tempx = dvector(simplex->K);
 	dm->tempp = dvector(simplex->K);
@@ -270,6 +303,7 @@ DistributionModel* new_DirichletDistributionModel_with_parameters(const Paramete
 	DistributionModel* dm = new_DistributionModelSimplex(ps, simplex);// len(x)==len(alpha)
 	dm->logP = DistributionModel_log_dirichlet;
 	dm->dlogP = DistributionModel_dlog_dirichlet;
+	dm->d2logP = DistributionModel_d2log_dirichlet;
 	dm->clone = _clone_dist;
 	dm->tempx = dvector(simplex->K);
 	dm->tempp = dvector(simplex->K);
@@ -281,27 +315,22 @@ DistributionModel* new_DirichletDistributionModel_with_parameters(const Paramete
 
 //MARK: tree prior
 
-double logFactorial(int n){
-    double logF = 0;
-    for (int i = 2; i < n; i++) {
-        logF += log(i);
-    }
-    return logF;
-}
-
-
 double DistributionModel_log_uniform_tree(DistributionModel* dm){
 	if(dm->need_update){
 		Tree* tree = ((Model*)dm->data)->obj;
 		int n = Tree_tip_count(tree);
-		dm->lp = -logFactorial(n*2-5) + logFactorial(n-3) + (n-3)*log(2);
+		dm->lp = logDoubleFactorial(n*2-5);
 		dm->need_update = false;
 	}
 	return dm->lp;
 }
 
 double DistributionModel_dlog_uniform_tree(DistributionModel* dm, const Parameter* p){
-    return 0.0;
+	return 0.0;
+}
+
+double DistributionModel_d2log_uniform_tree(DistributionModel* dm, const Parameter* p){
+	return 0.0;
 }
 
 DistributionModel* new_UniformTreeDistribution(Model* tree){
@@ -310,15 +339,14 @@ DistributionModel* new_UniformTreeDistribution(Model* tree){
     dm->parameters = NULL;
     dm->x = NULL;
     dm->simplex = NULL;
-    dm->logP = NULL;
-    dm->dlogP = NULL;
     dm->free = _free_dist;
     dm->clone = _clone_dist;
     dm->data = tree;
     dm->tempx = NULL;
     dm->tempp = NULL;
-    dm->logP = DistributionModel_log_uniform_tree;
-    dm->dlogP = DistributionModel_dlog_uniform_tree;
+	dm->logP = DistributionModel_log_uniform_tree;
+	dm->dlogP = DistributionModel_dlog_uniform_tree;
+	dm->d2logP = DistributionModel_d2log_uniform_tree;
     dm->clone = _clone_dist;
 	dm->need_update = true;
     return dm;
@@ -334,6 +362,16 @@ static double _dist_model_dlogP(Model *self, const Parameter* p){
 	for (int i = 0; i < Parameters_count(cm->x); i++) {
 		if(Parameters_at(cm->x, i) == p){
 			return cm->dlogP(cm, p);
+		}
+	}
+	return 0;
+}
+
+static double _dist_model_d2logP(Model *self, const Parameter* p){
+	DistributionModel* cm = (DistributionModel*)self->obj;
+	for (int i = 0; i < Parameters_count(cm->x); i++) {
+		if(Parameters_at(cm->x, i) == p){
+			return cm->d2logP(cm, p);
 		}
 	}
 	return 0;
@@ -438,6 +476,7 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 	Model *model = new_Model("distribution",name, dm);
 	model->logP = _dist_model_logP;
 	model->dlogP = _dist_model_dlogP;
+	model->d2logP = _dist_model_d2logP;
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
 	model->get_free_parameters = _dist_model_get_free_parameters;
@@ -450,6 +489,7 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* si
 	if(simplex != NULL) simplex->ref_count++;
 	model->logP = _dist_model_logP;
 	model->dlogP = _dist_model_dlogP;
+	model->d2logP = _dist_model_d2logP;
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
 	model->get_free_parameters = _dist_model_get_free_parameters;
@@ -461,7 +501,8 @@ Model* new_TreeDistributionModel(const char* name, DistributionModel* dm, Model*
     model->data = tree;
     tree->ref_count++;
     model->logP = _dist_model_logP;
-    model->dlogP = _dist_model_dlogP;
+	model->dlogP = _dist_model_dlogP;
+	model->d2logP = _dist_model_d2logP;
     model->free = _dist_model_free;
     model->clone = _dist_model_clone;
     model->get_free_parameters = _dist_model_get_free_parameters;

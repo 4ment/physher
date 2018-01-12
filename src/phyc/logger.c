@@ -176,7 +176,11 @@ struct Logger* new_logger_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	logger->log = _log;
+	json_node* format_node = get_json_node(node, "format");
 	logger->format = NULL;
+	if (format_node != NULL) {
+		logger->format = String_clone(format_node->key);
+	}
 	return logger;
 }
 
@@ -188,5 +192,6 @@ void free_Logger(struct Logger* logger){
 		fclose(logger->file);
 	}
 	if(logger->model_count > 0) free(logger->models);
+	if (logger->format != NULL) free(logger->format);
 	free(logger);
 }

@@ -120,18 +120,18 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	
 	if(tlk->update){
-//		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
-//			if (tlk->update_nodes[i]) {
-//				double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, i));
-//				tlk->node_upper = Tree_node(tlk->tree, i);
-//				tlk->use_upper = true;
-//				//					printf("+ %d %f\n", i, lk);
-//				tlk->update_nodes[i] = false;
-//				return lk;
-//			}
-//		}
-					SingleTreeLikelihood_update_all_nodes(tlk);
-
+		//		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+		//			if (tlk->update_nodes[i]) {
+		//				double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, i));
+		//				tlk->node_upper = Tree_node(tlk->tree, i);
+		//				tlk->use_upper = true;
+		//				//					printf("+ %d %f\n", i, lk);
+		//				tlk->update_nodes[i] = false;
+		//				return lk;
+		//			}
+		//		}
+		SingleTreeLikelihood_update_all_nodes(tlk);
+		
 		double logP = tlk->calculate(tlk); // make sure it is updated
 		if (isnan(logP) || isinf(logP)) {
 			return logP;
@@ -151,14 +151,71 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 	double dlogP = dlnldt_uppper(tlk, node, pattern_likelihoods, pattern_dlikelihoods);
 	if(isnan(dlogP)){
 		SingleTreeLikelihood_update_all_nodes(tlk);
-//		Tree_print_parameters(tlk->tree);
-//		printf("%f\n", tlk->calculate(tlk));
-//		printf("%f\n", Model_first_derivative(self, p, 0.001));
-//		printf("%s %f\n", p->name, p->value);
-//		exit(10);
+		//		Tree_print_parameters(tlk->tree);
+		//		printf("%f\n", tlk->calculate(tlk));
+		//		printf("%f\n", Model_first_derivative(self, p, 0.001));
+		//		printf("%s %f\n", p->name, p->value);
+		//		exit(10);
 	}
 	
 	return dlogP;
+}
+
+double _singleTreeLikelihood_d2logP(Model *self, const Parameter* p){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+	
+	
+	Node* node = NULL;
+	int i = 0;
+	for (; i < Tree_node_count(tlk->tree); i++) {
+		node = Tree_node(tlk->tree, i);
+		if (strcmp(node->distance->name, Parameter_name(p)) == 0) {
+			break;
+		}
+	}
+	
+	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
+	
+	if(tlk->update){
+		//		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+		//			if (tlk->update_nodes[i]) {
+		//				double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, i));
+		//				tlk->node_upper = Tree_node(tlk->tree, i);
+		//				tlk->use_upper = true;
+		//				//					printf("+ %d %f\n", i, lk);
+		//				tlk->update_nodes[i] = false;
+		//				return lk;
+		//			}
+		//		}
+		SingleTreeLikelihood_update_all_nodes(tlk);
+		
+		double logP = tlk->calculate(tlk); // make sure it is updated
+		if (isnan(logP) || isinf(logP)) {
+			return logP;
+		}
+		calculate_upper(tlk, Tree_root(tlk->tree));
+		
+		for (int i = 0; i < tlk->sp->count; i++) {
+			pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
+		}
+	}
+	if(Tree_node_count(tlk->tree) == i){
+		return Model_second_derivative(self, p, NULL, 0.001);
+	}
+	double* pattern_dlikelihoods = tlk->pattern_lk + 2*tlk->sp->count;
+	calculate_dldt_uppper(tlk, node, pattern_dlikelihoods);
+	
+	double d2logP = d2lnldt2_uppper(tlk, node, pattern_likelihoods, pattern_dlikelihoods);
+	if(isnan(d2logP)){
+		SingleTreeLikelihood_update_all_nodes(tlk);
+		//		Tree_print_parameters(tlk->tree);
+		//		printf("%f\n", tlk->calculate(tlk));
+		//		printf("%f\n", Model_first_derivative(self, p, 0.001));
+		//		printf("%s %f\n", p->name, p->value);
+		//		exit(10);
+	}
+	
+	return d2logP;
 }
 
 static void _treeLikelihood_model_free( Model *self ){

@@ -28,6 +28,7 @@ struct _DistributionModel{
 	double* tempp;
 	double (*logP)(DistributionModel*);
 	double (*dlogP)(DistributionModel*, const Parameter*);
+	double (*d2logP)(DistributionModel*, const Parameter*);
 	void (*free)(DistributionModel*);
 	DistributionModel* (*clone)(DistributionModel*);
 	void* data;

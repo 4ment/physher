@@ -42,6 +42,22 @@ double logaddexp(double x, double y){
 	return y + log1p(exp(tmp));
 }
 
+double logFactorial(int n){
+	double logF = 0;
+	for (int i = 2; i <= n; i++) {
+		logF += log(i);
+	}
+	return logF;
+}
+
+double logDoubleFactorial(int n){
+	double logF = 0;
+	for (int i = n; i > 1; i-=2) {
+		logF += log(i);
+	}
+	return logF;
+}
+
 #pragma mark -
 #pragma mark double
 

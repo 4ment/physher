@@ -972,6 +972,7 @@ DiscreteParameter* new_DiscreteParameter_from_json(json_node* node, Hashtable* h
 static void dummyUpdate( Model *self, Model *model, int index ){}
 static double _logP(Model *model){return 0;}
 static double _dlogP(Model *model, const Parameter* p){return 0;}
+static double _d2logP(Model *model, const Parameter* p){return 0;}
 static void _dummy_reset(Model* m){}
 #pragma mark -
 
@@ -984,6 +985,7 @@ Model * new_Model( const char *type, const char *name, void *obj ){
 	model->obj = obj;
 	model->logP = _logP;
 	model->dlogP = _dlogP;
+	model->d2logP = _dlogP;
 	model->update  = dummyUpdate;
 	model->free = free_Model;
 	model->data = NULL;
