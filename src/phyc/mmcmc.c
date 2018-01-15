@@ -8,9 +8,12 @@
 
 #include "mmcmc.h"
 
+#include <string.h>
+
 #include "matrix.h"
 #include "filereader.h"
 #include "marginal.h"
+#include "beta.h"
 
 Vector* read_log_last_column( const char *filename, size_t burnin ){
 	int count = 0;
@@ -67,13 +70,13 @@ void mmcmc_run(MMCMC* mmcmc){
 				mcmc->logs[j]->filename = StringBuffer_tochar(buffer);
 			}
 		}
-		printf("Temperature: %f - %s\n", mmcmc->tempratures[i],buffer->c);
-		mcmc->chain_temperature = mmcmc->tempratures[i];
+		printf("Temperature: %f - %s\n", mmcmc->temperatures[i],buffer->c);
+		mcmc->chain_temperature = mmcmc->temperatures[i];
 		mcmc->run(mcmc);
 		
 		// saved in increasing order
 		lls[mmcmc->temperature_count-i-1] = read_log_last_column(buffer->c, mmcmc->burnin);
-		temperatures[mmcmc->temperature_count-i-1] = mmcmc->tempratures[i];
+		temperatures[mmcmc->temperature_count-i-1] = mmcmc->temperatures[i];
 			
 	}
 
@@ -119,15 +122,52 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	MMCMC* mmcmc = malloc(sizeof(MMCMC));
 	json_node* mcmc_node = get_json_node(node, "mcmc");
 	json_node* temp_node = get_json_node(node, "temperatures");
+	json_node* steps_node = get_json_node(node, "steps");
 	
 	mmcmc->burnin = get_json_node_value_double(node, "burnin", 0);
 	
-	if (temp_node->node_type == MJSON_ARRAY) {
-		mmcmc->temperature_count = temp_node->child_count;
-		mmcmc->tempratures = dvector(mmcmc->temperature_count);
-		for (int i = 0; i < temp_node->child_count; i++) {
-			mmcmc->tempratures[i] = atof((char*)temp_node->children[i]->value);
+	if (temp_node != NULL) {
+		if (temp_node->node_type != MJSON_ARRAY) {
+			fprintf(stderr, "attribute `temperatures` should be an array\n\n");
+			exit(1);
 		}
+		mmcmc->temperature_count = temp_node->child_count;
+		mmcmc->temperatures = dvector(mmcmc->temperature_count);
+		for (int i = 0; i < temp_node->child_count; i++) {
+			mmcmc->temperatures[i] = atof((char*)temp_node->children[i]->value);
+		}
+	}
+	else if (steps_node != NULL){
+		char* dist_string = get_json_node_value_string(node, "distribution");
+		mmcmc->temperature_count = get_json_node_value_size_t(node, "steps", 100);
+		mmcmc->temperatures = dvector(mmcmc->temperature_count);
+		mmcmc->temperatures[mmcmc->temperature_count-1] = 1;
+		mmcmc->temperatures[0] = 0;
+		
+		if(strcasecmp(dist_string, "beta") == 0){
+			double alpha = get_json_node_value_double(node, "alpha", 0.3);
+			double beta = get_json_node_value_double(node, "beta", 1.0);
+			double value = 1;
+			double incr = 1.0/(mmcmc->temperature_count-1);
+			for (size_t i = mmcmc->temperature_count-2; i > 0; i--) {
+				value -= incr;
+				mmcmc->temperatures[i] = invbetai(value, alpha, beta);
+			}
+		}
+		else if(strcasecmp(dist_string, "uniform") == 0){
+			double incr = 1.0/(mmcmc->temperature_count-1);
+			for (size_t i = mmcmc->temperature_count-2; i > 0; i--) {
+				mmcmc->temperatures[i] = mmcmc->temperatures[i+1] - incr;
+			}
+		}
+		else{
+			fprintf(stderr, "Attribute `distribution` should be specified (`uniform` or `beta`)\n\n");
+			exit(1);
+		}
+	}
+	else{
+		fprintf(stderr, "Attribute `temperatures` or `steps` should be specified\n\n");
+		exit(1);
 	}
 	mmcmc->mcmc = new_MCMC_from_json(mcmc_node, hash);
 	mmcmc->run = mmcmc_run;
@@ -136,6 +176,6 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 
 void free_MMCMC(MMCMC* mmcmc){
 	free_MCMC(mmcmc->mcmc);
-	free(mmcmc->tempratures);
+	free(mmcmc->temperatures);
 	free(mmcmc);
 }

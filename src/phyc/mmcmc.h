@@ -13,7 +13,7 @@
 
 typedef struct MMCMC{
 	MCMC* mcmc;
-	double* tempratures;
+	double* temperatures;
 	size_t temperature_count;
 	size_t burnin;
 	void (*run)(struct MMCMC*);
