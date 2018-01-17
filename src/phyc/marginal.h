@@ -13,6 +13,8 @@
 
 #include "matrix.h"
 
+double log_arithmetic_mean(const Vector** vecvalues);
+
 double log_harmonic_mean(const Vector** values);
 
 double log_marginal_stepping_stone(const Vector** values, size_t temp_count, const double* temperatures, double* lrssk);

@@ -17,6 +17,9 @@ typedef struct MMCMC{
 	size_t temperature_count;
 	size_t burnin;
 	void (*run)(struct MMCMC*);
+	// for marginal likelihood calculation
+	char* log_file;
+	Parameters* x; // for bridge sampling
 } MMCMC;
 
 

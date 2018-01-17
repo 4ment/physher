@@ -14,6 +14,13 @@
 #include "filereader.h"
 #include "marginal.h"
 #include "beta.h"
+#include "statistics.h"
+#include "descriptivestats.h"
+
+#include <gsl/gsl_randist.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_linalg.h>
 
 Vector* read_log_last_column( const char *filename, size_t burnin ){
 	int count = 0;
@@ -45,6 +52,249 @@ Vector* read_log_last_column( const char *filename, size_t burnin ){
 	return  vec;
 }
 
+Vector** read_log_except_last_column( const char *filename, size_t burnin, size_t* count ){
+	char *ptr = NULL;
+	double *temp = NULL;
+	int l;
+	size_t capacity = 1000;
+	*count = 0;
+	Vector** vecs = malloc(capacity*sizeof(Vector*));
+	size_t sample = 0;
+
+	FileReader *reader = new_FileReader(filename, 1000);
+	reader->read_line(reader);// discard header
+	
+	while ( reader->read_line(reader) ) {
+		StringBuffer_trim(reader->buffer);
+		
+		if ( reader->buffer->length == 0){
+			continue;
+		}
+		if ( sample >= burnin){
+			if(*count == capacity){
+				capacity *= 2;
+				vecs = realloc(vecs, capacity*sizeof(Vector*));
+			}
+			ptr = reader->line;
+			l = 0;
+			temp = String_split_char_double( ptr, '\t', &l );
+			vecs[*count] = new_Vector(l-4);
+			for (int i = 3; i < l-1; i++) {
+				Vector_push(vecs[*count], temp[i]);
+			}
+			free(temp);
+			(*count)++;
+		}
+		sample++;
+	}
+	free_FileReader(reader);
+	vecs = realloc(vecs, *count*sizeof(Vector*));
+	return  vecs;
+}
+
+Vector** sample_multivariate_normal(gsl_rng *rng, size_t n, const double* means, const double* covar, size_t dim){
+	Vector** values = malloc(n*sizeof(Vector*));
+	gsl_vector * mu = gsl_vector_calloc(dim);
+	gsl_matrix * Sigma = gsl_matrix_calloc(dim, dim);
+	gsl_matrix * L = gsl_matrix_calloc(dim, dim);
+	gsl_vector * samples = gsl_vector_calloc(dim);
+	
+	for (int i = 0; i < dim; i++) {
+		gsl_vector_set(mu, i, means[i]);
+		for (int j = 0; j < dim; j++) {
+			gsl_matrix_set(Sigma, i, j, covar[i*dim+j]);
+		}
+	}
+	
+	gsl_matrix_memcpy(L, Sigma);
+	gsl_linalg_cholesky_decomp1(L);
+	
+	for (int i = 0; i < n; i++) {
+		gsl_ran_multivariate_gaussian(rng, mu, L, samples);
+		values[i] = new_Vector(dim);
+		for (int j = 0; j < dim; j++) {
+			Vector_push(values[i], gsl_vector_get(samples, j));
+		}
+	}
+	
+	gsl_vector_free(mu);
+	gsl_vector_free(samples);
+	gsl_matrix_free(L);
+	gsl_matrix_free(Sigma);
+	return values;
+}
+
+double* multivariate_normal_logP(Vector** values, size_t n, const double* means, const double* covar, size_t dim){
+	double* logPs = dvector(n);
+	gsl_vector * mu = gsl_vector_calloc(dim);
+	gsl_matrix * Sigma = gsl_matrix_calloc(dim, dim);
+	gsl_matrix * L = gsl_matrix_calloc(dim, dim);
+	gsl_vector * x = gsl_vector_calloc(dim);
+	gsl_vector * work = gsl_vector_calloc(dim);
+	
+	for (int i = 0; i < dim; i++) {
+		gsl_vector_set(mu, i, means[i]);
+		for (int j = 0; j < dim; j++) {
+			gsl_matrix_set(Sigma, i, j, covar[i*dim+j]);
+		}
+	}
+	
+	gsl_matrix_memcpy(L, Sigma);
+	gsl_linalg_cholesky_decomp1(L);
+	
+	for (int i = 0; i < n; i++) {
+		double* vv = Vector_data(values[i]);
+		for (int j = 0; j < dim; j++) {
+			gsl_vector_set(x, j,  vv[j]);
+		}
+		gsl_ran_multivariate_gaussian_log_pdf (x,  mu, L, &logPs[i], work);
+	}
+	
+	gsl_vector_free(mu);
+	gsl_matrix_free(L);
+	gsl_matrix_free(Sigma);
+	gsl_vector_free(x);
+	gsl_vector_free(work);
+	return logPs;
+}
+
+void bridge_sampling(MMCMC*mmcmc, const char* filename, double guess, const Vector** lls){
+	size_t count = 0;
+	Vector** params = read_log_except_last_column(filename, mmcmc->burnin, &count);
+	
+	size_t aN1 = Vector_length(lls[mmcmc->temperature_count-1])/2;
+	size_t bN1 = Vector_length(lls[mmcmc->temperature_count-1]) - aN1;
+	size_t N2 = aN1;
+	double* l1s = dvector(bN1);
+	double* l2s = dvector(N2);
+	size_t paramCount = Vector_length(params[0]);
+	gsl_rng * rng = gsl_rng_alloc (gsl_rng_taus);
+	gsl_rng_set(rng, 2);
+	
+	// First batch
+	Vector** params_transformed = malloc(paramCount*sizeof(Vector*));
+	double* means = dvector(paramCount);
+	double* covariances = dvector(paramCount*paramCount);
+	// Transform parameters and calculate mean for each vector of parameter
+	// transposed log(params)
+	for (int i = 0; i < paramCount; i++) {
+		params_transformed[i] = new_Vector(aN1);
+		for (int j = 0; j < aN1; j++) {
+			Vector_push(params_transformed[i], log(Vector_at(params[j], i)));
+		}
+		means[i] = mean(Vector_data(params_transformed[i]), aN1);
+	}
+	
+	
+	// Calculate covariance matrix
+	for (int i = 0; i < paramCount; i++) {
+		double* pp = Vector_data(params_transformed[i]);
+		covariances[i*paramCount+i] = variance(pp, aN1, means[i]);
+		for (int j = i+1; j < paramCount; j++) {
+			double* pp2 = Vector_data(params_transformed[j]);
+			covariances[i*paramCount+j] = covariances[j*paramCount+i] = covariance(pp, pp2, aN1);
+		}
+	}
+
+	// sample N2 samples from multivariate normal
+	Vector** samples = sample_multivariate_normal(rng, N2, means, covariances, paramCount);
+	
+	// Calculate probability of samples
+	double* proposal_logPs = multivariate_normal_logP(samples, N2, means, covariances, paramCount);
+	Parameters* parameters = mmcmc->x;
+	Model* posterior = mmcmc->mcmc->model;
+
+	for (int i = 0; i < N2; i++) {
+		l2s[i] = 0;
+		for (int j = 0; j < paramCount; j++) {
+			l2s[i] += Vector_at(samples[i], j); // change of variable
+			Parameters_set_value(parameters, j, exp(Vector_at(samples[i], j)));
+		}
+		l2s[i] += posterior->logP(posterior) - proposal_logPs[i];
+	}
+	
+	// Second batch
+	
+	Vector** params_transformed2 = malloc(bN1*sizeof(Vector*));
+	// Transform parameters for each vector of parameters
+	for (int i = 0; i < bN1; i++) {
+		params_transformed2[i] = new_Vector(paramCount);
+		for (int j = 0; j < paramCount; j++) {
+			Vector_push(params_transformed2[i], log(Vector_at(params[i+aN1], j)));
+		}
+	}
+	
+	// Calculate probability of samples
+	double* proposal_logPs2 = multivariate_normal_logP(params_transformed2, bN1, means, covariances, paramCount);
+
+	for (int i = 0; i < bN1; i++) {
+		l1s[i] = 0;
+		for (int j = 0; j < Parameters_count(parameters); j++) {
+			l1s[i] += Vector_at(params_transformed2[i], j);
+//			Parameters_set_value(parameters, j, exp(Vector_at(params_transformed2[i], j)));
+			Parameters_set_value(parameters, j, Vector_at(params[i+aN1], j));
+		}
+		l1s[i] += posterior->logP(posterior) - proposal_logPs2[i];
+//		printf("%f\n", l1s[i]);
+	}
+	
+	double s1 = (double)bN1/(bN1+N2);
+	double s2 = (double)N2/(bN1+N2);
+
+	
+	double marg = guess;
+	double lmarg = exp(guess);
+//	while (1) {
+//		double s2marg = s2*marg;
+//		double num = 0;
+//		for (int i = 0; i < N2; i++) {
+//			num += exp(l2s[i])/(s1*exp(l2s[i]) + s2marg);
+//		}
+//		num /= N2;
+//		printf("num %e\n", num);
+//		double denom = 0;
+//		for (int i = 0; i < bN1; i++) {
+//			denom += 1.0/(s1*exp(l1s[i]) + s2marg);
+//		}
+//		denom /= bN1;
+//		printf("denom %e\n", denom);
+//		double marg2 = num/denom;
+//		printf("%f %f\n", marg, marg2);
+//		if(1){
+//			marg = marg2;
+//			break;
+//		}
+//		marg = marg2;
+//	}
+	double lstar = dmedian(l1s, aN1);
+	marg = guess - lstar;
+	double r = exp(guess);
+	while (1) {
+		double rr = r;
+		double num = 0;
+		for (int i = 0; i < N2; i++) {
+			num += exp(l2s[i]-lstar)/(s1*exp(l2s[i]-lstar) + s2*r);
+		}
+		num /= N2;
+//		printf("num %e\n", num);
+		double denom = 0;
+		for (int i = 0; i < bN1; i++) {
+			denom += 1.0/(s1*exp(l1s[i]-lstar) + s2*r);
+		}
+		denom /= bN1;
+//		printf("denom %e\n", denom);
+		double r = num/denom;
+//		printf("%f %f\n", marg, marg2);
+		if(1){
+			rr = r;
+//			break;
+		}
+
+		printf("marg %f\n", log(r)+lstar);
+	}
+	gsl_rng_free(rng);
+}
+
 void mmcmc_run(MMCMC* mmcmc){
 	StringBuffer* buffer = new_StringBuffer(10);
 	MCMC* mcmc = mmcmc->mcmc;
@@ -72,15 +322,28 @@ void mmcmc_run(MMCMC* mmcmc){
 		}
 		printf("Temperature: %f - %s\n", mmcmc->temperatures[i],buffer->c);
 		mcmc->chain_temperature = mmcmc->temperatures[i];
-		mcmc->run(mcmc);
+//		mcmc->run(mcmc);
 		
 		// saved in increasing order
-		lls[mmcmc->temperature_count-i-1] = read_log_last_column(buffer->c, mmcmc->burnin);
-		temperatures[mmcmc->temperature_count-i-1] = mmcmc->temperatures[i];
-			
+		for (int j = 0; j < mcmc->log_count; j++) {
+			if(filenames[j] != NULL && strcmp(mmcmc->log_file, filenames[j]) == 0){
+				StringBuffer_empty(buffer);
+				StringBuffer_append_format(buffer, "%d%s",i, filenames[j]);
+				lls[mmcmc->temperature_count-i-1] = read_log_last_column(buffer->c, mmcmc->burnin);
+				temperatures[mmcmc->temperature_count-i-1] = mmcmc->temperatures[i];
+			}
+		}
 	}
 
-	printf("Harmonic mean: %f\n", log_harmonic_mean(lls[mmcmc->temperature_count-1]));
+	printf("Arithmetic mean: %f\n", log_harmonic_mean(lls[0]));
+	
+	double logHM = log_harmonic_mean(lls[mmcmc->temperature_count-1]);
+	printf("Harmonic mean: %f\n", logHM);
+	
+	
+	StringBuffer_empty(buffer);
+	StringBuffer_append_format(buffer, "%d%s",0, mmcmc->log_file);
+	bridge_sampling(mmcmc, buffer->c, logHM, lls);
 	
 	double lrss = log_marginal_stepping_stone(lls, mmcmc->temperature_count, temperatures, lrssk);
 	printf("Stepping stone marginal likelihood: %f\n", lrss);
@@ -171,11 +434,27 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	}
 	mmcmc->mcmc = new_MCMC_from_json(mcmc_node, hash);
 	mmcmc->run = mmcmc_run;
+	
+
+	mmcmc->x = NULL;
+	json_node* x_node = get_json_node(node, "x");
+	printf("sdfasd\n");
+	char* lfile = get_json_node_value_string(node, "log_file");
+	printf("%s\n", lfile);
+	if (x_node != NULL) {
+		 mmcmc->x = new_Parameters(1);
+		get_parameters_references2(node, hash, mmcmc->x, "x");
+	}
+	if(lfile != NULL){
+		mmcmc->log_file = String_clone(lfile);
+	}
 	return mmcmc;
 }
 
 void free_MMCMC(MMCMC* mmcmc){
 	free_MCMC(mmcmc->mcmc);
 	free(mmcmc->temperatures);
+	free_Parameters(mmcmc->x);
+	if(mmcmc->log_file != NULL) free(mmcmc->log_file);
 	free(mmcmc);
 }
