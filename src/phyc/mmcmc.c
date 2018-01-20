@@ -158,18 +158,16 @@ double* multivariate_normal_logP(Vector** values, size_t n, const double* means,
 	return logPs;
 }
 
-void bridge_sampling(MMCMC*mmcmc, const char* filename, double guess, const Vector** lls){
+double bridge_sampling(MMCMC*mmcmc, const char* filename, double guess){
 	size_t count = 0;
 	Vector** params = read_log_except_last_column(filename, mmcmc->burnin, &count);
-	
-	size_t aN1 = Vector_length(lls[mmcmc->temperature_count-1])/2;
-	size_t bN1 = Vector_length(lls[mmcmc->temperature_count-1]) - aN1;
+
+	size_t aN1 = count/2;
+	size_t bN1 = count - aN1;
 	size_t N2 = aN1;
 	double* l1s = dvector(bN1);
 	double* l2s = dvector(N2);
 	size_t paramCount = Vector_length(params[0]);
-	gsl_rng * rng = gsl_rng_alloc (gsl_rng_taus);
-	gsl_rng_set(rng, 2);
 	
 	// First batch
 	Vector** params_transformed = malloc(paramCount*sizeof(Vector*));
@@ -192,12 +190,12 @@ void bridge_sampling(MMCMC*mmcmc, const char* filename, double guess, const Vect
 		covariances[i*paramCount+i] = variance(pp, aN1, means[i]);
 		for (int j = i+1; j < paramCount; j++) {
 			double* pp2 = Vector_data(params_transformed[j]);
-			covariances[i*paramCount+j] = covariances[j*paramCount+i] = covariance(pp, pp2, aN1);
+			covariances[i*paramCount+j] = covariances[j*paramCount+i] = covariance(pp, pp2, means[i], means[j], aN1);
 		}
 	}
 
 	// sample N2 samples from multivariate normal
-	Vector** samples = sample_multivariate_normal(rng, N2, means, covariances, paramCount);
+	Vector** samples = sample_multivariate_normal(mmcmc->rng, N2, means, covariances, paramCount);
 	
 	// Calculate probability of samples
 	double* proposal_logPs = multivariate_normal_logP(samples, N2, means, covariances, paramCount);
@@ -235,41 +233,14 @@ void bridge_sampling(MMCMC*mmcmc, const char* filename, double guess, const Vect
 			Parameters_set_value(parameters, j, Vector_at(params[i+aN1], j));
 		}
 		l1s[i] += posterior->logP(posterior) - proposal_logPs2[i];
-//		printf("%f\n", l1s[i]);
 	}
 	
 	double s1 = (double)bN1/(bN1+N2);
 	double s2 = (double)N2/(bN1+N2);
 
-	
-	double marg = guess;
-	double lmarg = exp(guess);
-//	while (1) {
-//		double s2marg = s2*marg;
-//		double num = 0;
-//		for (int i = 0; i < N2; i++) {
-//			num += exp(l2s[i])/(s1*exp(l2s[i]) + s2marg);
-//		}
-//		num /= N2;
-//		printf("num %e\n", num);
-//		double denom = 0;
-//		for (int i = 0; i < bN1; i++) {
-//			denom += 1.0/(s1*exp(l1s[i]) + s2marg);
-//		}
-//		denom /= bN1;
-//		printf("denom %e\n", denom);
-//		double marg2 = num/denom;
-//		printf("%f %f\n", marg, marg2);
-//		if(1){
-//			marg = marg2;
-//			break;
-//		}
-//		marg = marg2;
-//	}
 	double lstar = dmedian(l1s, aN1);
-	marg = guess - lstar;
-	double r = exp(guess);
-	while (1) {
+	double r = exp(guess-lstar);
+	for(size_t i = 0; i < 10000; i++) {
 		double rr = r;
 		double num = 0;
 		for (int i = 0; i < N2; i++) {
@@ -283,16 +254,39 @@ void bridge_sampling(MMCMC*mmcmc, const char* filename, double guess, const Vect
 		}
 		denom /= bN1;
 //		printf("denom %e\n", denom);
-		double r = num/denom;
+		r = num/denom;
 //		printf("%f %f\n", marg, marg2);
-		if(1){
-			rr = r;
-//			break;
+		if(fabs(log(r)-log(rr)) < 1.0e-4){
+			break;
 		}
-
-		printf("marg %f\n", log(r)+lstar);
+		rr = r;
+		printf("marg %f %f %f\n", log(r)+lstar, lstar, r);
 	}
-	gsl_rng_free(rng);
+	
+	for (int i = 0; i < bN1; i++) {
+		free_Vector(params_transformed2[i]);
+	}
+	for (int i = 0; i < paramCount; i++) {
+		free_Vector(params_transformed[i]);
+	}
+	for (int i = 0; i < N2; i++) {
+		free_Vector(samples[i]);
+	}
+	for (int i = 0; i < count; i++) {
+		free_Vector(params[i]);
+	}
+	free(params_transformed);
+	free(params_transformed2);
+	free(proposal_logPs);
+	free(proposal_logPs2);
+	free(means);
+	free(covariances);
+	free(l1s);
+	free(l2s);
+	free(params);
+	free(samples);
+	
+	return log(r)+lstar;
 }
 
 void mmcmc_run(MMCMC* mmcmc){
@@ -335,7 +329,8 @@ void mmcmc_run(MMCMC* mmcmc){
 		}
 	}
 
-	printf("Arithmetic mean: %f\n", log_harmonic_mean(lls[0]));
+	double logAM = log_arithmetic_mean(lls[mmcmc->temperature_count-1]);
+	printf("Arithmetic mean: %f\n", logAM);
 	
 	double logHM = log_harmonic_mean(lls[mmcmc->temperature_count-1]);
 	printf("Harmonic mean: %f\n", logHM);
@@ -343,7 +338,8 @@ void mmcmc_run(MMCMC* mmcmc){
 	
 	StringBuffer_empty(buffer);
 	StringBuffer_append_format(buffer, "%d%s",0, mmcmc->log_file);
-	bridge_sampling(mmcmc, buffer->c, logHM, lls);
+	double logBS = bridge_sampling(mmcmc, buffer->c, logHM);
+	printf("Bridge sampling: %f\n", logBS);
 	
 	double lrss = log_marginal_stepping_stone(lls, mmcmc->temperature_count, temperatures, lrssk);
 	printf("Stepping stone marginal likelihood: %f\n", lrss);
@@ -438,9 +434,7 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 
 	mmcmc->x = NULL;
 	json_node* x_node = get_json_node(node, "x");
-	printf("sdfasd\n");
 	char* lfile = get_json_node_value_string(node, "log_file");
-	printf("%s\n", lfile);
 	if (x_node != NULL) {
 		 mmcmc->x = new_Parameters(1);
 		get_parameters_references2(node, hash, mmcmc->x, "x");
@@ -448,6 +442,7 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	if(lfile != NULL){
 		mmcmc->log_file = String_clone(lfile);
 	}
+	mmcmc->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return mmcmc;
 }
 

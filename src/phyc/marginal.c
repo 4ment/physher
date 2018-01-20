@@ -21,7 +21,7 @@ double log_arithmetic_mean(const Vector** vecvalues){
 	double* values = Vector_data(vecvalues);
 	size_t size = Vector_length(vecvalues);
 	for(int i = 0; i < size; i++){
-		sum += logaddexp(sum, values[i]);
+		sum = logaddexp(sum, values[i]);
 	}
 	return sum - log(size);
 }

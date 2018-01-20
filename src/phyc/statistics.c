@@ -55,21 +55,13 @@ float fcorrelation( float *x, float *y, int dim ){
 	return sumSqDevXY / sqrt(denom);
 }
 
-double covariance( const double *x, const double *y, int dim ){
+double covariance( const double *x, const double *y, double meanX, double meanY, int dim ){
 	double cor = 0;
-	double meanX = 0;
-	double meanY = 0;
-	for( int i = 0; i < dim; i++ ){
-		meanX  += x[i];
-		meanY  += y[i];
-	}
-	meanX /= dim;
-	meanY /= dim;
 	
 	for ( int i = 0; i < dim; i++ ) {
 		cor += (x[i] - meanX)*(y[i] - meanY);
 	}
-	return cor / dim;
+	return cor / (dim-1);
 }
 
 double mean( const double *x, int dim ){

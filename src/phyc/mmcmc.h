@@ -11,6 +11,8 @@
 
 #include "mcmc.h"
 
+#include <gsl/gsl_rng.h>
+
 typedef struct MMCMC{
 	MCMC* mcmc;
 	double* temperatures;
@@ -20,6 +22,7 @@ typedef struct MMCMC{
 	// for marginal likelihood calculation
 	char* log_file;
 	Parameters* x; // for bridge sampling
+	gsl_rng* rng;
 } MMCMC;
 
 

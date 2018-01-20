@@ -21,7 +21,7 @@
 
 double correlation( double *x, double *y, int dim );
 
-double covariance( const double *x, const double *y, int dim );
+double covariance( const double *x, const double *y, double meanX, double meanY, int dim );
 
 double mean( const double *x, int dim );
 
