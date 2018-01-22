@@ -26,6 +26,7 @@ typedef struct Log{
 	void(*finalize)(struct Log* logger);
 	void(*write)(struct Log* logger, size_t);
 	void(*write_with)(struct Log* logger, size_t, const char*);
+	bool cpo;
 }Log;
 
 typedef struct MCMC{

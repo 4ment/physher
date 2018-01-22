@@ -35,6 +35,17 @@ void log_log(Log* logger, size_t iter){
 	fprintf(logger->file, "\n");
 }
 
+void log_log_cpo(Log* logger, size_t iter){
+	fprintf(logger->file, "%zu", iter);
+	Model* treelikelihood = logger->models[0];
+	SingleTreeLikelihood* tlk = treelikelihood->obj;
+	
+	for (int i = 0; i < tlk->sp->count; i++) {
+		fprintf(logger->file, "\t%e", tlk->pattern_lk[i]);
+	}
+	fprintf(logger->file, "\n");
+}
+
 void log_log_with(Log* logger, size_t iter, const char* more){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
@@ -95,6 +106,12 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	}
 	
 	json_node* models_node = get_json_node(node, "models");
+	logger->cpo = get_json_node_value_bool(node, "cpo", false);
+	
+	if (logger->cpo) {
+		logger->write = log_log_cpo;
+	}
+	
 	logger->model_count = 0;
 	logger->models = NULL;
 	if (models_node != NULL) {
@@ -171,24 +188,42 @@ void free_Log(Log* logger){
 }
 
 void _mcmc_write_header(Log* logger, bool save_cold_ll){
-	fprintf(logger->file, "iter");
-	for (int i = 0; i < logger->model_count; i++) {
-		fprintf(logger->file, "\t%s", logger->models[i]->name);
-	}
-	for (int i = 0; i < Parameters_count(logger->x); i++) {
-		fprintf(logger->file, "\t%s", Parameters_name(logger->x, i));
-	}
 	StringBuffer* buffer = new_StringBuffer(10);
-	for (int i = 0; i < logger->simplex_count; i++) {
-		Simplex* simplex = logger->simplexes[i]->obj;
-		for (int j = 0; j < simplex->K; j++) {
-			StringBuffer_set_string(buffer, logger->simplexes[i]->name);
-			StringBuffer_append_format(buffer, "%d", (j+1));
+	if(logger->cpo){
+		Model* treelikelihood = logger->models[0];
+		SingleTreeLikelihood* tlk = treelikelihood->obj;
+
+		for (int i = 0; i < tlk->sp->count; i++) {
+			StringBuffer_empty(buffer);
+			StringBuffer_append_format(buffer, "%f", tlk->sp->weights[i]);
+			fprintf(logger->file, "%c%s", (i == 0 ? '#': '\t'), buffer->c);
+		}
+		fprintf(logger->file, "\niter");
+		for (int i = 0; i < tlk->sp->count; i++) {
+			StringBuffer_set_string(buffer, "p");
+			StringBuffer_append_format(buffer, "%d", i);
 			fprintf(logger->file, "\t%s", buffer->c);
 		}
 	}
-	if(save_cold_ll){
-		fprintf(logger->file, "\t%s", "coldll");
+	else{
+		fprintf(logger->file, "iter");
+		for (int i = 0; i < logger->model_count; i++) {
+			fprintf(logger->file, "\t%s", logger->models[i]->name);
+		}
+		for (int i = 0; i < Parameters_count(logger->x); i++) {
+			fprintf(logger->file, "\t%s", Parameters_name(logger->x, i));
+		}
+		for (int i = 0; i < logger->simplex_count; i++) {
+			Simplex* simplex = logger->simplexes[i]->obj;
+			for (int j = 0; j < simplex->K; j++) {
+				StringBuffer_set_string(buffer, logger->simplexes[i]->name);
+				StringBuffer_append_format(buffer, "%d", (j+1));
+				fprintf(logger->file, "\t%s", buffer->c);
+			}
+		}
+		if(save_cold_ll){
+			fprintf(logger->file, "\t%s", "coldll");
+		}
 	}
 	free_StringBuffer(buffer);
 	fprintf(logger->file, "\n");

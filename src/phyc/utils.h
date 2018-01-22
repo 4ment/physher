@@ -52,6 +52,8 @@ double dmax_vector( const double *array, int n );
 
 double dmin_vector( const double *array, int n );
 
+size_t which_dmin( const double *array, size_t n );
+
 void dswap( double *a, double *b );
 
 int qsort_desc_dvector( const void *a, const void *b );

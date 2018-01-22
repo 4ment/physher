@@ -110,19 +110,22 @@ bool operator_slider(Operator* op, double* logHR){
 	double w = (random_double() - 0.5)*op->parameters[0];//slider_delta;
 	vv += w;
 	//	printf("%s %f %f ", Parameter_name(p), w, Parameter_value(p));
-	if ( vv > Parameter_upper(p) ) {
-		vv = 2.0*Parameter_upper(p) - vv;
-	}
-	else if ( vv < Parameter_lower(p ) ) {
-		vv = 2.0*Parameter_lower(p) - vv;
-	}
+	bool ok = false;
+	do{
+		if ( vv > Parameter_upper(p) ) {
+			vv = 2.0*Parameter_upper(p) - vv;
+		}
+		else if ( vv < Parameter_lower(p ) ) {
+			vv = 2.0*Parameter_lower(p) - vv;
+		}
+		else{
+			ok = true;
+		}
+	}while(!ok);
+	
 	*logHR = 0;
-	if ( vv > Parameter_upper(p) || vv < Parameter_lower(p) ) {
-		op->rejected_count++;
-		return false;
-	}
+	
 	Parameter_set_value(p, vv);
-	//	printf("%f\n", Parameter_value(p));
 	return true;
 }
 

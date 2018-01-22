@@ -85,6 +85,18 @@ double dmax_vector( const double *array, int n ){
 	return max;
 }
 
+size_t which_dmin( const double *array, size_t n ){
+	double min = array[0];
+	size_t index = 0;
+	for (size_t i = 1; i < n; i++) {
+		if( array[i] < min ){
+			min = array[i];
+			index = i;
+		}
+	}
+	return index;
+}
+
 inline void dswap( double *a, double *b ){
 	double c = *a; *a = *b; *b = c;
 }

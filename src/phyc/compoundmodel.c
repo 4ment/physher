@@ -192,7 +192,14 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 		json_node* child = distributions_node->children[i];
 		char* type = get_json_node_value_string(child, "type");
 		//printf("type %s\n", type);
-		if(strcasecmp(type, "treelikelihood") == 0){
+		if (child->node_type == MJSON_STRING) {
+			char* ref = (char*)child->value;
+			Model* model = Hashtable_get(hash, ref+1);
+			model->ref_count++;
+			cm->add(cm, model);
+			model->free(model);
+		}
+		else if(strcasecmp(type, "treelikelihood") == 0){
 			Model* likelihood = NULL;
 			if (child->node_type == MJSON_OBJECT) {
 				likelihood = new_TreeLikelihoodModel_from_json(child, hash);

@@ -98,6 +98,8 @@
 #include "phyc/mmcmc.h"
 #include "phyc/hessian.h"
 #include "phyc/vbis.h"
+#include "phyc/nest.h"
+#include "phyc/cpo.h"
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -1683,10 +1685,20 @@ int main(int argc, char* argv[]){
 			print_hessian(hessian);
 			hessian->free(hessian);
 		}
+		else if(strcasecmp(type, "cpo") == 0){
+			CPO* cpo = new_CPO_from_json(child, hash2);
+			cpo->calculate(cpo);
+			cpo->free(cpo);
+		}
 		else if(strcasecmp(type, "vbis") == 0){
 			marginal_vb_t* mvb = new_Marginal_VB_from_json(child, hash2);
 			printf("Marginal likelihood using VB: %f\n", mvb->calculate(mvb));
 			mvb->free(mvb);
+		}
+		else if(strcasecmp(type, "nest") == 0){
+			NEST* nest = new_NEST_from_json(child, hash2);
+			nest->run(nest);
+			free_NEST(nest);
 		}
 	}
 	for (int i = 0; i < model_count; i++) {

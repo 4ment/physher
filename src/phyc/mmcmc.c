@@ -16,6 +16,7 @@
 #include "beta.h"
 #include "statistics.h"
 #include "descriptivestats.h"
+#include "random.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
@@ -157,6 +158,41 @@ double* multivariate_normal_logP(Vector** values, size_t n, const double* means,
 	gsl_vector_free(work);
 	return logPs;
 }
+
+//double nested_sampling(Vector** lls, size_t count){
+//
+//	double logZ = -DBL_MAX;
+//	size_t nLogL = Vector_length(lls[0]);
+//	double* logL = clone_dvector(Vector_data(lls[0]), nLogL);
+//	double N = nLogL;
+//	int j = count - 1;
+//	double logw = log(1.0 - exp(-1.0/N));
+//	
+//	for (int i = 1; i <= j; i++) {
+//		double ii = i;
+//		size_t worst = which_dmin(logL, nLogL);
+//		double lw = logL[worst] + logw - (ii-1.0)/N;
+//		logZ = logaddexp(logZ, lw);
+//		printf("%f %lu %f\n", logZ, worst, logL[worst]);
+//
+//		while (1) {
+//			size_t index = random_int(nLogL);
+//			if (Vector_at(lls[i], index) > logL[worst]) {
+//				logL[worst] = Vector_at(lls[i], index);
+//				break;
+//			}
+//		}
+//	}
+//	double sum = -DBL_MAX;
+//	for (int i = 0; i < nLogL; i++) {
+//		sum = logaddexp(sum, logL[i]);
+//	}
+////	print_dvector(logL, nLogL); 
+//	printf("%e\n", sum);
+//	sum += -(double)j/N - log(N);
+//	printf("%f %f\n", sum, logZ);
+//	return logaddexp(sum, logZ);
+//}
 
 double bridge_sampling(MMCMC*mmcmc, const char* filename, double guess){
 	size_t count = 0;
@@ -316,7 +352,7 @@ void mmcmc_run(MMCMC* mmcmc){
 		}
 		printf("Temperature: %f - %s\n", mmcmc->temperatures[i],buffer->c);
 		mcmc->chain_temperature = mmcmc->temperatures[i];
-//		mcmc->run(mcmc);
+		mcmc->run(mcmc);
 		
 		// saved in increasing order
 		for (int j = 0; j < mcmc->log_count; j++) {
@@ -329,15 +365,18 @@ void mmcmc_run(MMCMC* mmcmc){
 		}
 	}
 
+	// sample from prior (temperature == 0)
+	double logNaive = log_arithmetic_mean(lls[0]);
+	printf("Naive arithmetic mean: %f\n", logNaive);
+	
 	double logAM = log_arithmetic_mean(lls[mmcmc->temperature_count-1]);
 	printf("Arithmetic mean: %f\n", logAM);
 	
 	double logHM = log_harmonic_mean(lls[mmcmc->temperature_count-1]);
 	printf("Harmonic mean: %f\n", logHM);
 	
-	
 	StringBuffer_empty(buffer);
-	StringBuffer_append_format(buffer, "%d%s",0, mmcmc->log_file);
+	StringBuffer_append_format(buffer, "%d%s", 0, mmcmc->log_file);
 	double logBS = bridge_sampling(mmcmc, buffer->c, logHM);
 	printf("Bridge sampling: %f\n", logBS);
 	
@@ -400,22 +439,23 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 		char* dist_string = get_json_node_value_string(node, "distribution");
 		mmcmc->temperature_count = get_json_node_value_size_t(node, "steps", 100);
 		mmcmc->temperatures = dvector(mmcmc->temperature_count);
-		mmcmc->temperatures[mmcmc->temperature_count-1] = 1;
-		mmcmc->temperatures[0] = 0;
+		mmcmc->temperatures[0] = 1;
+		mmcmc->temperatures[mmcmc->temperature_count-1] = 0;
 		
+		// temperatures are in descreasing order
 		if(strcasecmp(dist_string, "beta") == 0){
 			double alpha = get_json_node_value_double(node, "alpha", 0.3);
 			double beta = get_json_node_value_double(node, "beta", 1.0);
 			double value = 1;
 			double incr = 1.0/(mmcmc->temperature_count-1);
-			for (size_t i = mmcmc->temperature_count-2; i > 0; i--) {
+			for (size_t i = 1; i < mmcmc->temperature_count-1; i++) {
 				value -= incr;
 				mmcmc->temperatures[i] = invbetai(value, alpha, beta);
 			}
 		}
 		else if(strcasecmp(dist_string, "uniform") == 0){
 			double incr = 1.0/(mmcmc->temperature_count-1);
-			for (size_t i = mmcmc->temperature_count-2; i > 0; i--) {
+			for (size_t i = 1; i < mmcmc->temperature_count-1; i++) {
 				mmcmc->temperatures[i] = mmcmc->temperatures[i+1] - incr;
 			}
 		}
