@@ -17,6 +17,8 @@ double log_arithmetic_mean(const Vector** vecvalues);
 
 double log_harmonic_mean(const Vector** values);
 
+double log_stablilized_harmonic_mean(double guess, const Vector* values, double delta);
+
 double log_marginal_stepping_stone(const Vector** values, size_t temp_count, const double* temperatures, double* lrssk);
 
 double log_marginal_path_sampling(const Vector** values, size_t temp_count, const double* temperatures, double* lrpsk);

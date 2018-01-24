@@ -42,6 +42,34 @@ double log_harmonic_mean(const Vector** vecvalues){
 	return sum - denominator + log(size);
 }
 
+double log_smoothed_harmonic_mean(double logP, const Vector* values, double delta){
+	double ldelta = log(delta);
+	double l1_delta = log(1.0-delta);
+	
+	int n = Vector_length(values);
+	double num = log(n) + ldelta - l1_delta + logP;
+	double denom = log(n) + ldelta - l1_delta;
+	
+	for(size_t i = 0; i < n; i++){
+		double value = Vector_at(values, i);
+		double norm = -logaddexp(ldelta, l1_delta + value - logP);
+		num = logaddexp(num, norm + value);
+		denom = logaddexp(denom, norm);
+	}
+	return num - denom;
+}
+
+double log_stablilized_harmonic_mean(double guess, const Vector* values, double delta){
+	double logP = guess;
+	double logPp = 10;
+	for(size_t i = 0; i < 10000; i++){
+		logP = log_smoothed_harmonic_mean(logP, values, delta);
+		if(fabs(logP - logPp) < 1.e-7) break;
+		logPp = logP;
+	}
+	return logP;
+}
+
 // temperatures should be sorted in increasing order
 double log_marginal_stepping_stone(const Vector** values, size_t temp_count, const double* temperatures, double* lrssk){
 	double lrss = 0;
