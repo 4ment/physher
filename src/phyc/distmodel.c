@@ -609,7 +609,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 			Tree* tree = mtree->obj;
 			for (int i = 0; i < Tree_node_count(tree); i++) {
 				Node* n = Tree_node(tree, i);
-				if (!Node_isroot(n) && !(Node_isroot(n) && Node_right(Node_parent(n)) == n)) {
+				if (!Node_isroot(n) && !(Node_isroot(Node_parent(n)) && Node_right(Node_parent(n)) == n)) {
 					Parameters_add(x, n->distance);
 				}
 			}

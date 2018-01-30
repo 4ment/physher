@@ -21,6 +21,7 @@ struct _CompoundModel{
 	int count;
 	double (*logP)(CompoundModel*);
 	double (*dlogP)(CompoundModel*, const Parameter*);
+	double (*d2logP)(CompoundModel*, const Parameter*);
 	void (*free)(CompoundModel*);
 	void(*add)(CompoundModel*, Model*);
 	void(*move)(CompoundModel*, Model*);
