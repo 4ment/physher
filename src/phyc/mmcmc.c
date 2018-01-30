@@ -487,7 +487,7 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 }
 
 void free_MMCMC(MMCMC* mmcmc){
-	free_MCMC(mmcmc->mcmc);
+	mmcmc->mcmc->free(mmcmc->mcmc);
 	free(mmcmc->temperatures);
 	free_Parameters(mmcmc->x);
 	if(mmcmc->log_file != NULL) free(mmcmc->log_file);

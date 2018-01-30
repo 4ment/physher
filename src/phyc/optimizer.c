@@ -664,7 +664,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 			opt_set_parameters(opt, parameters);
 		}
 		opt_set_max_iteration(opt, max);
-		opt_set_tolfx(opt, precision);
+		opt_set_tolx(opt, precision);
 		opt->reset = NULL;
 	}
     // stochastic gradient

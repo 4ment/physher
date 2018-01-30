@@ -1672,7 +1672,7 @@ int main(int argc, char* argv[]){
 		else if(strcasecmp(type, "mcmc") == 0){
 			MCMC* mcmc = new_MCMC_from_json(child, hash2);
 			mcmc->run(mcmc);
-			free_MCMC(mcmc);
+			mcmc->free(mcmc);
 		}
 		else if(strcasecmp(type, "mmcmc") == 0){
 			MMCMC* mmcmc = new_MMCMC_from_json(child, hash2);
