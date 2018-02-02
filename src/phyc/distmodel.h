@@ -16,6 +16,7 @@
 #include "simplex.h"
 #include "mjson.h"
 
+#include <gsl/gsl_rng.h>
 
 struct _DistributionModel;
 typedef struct _DistributionModel DistributionModel;
@@ -29,6 +30,7 @@ struct _DistributionModel{
 	double (*logP)(DistributionModel*);
 	double (*dlogP)(DistributionModel*, const Parameter*);
 	double (*d2logP)(DistributionModel*, const Parameter*);
+	void (*sample)(DistributionModel*, double*);
 	void (*free)(DistributionModel*);
 	DistributionModel* (*clone)(DistributionModel*);
 	void* data;

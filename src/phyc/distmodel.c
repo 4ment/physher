@@ -19,6 +19,23 @@
 #include "gamma.h"
 #include "dirichlet.h"
 
+#include "filereader.h"
+#include "statistics.h"
+
+#include <gsl/gsl_randist.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_linalg.h>
+
+
+static double _DistributionModel_dlog_0(DistributionModel* dm, const Parameter* p){
+	return 0.0;
+}
+
+static double _DistributionModel_d2log_0(DistributionModel* dm, const Parameter* p){
+	return 0.0;
+}
+
 static void _free_dist(DistributionModel*dm){
 	if(dm->x != NULL) free_Parameters(dm->x);
 	if(dm->parameters != NULL) free_Parameters(dm->parameters);
@@ -313,6 +330,99 @@ DistributionModel* new_DirichletDistributionModel_with_parameters(const Paramete
 	return dm;
 }
 
+//MARK: Multivariate Normal
+
+typedef struct gsl_multivariate_normal_wrapper_t{
+	gsl_vector* mu;
+	gsl_matrix* L;
+	gsl_vector* x; // used for sampling or pdf
+	gsl_vector * work;
+	gsl_rng* rng;
+}gsl_multivariate_normal_wrapper_t;
+
+// if dst is NULL we assign directly the sampled values to dm->x
+static void _sample_multivariate_normal(DistributionModel* dm, double* dst){
+	gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
+	
+	gsl_ran_multivariate_gaussian(wrapper->rng, wrapper->mu, wrapper->L, wrapper->x);
+	
+	if(dst == NULL){
+		for (int j = 0; j < Parameters_count(dm->x); j++) {
+			Parameters_set_value(dm->x, j, gsl_vector_get(wrapper->x, j));
+		}
+	}
+	else{
+		for (int j = 0; j < Parameters_count(dm->x); j++) {
+			dst[j] = gsl_vector_get(wrapper->x, j);
+		}
+	}
+}
+
+static double _multivariate_normal_logP(DistributionModel* dm){
+	gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
+	
+	for (int j = 0; j < Parameters_count(dm->x); j++) {
+		gsl_vector_set(wrapper->x, j,  Parameters_value(dm->x, j));
+	}
+	double logP;
+	gsl_ran_multivariate_gaussian_log_pdf (wrapper->x,  wrapper->mu, wrapper->L, &logP, wrapper->work);
+
+	return logP;
+}
+
+static void _free_dist_gsl_multivariate_normal(DistributionModel*dm){
+	if(dm->x != NULL) free_Parameters(dm->x);
+	if(dm->parameters != NULL) free_Parameters(dm->parameters);
+	if(dm->tempx != NULL) free(dm->tempx);
+	if(dm->tempp != NULL) free(dm->tempp);
+	if(dm->simplex != NULL) free_Simplex(dm->simplex);
+	gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
+	gsl_vector_free(wrapper->mu);
+	gsl_vector_free(wrapper->x);
+	gsl_vector_free(wrapper->work);
+	gsl_matrix_free(wrapper->L);
+	free(wrapper);
+	free(dm);
+}
+
+DistributionModel* new_MultivariateNormalDistributionModel_with_parameters(const double* mu, const double* sigma, const Parameters* x, gsl_rng* rng){
+	DistributionModel* dm = (DistributionModel*)malloc(sizeof(DistributionModel));
+	assert(dm);
+	dm->parameters = NULL;
+	dm->x = new_Parameters(Parameters_count(x));
+	Parameters_add_parameters(dm->x, x);
+	dm->simplex = NULL;
+	dm->free = _free_dist_gsl_multivariate_normal;
+	dm->clone = _clone_dist;
+	dm->tempx = NULL;
+	dm->tempp = NULL;
+	dm->logP = _multivariate_normal_logP;
+	dm->dlogP = _DistributionModel_dlog_0;
+	dm->d2logP = _DistributionModel_d2log_0;
+	dm->sample = _sample_multivariate_normal;
+	dm->clone = _clone_dist;
+	dm->need_update = true;
+	
+	size_t dim = Parameters_count(x);
+	gsl_multivariate_normal_wrapper_t* wrapper = (gsl_multivariate_normal_wrapper_t*)malloc(sizeof(gsl_multivariate_normal_wrapper_t));
+	wrapper->mu = gsl_vector_calloc(dim);
+	//wrapper->Sigma = gsl_matrix_calloc(dim, dim);
+	wrapper->L = gsl_matrix_calloc(dim, dim);
+	wrapper->x = gsl_vector_calloc(dim);
+	wrapper->work = gsl_vector_calloc(dim);
+
+	for (int i = 0; i < dim; i++) {
+		gsl_vector_set(wrapper->mu, i, mu[i]);
+		for (int j = 0; j < dim; j++) {
+			gsl_matrix_set(wrapper->L, i, j, sigma[i*dim+j]);
+		}
+	}
+	gsl_linalg_cholesky_decomp1(wrapper->L);
+	wrapper->rng = rng;
+	dm->data = rng;
+	return dm;
+}
+
 //MARK: tree prior
 
 double DistributionModel_log_uniform_tree(DistributionModel* dm){
@@ -323,14 +433,6 @@ double DistributionModel_log_uniform_tree(DistributionModel* dm){
 		dm->need_update = false;
 	}
 	return dm->lp;
-}
-
-double DistributionModel_dlog_uniform_tree(DistributionModel* dm, const Parameter* p){
-	return 0.0;
-}
-
-double DistributionModel_d2log_uniform_tree(DistributionModel* dm, const Parameter* p){
-	return 0.0;
 }
 
 DistributionModel* new_UniformTreeDistribution(Model* tree){
@@ -345,8 +447,8 @@ DistributionModel* new_UniformTreeDistribution(Model* tree){
     dm->tempx = NULL;
     dm->tempp = NULL;
 	dm->logP = DistributionModel_log_uniform_tree;
-	dm->dlogP = DistributionModel_dlog_uniform_tree;
-	dm->d2logP = DistributionModel_d2log_uniform_tree;
+	dm->dlogP = _DistributionModel_dlog_0;
+	dm->d2logP = _DistributionModel_d2log_0;
     dm->clone = _clone_dist;
 	dm->need_update = true;
     return dm;
@@ -654,6 +756,73 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
         dm = new_UniformTreeDistribution(mtree);
         model = new_TreeDistributionModel(id, dm, mtree);
     }
+	else if(strcasecmp(d_string, "empirical") == 0){
+		char* file = get_json_node_value_string(node, "file");
+		size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
+		
+		x = new_Parameters(1);
+		get_x(node, hash, x);
+		size_t paramCount = Parameters_count(x);
+		
+		int count = 0;
+		char *ptr = NULL;
+		double *temp = NULL;
+		int l;
+		Vector** vec = malloc(sizeof(Vector*)*paramCount);
+		for(int i = 0; i < paramCount; i++){
+			vec[i] = new_Vector(1000);
+		}
+		
+		FileReader *reader = new_FileReader(file, 1000);
+		reader->read_line(reader);// discard header
+		
+		while ( reader->read_line(reader) ) {
+			StringBuffer_trim(reader->buffer);
+			
+			if ( reader->buffer->length == 0){
+				continue;
+			}
+			if ( count >= burnin){
+				ptr = reader->line;
+				l = 0;
+				temp = String_split_char_double( ptr, '\t', &l );
+				for (int i = 0; i < paramCount; i++) {
+					Vector_push(vec[i], temp[i]);
+				}
+				free(temp);
+			}
+			count++;
+		}
+		free_FileReader(reader);
+
+		int n = Vector_length(vec[0]);
+		double* mu = dvector(paramCount);
+		double* sigma = dvector(paramCount*paramCount);
+		
+		for (int i = 0; i < paramCount; i++) {
+			mu[i] = mean(Vector_data(vec[i]), n);
+		}
+		
+		// Calculate covariance matrix
+		for (int i = 0; i < paramCount; i++) {
+			double* pp = Vector_data(vec[i]);
+			sigma[i*paramCount+i] = variance(pp, n, mu[i]);
+			for (int j = i+1; j < paramCount; j++) {
+				double* pp2 = Vector_data(vec[j]);
+				sigma[i*paramCount+j] = sigma[j*paramCount+i] = covariance(pp, pp2, mu[i], mu[j], n);
+			}
+		}
+		
+		dm = new_MultivariateNormalDistributionModel_with_parameters(mu, sigma, x, Hashtable_get(hash, "RANDOM_GENERATOR!@"));
+		model = new_DistributionModel2(id, dm);
+		
+		free(mu);
+		free(sigma);
+		for (int i = 0; i < paramCount; i++) {
+			free_Vector(vec[i]);
+		}
+		free(vec);
+	}
 	else{
 		printf("%s\n", d_string);
 		exit(10);
