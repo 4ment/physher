@@ -974,6 +974,8 @@ static double _logP(Model *model){return 0;}
 static double _dlogP(Model *model, const Parameter* p){return 0;}
 static double _d2logP(Model *model, const Parameter* p){return 0;}
 static void _dummy_reset(Model* m){}
+static void _dummy_restore(Model* m){}
+static void _dummy_store(Model* m){}
 #pragma mark -
 
 
@@ -985,7 +987,7 @@ Model * new_Model( const char *type, const char *name, void *obj ){
 	model->obj = obj;
 	model->logP = _logP;
 	model->dlogP = _dlogP;
-	model->d2logP = _dlogP;
+	model->d2logP = _d2logP;
 	model->update  = dummyUpdate;
 	model->free = free_Model;
 	model->data = NULL;
@@ -994,7 +996,10 @@ Model * new_Model( const char *type, const char *name, void *obj ){
 	model->get_free_parameters = NULL;
 	model->ref_count = 1;
 	model->reset = _dummy_reset;
-	model->temperature = 1;
+	model->restore = _dummy_restore;
+	model->store = _dummy_store;
+	model->logP = 0;
+	model->lp = 0;
 	return model;
 }
 

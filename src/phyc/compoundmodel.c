@@ -126,6 +126,10 @@ static Model* _compound_model_clone( Model *self, Hashtable* hash ){
 	Model* clone = new_CompoundModel2(self->name, cmclone);
 	
 	Hashtable_add(hash, clone->name, clone);
+	clone->store = self->store;
+	clone->restore = self->restore;
+	clone->storedLogP = self->storedLogP;
+	clone->lp = self->lp;
 	return clone;
 }
 
@@ -170,10 +174,26 @@ static void _compound_model_free( Model *self ){
 	}
 }
 
+static void _compoundModel_store(Model* self){
+	self->storedLogP = self->lp;
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	for (int i = 0; i < cm->count; i++) {
+		cm->models[i]->store(cm->models[i]);
+	}
+}
+
+static void _compoundModel_restore(Model* self){
+	self->lp = self->storedLogP;
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	for (int i = 0; i < cm->count; i++) {
+		cm->models[i]->restore(cm->models[i]);
+	}
+}
 
 double _compoundModel_logP2(Model *self){
 	CompoundModel* cm = (CompoundModel*)self->obj;
-	return cm->logP(cm);
+	self->lp = cm->logP(cm);
+	return self->lp;
 }
 
 double _compoundModel_dlogP2(Model *self, const Parameter* p){
@@ -194,6 +214,8 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->free = _compound_model_free;
 	model->clone = _compound_model_clone;
 	model->get_free_parameters = _compound_model_get_free_parameters;
+	model->store = _compoundModel_store;
+	model->restore = _compoundModel_restore;
 	return model;
 }
 

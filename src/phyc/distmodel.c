@@ -454,9 +454,18 @@ DistributionModel* new_UniformTreeDistribution(Model* tree){
     return dm;
 }
 
+static void _dist_model_store(Model* self){
+	self->storedLogP = self->lp;
+}
+
+static void _dist_model_restore(Model* self){
+	self->lp = self->storedLogP;
+}
+
 static double _dist_model_logP(Model *self){
 	DistributionModel* cm = (DistributionModel*)self->obj;
-	return cm->logP(cm);
+	self->lp = cm->logP(cm);
+	return self->lp;
 }
 
 static double _dist_model_dlogP(Model *self, const Parameter* p){
@@ -564,7 +573,10 @@ static Model* _dist_model_clone( Model *self, Hashtable* hash ){
 	if(msimplexclone != NULL){
 		msimplexclone->free(msimplexclone);
 	}
-	
+	clone->store = self->store;
+	clone->restore = self->restore;
+	clone->storedLogP = self->storedLogP;
+	clone->lp = self->lp;
 	return clone;
 }
 
@@ -582,6 +594,8 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
 	model->get_free_parameters = _dist_model_get_free_parameters;
+	model->store = _dist_model_store;
+	model->restore = _dist_model_restore;
 	return model;
 }
 
@@ -595,6 +609,8 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* si
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
 	model->get_free_parameters = _dist_model_get_free_parameters;
+	model->store = _dist_model_store;
+	model->restore = _dist_model_restore;
 	return model;
 }
 
@@ -608,6 +624,8 @@ Model* new_TreeDistributionModel(const char* name, DistributionModel* dm, Model*
     model->free = _dist_model_free;
     model->clone = _dist_model_clone;
     model->get_free_parameters = _dist_model_get_free_parameters;
+	model->store = _dist_model_store;
+	model->restore = _dist_model_restore;
     return model;
 }
 

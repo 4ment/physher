@@ -50,7 +50,19 @@ void run(MCMC* mcmc){
 			mcmc->logs[i]->write(mcmc->logs[i], iter);
 		}
 	}
+	else if(false){
+		model->logP(model);
+		CompoundModel* cm = (CompoundModel*)model->obj;
+		// Un-normalized posterior
+		double posteriorLogP2 = cm->models[0]->logP(cm->models[0]);
+		double posteriorLogP = posteriorLogP2 * mcmc->chain_temperature;
+		
+		// Reference distribution
+		double referenceLogP2 = cm->models[1]->logP(cm->models[1]);
+		double referenceLogP = referenceLogP2 * (1.0 - mcmc->chain_temperature);
+	}
 	else{
+		model->logP(model);
 		CompoundModel* cm = (CompoundModel*)model->obj;
 		logP2 = cm->models[0]->logP(cm->models[0]);
 		logP = logP2 * mcmc->chain_temperature;
@@ -74,6 +86,8 @@ void run(MCMC* mcmc){
 		
 		double logHR = 0;
 		
+		model->store(model);
+		
 		op->store(op);
 		bool success = op->propose(op, &logHR);
 		
@@ -87,7 +101,20 @@ void run(MCMC* mcmc){
 		if(mcmc->chain_temperature < 0){
 			proposed_logP = model->logP(model);
 		}
+		else if(false){
+			model->logP(model);
+			CompoundModel* cm = (CompoundModel*)model->obj;
+			double posteriorLogP2 = cm->models[0]->logP(cm->models[0]);
+			double posteriorLogP = posteriorLogP2 * mcmc->chain_temperature;
+			
+			double referenceLogP2 = cm->models[1]->logP(cm->models[1]);
+			double referenceLogP = referenceLogP2 * (1.0 - mcmc->chain_temperature);
+			
+			proposed_logP = posteriorLogP + referenceLogP;
+			proposed_logP2 = posteriorLogP2 + referenceLogP2;
+		}
 		else{
+			model->logP(model);
 			CompoundModel* cm = (CompoundModel*)model->obj;
 			proposed_logP2 = cm->models[0]->logP(cm->models[0]);
 			proposed_logP = proposed_logP2 * mcmc->chain_temperature;
@@ -108,6 +135,7 @@ void run(MCMC* mcmc){
 		// reject
 		else {
 //			printf("%zu %f %f *\n", iter, logP, proposed_logP);
+			model->restore(model);
 			op->restore(op);
 			op->rejected_count++;
 		}

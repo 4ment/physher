@@ -80,6 +80,7 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 		//SingleTreeLikelihood_update_one_node(tlk, index);
 		tlk->update_nodes[index] = true;
 		tlk->update = true;
+		tlk->update_upper = true;
 	}
 	else if ( strcmp(model->type, "branchmodel") == 0 ) {
 		if(index == -1){
@@ -88,6 +89,7 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 		else{
 			tlk->update_nodes[index] = true;
 			tlk->update = true;
+			tlk->update_upper = true;
 		}
 	}
 	else if ( strcmp(model->type, "sitemodel") == 0 ) {
@@ -99,9 +101,18 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 	}
 }
 
+static void _singleTreeLikelihood_store(Model* self){
+	self->storedLogP = self->lp;
+}
+
+static void _singleTreeLikelihood_restore(Model* self){
+	self->lp = self->storedLogP;
+}
+
 double _singleTreeLikelihood_logP(Model *self){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
-	return tlk->calculate(tlk);
+	self->lp = tlk->calculate(tlk);
+	return self->lp;
 }
 
 double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
@@ -119,7 +130,7 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 	
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	
-	if(tlk->update){
+	if(tlk->update_upper){
 		//		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
 		//			if (tlk->update_nodes[i]) {
 		//				double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, i));
@@ -130,7 +141,7 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 		//				return lk;
 		//			}
 		//		}
-		SingleTreeLikelihood_update_all_nodes(tlk);
+		//SingleTreeLikelihood_update_all_nodes(tlk);
 		
 		double logP = tlk->calculate(tlk); // make sure it is updated
 		if (isnan(logP) || isinf(logP)) {
@@ -141,6 +152,7 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 		for (int i = 0; i < tlk->sp->count; i++) {
 			pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
 		}
+		tlk->update_upper = false;
 	}
 	if(Tree_node_count(tlk->tree) == i){
 		return Model_first_derivative(self, p, 0.001);
@@ -176,7 +188,7 @@ double _singleTreeLikelihood_d2logP(Model *self, const Parameter* p){
 	
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	
-	//if(tlk->update){
+	if(tlk->update_upper){
 		//		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
 		//			if (tlk->update_nodes[i]) {
 		//				double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, i));
@@ -187,7 +199,7 @@ double _singleTreeLikelihood_d2logP(Model *self, const Parameter* p){
 		//				return lk;
 		//			}
 		//		}
-		SingleTreeLikelihood_update_all_nodes(tlk);
+//		SingleTreeLikelihood_update_all_nodes(tlk);
 		
 		double logP = tlk->calculate(tlk); // make sure it is updated
 		if (isnan(logP) || isinf(logP)) {
@@ -198,7 +210,8 @@ double _singleTreeLikelihood_d2logP(Model *self, const Parameter* p){
 		for (int i = 0; i < tlk->sp->count; i++) {
 			pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
 		}
-	//}
+		tlk->update_upper = false;
+	}
 	if(Tree_node_count(tlk->tree) == i){
 		return Model_second_derivative(self, p, NULL, 0.001);
 	}
@@ -289,6 +302,10 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	mtreeclone->free(mtreeclone);
 	msmclone->free(msmclone);
 	if(mbmclone) mbmclone->free(mbmclone);
+	clone->store = self->store;
+	clone->restore = self->restore;
+	clone->storedLogP = self->storedLogP;
+	clone->lp = self->lp;
 	return clone;
 }
 
@@ -322,6 +339,8 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	model->clone = _treeLikelihood_model_clone;
 	model->get_free_parameters = _treeLikelihood_model_get_free_parameters;
 	model->data = (Model**)malloc(sizeof(Model*)*3);
+	model->store = _singleTreeLikelihood_store;
+	model->restore = _singleTreeLikelihood_restore;
 	Model** list = (Model**)model->data;
 	list[0] = tree;
 	list[1] = sm;
@@ -779,6 +798,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	
 	newtlk->update_nodes = clone_bvector( tlk->update_nodes, Tree_node_count(newtlk->tree));
 	newtlk->update = tlk->update;
+	newtlk->update_upper = tlk->update_upper;
 	
 	
 	newtlk->pattern_lk = clone_dvector( tlk->pattern_lk, tlk->pattern_lk_size );
@@ -1382,7 +1402,7 @@ void SingleTreeLikelihood_update_all_nodes( SingleTreeLikelihood *tlk ){
 		tlk->update_nodes[index] = true;
 	}
 	tlk->update = true;
-	
+	tlk->update_upper = true;
 	tlk->node_upper = NULL; // does not hurt to set it even if we don't use upper likelihoods
 }
 
@@ -1390,6 +1410,7 @@ void SingleTreeLikelihood_update_all_nodes( SingleTreeLikelihood *tlk ){
 void SingleTreeLikelihood_update_one_node( SingleTreeLikelihood *tlk, const Node *node ){
 	tlk->update_nodes[Node_id(node)] = true;
 	tlk->update = true;
+	tlk->update_upper = true;
 }
 
 // update node and its children
@@ -1405,6 +1426,7 @@ void SingleTreeLikelihood_update_three_nodes( SingleTreeLikelihood *tlk, const N
 		tlk->update_nodes[Node_id(node->left)]  = true;
 	}
 	tlk->update = true;
+	tlk->update_upper = true;
 	
 #ifdef USE_UPPER_PARTIALS
 	//tlk->node_upper = NULL;

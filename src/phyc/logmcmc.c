@@ -55,7 +55,7 @@ void _log_write_header(Log* logger, bool save_cold_ll){
 void log_log(Log* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
-		fprintf(logger->file, "\t%e", logger->models[i]->logP(logger->models[i]));
+		fprintf(logger->file, "\t%e", logger->models[i]->lp);
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
 		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));
@@ -84,7 +84,7 @@ void log_log_cpo(Log* logger, size_t iter){
 void log_log_with(Log* logger, size_t iter, const char* more){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
-		fprintf(logger->file, "\t%e", logger->models[i]->logP(logger->models[i]));
+		fprintf(logger->file, "\t%e", logger->models[i]->lp);
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
 		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));
