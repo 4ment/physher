@@ -255,11 +255,39 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			likelihood->free(likelihood);
 		}
 		else if (strcasecmp(type, "distribution") == 0){
-			Model* model = new_DistributionModel_from_json(child, hash);
-			cm->add(cm, model);
-			model->free(model);
-			char* id = get_json_node_value_string(child, "id");
-			Hashtable_add(hash, id, model);
+			Model* compound = NULL;
+			if (child->node_type == MJSON_OBJECT) {
+				compound = new_DistributionModel_from_json(child, hash);
+				char* id = get_json_node_value_string(child, "id");
+				Hashtable_add(hash, id, compound);
+			}
+			else if(child->node_type == MJSON_STRING){
+				char* ref = (char*)child->value;
+				compound = Hashtable_get(hash, ref+1);
+				compound->ref_count++;
+			}
+			else{
+				exit(10);
+			}
+			cm->add(cm, compound);
+			compound->free(compound);
+		}else if (strcasecmp(type, "compound") == 0){
+			Model* compound = NULL;
+			if (child->node_type == MJSON_OBJECT) {
+				compound = new_CompoundModel_from_json(child, hash);
+				char* id = get_json_node_value_string(child, "id");
+				Hashtable_add(hash, id, compound);
+			}
+			else if(child->node_type == MJSON_STRING){
+				char* ref = (char*)child->value;
+				compound = Hashtable_get(hash, ref+1);
+				compound->ref_count++;
+			}
+			else{
+				exit(10);
+			}
+			cm->add(cm, compound);
+			compound->free(compound);
 		}
 		else{
 			printf("json CompoundModel unknown: (%s)\n", child->type);
