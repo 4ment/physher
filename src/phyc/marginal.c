@@ -16,7 +16,7 @@
 #include "statistics.h"
 
 
-double log_arithmetic_mean(const Vector** vecvalues){
+double log_arithmetic_mean(const Vector* vecvalues){
 	double sum = -DBL_MAX;
 	double* values = Vector_data(vecvalues);
 	size_t size = Vector_length(vecvalues);
@@ -26,7 +26,7 @@ double log_arithmetic_mean(const Vector** vecvalues){
 	return sum - log(size);
 }
 
-double log_harmonic_mean(const Vector** vecvalues){
+double log_harmonic_mean(const Vector* vecvalues){
 	double sum = 0;
 	double* values = Vector_data(vecvalues);
 	size_t size = Vector_length(vecvalues);

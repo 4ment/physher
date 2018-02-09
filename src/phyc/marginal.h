@@ -13,9 +13,9 @@
 
 #include "matrix.h"
 
-double log_arithmetic_mean(const Vector** vecvalues);
+double log_arithmetic_mean(const Vector* vecvalues);
 
-double log_harmonic_mean(const Vector** values);
+double log_harmonic_mean(const Vector* values);
 
 double log_stablilized_harmonic_mean(double guess, const Vector* values, double delta);
 
