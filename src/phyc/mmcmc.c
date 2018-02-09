@@ -11,16 +11,11 @@
 #include <string.h>
 
 #include "matrix.h"
-#include "filereader.h"
-#include "marginal.h"
 #include "beta.h"
 
 void mmcmc_run(MMCMC* mmcmc){
 	StringBuffer* buffer = new_StringBuffer(10);
 	MCMC* mcmc = mmcmc->mcmc;
-	Vector** lls = malloc(mmcmc->temperature_count*sizeof(Vector*));
-	double* lrssk = malloc(mmcmc->temperature_count*sizeof(double));
-	double* temperatures = malloc(mmcmc->temperature_count*sizeof(double));
 	char** filenames = malloc(sizeof(char*)*mcmc->log_count);
 	
 	for (int j = 0; j < mcmc->log_count; j++) {
@@ -43,43 +38,6 @@ void mmcmc_run(MMCMC* mmcmc){
 		printf("Temperature: %f - %s\n", mmcmc->temperatures[i],buffer->c);
 		mcmc->chain_temperature = mmcmc->temperatures[i];
 		mcmc->run(mcmc);
-		
-		// saved in increasing order
-		for (int j = 0; j < mcmc->log_count; j++) {
-			if(filenames[j] != NULL && strcmp(mmcmc->log_file, filenames[j]) == 0){
-				StringBuffer_empty(buffer);
-				StringBuffer_append_format(buffer, "%d%s",i, filenames[j]);
-				lls[mmcmc->temperature_count-i-1] = read_log_column_with_id(buffer->c, mmcmc->burnin, mmcmc->likelihood_tag);
-				temperatures[mmcmc->temperature_count-i-1] = mmcmc->temperatures[i];
-			}
-		}
-	}
-
-	// sample from prior (temperature == 0)
-	double logNaive = log_arithmetic_mean(lls[0]);
-	printf("Naive arithmetic mean: %f\n", logNaive);
-	
-	double logAM = log_arithmetic_mean(lls[mmcmc->temperature_count-1]);
-	printf("Arithmetic mean: %f\n", logAM);
-	
-	double logHM = log_harmonic_mean(lls[mmcmc->temperature_count-1]);
-	printf("Harmonic mean: %f\n", logHM);
-	
-	double lrss = log_marginal_stepping_stone(lls, mmcmc->temperature_count, temperatures, lrssk);
-	printf("Stepping stone marginal likelihood: %f\n", lrss);
-	for (int i = 1; i < mmcmc->temperature_count; i++) {
-		printf("%f: %f\n", temperatures[i-1], lrssk[i]);
-	}
-	
-	double lrps = log_marginal_path_sampling(lls, mmcmc->temperature_count, temperatures, lrssk);
-	printf("Path sampling marginal likelihood: %f\n", lrps);
-	for (int i = 0; i < mmcmc->temperature_count; i++) {
-		printf("%f: %f\n", temperatures[i], lrssk[i]);
-	}
-	lrps = log_marginal_path_sampling_modified(lls, mmcmc->temperature_count, temperatures, lrssk);
-	printf("Modified Path sampling marginal likelihood: %f\n", lrps);
-	for (int i = 0; i < mmcmc->temperature_count; i++) {
-		printf("%f: %f\n", temperatures[i], lrssk[i]);
 	}
 	
 	// Leave it as a standard mcmc with original loggers
@@ -93,12 +51,13 @@ void mmcmc_run(MMCMC* mmcmc){
 	
 	free(filenames);
 	free_StringBuffer(buffer);
-	free(lrssk);
-	free(temperatures);
-	for (int i = 0; i < mmcmc->temperature_count; i++) {
-		free_Vector(lls[i]);
-	}
-	free(lls);
+}
+
+
+static void _free_MMCMC(MMCMC* mmcmc){
+	mmcmc->mcmc->free(mmcmc->mcmc);
+	free(mmcmc->temperatures);
+	free(mmcmc);
 }
 
 MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
@@ -107,12 +66,6 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	json_node* temp_node = get_json_node(node, "temperatures");
 	json_node* steps_node = get_json_node(node, "steps");
 	mmcmc->gss = get_json_node_value_bool(node, "gss", false);
-	mmcmc->burnin = get_json_node_value_double(node, "burnin", 0);
-	mmcmc->likelihood_tag = get_json_node_value_string(node, "treelikelihood");
-	
-	if(mmcmc->likelihood_tag == NULL){
-		mmcmc->likelihood_tag = String_clone("treelikelihood");
-	}
 	
 	if (temp_node != NULL) {
 		if (temp_node->node_type != MJSON_ARRAY) {
@@ -160,18 +113,7 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	}
 	mmcmc->mcmc = new_MCMC_from_json(mcmc_node, hash);
 	mmcmc->run = mmcmc_run;
+	mmcmc->free = _free_MMCMC;
 	
-
-	char* lfile = get_json_node_value_string(node, "log_file");
-	if(lfile != NULL){
-		mmcmc->log_file = String_clone(lfile);
-	}
 	return mmcmc;
-}
-
-void free_MMCMC(MMCMC* mmcmc){
-	mmcmc->mcmc->free(mmcmc->mcmc);
-	free(mmcmc->temperatures);
-	if(mmcmc->log_file != NULL) free(mmcmc->log_file);
-	free(mmcmc);
 }
