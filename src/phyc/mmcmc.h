@@ -21,8 +21,8 @@ typedef struct MMCMC{
 	void (*run)(struct MMCMC*);
 	// for marginal likelihood calculation
 	char* log_file;
-	Parameters* x; // for bridge sampling
-	gsl_rng* rng;
+	char* likelihood_tag;
+	bool gss;
 } MMCMC;
 
 

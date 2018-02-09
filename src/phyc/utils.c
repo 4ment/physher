@@ -23,6 +23,8 @@
 
 #include "random.h"
 #include "matrix.h"
+#include "mstring.h"
+#include "filereader.h"
 
 #if defined (USE_FLOAT)
 #define real_t float
@@ -556,4 +558,53 @@ void * aligned16_malloc( size_t size ){
 #endif
 	return memptr;
 }
+
+
+struct Vector* read_log_column_with_id( const char *filename, size_t burnin, const char* id ){
+	int count = 0;
+	char *ptr = NULL;
+	double *temp = NULL;
+	int l;
+	Vector* vec = new_Vector(1000);
+	
+	FileReader *reader = new_FileReader(filename, 1000);
+	reader->read_line(reader);// discard header
+	ptr = reader->line;
+	l = 0;
+	char** header = String_split_char( ptr, '\t', &l );
+	int i = 0;
+	for (; i < l; i++) {
+		if(strcmp(header[i], id) == 0){
+			break;
+		}
+	}
+	if(i == l){
+		fprintf(stderr, "Could not find ID `%s`\n", id);
+		exit(1);
+	}
+	for (int j = 0; j < l; j++) {
+		free(header[j]);
+	}
+	free(header);
+	
+	while ( reader->read_line(reader) ) {
+		StringBuffer_trim(reader->buffer);
+		
+		if ( reader->buffer->length == 0){
+			continue;
+		}
+		if ( count >= burnin){
+			ptr = reader->line;
+			l = 0;
+			temp = String_split_char_double( ptr, '\t', &l );
+			Vector_push(vec, temp[i]);
+			free(temp);
+		}
+		count++;
+	}
+	free_FileReader(reader);
+	Vector_pack(vec);
+	return  vec;
+}
+
 
