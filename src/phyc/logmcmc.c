@@ -9,8 +9,9 @@
 #include "logmcmc.h"
 
 #include "treelikelihood.h"
+#include "treeio.h"
 
-void _log_write_header(Log* logger, bool save_cold_ll){
+static void _log_write_header(Log* logger){
 	StringBuffer* buffer = new_StringBuffer(10);
 	if(logger->cpo){
 		Model* treelikelihood = logger->models[0];
@@ -44,12 +45,19 @@ void _log_write_header(Log* logger, bool save_cold_ll){
 				fprintf(logger->file, "\t%s", buffer->c);
 			}
 		}
-		if(save_cold_ll){
-			fprintf(logger->file, "\t%s", "coldll");
-		}
 	}
 	free_StringBuffer(buffer);
 	fprintf(logger->file, "\n");
+}
+
+void log_tree(Log* logger, size_t iter){
+	Tree* tree = logger->models[0]->data;
+	if(strcasecmp(logger->format, "newick") == 0){
+		Tree_print_newick(logger->file, tree, false);
+	}
+	else if(strcasecmp(logger->format, "nexus") == 0){
+		
+	}
 }
 
 void log_log(Log* logger, size_t iter){
@@ -105,9 +113,18 @@ void log_initialize(Log* logger){
 		if(logger->append) a[0] = 'a';
 		logger->file = fopen(logger->filename, a);
 	}
+	if(logger->tree && strcasecmp(logger->format, "nexus") == 0){
+		
+	}
+	else if(logger->tree){
+		_log_write_header(logger);
+	}
 }
 
 void log_finalize(Log* logger){
+	if(logger->tree && strcasecmp(logger->format, "nexus") == 0){
+		fprintf(logger->file, "end;\n");
+	}
 	if (logger->filename != NULL) {
 		fclose(logger->file);
 	}
@@ -126,6 +143,9 @@ void _free_Log(Log* logger){
 	if(logger->model_count > 0){
 		free(logger->models);
 	}
+	if (logger->format != NULL) {
+		free(logger->format);
+	}
 	free(logger);
 }
 
@@ -142,9 +162,19 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	json_node* filename_node = get_json_node(node, "file");
 	logger->write = log_log;
 	logger->write_with = log_log_with;
-	logger->write_header = _log_write_header;
 	logger->file = stdout;
 	logger->filename = NULL;
+	logger->tree = get_json_node_value_bool(node, "tree", false);
+	logger->format = NULL;
+	char* format = get_json_node_value_string(node, "format");
+	if(format != NULL){
+		logger->format = String_clone(format);
+	}
+	else if(logger->tree){
+		logger->format = String_clone("newick");
+	}
+	
+	
 	if (filename_node != NULL) {
 		char* filename = (char*)filename_node->value;
 		if (strcasecmp(filename, "stderr") == 0) {

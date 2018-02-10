@@ -26,10 +26,11 @@ typedef struct Log{
 	void(*initialize)(struct Log* logger);
 	void(*finalize)(struct Log* logger);
 	void(*write)(struct Log* logger, size_t);
-	void(*write_header)(struct Log* logger, bool);
 	void(*write_with)(struct Log* logger, size_t, const char*);
 	void(*free)(struct Log*);
 	bool cpo;
+	bool tree;
+	char* format;
 }Log;
 	
  Log* new_Log_from_json(json_node* node, Hashtable* hash);

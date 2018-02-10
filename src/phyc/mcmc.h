@@ -24,6 +24,7 @@ typedef struct MCMC{
 	Log** logs;
 	size_t log_count;
 	int verbose;
+	bool gss;
 } MCMC;
 
 MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash);

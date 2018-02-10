@@ -35,7 +35,6 @@ void run(MCMC* mcmc){
 	
 	StringBuffer *buffer = new_StringBuffer(20);
 	double logP;
-	double logP2; // not heated
 	
 	// Initialize loggers
 	for (int i = 0; i < mcmc->log_count; i++) {
@@ -45,37 +44,29 @@ void run(MCMC* mcmc){
 	// loggers log headers
 	if(mcmc->chain_temperature < 0){
 		logP = model->logP(model);
-		for (int i = 0; i < mcmc->log_count; i++) {
-			mcmc->logs[i]->write_header(mcmc->logs[i], false);
-			mcmc->logs[i]->write(mcmc->logs[i], iter);
-		}
 	}
-	else if(false){
+	else if(mcmc->gss){
 		model->logP(model);
 		CompoundModel* cm = (CompoundModel*)model->obj;
 		// Un-normalized posterior
-		double posteriorLogP2 = cm->models[0]->logP(cm->models[0]);
-		double posteriorLogP = posteriorLogP2 * mcmc->chain_temperature;
+		double posteriorLogP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
 		
 		// Reference distribution
-		double referenceLogP2 = cm->models[1]->logP(cm->models[1]);
-		double referenceLogP = referenceLogP2 * (1.0 - mcmc->chain_temperature);
+		double referenceLogP = cm->models[1]->logP(cm->models[1]) * (1.0 - mcmc->chain_temperature);
+		
+		logP = posteriorLogP + referenceLogP;
 	}
 	else{
 		model->logP(model);
 		CompoundModel* cm = (CompoundModel*)model->obj;
-		logP2 = cm->models[0]->logP(cm->models[0]);
-		logP = logP2 * mcmc->chain_temperature;
+		logP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
 		for (int i = 1; i < cm->count; i++) {
 			logP += cm->models[i]->logP(cm->models[i]);
 		}
-
-		StringBuffer_empty(buffer);
-		StringBuffer_append_format(buffer, "%e", logP2);
-		for (int i = 0; i < mcmc->log_count; i++) {
-			mcmc->logs[i]->write_header(mcmc->logs[i], true);
-			mcmc->logs[i]->write_with(mcmc->logs[i], iter, buffer->c);
-		}
+	}
+	
+	for (int i = 0; i < mcmc->log_count; i++) {
+		mcmc->logs[i]->write(mcmc->logs[i], iter);
 	}
 	
 	while ( iter < mcmc->chain_length) {
@@ -101,23 +92,19 @@ void run(MCMC* mcmc){
 		if(mcmc->chain_temperature < 0){
 			proposed_logP = model->logP(model);
 		}
-		else if(false){
+		else if(mcmc->gss){
 			model->logP(model);
 			CompoundModel* cm = (CompoundModel*)model->obj;
-			double posteriorLogP2 = cm->models[0]->logP(cm->models[0]);
-			double posteriorLogP = posteriorLogP2 * mcmc->chain_temperature;
+			double posteriorLogP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
 			
-			double referenceLogP2 = cm->models[1]->logP(cm->models[1]);
-			double referenceLogP = referenceLogP2 * (1.0 - mcmc->chain_temperature);
+			double referenceLogP = cm->models[1]->logP(cm->models[1]) * (1.0 - mcmc->chain_temperature);
 			
 			proposed_logP = posteriorLogP + referenceLogP;
-			proposed_logP2 = posteriorLogP2 + referenceLogP2;
 		}
 		else{
 			model->logP(model);
 			CompoundModel* cm = (CompoundModel*)model->obj;
-			proposed_logP2 = cm->models[0]->logP(cm->models[0]);
-			proposed_logP = proposed_logP2 * mcmc->chain_temperature;
+			proposed_logP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
 			for (int i = 1; i < cm->count; i++) {
 				proposed_logP += cm->models[i]->logP(cm->models[i]);
 			}
@@ -129,7 +116,6 @@ void run(MCMC* mcmc){
 		if ( alpha >=  0 || alpha > log(random_double()) ) {
 //			printf("%zu %f %f\n", iter, logP, proposed_logP);
 			logP = proposed_logP;
-			logP2 = proposed_logP2;
 			op->accepted_count++;
 		}
 		// reject
@@ -146,20 +132,9 @@ void run(MCMC* mcmc){
 			op->optimize(op, alpha);
 		}
 		
-		if(mcmc->chain_temperature < 0){
-			for (int i = 0; i < mcmc->log_count; i++) {
-				if(iter % mcmc->logs[i]->every == 0){
-					mcmc->logs[i]->write(mcmc->logs[i], iter);
-				}
-			}
-		}
-		else{
-			StringBuffer_empty(buffer);
-			StringBuffer_append_format(buffer, "%e", logP2);
-			for (int i = 0; i < mcmc->log_count; i++) {
-				if(iter % mcmc->logs[i]->every == 0){
-					mcmc->logs[i]->write_with(mcmc->logs[i], iter, buffer->c);
-				}
+		for (int i = 0; i < mcmc->log_count; i++) {
+			if(iter % mcmc->logs[i]->every == 0){
+				mcmc->logs[i]->write(mcmc->logs[i], iter);
 			}
 		}
 	}
@@ -256,6 +231,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
         }
     }
 	mcmc->chain_temperature = -1;
+	mcmc->gss = false;
 	mcmc->free = _free_MCMC;
 	return mcmc;
 }
