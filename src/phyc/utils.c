@@ -607,4 +607,62 @@ struct Vector* read_log_column_with_id( const char *filename, size_t burnin, con
 	return  vec;
 }
 
+struct Vector** read_log_column_with_ids( const char *filename, size_t burnin, const char** tags, size_t tag_count ){
+	char *ptr = NULL;
+	double *temp = NULL;
+	int l;
+	size_t sample = 0;
+	
+	FileReader *reader = new_FileReader(filename, 1000);
+	reader->read_line(reader);
+	ptr = reader->line;
+	l = 0;
+	char** header = String_split_char(ptr, '\t', &l);
+	bool* in = bvector(l);
+	
+	Vector** vecs = malloc(2*sizeof(Vector*));
+	
+	for (int j = 0; j < tag_count; j++) {
+		vecs[j] = new_Vector(1000);
+		for (int i = 0; i < l; i++) {
+			if(strcmp(tags[j], header[i]) == 0){
+				in[i] = true;
+				break;
+			}
+		}
+	}
+	
+	for (int i = 0; i < l; i++) {
+		free(header[i]);
+	}
+	free(header);
+	
+	while ( reader->read_line(reader) ) {
+		StringBuffer_trim(reader->buffer);
+		
+		if ( reader->buffer->length == 0){
+			continue;
+		}
+		if ( sample >= burnin){
+			ptr = reader->line;
+			l = 0;
+			temp = String_split_char_double( ptr, '\t', &l );
+			size_t index = 0;
+			for (int i = 0; i < l; i++) {
+				if(in[i]){
+					Vector_push(vecs[index], temp[i]);
+					index++;
+				}
+			}
+			free(temp);
+		}
+		sample++;
+	}
+	free_FileReader(reader);
+	for (int j = 0; j < tag_count; j++) {
+		Vector_pack(vecs[j]);
+	}
+	free(in);
+	return  vecs;
+}
 

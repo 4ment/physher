@@ -168,4 +168,6 @@ void * aligned16_malloc( size_t size );
 
 struct Vector* read_log_column_with_id( const char *filename, size_t burnin, const char* id );
 
+struct Vector** read_log_column_with_ids( const char *filename, size_t burnin, const char** tags, size_t tag_count );
+
 #endif
