@@ -24,9 +24,12 @@ void mmcmc_run(MMCMC* mmcmc){
 			filenames[j] = String_clone(mcmc->logs[j]->filename);
 		}
 	}
-	
+	int i = 0;
+	if (mmcmc->gss) {
+		i = 1;
+	}
 	// temperatures should be in decreasing order
-	for (int i = 0; i < mmcmc->temperature_count; i++) {
+	for (; i < mmcmc->temperature_count; i++) {
 		for (int j = 0; j < mcmc->log_count; j++) {
 			if(filenames[j] != NULL){
 				StringBuffer_empty(buffer);

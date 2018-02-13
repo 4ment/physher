@@ -88,7 +88,6 @@ void run(MCMC* mcmc){
 			continue;
 		}
 		double proposed_logP;
-		double proposed_logP2;
 		if(mcmc->chain_temperature < 0){
 			proposed_logP = model->logP(model);
 		}
@@ -231,7 +230,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
         }
     }
 	mcmc->chain_temperature = -1;
-	mcmc->gss = false;
+	mcmc->gss = get_json_node_value_bool(node, "gss", false);
 	mcmc->free = _free_MCMC;
 	return mcmc;
 }
