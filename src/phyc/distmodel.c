@@ -338,6 +338,7 @@ typedef struct gsl_multivariate_normal_wrapper_t{
 	gsl_vector* x; // used for sampling or pdf
 	gsl_vector * work;
 	gsl_rng* rng;
+	bool transform;
 }gsl_multivariate_normal_wrapper_t;
 
 // if dst is NULL we assign directly the sampled values to dm->x
@@ -346,14 +347,28 @@ static void _sample_multivariate_normal(DistributionModel* dm, double* dst){
 	
 	gsl_ran_multivariate_gaussian(wrapper->rng, wrapper->mu, wrapper->L, wrapper->x);
 	
-	if(dst == NULL){
-		for (int j = 0; j < Parameters_count(dm->x); j++) {
-			Parameters_set_value(dm->x, j, gsl_vector_get(wrapper->x, j));
+	if(wrapper->transform){
+		if(dst == NULL){
+			for (int j = 0; j < Parameters_count(dm->x); j++) {
+				Parameters_set_value(dm->x, j, exp(gsl_vector_get(wrapper->x, j)));
+			}
+		}
+		else{
+			for (int j = 0; j < Parameters_count(dm->x); j++) {
+				dst[j] = exp(gsl_vector_get(wrapper->x, j));
+			}
 		}
 	}
 	else{
-		for (int j = 0; j < Parameters_count(dm->x); j++) {
-			dst[j] = gsl_vector_get(wrapper->x, j);
+		if(dst == NULL){
+			for (int j = 0; j < Parameters_count(dm->x); j++) {
+				Parameters_set_value(dm->x, j, gsl_vector_get(wrapper->x, j));
+			}
+		}
+		else{
+			for (int j = 0; j < Parameters_count(dm->x); j++) {
+				dst[j] = gsl_vector_get(wrapper->x, j);
+			}
 		}
 	}
 }
@@ -361,13 +376,23 @@ static void _sample_multivariate_normal(DistributionModel* dm, double* dst){
 static double _multivariate_normal_logP(DistributionModel* dm){
 	gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
 	
-	for (int j = 0; j < Parameters_count(dm->x); j++) {
-		gsl_vector_set(wrapper->x, j,  Parameters_value(dm->x, j));
+	double logJocobian = 0;
+	if(wrapper->transform){
+		for (int j = 0; j < Parameters_count(dm->x); j++) {
+			double y = log(Parameters_value(dm->x, j));
+			logJocobian -= y;
+			gsl_vector_set(wrapper->x, j,  y);
+		}
+	}
+	else{
+		for (int j = 0; j < Parameters_count(dm->x); j++) {
+			gsl_vector_set(wrapper->x, j,  Parameters_value(dm->x, j));
+		}
 	}
 	double logP;
 	gsl_ran_multivariate_gaussian_log_pdf (wrapper->x,  wrapper->mu, wrapper->L, &logP, wrapper->work);
 
-	return logP;
+	return logP + logJocobian;
 }
 
 static void _free_dist_gsl_multivariate_normal(DistributionModel*dm){
@@ -419,7 +444,7 @@ DistributionModel* new_MultivariateNormalDistributionModel_with_parameters(const
 	}
 	gsl_linalg_cholesky_decomp1(wrapper->L);
 	wrapper->rng = rng;
-	dm->data = rng;
+	dm->data = wrapper;
 	return dm;
 }
 
@@ -779,7 +804,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
 		
 		x = new_Parameters(1);
-		get_x(node, hash, x);
+		get_parameters_references2(node, hash, x, "x");
 		size_t paramCount = Parameters_count(x);
 		
 		int count = 0;
@@ -792,7 +817,24 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		}
 		
 		FileReader *reader = new_FileReader(file, 1000);
-		reader->read_line(reader);// discard header
+		reader->read_line(reader);
+		ptr = reader->line;
+		l = 0;
+		char** header = String_split_char(ptr, '\t', &l);
+		bool* in = bvector(l);
+		
+		for (int j = 0; j < paramCount; j++) {
+			for (int i = 0; i < l; i++) {
+				if(strcmp(Parameters_name(x, j), header[i]) == 0){
+					in[i] = true;
+					break;
+				}
+			}
+		}
+		for (int i = 0; i < l; i++) {
+			free(header[i]);
+		}
+		free(header);
 		
 		while ( reader->read_line(reader) ) {
 			StringBuffer_trim(reader->buffer);
@@ -804,8 +846,12 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 				ptr = reader->line;
 				l = 0;
 				temp = String_split_char_double( ptr, '\t', &l );
-				for (int i = 0; i < paramCount; i++) {
-					Vector_push(vec[i], temp[i]);
+				int index = 0;
+				for (int i = 0; i < l; i++) {
+					if(in[i]){
+						Vector_push(vec[index], log(temp[i]));
+						index++;
+					}
 				}
 				free(temp);
 			}
@@ -834,12 +880,16 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		dm = new_MultivariateNormalDistributionModel_with_parameters(mu, sigma, x, Hashtable_get(hash, "RANDOM_GENERATOR!@"));
 		model = new_DistributionModel2(id, dm);
 		
+		gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
+		wrapper->transform = true;
+		
 		free(mu);
 		free(sigma);
 		for (int i = 0; i < paramCount; i++) {
 			free_Vector(vec[i]);
 		}
 		free(vec);
+		free(in);
 	}
 	else{
 		printf("%s\n", d_string);
