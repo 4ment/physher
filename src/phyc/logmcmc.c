@@ -116,7 +116,7 @@ void log_initialize(Log* logger){
 	if(logger->tree && strcasecmp(logger->format, "nexus") == 0){
 		
 	}
-	else if(logger->tree){
+	else if(!logger->tree || (logger->tree && strcasecmp(logger->format, "newick") == 0)){
 		_log_write_header(logger);
 	}
 }
