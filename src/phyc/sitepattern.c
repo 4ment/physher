@@ -857,6 +857,7 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		else{
 			patterns = new_SitePattern(sequences);
 		}
+		free_DataType(datatype);
 		free_Sequences(sequences);
 	}
 	else{
