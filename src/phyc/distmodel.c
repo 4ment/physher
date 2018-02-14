@@ -36,6 +36,11 @@ static double _DistributionModel_d2log_0(DistributionModel* dm, const Parameter*
 	return 0.0;
 }
 
+static void _DistributionModel_error_sample(DistributionModel* dm, double* samples){
+	fprintf(stderr, "Sample method not implemented\n");
+	exit(1);
+}
+
 static void _free_dist(DistributionModel*dm){
 	if(dm->x != NULL) free_Parameters(dm->x);
 	if(dm->parameters != NULL) free_Parameters(dm->parameters);
@@ -65,8 +70,10 @@ static DistributionModel* _clone_dist(DistributionModel* dm){
 	clone->logP = dm->logP;
 	clone->dlogP = dm->dlogP;
 	clone->d2logP = dm->d2logP;
+	clone->sample = dm->sample;
 	clone->clone = dm->clone;
 	clone->free = dm->free;
+	clone->sample = dm->sample;
 	clone->tempp = NULL;
 	clone->tempx = NULL;
 	if(dm->tempp != NULL) clone->tempp = clone_dvector(dm->tempp, Parameters_count(dm->parameters));
@@ -98,6 +105,7 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	clone->logP = dm->logP;
 	clone->dlogP = dm->dlogP;
 	clone->d2logP = dm->d2logP;
+	clone->sample = dm->sample;
 	clone->clone = dm->clone;
 	clone->free = dm->free;
 	clone->tempp = NULL;
@@ -123,6 +131,7 @@ DistributionModel* new_DistributionModel(const Parameters* p, const Parameters* 
 	dm->logP = NULL;
 	dm->dlogP = NULL;
 	dm->d2logP = NULL;
+	dm->sample = _DistributionModel_error_sample;
 	dm->free = _free_dist;
 	dm->clone = _clone_dist;
 	dm->data = NULL;
@@ -140,6 +149,7 @@ DistributionModel* new_DistributionModelSimplex(Parameters* p, Simplex* simplex)
 	dm->logP = NULL;
 	dm->dlogP = NULL;
 	dm->d2logP = NULL;
+	dm->sample = _DistributionModel_error_sample;
 	dm->free = _free_dist;
 	dm->clone = _clone_dist;
 	dm->data = NULL;
@@ -149,14 +159,26 @@ DistributionModel* new_DistributionModelSimplex(Parameters* p, Simplex* simplex)
 }
 
 double DistributionModel_log_gamma(DistributionModel* dm){
-	double alpha = Parameters_value(dm->parameters, 0);
-	double beta = Parameters_value(dm->parameters, 1);
-	double logP = -gammln(alpha) * Parameters_count(dm->x);
-	double beta_alpha = pow(beta, alpha);
-	for (int i = 0; i < Parameters_count(dm->x); i++) {
-		double x = Parameters_value(dm->x, i);
-		logP += log(beta_alpha*pow(x,alpha-1.0)) - beta*x;
-//		logP += dloggamma(Parameters_value(dm->x, i), alpha, beta);
+	double logP = 0;
+	if(Parameters_count(dm->parameters) > 2){
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double alpha = Parameters_value(dm->parameters, i*2);
+			double beta = Parameters_value(dm->parameters, i*2+1);
+			double x = Parameters_value(dm->x, i);
+//			logP += gammln(alpha) - log(pow(beta, alpha)*pow(x,alpha-1.0)) - beta*x;
+			logP += log(gsl_ran_gamma_pdf(x, alpha, 1.0/beta));
+		}
+	}
+	else{
+		double alpha = Parameters_value(dm->parameters, 0);
+		double beta = Parameters_value(dm->parameters, 1);
+		logP = -gammln(alpha) * Parameters_count(dm->x);
+		double beta_alpha = pow(beta, alpha);
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double x = Parameters_value(dm->x, i);
+			logP += log(beta_alpha*pow(x,alpha-1.0)) - beta*x;
+	//		logP += dloggamma(Parameters_value(dm->x, i), alpha, beta);
+		}
 	}
 	return logP;
 }
@@ -164,7 +186,14 @@ double DistributionModel_log_gamma(DistributionModel* dm){
 double DistributionModel_dlog_gamma(DistributionModel* dm, const Parameter* p){
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
 		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
-			return (Parameters_value(dm->parameters, 0)-1.0)/Parameter_value(p) - Parameters_value(dm->parameters, 1);
+			double alpha = Parameters_value(dm->parameters, 0);
+			double beta = Parameters_value(dm->parameters, 1);
+			if(Parameters_count(dm->parameters) > 2){
+				alpha = Parameters_value(dm->parameters, i*2);
+				beta = Parameters_value(dm->parameters, i*2+1);
+			}
+			return (alpha-1.0)/Parameter_value(p) - beta;
+			
 		}
 	}
 	return 0;
@@ -173,12 +202,22 @@ double DistributionModel_dlog_gamma(DistributionModel* dm, const Parameter* p){
 double DistributionModel_d2log_gamma(DistributionModel* dm, const Parameter* p){
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
 		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
-			return -(Parameters_value(dm->parameters, 0)-1.0)/Parameter_value(p)/Parameter_value(p);
+			double alpha = Parameters_value(dm->parameters, 0);
+			if(Parameters_count(dm->parameters) > 2){
+				alpha = Parameters_value(dm->parameters, i*2);
+			}
+			return -(alpha-1.0)/Parameter_value(p)/Parameter_value(p);
 		}
 	}
 	return 0;
 }
 
+static void DistributionModel_gamma_sample(DistributionModel* dm, double* samples){
+	for (int i = 0; i < Parameters_count(dm->x); i++) {
+		samples[i] = gsl_ran_gamma(dm->data, Parameters_value(dm->parameters, i*2), Parameters_value(dm->parameters, i*2+1));
+	}
+}
+	
 double DistributionModel_log_exp(DistributionModel* dm){
 	double lambda = Parameters_value(dm->parameters, 0);
 	double logP = log(lambda) * Parameters_count(dm->x);
@@ -252,6 +291,7 @@ DistributionModel* new_IndependantGammaDistributionModel(const double shape, con
 	dm->dlogP = DistributionModel_dlog_gamma;
 	dm->d2logP = DistributionModel_d2log_gamma;
 	dm->clone = _clone_dist;
+	dm->sample = DistributionModel_gamma_sample;
 	free_Parameters(ps);
 	return dm;
 }
@@ -262,6 +302,7 @@ DistributionModel* new_IndependantGammaDistributionModel_with_parameters(Paramet
 	dm->dlogP = DistributionModel_dlog_gamma;
 	dm->d2logP = DistributionModel_d2log_gamma;
 	dm->clone = _clone_dist;
+	dm->sample = DistributionModel_gamma_sample;
 	return dm;
 }
 
@@ -732,6 +773,64 @@ Model* get_simplex(json_node* node, Hashtable* hash){
 	return Hashtable_get(hash, ref+1);
 }
 
+Vector** read_parameters(const char* file, size_t burnin, Parameters* x){
+	size_t paramCount = Parameters_count(x);
+	
+	int count = 0;
+	char *ptr = NULL;
+	double *temp = NULL;
+	int l;
+	Vector** vec = malloc(sizeof(Vector*)*paramCount);
+	for(int i = 0; i < paramCount; i++){
+		vec[i] = new_Vector(1000);
+	}
+	
+	FileReader *reader = new_FileReader(file, 1000);
+	reader->read_line(reader);
+	ptr = reader->line;
+	l = 0;
+	char** header = String_split_char(ptr, '\t', &l);
+	bool* in = bvector(l);
+	
+	for (int j = 0; j < paramCount; j++) {
+		for (int i = 0; i < l; i++) {
+			if(strcmp(Parameters_name(x, j), header[i]) == 0){
+				in[i] = true;
+				break;
+			}
+		}
+	}
+	for (int i = 0; i < l; i++) {
+		free(header[i]);
+	}
+	free(header);
+	
+	while ( reader->read_line(reader) ) {
+		StringBuffer_trim(reader->buffer);
+		
+		if ( reader->buffer->length == 0){
+			continue;
+		}
+		if ( count >= burnin){
+			ptr = reader->line;
+			l = 0;
+			temp = String_split_char_double( ptr, '\t', &l );
+			int index = 0;
+			for (int i = 0; i < l; i++) {
+				if(in[i]){
+					Vector_push(vec[index], temp[i]);
+					index++;
+				}
+			}
+			free(temp);
+		}
+		count++;
+	}
+	free_FileReader(reader);
+	free(in);
+	return vec;
+}
+
 Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	char* d_string = get_json_node_value_string(node, "distribution");
 	char* id = get_json_node_value_string(node, "id");
@@ -786,11 +885,35 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		return model;
     }
     else if (strcasecmp(d_string, "gamma") == 0) {
+		char* file = get_json_node_value_string(node, "file");
         parameters = new_Parameters(1);
-        x = new_Parameters(1);
-        param_names = get_parameters(node, hash, parameters);
-        get_x(node, hash, x);
+		x = new_Parameters(1);
+		get_parameters_references2(node, hash, x, "x");
+		// empirical
+		if (file != NULL) {
+			size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
+			Vector** vecs = read_parameters(file, burnin, x);
+			int n = Vector_length(vecs[0]);
+			size_t paramCount = Parameters_count(x);
+			
+			for (int i = 0; i < paramCount; i++) {
+				double* vec = Vector_data(vecs[i]);
+				double m = mean(vec, Vector_length(vecs[i]));
+				double v = variance(vec, Vector_length(vecs[i]), m);
+				Parameters_move(parameters, new_Parameter("alpha", m*m/v, NULL));
+				Parameters_move(parameters, new_Parameter("beta", m/v, NULL));
+			}
+			for (int i = 0; i < paramCount; i++) {
+				free_Vector(vecs[i]);
+			}
+			free(vecs);
+		}
+		else{
+			param_names = get_parameters(node, hash, parameters);
+		}
+		
         dm = new_IndependantGammaDistributionModel_with_parameters(parameters, x);
+		dm->data = Hashtable_get(hash, "RANDOM_GENERATOR!@");
         model = new_DistributionModel2(id, dm);
     }
     else if (strcasecmp(d_string, "topology") == 0) {
@@ -805,66 +928,20 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		
 		x = new_Parameters(1);
 		get_parameters_references2(node, hash, x, "x");
-		size_t paramCount = Parameters_count(x);
 		
-		int count = 0;
-		char *ptr = NULL;
-		double *temp = NULL;
-		int l;
-		Vector** vec = malloc(sizeof(Vector*)*paramCount);
-		for(int i = 0; i < paramCount; i++){
-			vec[i] = new_Vector(1000);
-		}
-		
-		FileReader *reader = new_FileReader(file, 1000);
-		reader->read_line(reader);
-		ptr = reader->line;
-		l = 0;
-		char** header = String_split_char(ptr, '\t', &l);
-		bool* in = bvector(l);
-		
-		for (int j = 0; j < paramCount; j++) {
-			for (int i = 0; i < l; i++) {
-				if(strcmp(Parameters_name(x, j), header[i]) == 0){
-					in[i] = true;
-					break;
-				}
-			}
-		}
-		for (int i = 0; i < l; i++) {
-			free(header[i]);
-		}
-		free(header);
-		
-		while ( reader->read_line(reader) ) {
-			StringBuffer_trim(reader->buffer);
-			
-			if ( reader->buffer->length == 0){
-				continue;
-			}
-			if ( count >= burnin){
-				ptr = reader->line;
-				l = 0;
-				temp = String_split_char_double( ptr, '\t', &l );
-				int index = 0;
-				for (int i = 0; i < l; i++) {
-					if(in[i]){
-						Vector_push(vec[index], log(temp[i]));
-						index++;
-					}
-				}
-				free(temp);
-			}
-			count++;
-		}
-		free_FileReader(reader);
+		Vector** vec = read_parameters(file,burnin, x);
 
 		int n = Vector_length(vec[0]);
+		size_t paramCount = Parameters_count(x);
 		double* mu = dvector(paramCount);
 		double* sigma = dvector(paramCount*paramCount);
 		
 		for (int i = 0; i < paramCount; i++) {
-			mu[i] = mean(Vector_data(vec[i]), n);
+			double* vv = Vector_data(vec[i]);
+			for (int j = 0; j < n; j++) {
+				vv[j] = log(vv[j]);
+			}
+			mu[i] = mean(vv, n);
 		}
 		
 		// Calculate covariance matrix
@@ -889,7 +966,6 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 			free_Vector(vec[i]);
 		}
 		free(vec);
-		free(in);
 	}
 	else{
 		printf("%s\n", d_string);
