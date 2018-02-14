@@ -237,6 +237,8 @@ MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* h
 	margl->burnin = get_json_node_value_double(node, "burnin", 0);
 	char* likelihood_tag = get_json_node_value_string(node, "treelikelihood");
 	char* ref_dist_tag = get_json_node_value_string(node, "reference"); // reference distribution for GSS
+
+	margl->refdist_tag = NULL;
 	
 	if(ref_dist_tag != NULL){
 		margl->refdist_tag = String_clone(ref_dist_tag);
