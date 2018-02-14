@@ -26,6 +26,7 @@ void mmcmc_run(MMCMC* mmcmc){
 	}
 	int i = 0;
 	if (mmcmc->gss) {
+		mcmc->gss = true;
 		i = 1;
 	}
 	// temperatures should be in decreasing order
@@ -51,6 +52,7 @@ void mmcmc_run(MMCMC* mmcmc){
 			free(filenames[j]);
 		}
 	}
+	mcmc->gss = false;
 	
 	free(filenames);
 	free_StringBuffer(buffer);
