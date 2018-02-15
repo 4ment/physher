@@ -128,6 +128,10 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 		}
 	}
 	
+	if(Tree_node_count(tlk->tree) == i){
+		return Model_first_derivative(self, p, 0.001);
+	}
+	
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	
 	if(tlk->update_upper){
@@ -154,9 +158,7 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 		}
 		tlk->update_upper = false;
 	}
-	if(Tree_node_count(tlk->tree) == i){
-		return Model_first_derivative(self, p, 0.001);
-	}
+	
 	double* pattern_dlikelihoods = tlk->pattern_lk + 2*tlk->sp->count;
 	calculate_dldt_uppper(tlk, node, pattern_dlikelihoods);
 	
@@ -186,6 +188,10 @@ double _singleTreeLikelihood_d2logP(Model *self, const Parameter* p){
 		}
 	}
 	
+	if(Tree_node_count(tlk->tree) == i){
+		return Model_second_derivative(self, p, NULL, 0.001);
+	}
+	
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	
 	if(tlk->update_upper){
@@ -212,9 +218,7 @@ double _singleTreeLikelihood_d2logP(Model *self, const Parameter* p){
 		}
 		tlk->update_upper = false;
 	}
-	if(Tree_node_count(tlk->tree) == i){
-		return Model_second_derivative(self, p, NULL, 0.001);
-	}
+
 	double* pattern_dlikelihoods = tlk->pattern_lk + 2*tlk->sp->count;
 	calculate_dldt_uppper(tlk, node, pattern_dlikelihoods);
 //	print_dvector(pattern_dlikelihoods, tlk->sp->count);
@@ -457,7 +461,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 	tlk->upper_partial_indexes = ivector(Tree_node_count(tree));
 	
 	tlk->root_partials_size = sp->count*sm->nstate*3;
-	tlk->pattern_lk_size = sp->count*3;
+	tlk->pattern_lk_size = sp->count*4;
 	
 	tlk->partials_dim = Tree_node_count(tree)*2; // allocate *2 for upper likelihoods
 	
@@ -2506,7 +2510,7 @@ double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pat
 	const int nstate   = tlk->sm->nstate;
 	const int patternCount = tlk->sp->count;
 	double* root_partials = tlk->root_partials  + (patternCount*nstate)*2;
-	double* pattern_d2lnl = tlk->pattern_lk + patternCount*2;
+	double* pattern_d2lnl = tlk->pattern_lk + patternCount*3;
 	const double* freqs = tlk->get_root_frequencies(tlk);
 	tlk->calculate_branch_likelihood(tlk, root_partials, tlk->upper_partial_indexes[nodeId], nodeId, tempMatrixId );
 	
