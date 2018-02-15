@@ -11,6 +11,7 @@
 #include "tree.h"
 #include "vb.h"
 #include "matrix.h"
+#include "random.h"
 
 #include "optimizer.h"
 

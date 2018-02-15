@@ -10,6 +10,7 @@
 
 #include <math.h>
 #include <string.h>
+#include <strings.h>
 
 #include "matrix.h"
 #include "statistics.h"

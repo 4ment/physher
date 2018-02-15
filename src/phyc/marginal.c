@@ -10,6 +10,7 @@
 
 #include <float.h>
 #include <string.h>
+#include <strings.h>
 
 #include "utils.h"
 #include "matrix.h"

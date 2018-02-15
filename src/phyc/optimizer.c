@@ -22,6 +22,7 @@
 #include <math.h>
 #include <time.h>
 #include <string.h>
+#include <strings.h>
 
 #include "parameters.h"
 #include "brent.h"

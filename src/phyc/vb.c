@@ -9,6 +9,7 @@
 #include "vb.h"
 
 #include <string.h>
+#include <strings.h>
 
 #include "optimizer.h"
 #include "matrix.h"

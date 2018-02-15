@@ -9,6 +9,7 @@
 #include "operator.h"
 
 #include <string.h>
+#include <strings.h>
 
 #include "simplex.h"
 #include "random.h"

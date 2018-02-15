@@ -8,6 +8,8 @@
 
 #include "logmcmc.h"
 
+#include <strings.h>
+
 #include "treelikelihood.h"
 #include "treeio.h"
 

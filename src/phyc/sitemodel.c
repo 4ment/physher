@@ -18,6 +18,7 @@
 #include "sitemodel.h"
 
 #include <assert.h>
+#include <strings.h>
 
 #include "substmodel.h"
 #include "parameters.h"

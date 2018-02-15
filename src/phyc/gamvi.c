@@ -11,7 +11,7 @@
 #include <math.h>
 #include <string.h>
 
-#include "phyc/matrix.h"
+#include "matrix.h"
 
 
 #include <gsl/gsl_rng.h>
