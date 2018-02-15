@@ -49,6 +49,7 @@ void mmcmc_run(MMCMC* mmcmc){
 	mcmc->chain_temperature = -1;
 	for (int j = 0; j < mcmc->log_count; j++) {
 		if(filenames != NULL){
+			free(mcmc->logs[j]->filename);
 			mcmc->logs[j]->filename = String_clone(filenames[j]);
 			free(filenames[j]);
 		}

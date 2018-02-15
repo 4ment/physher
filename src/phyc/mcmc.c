@@ -153,7 +153,7 @@ void run(MCMC* mcmc){
 }
 
 void _free_MCMC(MCMC* mcmc){
-	free_Model(mcmc->model);
+	mcmc->model->free(mcmc->model);
 	for (int i = 0; i < mcmc->operator_count; i++) {
 		free_Operator(mcmc->operators[i]);
 	}

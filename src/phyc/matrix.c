@@ -63,7 +63,7 @@ Vector * new_Vector( const size_t length ){
 	return v;
 }
 
-int Vector_length( Vector *v ){
+int Vector_length( const Vector *v ){
 	return v->count;
 }
 

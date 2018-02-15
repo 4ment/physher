@@ -226,8 +226,8 @@ NEST* new_NEST_from_json(json_node* node, Hashtable* hash){
 }
 
 void free_NEST(NEST* nest){
-	free_Model(nest->likelihood);
-	free_Model(nest->prior);
+	nest->likelihood->free(nest->likelihood);
+	nest->prior->free(nest->prior);
 	free_Parameters(nest->x);
 	free(nest);
 }

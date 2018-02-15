@@ -26,8 +26,6 @@
 
 #include <stdbool.h>
 
-#include "matrix.h"
-
 #define SIGN(a,b) ((b) >= 0.0 ? fabs(a) : -fabs(a))
 
 #if defined (USE_FLOAT)
@@ -166,8 +164,5 @@ void print_pretty_time( FILE *file, double dseconds );
 
 void * aligned16_malloc( size_t size );
 
-struct Vector* read_log_column_with_id( const char *filename, size_t burnin, const char* id );
-
-struct Vector** read_log_column_with_ids( const char *filename, size_t burnin, const char** tags, size_t tag_count );
 
 #endif

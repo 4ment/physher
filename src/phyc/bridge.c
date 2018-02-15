@@ -19,6 +19,7 @@
 #include "filereader.h"
 #include "compoundmodel.h"
 #include "treelikelihood.h"
+#include "utilsio.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
@@ -293,7 +294,7 @@ void bridge_sampling(BridgeSampling* bs){
 
 static void _free_BridgeSampling(BridgeSampling* bs){
 	free_Parameters(bs->x);
-	free_Model(bs->model);
+	bs->model->free(bs->model);
 	free(bs->likelihood_tag);
 	free(bs->file);
 	free(bs);

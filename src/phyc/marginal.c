@@ -13,6 +13,7 @@
 #include <strings.h>
 
 #include "utils.h"
+#include "utilsio.h"
 #include "matrix.h"
 #include "descriptivestats.h"
 #include "statistics.h"

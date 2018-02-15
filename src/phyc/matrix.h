@@ -52,7 +52,7 @@ void cholesky(long N, double *A, double *diag);
 
 Vector *new_Vector( const size_t length );
 
-int Vector_length( Vector *v );
+int Vector_length( const Vector *v );
 
 void Vector_push( Vector *v, double value );
 

@@ -999,7 +999,7 @@ void free_Variational(variational_t* var){
 //		printf("%s %f\n", Parameters_name(var->var_parameters, i), Parameters_value(var->var_parameters, i));
 //	}
 	free_Parameters(var->var_parameters);
-    free_Model(var->posterior);
+    var->posterior->free(var->posterior);
     free_Parameters(var->parameters);
 	free(var);
 }
