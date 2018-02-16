@@ -129,6 +129,7 @@ void log_finalize(Log* logger){
 	}
 	if (logger->filename != NULL) {
 		fclose(logger->file);
+		logger->file = NULL;
 	}
 }
 
@@ -139,9 +140,7 @@ void _free_Log(Log* logger){
 		//		printf("close logger");
 		free(logger->filename);
 	}
-	if(logger->file != NULL){
-		fclose(logger->file);
-	}
+	
 	if(logger->model_count > 0){
 		free(logger->models);
 	}
