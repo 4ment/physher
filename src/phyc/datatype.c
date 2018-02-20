@@ -108,6 +108,9 @@ DataType* new_DataType_from_json(json_node* node, Hashtable* hash){
 			states[i] = String_clone((char*)child->value);
 		}
 		datatype = new_GenericDataType(name, count, states);
+		for (size_t i = 0; i < count; i++) {
+			free(states[i]);
+		}
 		free(states);
 	}
 	else if(node->node_type == MJSON_STRING){
