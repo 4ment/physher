@@ -128,6 +128,42 @@ double log_marginal_path_sampling_modified(const Vector** values, size_t temp_co
 	return lrps;
 }
 
+void test_marg(const Vector** values, size_t temp_count, const double* temperatures){
+	Vector** lls = malloc(temp_count*sizeof(Vector*));
+	double* temps = dvector(temp_count);
+	for (int i = 3; i< temp_count; i*=2) {
+		double incr = ((double)temp_count-0.5)/(i-1);
+		double dindex = 0;
+		for (int j = 0; j < i; j++) {
+			int index = dindex;
+			lls[j] = values[index];
+			temps[j] = temperatures[index];
+			dindex += incr;
+		}
+		double* lrssk = malloc(temp_count*sizeof(double));
+		
+		double lrss = log_marginal_stepping_stone(lls, i, temps, lrssk);
+		printf("%d Stepping stone marginal likelihood: %f\n", i, lrss);
+//		for (int i = 0; i < temp_count-1; i++) {
+//			printf("%f: %f\n", temperatures[i], lrssk[i]);
+//		}
+		
+		double lrps = log_marginal_path_sampling(lls, i, temps, lrssk);
+		printf("%d Path sampling marginal likelihood: %f\n", i, lrps);
+//		for (int i = 0; i < temp_count-1; i++) {
+//			printf("%f: %f\n", temperatures[i], lrssk[i]);
+//		}
+		lrps = log_marginal_path_sampling_modified(lls, i, temps, lrssk);
+		printf("%d Modified Path sampling marginal likelihood: %f\n", i, lrps);
+//		for (int i = 0; i < temp_count-1; i++) {
+//			printf("%f: %f\n", temperatures[i], lrssk[i]);
+//		}
+		free(lrssk);
+
+	}
+	free(temps);
+	free(lls);
+}
 
 static void _marginal_likelihood_run(MarginaLikelihood* margl){
 	StringBuffer* buffer = new_StringBuffer(10);
@@ -173,10 +209,10 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 	else{
 		// temperatures should be in decreasing order
 		for (int i = 0; i < margl->temperature_count; i++) {
-			printf("Temperature: %f - %s\n", margl->temperatures[i],buffer->c);
 			// saved in increasing order
 			StringBuffer_empty(buffer);
 			StringBuffer_append_format(buffer, "%d%s",i, margl->file);
+			printf("Temperature: %f - %s\n", margl->temperatures[i],buffer->c);
 			lls[margl->temperature_count-i-1] = read_log_column_with_id(buffer->c, margl->burnin, margl->likelihood_tag);
 			temperatures[margl->temperature_count-i-1] = margl->temperatures[i];
 		}
@@ -213,6 +249,7 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 				printf("%f: %f\n", temperatures[i], lrssk[i]);
 			}
 			free(lrssk);
+			test_marg(lls, margl->temperature_count, temperatures);
 		}
 	}
 	
