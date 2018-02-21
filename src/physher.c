@@ -100,6 +100,9 @@
 #include "phyc/vbis.h"
 #include "phyc/nest.h"
 #include "phyc/cpo.h"
+#include "phyc/bridge.h"
+#include "phyc/marginal.h"
+#include "phyc/predictive.h"
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -1531,39 +1534,7 @@ void test2(Model* mpost){
 //	
 //	mpost->free(mpost);
 }
-#include "matrix.h"
-#include "filereader.h"
-#include "marginal.h"
 
-Vector* read_log_last_column2( const char *filename, size_t burnin ){
-	int count = 0;
-	char *ptr = NULL;
-	double *temp = NULL;
-	int l;
-	Vector* vec = new_Vector(1000);
-	
-	FileReader *reader = new_FileReader(filename, 1000);
-	reader->read_line(reader);// discard header
-	
-	while ( reader->read_line(reader) ) {
-		StringBuffer_trim(reader->buffer);
-		
-		if ( reader->buffer->length == 0){
-			continue;
-		}
-		if ( count >= burnin){
-			ptr = reader->line;
-			l = 0;
-			temp = String_split_char_double( ptr, '\t', &l );
-			Vector_push(vec, temp[l-1]);
-			free(temp);
-		}
-		count++;
-	}
-	free_FileReader(reader);
-	Vector_pack(vec);
-	return  vec;
-}
 
 int main(int argc, char* argv[]){
 //	char* filename = "tree0.log";
@@ -1598,13 +1569,7 @@ int main(int argc, char* argv[]){
 		printf("Reading file %s\n", argv[1]);
 	}
 	printf("done\n\n");
-	//long seeed = 1513138202;//time(NULL);
 	long seeed = time(NULL);
-	printf("seed: %ld\n", seeed);
-	init_genrand(seeed);
-	
-	gsl_rng * r = gsl_rng_alloc (gsl_rng_taus);
-	gsl_rng_set(r, seeed);
 	
 	json_node* json = create_json_tree(content);
 	free(content);
@@ -1613,6 +1578,16 @@ int main(int argc, char* argv[]){
 	hashtable_set_key_ownership( hash2, false );
 	hashtable_set_value_ownership( hash2, false );
 	
+	json_node* init_node = get_json_node(json, "init");
+	
+	if (init_node != NULL) {
+		seeed = get_json_node_value_size_t(init_node, "seed", seeed);
+	}
+	
+	printf("seed: %ld\n", seeed);
+	init_genrand(seeed);
+	gsl_rng * r = gsl_rng_alloc (gsl_rng_taus);
+	gsl_rng_set(r, seeed);
 	char* rand_key = "RANDOM_GENERATOR!@";
 	Hashtable_add(hash2, rand_key, r);
 	
@@ -1677,7 +1652,7 @@ int main(int argc, char* argv[]){
 		else if(strcasecmp(type, "mmcmc") == 0){
 			MMCMC* mmcmc = new_MMCMC_from_json(child, hash2);
 			mmcmc->run(mmcmc);
-			free_MMCMC(mmcmc);
+			mmcmc->free(mmcmc);
 		}
 		else if(strcasecmp(type, "hessian") == 0){
 			Hessian* hessian = new_Hessian_from_json(child, hash2);
@@ -1699,6 +1674,21 @@ int main(int argc, char* argv[]){
 			NEST* nest = new_NEST_from_json(child, hash2);
 			nest->run(nest);
 			free_NEST(nest);
+		}
+		else if(strcasecmp(type, "bridgesampling") == 0){
+			BridgeSampling* bridge = new_BridgeSampling_from_json(child, hash2);
+			bridge->run(bridge);
+			bridge->free(bridge);
+		}
+		else if(strcasecmp(type, "marginallikelihood") == 0){
+			MarginaLikelihood* margl = new_MarginaLikelihood_from_json(child, hash2);
+			margl->run(margl);
+			margl->free(margl);
+		}
+		else if(strcasecmp(type, JSON_PREDICTIVE) == 0){
+			Predictive* predictive = new_Predictive_from_json(child, hash2);
+			predictive->calculate(predictive);
+			predictive->free(predictive);
 		}
 	}
 	for (int i = 0; i < model_count; i++) {
