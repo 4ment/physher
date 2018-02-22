@@ -16,20 +16,28 @@
 static void _log_write_header(Log* logger){
 	StringBuffer* buffer = new_StringBuffer(10);
 	if(logger->cpo){
-		Model* treelikelihood = logger->models[0];
-		SingleTreeLikelihood* tlk = treelikelihood->obj;
-		
-		for (int i = 0; i < tlk->sp->count; i++) {
-			StringBuffer_empty(buffer);
-			StringBuffer_append_format(buffer, "%f", tlk->sp->weights[i]);
-			fprintf(logger->file, "%c%s", (i == 0 ? '#': '\t'), buffer->c);
+		fprintf(logger->file, "#");
+		for(int j = 0; j < logger->model_count; j++){
+			Model* treelikelihood = logger->models[j];
+			SingleTreeLikelihood* tlk = treelikelihood->obj;
+			
+			for (int i = 0; i < tlk->sp->count; i++) {
+				StringBuffer_empty(buffer);
+				StringBuffer_append_format(buffer, "%f", tlk->sp->weights[i]);
+				fprintf(logger->file, "%s%s", (i == 0 && j == 0 ? "": "\t"), buffer->c);
+			}
 		}
 		fprintf(logger->file, "\niter");
-		for (int i = 0; i < tlk->sp->count; i++) {
-			StringBuffer_set_string(buffer, "p");
-			StringBuffer_append_format(buffer, "%d", i);
-			fprintf(logger->file, "\t%s", buffer->c);
+		for(int j = 0; j < logger->model_count; j++){
+			Model* treelikelihood = logger->models[j];
+			SingleTreeLikelihood* tlk = treelikelihood->obj;
+			for (int i = 0; i < tlk->sp->count; i++) {
+				StringBuffer_empty(buffer);
+				StringBuffer_append_format(buffer, "%s%s%d", treelikelihood->name, ".p", i);
+				fprintf(logger->file, "\t%s", buffer->c);
+			}
 		}
+		fflush(logger->file);
 	}
 	else{
 		fprintf(logger->file, "iter");
