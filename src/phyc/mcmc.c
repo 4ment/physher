@@ -82,54 +82,50 @@ void run(MCMC* mcmc){
 		op->store(op);
 		bool success = op->propose(op, &logHR);
 		
-		// operator did not propose a valid value
-		if (success == false) {
-			iter++;
-			continue;
-		}
-		double proposed_logP;
-		if(mcmc->chain_temperature < 0){
-			proposed_logP = model->logP(model);
-		}
-		else if(mcmc->gss){
-			model->logP(model);
-			CompoundModel* cm = (CompoundModel*)model->obj;
-			double posteriorLogP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
+		if (success) {
+			double proposed_logP;
+			if(mcmc->chain_temperature < 0){
+				proposed_logP = model->logP(model);
+			}
+			else if(mcmc->gss){
+				model->logP(model);
+				CompoundModel* cm = (CompoundModel*)model->obj;
+				double posteriorLogP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
+				
+				double referenceLogP = cm->models[1]->logP(cm->models[1]) * (1.0 - mcmc->chain_temperature);
+				
+				proposed_logP = posteriorLogP + referenceLogP;
+			}
+			else{
+				model->logP(model);
+				CompoundModel* cm = (CompoundModel*)model->obj;
+				proposed_logP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
+				for (int i = 1; i < cm->count; i++) {
+					proposed_logP += cm->models[i]->logP(cm->models[i]);
+				}
+			}
 			
-			double referenceLogP = cm->models[1]->logP(cm->models[1]) * (1.0 - mcmc->chain_temperature);
+			double alpha = proposed_logP - logP + logHR;
 			
-			proposed_logP = posteriorLogP + referenceLogP;
-		}
-		else{
-			model->logP(model);
-			CompoundModel* cm = (CompoundModel*)model->obj;
-			proposed_logP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
-			for (int i = 1; i < cm->count; i++) {
-				proposed_logP += cm->models[i]->logP(cm->models[i]);
+			// accept
+			if ( alpha >=  0 || alpha > log(random_double()) ) {
+	//			printf("%zu %f %f\n", iter, logP, proposed_logP);
+				logP = proposed_logP;
+				op->accepted_count++;
+			}
+			// reject
+			else {
+	//			printf("%zu %f %f *\n", iter, logP, proposed_logP);
+				model->restore(model);
+				op->restore(op);
+				op->rejected_count++;
+			}
+			
+			if(op->optimize != NULL){// && iter % tuneFrequency == 0){
+				op->optimize(op, alpha);
 			}
 		}
-		
-		double alpha = proposed_logP - logP + logHR;
-		
-		// accept
-		if ( alpha >=  0 || alpha > log(random_double()) ) {
-//			printf("%zu %f %f\n", iter, logP, proposed_logP);
-			logP = proposed_logP;
-			op->accepted_count++;
-		}
-		// reject
-		else {
-//			printf("%zu %f %f *\n", iter, logP, proposed_logP);
-			model->restore(model);
-			op->restore(op);
-			op->rejected_count++;
-		}
-		
 		iter++;
-		
-		if(op->optimize != NULL){// && iter % tuneFrequency == 0){
-			op->optimize(op, alpha);
-		}
 		
 		for (int i = 0; i < mcmc->log_count; i++) {
 			if(iter % mcmc->logs[i]->every == 0){
