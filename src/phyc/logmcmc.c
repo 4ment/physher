@@ -90,11 +90,13 @@ void log_log(Log* logger, size_t iter){
 
 void log_log_cpo(Log* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
-	Model* treelikelihood = logger->models[0];
-	SingleTreeLikelihood* tlk = treelikelihood->obj;
-	tlk->calculate(tlk);// update partials
-	for (int i = 0; i < tlk->sp->count; i++) {
-		fprintf(logger->file, "\t%e", tlk->pattern_lk[i]);
+	for(int j = 0; j < logger->model_count; j++){
+		Model* treelikelihood = logger->models[j];
+		SingleTreeLikelihood* tlk = treelikelihood->obj;
+		tlk->calculate(tlk);// update partials
+		for (int i = 0; i < tlk->sp->count; i++) {
+			fprintf(logger->file, "\t%e", tlk->pattern_lk[i]);
+		}
 	}
 	fprintf(logger->file, "\n");
 }
