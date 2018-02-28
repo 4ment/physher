@@ -19,6 +19,7 @@ typedef struct NEST{
 	Operator** operators;
 	size_t operator_count;
 	long chain_length;
+	double precision;
 	size_t steps;
 	size_t burnin;
 	size_t N;

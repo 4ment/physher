@@ -41,7 +41,6 @@ double nest_mcmc(NEST* mcmc, double minLnL){
 //		mcmc->logs[i]->write(mcmc->logs[i], iter);
 //	}
 	double logLikelihood = INFINITY;
-	int accepted = 0;
 	while ( iter < mcmc->chain_length) {
 		
 		// Choose operator
@@ -50,44 +49,42 @@ double nest_mcmc(NEST* mcmc, double minLnL){
 		
 		double logHR = 0;
 		
+		prior->store(prior);
 		op->store(op);
 		bool success = op->propose(op, &logHR);
 		
-		// operator did not propose a valid value
-		if (success == false) {
-			iter++;
-			continue;
-		}
-		double proposed_logPrior;
-		double proposed_logLikelihood = INFINITY;
-		
-		if(!isinf(minLnL)){
-			proposed_logLikelihood = mcmc->likelihood->logP(mcmc->likelihood);
-		}
+		if (success) {
+			double proposed_logPrior;
+			double proposed_logLikelihood = INFINITY;
+			
+			if(!isinf(minLnL)){
+				proposed_logLikelihood = mcmc->likelihood->logP(mcmc->likelihood);
+			}
 
-		proposed_logPrior = prior->logP(prior);
-		
-		double alpha = proposed_logPrior - logP + logHR;
-		
-		// accept
-		if ( (alpha >=  0 || alpha > log(random_double())) && proposed_logLikelihood > minLnL ) {
-			//			printf("%zu %f %f\n", iter, logP, proposed_logP);
-			logP = proposed_logPrior;
-			logLikelihood = proposed_logLikelihood;
-			op->accepted_count++;
-			accepted++;
-		}
-		// reject
-		else {
-			//			printf("%zu %f %f *\n", iter, logP, proposed_logP);
-			op->restore(op);
-			op->rejected_count++;
-		}
-		
-		iter++;
-		
-		if(op->optimize != NULL){
-			op->optimize(op, alpha);
+			proposed_logPrior = prior->logP(prior);
+			
+			double alpha = proposed_logPrior - logP + logHR;
+			
+			// accept
+			if ( (alpha >=  0 || alpha > log(random_double())) && proposed_logLikelihood > minLnL ) {
+				//			printf("%zu %f %f\n", iter, logP, proposed_logP);
+				logP = proposed_logPrior;
+				logLikelihood = proposed_logLikelihood;
+				op->accepted_count++;
+			}
+			// reject
+			else {
+				//			printf("%zu %f %f *\n", iter, logP, proposed_logP);
+				prior->restore(prior);
+				op->restore(op);
+				op->rejected_count++;
+			}
+			
+			if(op->optimize != NULL){
+				op->optimize(op, alpha);
+			}
+			
+			iter++;
 		}
 	
 //		for (int i = 0; i < mcmc->log_count; i++) {
@@ -154,7 +151,7 @@ void nest_run(NEST* nest){
 		
 		if(i % 100 == 0) printf(" %f\n", logLikelihood);
 
-		if (fabs(logZ-logZp) < 1.e-6) {
+		if (fabs(logZ-logZp) < nest->precision) {
 			break;
 		}
 	}
@@ -189,6 +186,7 @@ NEST* new_NEST_from_json(json_node* node, Hashtable* hash){
 	nest->steps = get_json_node_value_size_t(node, "steps", 1000);
 	nest->burnin = get_json_node_value_size_t(node, "burnin", 0);
 	nest->N = get_json_node_value_size_t(node, "N", 100);
+	nest->precision = get_json_node_value_double(node, "precision", 1.e-6);
 	
 	nest->run = nest_run;
 	
