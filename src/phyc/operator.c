@@ -153,6 +153,7 @@ bool operator_dirichlet(Operator* op, double* logHR){
 			free(scaledOld);
 			free(newValues);
 			free(newScaled);
+			op->rejected_count++;
 			return false;
 		}
 	}
