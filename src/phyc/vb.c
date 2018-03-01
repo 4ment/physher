@@ -137,7 +137,7 @@ void init_meanfield_normal(variational_t* var){
 		else{
 			Parameter* var_p_mu = Parameters_at(var->var_parameters, i);
 			double dlogP;
-			double d2logP = Model_second_derivative(posterior, Parameters_at(var->parameters, i), &dlogP, 0.001);
+			double d2logP = posterior->d2logP(posterior, Parameters_at(var->parameters, i)); //Model_second_derivative(posterior, Parameters_at(var->parameters, i), &dlogP, 0.001);
 			double mu = Parameters_value(var->parameters, i); // mean = mode of normal
 			double v = -1.0/d2logP; // variance of normal
 			
