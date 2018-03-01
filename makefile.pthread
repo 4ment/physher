@@ -32,7 +32,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -pthread -lm
+LIBS = -pthread -lm -lgsl
 
 
 MKDIR_P = mkdir -p

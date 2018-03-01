@@ -30,7 +30,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -lm -lgsl -lgslcblas 
+LIBS = -lm -lgsl
 
 
 MKDIR_P = mkdir -p
