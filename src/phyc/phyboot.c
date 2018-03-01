@@ -1798,9 +1798,13 @@ static void * _resampling_thread_worker_distance( void *threadpool  ){
         }
         
         double **matrix = Sequences_distance(resampled, pool->model);
+		char** taxa = malloc(sizeof(char*)*pool->sequences->size);
+		for (int i = 0; i < pool->sequences->size; i++) {
+			taxa[i] = pool->sequences->seqs[i]->name;
+		}
         Tree *tree = NULL;
         if ( pool->algorithm == CLUSTERING_NJ ) {
-            tree = new_NJ(resampled, matrix);
+            tree = new_NJ(taxa, pool->sequences->size, matrix);
         }
         else if( pool->algorithm == CLUSTERING_UPGMA){
             tree = new_UPGMA(resampled, matrix);
@@ -1810,6 +1814,7 @@ static void * _resampling_thread_worker_distance( void *threadpool  ){
         }
         
         free_dmatrix(matrix, resampled->size);
+		free(taxa);
         
         pthread_mutex_lock(&(pool->lock));
         {
