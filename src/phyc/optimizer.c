@@ -39,14 +39,26 @@
 
 static double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
-	//	printf("%f\n", model->logP(model));
-	return model->logP(model);
+	double logP = model->logP(model);
+	if (grad != NULL) {
+		for (int i = 0; i < Parameters_count(params); i++) {
+			grad[i] = model->dlogP(model, Parameters_at(params, i));
+		}
+	}
+	//	printf("%f\n", logP);
+	return logP;
 }
 
 static double _negative_logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
+	double logP = model->logP(model);
 //		printf("%f\n", model->logP(model));
-	return -model->logP(model);
+	if (grad != NULL) {
+		for (int i = 0; i < Parameters_count(params); i++) {
+			grad[i] = -model->dlogP(model, Parameters_at(params, i));
+		}
+	}
+	return -logP;
 }
 
 static void _gradient( Parameters *params, double *grad, void *data ){
@@ -127,6 +139,7 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 	double lnl = f(NULL, NULL, data);
 	double fret = lnl;
 	for (stop->iter = 0; stop->iter < stop->iter_max; stop->iter++) {
+		double lnl_current = lnl;
 		for (int i = 0; i < schedule->count; i++) {
 			Optimizer* opt = schedule->optimizers[i];
 			double local_fret;
@@ -152,12 +165,12 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 			else{
 				printf("%s %f %f\n", Parameters_name(opt->parameters, 0), -fret, -lnl);
 			}
-			
-			if(  lnl-fret < stop->tolfx ){
-				*fmin = fret;
-				return OPT_SUCCESS;
-			}
 			lnl = fret;
+		}
+		if(  lnl_current-lnl < stop->tolfx ){
+			printf("%f %f\n", lnl, lnl_current);
+			*fmin = lnl;
+			return OPT_SUCCESS;
 		}
 	}
 	return OPT_MAXITER;
@@ -204,6 +217,7 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
     opt->etas = NULL;
 	opt->eta_count = 0;
     opt->ascent = true;
+	opt->reset = NULL;
 	return opt;
 }
 
@@ -645,7 +659,14 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		}
 		opt_set_max_iteration(opt, max);
 		opt_set_tolfx(opt, precision);
-		opt->reset = NULL;
+	}
+	// Conjugate gradient
+	else if (strcasecmp(algorithm_string, "cg") == 0) {
+		opt = new_Optimizer(OPT_CG_PR);
+		get_parameters_references(node, hash, parameters);
+		opt_set_parameters(opt, parameters);
+		opt_set_max_iteration(opt, max);
+		opt_set_tolfx(opt, precision);
 	}
 	else if (strcasecmp(algorithm_string, "brent") == 0 || strcasecmp(algorithm_string, "serial") == 0) {
 		if (get_json_node(node, "treelikelihood") != NULL) {
@@ -666,7 +687,6 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		}
 		opt_set_max_iteration(opt, max);
 		opt_set_tolx(opt, precision);
-		opt->reset = NULL;
 	}
     // stochastic gradient
     else if(strcasecmp(algorithm_string, "sg") == 0){
