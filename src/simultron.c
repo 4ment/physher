@@ -209,7 +209,7 @@ int main( int argc, char *argv[] ){
     // define dataType
     if ( args_contains(argc, argv, "--states") ) {
         char ** states = String_to_string_array( args_get_string(argc, argv, "--states"), ',', &matrixDimension );
-        dataType = new_GenericDataType(matrixDimension, (const char**)states);
+        dataType = new_GenericDataType("datatype", matrixDimension, (const char**)states);
         for ( int i = 0; i < matrixDimension; i++ ) {
             free(states[i]);
         }
