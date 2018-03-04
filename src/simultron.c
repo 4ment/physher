@@ -293,50 +293,61 @@ int main( int argc, char *argv[] ){
     
     SubstitutionModel *m = NULL;
 	Simplex* freqsSimplex = new_Simplex(matrixDimension);
+	
+	/*
+	 * FREQUENCIES
+	 */
+	// Should only be specified for GTR and HKY but not NONSTAT, JC69 and K80
+	if ( args_contains(argc, argv, "-f") ) {
+		int nfreqs = 0;
+		double *freqs = args_get_double_array(argc, argv, "-f", ',', &nfreqs);
+		freqsSimplex->set_values(freqsSimplex, freqs);
+		free(freqs);
+	}
+	
+	
+	/*
+	 * RATES
+	 */
+	
     if ( dataType->type == DATA_TYPE_NUCLEOTIDE ) {
-        
-        if( strcasecmp("JC69", model_string) == 0 ){
-            m = new_JC69(freqsSimplex);
-        }
-        else if( strcasecmp("K80", model_string) == 0 ){
-            m = new_K80(freqsSimplex);
-        }
-        else if( strcasecmp("HKY", model_string) == 0 ){
-            m = new_HKY(freqsSimplex);
-        }
-        else if( strcasecmp("GTR", model_string) == 0 ){
-            m = new_GTR(freqsSimplex);
-        }
-        else if( strcasecmp("UREV", model_string) == 0 ){
-            m = new_UnrestrictedNucleotideModel(freqsSimplex);
-        }
-        else if( strcasecmp("NONSTAT", model_string) == 0 ){
-            m = new_NONSTATNucleotideModel(freqsSimplex);
-        }
-        else if( model_string[0] == '0' ){
-            m = new_ReversibleNucleotideModel(model_string, freqsSimplex);
-        }
-        
-        /*
-         * FREQUENCIES
-         */
-        // Should only be specified for GTR and HKY but not NONSTAT, JC69 and K80
-        if ( args_contains(argc, argv, "-f") ) {
-            int nfreqs = 0;
-            double *freqs = args_get_double_array(argc, argv, "-f", ',', &nfreqs);
-			freqsSimplex->set_values(freqsSimplex, freqs);
-            free(freqs);
-        }
-        
-        /*
-         * RATES
-         */
-        if ( args_contains(argc, argv, "-r") ) {
-            int rateCount = 0;
-            double *rates = args_get_double_array(argc, argv, "-r", ',', &rateCount);
-            m->set_rates(m,rates);
-        }
-        
+		double *rates = NULL;
+		int rateCount = 0;
+		if ( args_contains(argc, argv, "-r") ) {
+			rates = args_get_double_array(argc, argv, "-r", ',', &rateCount);
+		}
+		
+		if( model_string[0] == '0' ){
+			Parameters* prates = new_Parameters(rateCount);
+			for (int i = 0; i < rateCount; i++) {
+				Parameters_move(prates, new_Parameter("?", rates[i], NULL));
+			}
+			m = new_ReversibleNucleotideModel_with_parameters(model_string, freqsSimplex, prates);
+		}
+		else{
+			if( strcasecmp("JC69", model_string) == 0 ){
+				m = new_JC69(freqsSimplex);
+			}
+			else if( strcasecmp("K80", model_string) == 0 ){
+				m = new_K80(freqsSimplex);
+			}
+			else if( strcasecmp("HKY", model_string) == 0 ){
+				m = new_HKY(freqsSimplex);
+			}
+			else if( strcasecmp("GTR", model_string) == 0 ){
+				m = new_GTR(freqsSimplex);
+			}
+			else if( strcasecmp("UREV", model_string) == 0 ){
+				m = new_UnrestrictedNucleotideModel(freqsSimplex);
+			}
+			else if( strcasecmp("NONSTAT", model_string) == 0 ){
+				m = new_NONSTATNucleotideModel(freqsSimplex);
+			}
+			
+			if(rateCount > 0)m->set_rates(m,rates);
+		}
+		
+		free(rates);
     }
     else if ( dataType->type == DATA_TYPE_CODON ) {
         // FREQUENCIES
@@ -400,18 +411,29 @@ int main( int argc, char *argv[] ){
                 exit(1);
             }
         }
-        
-        m = new_GeneralModel(rateIndexes, freqsSimplex);
-        
+		Parameters* prates = new_Parameters(10);
+		if ( args_contains(argc, argv, "-r") ) {
+			int rateCount = 0;
+			double *rates = args_get_double_array(argc, argv, "-r", ',', &rateCount);
+			for (int i = 0; i < rateCount; i++) {
+				Parameters_move(prates, new_Parameter("?", rates[i], NULL));
+			}
+			free(rates);
+		}
+		
+		if ( args_contains(argc, argv, "-f") ) {
+			int freqCount = 0;
+			double *freqs = args_get_double_array(argc, argv, "-f", ',', &freqCount);
+			freqsSimplex->set_values(freqsSimplex, freqs);
+			free(freqs);
+		}
+		//TODO: should be an option
+		bool normalize = false;
+        DiscreteParameter* dp = new_DiscreteParameter_with_values("discrete", rateIndexes, matrixDimension);
+		m = new_GeneralModel_with_parameters(dp, prates, freqsSimplex, -1, normalize);
         free(rateIndexes);
-        
-        if ( args_contains(argc, argv, "-f") ) {
-            int freqCount = 0;
-            double *freqs = args_get_double_array(argc, argv, "-f", ',', &freqCount);
-            freqsSimplex->set_values(freqsSimplex, freqs);
-            free(freqs);
-        }
-        
+		dp->free(dp);
+		
         // special
 //        mod->normalize = false;
 //        for ( int i = 0; i < matrixDimension; i++ ) {
@@ -419,13 +441,6 @@ int main( int argc, char *argv[] ){
 //        }
 //        mod->need_update = true;
         //end
-        
-        if ( args_contains(argc, argv, "-r") ) {
-            int rateCount = 0;
-            double *rates = args_get_double_array(argc, argv, "-r", ',', &rateCount);
-            m->set_rates(m, rates);
-            free(rates);
-        }
     }
     else {
         assert(0);
