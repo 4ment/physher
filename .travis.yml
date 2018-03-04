@@ -1,4 +1,10 @@
 language: c
+install:
+  - wget http://mirror.rise.ph/gnu/gsl/gsl-2.4.tar.gz
+  - tar xvzf gsl-2.4.tar.gz
+  - cd gsl-2.4
+  - ./configure && make && sudo make install
+  - cd ..
 compiler:
   - clang
   - gcc
