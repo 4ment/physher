@@ -1,4 +1,4 @@
-CC = gcc
+CC ?= gcc
 
 CFLAGS = -std=c99 -DNDEBUG #-g
 #CFLAGS += -Wall -pedantic
@@ -32,7 +32,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -fopenmp -lm
+LIBS = -fopenmp -lm -lgslcblas
 
 
 MKDIR_P = mkdir -p
