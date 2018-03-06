@@ -28,6 +28,7 @@ struct _DistributionModel{
 	double* tempx; // array to pass to multivariate distributions
 	double* tempp;
 	double (*logP)(DistributionModel*);
+	double (*logP_with_values)(DistributionModel*, const double*);
 	double (*dlogP)(DistributionModel*, const Parameter*);
 	double (*d2logP)(DistributionModel*, const Parameter*);
 	void (*sample)(DistributionModel*, double*);
