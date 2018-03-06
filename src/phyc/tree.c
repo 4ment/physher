@@ -603,21 +603,35 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 	if (Hashtable_exists(hash, self->name)) {
 		return Hashtable_get(hash, self->name);
 	}
+	size_t treename_offset = strlen(self->name)+1;
 	Tree *tree = (Tree*)self->obj;
 	Tree *clonetree = clone_Tree(tree);
 	for (int i = 0; i < Tree_node_count(clonetree); i++) {
 		Node* node = Tree_node(clonetree, i);
 		if(node->distance != NULL){
-			char* name = Parameter_name(node->distance);
-			Hashtable_add(hash, name, node->distance);
+			char* name = String_clone(node->distance->name+treename_offset);
+			Parameter_set_name(node->distance, name);
+			free(name);
 		}
 		if(node->height != NULL){
-			char* name = Parameter_name(node->height);
-			Hashtable_add(hash, name, node->height);
+			char* name = String_clone(node->height->name+treename_offset);
+			Parameter_set_name(node->height, name);
+			free(name);
 		}
 	}
 	Model* clone = new_TreeModel(self->name, clonetree);
 	Hashtable_add(hash, clone->name, clone);
+	
+	for (int i = 0; i < Tree_node_count(clonetree); i++) {
+		Node* node = Tree_node(clonetree, i);
+		if(node->distance != NULL){
+			Hashtable_add(hash, node->distance->name, node->distance);
+		}
+		if(node->height != NULL){
+			Hashtable_add(hash, node->height->name, node->height);
+		}
+	}
+	
 	return clone;
 }
 
