@@ -32,6 +32,7 @@
 #include "node.h"
 
 #include "distancematrix.h"
+#include "treeio.h"
 
 struct _Tree{
 	int id;
@@ -622,6 +623,9 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 	Model* clone = new_TreeModel(self->name, clonetree);
 	Hashtable_add(hash, clone->name, clone);
 	
+	Parameters_set_name2(clonetree->distances, Parameters_name2(tree->distances));
+	Hashtable_add(hash, Parameters_name2(clonetree->distances), clonetree->distances);
+	
 	for (int i = 0; i < Tree_node_count(clonetree); i++) {
 		Node* node = Tree_node(clonetree, i);
 		if(node->distance != NULL){
@@ -670,7 +674,6 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 	return model;
 }
 
-#include "treeio.h"
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	json_node* newick_node = get_json_node(node, "newick");
 	json_node* file_node = get_json_node(node, "file");
@@ -684,7 +687,8 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		Tree* tree = new_Tree(newick, true);
 		char* id = get_json_node_value_string(node, "id");
 		mtree = new_TreeModel(id, tree);
-		Hashtable_add(hash, get_json_node_value_string(node, "parameters"), tree->distances);
+		Parameters_set_name2(tree->distances, get_json_node_value_string(node, "parameters"));
+		Hashtable_add(hash, Parameters_name2(tree->distances), tree->distances);
 		for (int i = 0; i < Parameters_count(tree->distances); i++) {
 			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
 		}
@@ -695,8 +699,9 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
         Tree *tree = new_Tree( tree_string, true );
         free(tree_string);
         char* id = get_json_node_value_string(node, "id");
-        mtree = new_TreeModel(id, tree);
-        Hashtable_add(hash, get_json_node_value_string(node, "parameters"), tree->distances);
+		mtree = new_TreeModel(id, tree);
+		Parameters_set_name2(tree->distances, get_json_node_value_string(node, "parameters"));
+		Hashtable_add(hash, Parameters_name2(tree->distances), tree->distances);
         for (int i = 0; i < Parameters_count(tree->distances); i++) {
             Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
         }
@@ -739,7 +744,8 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		json_node* id = get_json_node(node, "id");
 		mtree = new_TreeModel((char*)id->value, tree);
 		free_dmatrix(matrix, patterns->size);
-		Hashtable_add(hash, get_json_node_value_string(node, "parameters"), tree->distances);
+		Parameters_set_name2(tree->distances, get_json_node_value_string(node, "parameters"));
+		Hashtable_add(hash, Parameters_name2(tree->distances), tree->distances);
 		for (int i = 0; i < Parameters_count(tree->distances); i++) {
 			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
 		}
