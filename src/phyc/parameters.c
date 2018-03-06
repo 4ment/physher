@@ -47,6 +47,7 @@ struct _Constraint{
 };
 
 struct _Parameters{
+	char* name;
 	Parameter **list;
 	size_t count;
 	size_t capacity;
@@ -472,6 +473,7 @@ void compare_parameter( const Parameter *p1, const Parameter *p2 ){
 Parameters * new_Parameters( const size_t capacity ){
 	Parameters *ps = (Parameters *)malloc( sizeof(Parameters) );
 	assert(ps);
+	ps->name = NULL;
 	ps->list = (Parameter **)malloc( capacity * sizeof(Parameter *) );
 	assert(ps->list);
 	for (int i = 0; i < capacity; i++) {
@@ -488,6 +490,7 @@ void free_Parameters( Parameters *ps ){
 	for (int i = 0; i < ps->count; i++) {
 		free_Parameter(ps->list[i]);
 	}
+	if(ps->name != NULL) free(ps->name);
 	free(ps->list);
 	free(ps);
 	ps = NULL;
@@ -498,6 +501,9 @@ Parameters * clone_Parameters( Parameters *p ){
 	Parameters * clone = new_Parameters( p->capacity );
 	for (int i = 0; i < p->count; i++) {
 		Parameters_move(clone, clone_Parameter( p->list[i] ) );
+	}
+	if(p->name != NULL){
+		clone->name = String_clone(p->name);
 	}
 	return clone;
 }
@@ -581,6 +587,17 @@ Parameters * Parameters_SML_to_object( SMLNode node ){
 	}
 	
 	return ps;
+}
+
+void Parameters_set_name2(Parameters* ps, const char* name){
+	if(ps->name != NULL){
+		free(ps->name);
+	}
+	ps->name = String_clone(name);
+}
+
+char* Parameters_name2(Parameters* ps){
+	return ps->name;
 }
 
 Parameter * Parameters_at( const Parameters *p, const size_t index ){

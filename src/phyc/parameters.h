@@ -215,6 +215,9 @@ StringBuffer * Parameters_SML_bufferize( StringBuffer *buffer, Parameters *ps );
 
 Parameters * Parameters_SML_to_object( SMLNode node );
 
+void Parameters_set_name2(Parameters* ps, const char* name);
+
+char* Parameters_name2(Parameters* ps);
 
 Parameter * Parameters_at( const Parameters *p, const size_t index );
 
