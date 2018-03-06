@@ -517,6 +517,8 @@ void grad_elbo( Parameters *params, double *grad, void *data ){
 	model->gradient(model, grad);
 }
 
+// TODO: should use a jacobian fucntion instead transform().
+// In this function it works for transform == log but not anything else
 double variational_meanfield_logP(variational_t* var, double* values){
 	int dim = Parameters_count(var->parameters);
 	double logP = 0;
@@ -910,15 +912,20 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	return new_VariationalModel(id, var);
 }
 
+
+void free_Variational(variational_t* var){
+	var->posterior->free(var->posterior);
+	free_Parameters(var->var_parameters);
+	free_Parameters(var->parameters);
+	if (var->file != NULL) fclose(var->file);
+	free(var);
+}
+
 static void _variational_model_free( Model *self ){
 	if(self->ref_count == 1){
 //		printf("Free variational model %s\n", self->name);
 		variational_t* var = (variational_t*)self->obj;
-		var->posterior->free(var->posterior);
-		free_Parameters(var->var_parameters);
-		free_Parameters(var->parameters);
-		if (var->file != NULL) fclose(var->file);
-		free(var);
+		free_Variational(var);
 		free_Model(self);
 	}
 	else{
@@ -936,12 +943,63 @@ static void _variational_model_handle_change( Model *self, Model *model, int ind
 }
 
 static Model* _variational_model_clone(Model* self, Hashtable *hash){
-	//TODO: _variational_model_clone
-	error("_variational_model_clone");
 	if (Hashtable_exists(hash, self->name)) {
 		return Hashtable_get(hash, self->name);
 	}
-	return NULL;
+	variational_t* var = self->obj;
+	
+	Model* posterior = var->posterior->clone(var->posterior, hash);
+	Hashtable_add(hash, posterior->name, posterior);
+
+	Parameters* parameters = new_Parameters(Parameters_count(var->parameters));
+	for (int i = 0; i < Parameters_count(var->parameters); i++) {
+		char* name = Parameters_name(var->parameters, i);
+		if (Hashtable_exists(hash, name)) {
+			Parameters_add(parameters, Hashtable_get(hash, name));
+		}
+		else{
+			Parameter* p = clone_Parameter(Parameters_at(var->parameters, i));
+			Parameters_move(parameters, p);
+			Hashtable_add(hash, name, p);
+		}
+	}
+	
+	Parameters* var_parameters = new_Parameters(Parameters_count(var->var_parameters));
+	for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
+		char* name = Parameters_name(var->var_parameters, i);
+		if (Hashtable_exists(hash, name)) {
+			Parameters_add(var_parameters, Hashtable_get(hash, name));
+		}
+		else{
+			Parameter* p = clone_Parameter(Parameters_at(var->var_parameters, i));
+			Parameters_move(var_parameters, p);
+			Hashtable_add(hash, name, p);
+		}
+	}
+
+	variational_t* clone = malloc(sizeof(variational_t));
+	clone->posterior = posterior;
+	clone->parameters = parameters;
+	clone->var_parameters = var_parameters;
+	clone->file = NULL;
+	clone->sample = var->sample;
+	clone->sample_some = var->sample_some;
+	clone->elbofn = var->elbofn;
+	clone->grad_elbofn = var->grad_elbofn;
+	clone->elbo_samples = var->elbo_samples;
+	clone->grad_samples = var->grad_samples;
+	clone->f = var->f;
+	clone->grad_f = var->grad_f;
+	clone->logP = var->logP;
+	clone->parameters_logP = var->parameters_logP;
+	clone->initialized = var->initialized;
+	clone->finalize = var->finalize;
+	clone->iter = var->iter;
+	clone->ready_to_sample = var->ready_to_sample;
+	clone->rng = var->rng;
+	Model* mclone = new_VariationalModel(self->name, clone);
+
+	return mclone;
 }
 
 static double _variational_model_logP(Model *self){
@@ -979,6 +1037,14 @@ void _variational_model_reset(Model* self){
 
 }
 
+void _variational_model_sample(Model* self, double* samples, double* logP){
+	variational_t* var = (variational_t*)self->obj;
+	var->sample(var, samples);
+	if(logP != NULL){
+		*logP = var->logP(var, samples);
+	}
+}
+
 Model* new_VariationalModel(const char* name, variational_t* var){
 	Model *model = new_Model("variational", name, var);
 	model->free = _variational_model_free;
@@ -987,19 +1053,11 @@ Model* new_VariationalModel(const char* name, variational_t* var){
 	model->gradient = _variational_model_gradient;
 	model->get_free_parameters = _variational_model_get_free_parameters;
 	model->reset = _variational_model_reset;
+	model->sample = _variational_model_sample;
+	model->samplable = true;
 	
 	for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
 		Parameters_at(var->var_parameters, i)->listeners->add( Parameters_at(var->var_parameters, i)->listeners, model );
 	}
 	return model;
-}
-
-void free_Variational(variational_t* var){
-//	for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
-//		printf("%s %f\n", Parameters_name(var->var_parameters, i), Parameters_value(var->var_parameters, i));
-//	}
-	free_Parameters(var->var_parameters);
-    var->posterior->free(var->posterior);
-    free_Parameters(var->parameters);
-	free(var);
 }
