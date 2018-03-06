@@ -13,8 +13,11 @@
 #include "vb.h"
 
 typedef struct marginal_vb_t{
-	Model* model;
+	Model* model; // distribution of interest
+	Model* distribution; // importance distribution
 	size_t samples;
+	Parameters* parameters;
+	bool normalize;
 	double(*calculate)(struct marginal_vb_t*);
 	void(*free)(struct marginal_vb_t*);
 }marginal_vb_t;
