@@ -20,73 +20,13 @@
 #include "compoundmodel.h"
 #include "treelikelihood.h"
 #include "utilsio.h"
+#include "parametersio.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_linalg.h>
 
-Vector** read_log_for_parameters( const char *filename, size_t burnin, size_t* count, Parameters* params ){
-	char *ptr = NULL;
-	double *temp = NULL;
-	int l;
-	size_t capacity = 1000;
-	*count = 0;
-	size_t paramCount = Parameters_count(params);
-	Vector** vecs = malloc(capacity*sizeof(Vector*));
-	size_t sample = 0;
-	
-	FileReader *reader = new_FileReader(filename, 1000);
-	reader->read_line(reader);// discard header
-	ptr = reader->line;
-	l = 0;
-	char** header = String_split_char(ptr, '\t', &l);
-	bool* in = bvector(l);
-	
-	for (int j = 0; j < paramCount; j++) {
-		for (int i = 0; i < l; i++) {
-			if(strcmp(Parameters_name(params, j), header[i]) == 0){
-				in[i] = true;
-				break;
-			}
-		}
-	}
-	
-	for (int i = 0; i < l; i++) {
-		free(header[i]);
-	}
-	free(header);
-	
-	while ( reader->read_line(reader) ) {
-		StringBuffer_trim(reader->buffer);
-		
-		if ( reader->buffer->length == 0){
-			continue;
-		}
-		if ( sample >= burnin){
-			if(*count == capacity){
-				capacity *= 2;
-				vecs = realloc(vecs, capacity*sizeof(Vector*));
-			}
-			ptr = reader->line;
-			l = 0;
-			temp = String_split_char_double( ptr, '\t', &l );
-			vecs[*count] = new_Vector(paramCount);
-			for (int i = 0; i < l; i++) {
-				if(in[i]){
-					Vector_push(vecs[*count], temp[i]);
-				}
-			}
-			free(temp);
-			(*count)++;
-		}
-		sample++;
-	}
-	free_FileReader(reader);
-	vecs = realloc(vecs, *count*sizeof(Vector*));
-	free(in);
-	return  vecs;
-}
 
 Vector** sample_multivariate_normal(gsl_rng *rng, size_t n, const double* means, const double* covar, size_t dim){
 	Vector** values = malloc(n*sizeof(Vector*));
