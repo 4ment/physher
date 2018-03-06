@@ -977,6 +977,11 @@ static double _d2logP(Model *model, const Parameter* p){return 0;}
 static void _dummy_reset(Model* m){}
 static void _dummy_restore(Model* m){}
 static void _dummy_store(Model* m){}
+static void _dummy_sample(Model* m, double* samples, double* logP){
+	fprintf("Cannot sample from model %s\n", m->name);
+	exit(2);
+}
+
 #pragma mark -
 
 
@@ -1001,6 +1006,8 @@ Model * new_Model( const char *type, const char *name, void *obj ){
 	model->store = _dummy_store;
 	model->logP = 0;
 	model->lp = 0;
+	model->sample = _dummy_sample;
+	model->samplable = false;
 	return model;
 }
 
@@ -1187,7 +1194,12 @@ void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* pa
                     Simplex* simplex = msimplex->obj;
                     Parameters_add_parameters(parameters, simplex->parameters);
                 }
-            }
+			}
+			// it's a value
+			else if(child->node_type == MJSON_PRIMITIVE){
+				double v = atof((char*)child->value);
+				Parameters_move(parameters, new_Parameter("anonymous", v, NULL));
+			}
             else{
                 exit(1);
             }
@@ -1211,8 +1223,16 @@ void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* pa
             Parameters_add_parameters(parameters, simplex->parameters);
         }
     }
+	else if(x_node->node_type == MJSON_OBJECT){
+		for(int i = 0; i < x_node->child_count; i++){
+			json_node* p_node = x_node->children[i];
+			Parameter* p = new_Parameter_from_json(p_node, hash);
+			Parameters_move(parameters, p);
+		}
+	}
     else{
         exit(1);
     }
 }
+
 

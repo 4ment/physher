@@ -22,6 +22,7 @@
 
 #include "filereader.h"
 #include "statistics.h"
+#include "parametersio.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
@@ -696,140 +697,10 @@ Model* new_TreeDistributionModel(const char* name, DistributionModel* dm, Model*
     return model;
 }
 
-char** get_parameters(json_node* node, Hashtable* hash, Parameters* parameters){
-	json_node* parameters_node = get_json_node(node, "parameters");
-	char** param_names = NULL;
-	
-	if(parameters_node->node_type == MJSON_ARRAY){
-		for (int i = 0; i < parameters_node->child_count; i++) {
-			json_node* child = parameters_node->children[i];
-			// it's a ref
-			if (child->node_type == MJSON_STRING) {
-				char* ref = (char*)child->value;
-				Parameter* p = Hashtable_get(hash, ref+1);
-				Parameters_add(parameters, p);
-			}
-			// it's a value
-			else if(child->node_type == MJSON_PRIMITIVE){
-				double v = atof((char*)child->value);
-				Parameters_move(parameters, new_Parameter("anonymous", v, NULL));
-			}
-			else{
-				exit(1);
-			}
-		}
-	}
-	else if(parameters_node->node_type == MJSON_OBJECT){
-		param_names = malloc(sizeof(char*)*parameters_node->child_count);
-		for(int i = 0; i < parameters_node->child_count; i++){
-			json_node* p_node = parameters_node->children[i];
-			Parameter* p = new_Parameter_from_json(p_node, hash);
-			Parameters_move(parameters, p);
-			param_names[i] = p_node->key;
-		}
-	}
-	// it's a ref
-	else if(parameters_node->node_type == MJSON_STRING){
-		char* ref = (char*)parameters_node->value;
-		Parameter* p = Hashtable_get(hash, ref+1);
-		Parameters_add(parameters, p);
-	}
-	else{
-		exit(1);
-	}
-	return param_names;
-}
-
-void get_x(json_node* node, Hashtable* hash, Parameters* x){
-	json_node* x_node = get_json_node(node, "x");
-	
-	if(x_node->node_type == MJSON_ARRAY){
-		for (int i = 0; i < x_node->child_count; i++) {
-			json_node* child = x_node->children[i];
-			// it's a ref
-			if (child->node_type == MJSON_STRING) {
-				char* ref = (char*)child->value;
-				Parameter* p = Hashtable_get(hash, ref+1);
-				Parameters_add(x, p);
-			}
-			else{
-				exit(1);
-			}
-		}
-	}
-	// it's a ref
-	else if(x_node->node_type == MJSON_STRING){
-		char* ref = (char*)x_node->value;
-		Parameter* p = Hashtable_get(hash, ref+1);
-		Parameters_add(x, p);
-	}
-	else{
-		exit(1);
-	}
-}
-
 Model* get_simplex(json_node* node, Hashtable* hash){
 	json_node* x_node = get_json_node(node, "x");
 	char* ref = (char*)x_node->value;
 	return Hashtable_get(hash, ref+1);
-}
-
-Vector** read_parameters(const char* file, size_t burnin, Parameters* x){
-	size_t paramCount = Parameters_count(x);
-	
-	int count = 0;
-	char *ptr = NULL;
-	double *temp = NULL;
-	int l;
-	Vector** vec = malloc(sizeof(Vector*)*paramCount);
-	for(int i = 0; i < paramCount; i++){
-		vec[i] = new_Vector(1000);
-	}
-	
-	FileReader *reader = new_FileReader(file, 1000);
-	reader->read_line(reader);
-	ptr = reader->line;
-	l = 0;
-	char** header = String_split_char(ptr, '\t', &l);
-	bool* in = bvector(l);
-	
-	for (int j = 0; j < paramCount; j++) {
-		for (int i = 0; i < l; i++) {
-			if(strcmp(Parameters_name(x, j), header[i]) == 0){
-				in[i] = true;
-				break;
-			}
-		}
-	}
-	for (int i = 0; i < l; i++) {
-		free(header[i]);
-	}
-	free(header);
-	
-	while ( reader->read_line(reader) ) {
-		StringBuffer_trim(reader->buffer);
-		
-		if ( reader->buffer->length == 0){
-			continue;
-		}
-		if ( count >= burnin){
-			ptr = reader->line;
-			l = 0;
-			temp = String_split_char_double( ptr, '\t', &l );
-			int index = 0;
-			for (int i = 0; i < l; i++) {
-				if(in[i]){
-					Vector_push(vec[index], temp[i]);
-					index++;
-				}
-			}
-			free(temp);
-		}
-		count++;
-	}
-	free_FileReader(reader);
-	free(in);
-	return vec;
 }
 
 Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
@@ -841,12 +712,11 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	Parameters* x = NULL;
 	DistributionModel* dm = NULL;
 	Model* model = NULL;
-	char** param_names = NULL;
 	
 	if (strcasecmp(d_string, "exponential") == 0) {
 		parameters = new_Parameters(1);
 		x = new_Parameters(1);
-		param_names = get_parameters(node, hash, parameters);
+		get_parameters_references(node, hash, parameters);
 		
 		if (tree_node != NULL) {
 			char* ref = (char*)tree_node->value;
@@ -860,14 +730,14 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 			}
 		}
 		else{
-			get_x(node, hash, x);
+			get_parameters_references2(node, hash, x, "x");
 		}
 		dm = new_IndependantExpDistributionModel_with_parameters(parameters, x);
 		model = new_DistributionModel2(id, dm);
 	}
 	else if (strcasecmp(d_string, "dirichlet") == 0) {
 		parameters = new_Parameters(1);
-		get_parameters(node, hash, parameters);
+		get_parameters_references(node, hash, parameters);
 		Model* simplex = get_simplex(node, hash);
 		int i = 0;
 		for ( ; i < Parameters_count(parameters); i++) {
@@ -893,7 +763,8 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		// empirical
 		if (file != NULL) {
 			size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
-			Vector** vecs = read_parameters(file, burnin, x);
+			size_t tot;
+			Vector** vecs = read_log_for_parameters(file, burnin, &tot, x);
 			int n = Vector_length(vecs[0]);
 			size_t paramCount = Parameters_count(x);
 			
@@ -910,7 +781,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 			free(vecs);
 		}
 		else{
-			param_names = get_parameters(node, hash, parameters);
+			get_parameters_references(node, hash, parameters);
 		}
 		
         dm = new_IndependantGammaDistributionModel_with_parameters(parameters, x);
@@ -930,7 +801,8 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		x = new_Parameters(1);
 		get_parameters_references2(node, hash, x, "x");
 		
-		Vector** vec = read_parameters(file,burnin, x);
+		size_t tot;
+		Vector** vec = read_log_for_parameters(file, burnin, &tot, x);
 
 		int n = Vector_length(vec[0]);
 		size_t paramCount = Parameters_count(x);
@@ -975,7 +847,6 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	
 	free_Parameters(parameters);
 	free_Parameters(x);
-	if(param_names != NULL) free(param_names);
 	
 	return model;
 }

@@ -326,6 +326,7 @@ struct _Model {
 	void (*update)( Model *, Model *, int );
 	void (*get_free_parameters)(Model*, Parameters*);
 	void (*reset)(Model*);
+	void (*sample)(Model*, double*, double* logP);
 	
 	ListenerList *listeners;
 	int ref_count;
@@ -334,6 +335,7 @@ struct _Model {
 	void(*restore)(Model*);
 	double lp;
 	double storedLogP;
+	bool samplable; // model is a distribution that can sampled directly
 };
 
 
