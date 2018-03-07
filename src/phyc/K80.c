@@ -151,19 +151,3 @@ void k80_dQ(SubstitutionModel *m, int index, double* mat, double t){
 	Matrix_mult4(mat, x, (const double**)m->eigendcmp->Invevec, 4,4,4,4);
 }
 
-StringBuffer * SubstitutionModel_K80_bufferize( StringBuffer *buffer, SubstitutionModel *m ){
-	int i = 0;
-	
-	StringBuffer_append_string(buffer, "{");
-	StringBuffer_append_strings(buffer, 2, "name:\"", m->name, "\",\n");
-
-	StringBuffer_append_string(buffer, "rates:[");
-	for ( i = 0; i < Parameters_count(m->rates); i++) {
-		StringBuffer_append_format(buffer," %f", Parameters_value(m->rates, i) );
-	}
-	StringBuffer_append_string(buffer, "]\n");
-	
-	StringBuffer_append_string(buffer, "}");
-	
-	return buffer;
-}

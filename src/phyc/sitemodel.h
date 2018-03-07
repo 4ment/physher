@@ -116,12 +116,4 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m );
 
 SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, const Parameters* params );
 
-/*char *SiteModel_stringify( SiteModel *sm );
-
-StringBuffer * SiteModel_bufferize( StringBuffer *buffer, SiteModel *sm );
-
-void * SiteModel_SML_to_object( ObjectStore *store, SMLNode node );*/
-
-void compare_sitemodel( const SiteModel *sm1, const SiteModel *sm2);
-
 #endif

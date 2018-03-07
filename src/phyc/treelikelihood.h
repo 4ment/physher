@@ -291,13 +291,6 @@ void SingleTreeLikelihood_use_upper( SingleTreeLikelihood *tlk, bool use_upper )
 
 double calculate_uppper_2nodes( SingleTreeLikelihood *tlk, Node *node );
 
-
-/*char * SingleTreeLikelihood_stringify( SingleTreeLikelihood *stlk );
- 
- StringBuffer * SingleTreeLikelihood_bufferize( StringBuffer *buffer, SingleTreeLikelihood *stlk );
- 
- void * SingleTreeLikelihood_SML_to_object( ObjectStore *store, SMLNode node );*/
-
 double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 
 

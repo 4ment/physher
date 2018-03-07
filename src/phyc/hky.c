@@ -51,10 +51,9 @@ static void _hky_d2p_dt2_transpose( SubstitutionModel *m, const double t, double
 static void _foo_update( SubstitutionModel *m ){} // does not nothing
 
 SubstitutionModel * new_HKY(Simplex* freqs){
-	Parameters* kappa = new_Parameters( 1 );
-	Parameters_move(kappa, new_Parameter_with_postfix("hky.kappa", "model", 3, new_Constraint(0.0001, 100) ) );
+	Parameter* kappa = new_Parameter_with_postfix("hky.kappa", "model", 3, new_Constraint(0.0001, 100) );
 	SubstitutionModel* model = new_HKY_with_parameters(freqs, kappa);
-	free_Parameters(kappa);
+	free_Parameter(kappa);
 	return model;
 }
 

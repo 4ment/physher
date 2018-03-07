@@ -172,10 +172,4 @@ double tstv_to_kappa( double tstv, const double *freqs );
 
 double kappa_to_tstv( double kappa, const double *freqs );
 
-/*char *SubstitutionModel_stringify( SubstitutionModel *m );
- 
- StringBuffer * SubstitutionModel_bufferize( StringBuffer *buffer, SubstitutionModel *m );
- 
- void * SubstitutionModel_SML_to_object( ObjectStore *store, SMLNode node );*/
-
 #endif

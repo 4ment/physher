@@ -70,12 +70,6 @@ BranchModel * new_BranchModel( Tree *tree, branchmodel type );
 
 BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree );
 
-char *BranchModel_stringify( BranchModel *bm );
-
-StringBuffer * BranchModel_bufferize( StringBuffer *buffer, BranchModel *bm );
-
-void * BranchModel_SML_to_object( ObjectStore *store, SMLNode node );
-
 Parameters * BranchModel_save_rates( BranchModel *bm );
 
 void BranchModel_restore_rates( BranchModel *bm, const Parameters *rates );

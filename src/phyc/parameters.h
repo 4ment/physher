@@ -23,7 +23,6 @@
 #include <float.h>
 
 #include "mstring.h"
-#include "parser.h"
 #include "model.h"
 
 #include "mjson.h"
@@ -96,10 +95,6 @@ void free_Constraint( Constraint *c );
 
 Constraint * clone_Constraint( Constraint *cnstr );
 
-StringBuffer * Constraint_bufferize( StringBuffer *buffer, Constraint *c );
-
-void * Constraint_SML_to_object( SMLNode node );
-
 bool Constraint_lower_fixed( const Constraint *c );
 
 bool Constraint_upper_fixed( const Constraint *c );
@@ -127,8 +122,6 @@ void Constraint_set_fupper( Constraint *c, const double fupper );
 
 void Constraint_set_flower( Constraint *c, const double flower );
 
-void compare_constraint( const Constraint *c1, const Constraint *c2 );
-
 #pragma mark -
 #pragma mark Parameter
 
@@ -141,16 +134,6 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash);
 void free_Parameter( Parameter *p );
 
 Parameter * clone_Parameter( Parameter *p );
-
-char * Parameter_stringify( Parameter *p );
-
-StringBuffer * Parameter_bufferize( StringBuffer *buffer, Parameter *p );
-
-StringBuffer * Parameter_bufferize_parameter_set( StringBuffer *buffer, Parameter *p );
-
-void * Parameter_SML_to_object( SMLNode node );
-
-void * Parameter_SML_to_object_with_postfix( SMLNode node, const char *postfix );
 
 char * Parameter_name( const Parameter *p );
 
@@ -196,8 +179,6 @@ void Parameter_die( const Parameter *p, const double value );
 
 void Parameter_print( const Parameter *p );
 
-void compare_parameter( const Parameter *p1, const Parameter *p2 );
-
 #pragma mark -
 #pragma mark Parameters
 
@@ -208,12 +189,6 @@ Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash);
 void free_Parameters( Parameters *ps );
 
 Parameters * clone_Parameters( Parameters *p );
-
-char * Parameters_stringify( Parameters *ps );
-
-StringBuffer * Parameters_SML_bufferize( StringBuffer *buffer, Parameters *ps );
-
-Parameters * Parameters_SML_to_object( SMLNode node );
 
 void Parameters_set_name2(Parameters* ps, const char* name);
 
@@ -278,8 +253,6 @@ Parameters * pack_parameters(Parameters *ps, Parameter *p);
 
 
 void Parameters_print( Parameters *ps );
-
-void compare_parameters( const Parameters *p1, const Parameters *p2 );
 
 void Parameters_swap( Parameter **a, Parameter **b );
 

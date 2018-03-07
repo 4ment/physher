@@ -676,18 +676,18 @@ int main( int argc, char *argv[] ){
     
     StringBuffer_append_string(buffer, "\nFrequencies:\n");
     if( m->dtype == DATA_TYPE_NUCLEOTIDE ){
-        bufferize_frequencies(buffer, m);
+//        bufferize_frequencies(buffer, m);
     }
     else if( m->dtype == DATA_TYPE_AMINO_ACID ){
-        bufferize_aa_frequencies(buffer, m);
+//        bufferize_aa_frequencies(buffer, m);
     }
     else if( m->dtype == DATA_TYPE_CODON ){
-        bufferize_codon_frequencies(buffer, m);
+//        bufferize_codon_frequencies(buffer, m);
     }
     
     StringBuffer_append_string(buffer, "\nRelative rates:\n");
-    bufferize_rates(buffer, m);
-    
+//    bufferize_rates(buffer, m);
+	
     // no rate variation
     if(sm->cat_count == 1){
         

@@ -24,7 +24,6 @@
 #include <stdint.h>
 
 #include "mstring.h"
-#include "parser.h"
 
 #include "datatype.h"
 #include "mjson.h"
@@ -93,12 +92,6 @@ void free_SitePattern( SitePattern *sp );
 
 SitePattern * clone_SitePattern( const SitePattern *sp );
 
-
-char * SitePattern_stringify( const SitePattern *sp );
-
-StringBuffer * SitePattern_bufferize( StringBuffer *buffer, const SitePattern *sp );
-
-void * SitePattern_SML_to_object( ObjectStore *store, SMLNode node );
 
 Sequences * SitePattern_to_Sequences( const SitePattern *sp  );
 

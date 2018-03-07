@@ -909,95 +909,8 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
 	return newTree;
 }
 
-
-char * Tree_stringify( Tree *tree ){
-	StringBuffer *buffer = new_StringBuffer(1000);
-	
-	buffer = Tree_Bufferize( buffer, tree );
-	
-	char *final = StringBuffer_tochar(buffer);
-	free_StringBuffer(buffer);
-	//fprintf(stderr, "%d\n", (int)strlen(final));
-	return final;
-}
-
 static StringBuffer * _to_nexus( StringBuffer *buffer, const Node *n );
 
-
-StringBuffer * Tree_Bufferize( StringBuffer *buffer, Tree *tree ){
-	StringBuffer_append_format(buffer, "(Tree:\n (id:\"tree%d\")\n(nexus:\"", tree->id);
-	
-	_to_nexus(buffer, tree->root );
-	StringBuffer_append_string(buffer,"\")\n");
-	
-	Node **nodes = Tree_get_nodes(tree, POSTORDER);
-	int i = 0;
-	if ( nodes[0]->distance != NULL ) {
-		StringBuffer_append_format(buffer,"(%s:\n",POSTFIX_DISTANCE);
-		for ( i = 0; i < tree->nNodes; i++) {
-			Parameter_bufferize(buffer, nodes[i]->distance);
-			StringBuffer_append_char(buffer,'\n');
-		}
-		StringBuffer_append_string(buffer,")\n");
-	}
-	
-	if ( nodes[0]->height != NULL ) {
-		StringBuffer_append_format(buffer,"(%s:\n",POSTFIX_HEIGHT);
-		for ( i = 0; i < tree->nNodes; i++) {
-			Parameter_bufferize(buffer, nodes[i]->height);
-			StringBuffer_append_char(buffer,'\n');
-		}
-		StringBuffer_append_string(buffer,")\n");
-	}
-	
-	
-	
-	StringBuffer_append_char(buffer,')');
-	
-	return buffer;
-}
-
-void * Tree_SML_to_object( ObjectStore *store, SMLNode node ){
-	fprintf(stderr, "Tree_SML_to_object ");
-	Tree *tree = NULL;
-	
-	char *id = SML_get_data_of_child( node, "id");
-	
-	
-	if ( (tree = ObjectStore_get_object(store, id )) != NULL ) {
-		fprintf(stderr, " use Object store\n");
-		return tree;
-	}
-	
-	SMLNode tree_node = SML_get_element( node, "nexus");
-	if ( tree_node != NULL ) {
-		fprintf(stderr, " create object\n");
-		tree = new_Tree( SML_get_data(tree_node), true );
-		
-		SMLNode distance_node = SML_get_element( node, POSTFIX_DISTANCE);
-		if ( distance_node != NULL ) {
-			Parameters *ps = Parameters_SML_to_object(distance_node);
-			tree_init_distance_parameters( tree, ps );
-		}
-		
-		SMLNode height_node = SML_get_element( node, POSTFIX_HEIGHT);
-		if ( distance_node != NULL ) {
-			Parameters *ps = Parameters_SML_to_object(height_node);
-			tree_init_height_parameters( tree, ps );
-		}
-		
-		char *pid = &id[0];
-		while( *pid < '0' || *pid > '9' ){
-			pid++;
-		}
-		tree->id = atoi( id );
-		
-		ObjectStore_add( store, id, tree);
-	}
-	
-	
-	return tree;
-}
 
 Node ** Tree_nodes( Tree *tree ){
     return tree->nodes;
@@ -2281,9 +2194,6 @@ void compare_tree_aux( const Node *n1, const Node *n2){
 	assert( n1->postorder_idx == n2->postorder_idx);
 	assert( n1->preorder_idx == n2->preorder_idx);
 	
-	compare_parameter( n1->height, n2->height );
-	compare_parameter( n1->distance, n2->distance );
-		
 	compare_tree_aux( n1->left, n2->left );
 	compare_tree_aux( n1->right, n2->right );
 }

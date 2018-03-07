@@ -26,7 +26,6 @@
 
 #include "matrix.h"
 #include "mstring.h"
-#include "parser.h"
 #include "sequenceio.h"
 #include "mstring.h"
 #include "geneticcode.h"
@@ -523,43 +522,6 @@ SitePattern ** SitePattern_split( const SitePattern *sitePattern, const int coun
 	
 	return sps;
 }
-
-
-char * SitePattern_stringify( const SitePattern *sp ){
-	StringBuffer *buffer = new_StringBuffer(100);
-	
-	SitePattern_bufferize(buffer, sp);
-	
-	char *final = StringBuffer_tochar(buffer);
-	free_StringBuffer(buffer);
-	return final;
-	
-}
-
-StringBuffer * SitePattern_bufferize( StringBuffer *buffer, const SitePattern *sp ){
-	StringBuffer_append_format(buffer, "(SitePattern:\n(id:\"sp%d\")\n",sp->id);
-	return buffer;
-}
-
-void * SitePattern_SML_to_object( ObjectStore *store, SMLNode node ){
-	fprintf(stderr, "SitePattern_SML_to_object\n");
-	SitePattern *sp = NULL;
-	
-	sp = new_SitePattern(readFasta( SML_get_data_of_child( node, "file") ) );
-	
-	char *id = SML_get_data_of_child( node, "id");
-	if ( id != NULL ) {
-		while( *id < '0' || *id > '9' ){
-			id++;
-		}
-		sp->id = atoi( id );
-	}
-	else sp->id = 0;
-	
-	return sp;
-}
-
-
 
 void SitePattern_save( const SitePattern *sitepattern, const char *output ){
 	Sequences *sequences = SitePattern_to_Sequences(sitepattern);

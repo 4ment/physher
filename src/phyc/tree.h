@@ -52,12 +52,6 @@ Tree * clone_Tree( const Tree *tree );
 
 Tree * clone_SubTree( const Tree *tree, Node *node );
 
-char * Tree_stringify( Tree *tree );
-
-StringBuffer * Tree_Bufferize( StringBuffer *buffer, Tree *tree );
-
-void * Tree_SML_to_object( ObjectStore *store, SMLNode node );
-
 int Tree_node_count( const Tree *tree );
 
 int Tree_tip_count( const Tree *tree );

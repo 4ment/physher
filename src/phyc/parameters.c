@@ -27,14 +27,9 @@
 
 #include "mstring.h"
 #include "utils.h"
-#include "parser.h"
 #include "matrix.h"
 
 #include "simplex.h"
-
-#define STRINGIFY_PARAMETERS  "params"
-#define STRINGIFY_VALUE "value"
-#define STRINGIFY_CONSTRAINT "constraint"
 
 
 struct _Constraint{
@@ -81,21 +76,6 @@ Constraint * clone_Constraint( Constraint *cnstr ){
 	new->lower_fixed = cnstr->lower_fixed;
 	new->upper_fixed = cnstr->upper_fixed;
 	return new;
-}
-
-StringBuffer * Constraint_bufferize( StringBuffer *buffer, Constraint *c ){
-	buffer = StringBuffer_append_format(buffer,"  (lower:%f)(upper:%f)", c->lower, c->upper);
-	return buffer;
-}
-
-void * Constraint_SML_to_object( SMLNode node ){
-	Constraint *c = NULL;
-	SMLNode lower = NULL;
-	SMLNode upper = NULL;
-	if ( (lower = SML_get_element(node, "lower")) != NULL && (upper = SML_get_element(node, "upper")) != NULL ){
-		c = new_Constraint( atof( SML_get_data(lower)), atof( SML_get_data(upper)) );
-	}
-	return c;
 }
 
 void Constraint_set_bounds( Constraint *constr, const double lower, const double upper ){
@@ -155,11 +135,6 @@ void Constraint_set_fupper( Constraint *c, const double fupper ){
 
 void Constraint_set_flower( Constraint *c, const double flower ){
 	c->flower = flower;
-}
-
-void compare_constraint( const Constraint *c1, const Constraint *c2 ){
-	assert( c1->lower == c2->lower );
-	assert( c1->upper == c2->upper );
 }
 
 #pragma mark -
@@ -256,79 +231,6 @@ void free_Parameter( Parameter *p ){
 	}
 }
 
-char * Parameter_stringify( Parameter *p ){
-	StringBuffer *buffer = new_StringBuffer( 100);
-	
-	buffer = Parameter_bufferize( buffer, p );
-	
-	free_StringBuffer( buffer );
-	char *str = StringBuffer_tochar( buffer );
-	return str;
-}
-
-
-StringBuffer * Parameter_bufferize( StringBuffer *buffer, Parameter *p ){
-	char *pch = strrchr(p->name,'.');
-	buffer = StringBuffer_append_string(buffer," (");
-	
-	if ( pch != NULL ){
-		int l = pch - p->name;
-		buffer = StringBuffer_append_range( buffer, p->name, 0,l);
-	}
-	else {
-		buffer = StringBuffer_append_format(buffer,"%s", p->name);
-	}
-	
-	buffer = StringBuffer_append_format(buffer,":\n  (%s:%f)\n", STRINGIFY_VALUE, p->value);	
-	
-	if( p->cnstr != NULL ){
-		buffer = Constraint_bufferize( buffer, p->cnstr);
-		buffer = StringBuffer_append_char(buffer,'\n');
-	}
-	
-	buffer = StringBuffer_append_string(buffer," )");
-	return buffer;
-}
-
-// write without the constraint, called when it is part of a set parameters with the same constraint
-// chop the postfix if there is one
-StringBuffer * Parameter_bufferize_parameter_set( StringBuffer *buffer, Parameter *p ){
-	char *pch = strrchr(p->name,'.');
-	if ( pch != NULL ){
-		int l = pch - p->name;
-		buffer = StringBuffer_append_string(buffer," (");
-		buffer = StringBuffer_append_substring( buffer, p->name, l);
-		buffer = StringBuffer_append_format(buffer,":%f)", p->value);
-	}
-	else {
-		buffer = StringBuffer_append_format(buffer," (%s:%f)", p->name, p->value);
-	}
-	return buffer;
-}
-
-void * Parameter_SML_to_object( SMLNode node ){
-	return Parameter_SML_to_object_with_postfix( node, "");
-}
-
-void * Parameter_SML_to_object_with_postfix( SMLNode node, const char *postfix ){
-	Parameter *p = NULL;
-	// shared constraint
-	if ( SML_get_child_count( node ) == 0) {
-		p = new_Parameter_with_postfix( SML_get_tag(node), postfix, atof(SML_get_data(node)), NULL);
-	}
-	else {
-		Constraint *c = NULL;
-		SMLNode lower = NULL;
-		SMLNode upper = NULL;
-		if ( (lower = SML_get_element(node, "lower")) != NULL ){
-			upper = SML_get_element( node, "upper");
-			c = new_Constraint( atof( SML_get_data(lower)), atof( SML_get_data(upper)) );
-		}
-		SMLNode value = SML_get_element( node, "value");
-		p = new_Parameter_with_postfix( SML_get_tag(node), postfix, atof(SML_get_data(value)), c);
-	}
-	return p;
-}
 
 void Parameter_set_name( Parameter *p, const char *name ){
 	if ( p->name != NULL ) {
@@ -459,14 +361,6 @@ void Parameter_print( const Parameter *p ){
 	else fprintf(stderr, "%s %e estimate = %d\n",p->name, p->value, p->estimate);
 }
 
-void compare_parameter( const Parameter *p1, const Parameter *p2 ){
-	assert(p1->value == p2->value);
-	assert( strcmp(p1->name, p2->name) == 0 );
-	if( p1->cnstr != NULL && p2->cnstr != NULL )
-		compare_constraint( p1->cnstr, p2->cnstr );
-	else assert( p1->cnstr == NULL && p2->cnstr == NULL );
-}
-
 #pragma mark -
 #pragma mark Parameters
 
@@ -506,87 +400,6 @@ Parameters * clone_Parameters( Parameters *p ){
 		clone->name = String_clone(p->name);
 	}
 	return clone;
-}
-
-StringBuffer * Parameters_bufferize( StringBuffer *buffer, Parameters *ps ){
-    int i = 0;
-    for ( i = 0; i < ps->count; i++) {
-        StringBuffer_append_format(buffer, "%f%s", Parameters_value(ps, i),(ps->count-1 == i?"":","));
-    }
-    return buffer;
-}
-
-char * Parameters_stringify( Parameters *ps ){
-	StringBuffer *buffer = new_StringBuffer( 100);
-	
-	buffer = Parameters_SML_bufferize( buffer, ps );
-	
-	free_StringBuffer( buffer );
-	char *str = StringBuffer_tochar( buffer );
-	return str;
-}
-
-StringBuffer * Parameters_SML_bufferize( StringBuffer *buffer, Parameters *ps ){
-	int i = 0;
-	
-	char *postfix = ps->list[0]->name;
-	char *pch = NULL;
-	char *tempfix = NULL;
-	for ( i = 0; i < ps->count; i++) {
-		
-		pch = strrchr( ps->list[i]->name,'.' );
-		if ( pch != NULL ){
-			tempfix = &ps->list[i]->name[pch - ps->list[i]->name+1];
-			
-			if ( strcmp( tempfix, postfix ) == 0 ){
-				
-			}
-			else {
-				if ( i!= 0) buffer = StringBuffer_append_string( buffer, ")\n"); 
-				postfix = tempfix;
-				buffer = StringBuffer_append_format( buffer, "(%s:\n", postfix);
-				
-			}
-			buffer = Parameter_bufferize(buffer, ps->list[i]);
-			buffer = StringBuffer_append_char(buffer, '\n');
-
-		}
-		else {
-			buffer = Parameter_bufferize(buffer, ps->list[i]);
-			if (ps->count-1 != i) buffer = StringBuffer_append_char(buffer, '\n');
-		}
-		
-	}
-	buffer = StringBuffer_append_string(buffer, ")\n");
-	
-	return buffer;
-}
-
-
-Parameters * Parameters_SML_to_object( SMLNode node ){
-	SMLNode params = NULL;
-	Parameters *ps =  NULL;
-	int i = 0;
-	
-	char *name = SML_get_tag(node);
-	
-	// Set of parameters with the same constraint
-	if ( (params = SML_get_element( node, "params")) != NULL ) {
-		ps = new_Parameters(SML_get_child_count( params ));
-		
-		for ( i = 0; i < SML_get_child_count( params ); i++) {
-			Parameters_add( ps, Parameter_SML_to_object( SML_get_element_by_index(params, i)) );
-		}
-		
-	}
-	else{
-		ps = new_Parameters( SML_get_child_count( node ) );
-		for ( i = 0; i < SML_get_child_count( node ); i++) {
-			Parameters_add( ps, Parameter_SML_to_object_with_postfix( SML_get_element_by_index(node, i), name) );
-		}
-	}
-	
-	return ps;
 }
 
 void Parameters_set_name2(Parameters* ps, const char* name){
@@ -841,14 +654,6 @@ void Parameters_pop( Parameters *params ){
 	}
 }
 
-void compare_parameters( const Parameters *p1, const Parameters *p2 ){
-	assert( p1->count    == p2->count );
-	assert( p1->capacity == p2->capacity );
-	for (int i = 0; i < p1->count; i++) {
-		compare_parameter( p1->list[i], p2->list[i]);
-	}
-}
-
 void Parameters_swap( Parameter **a, Parameter **b ){
 	Parameter *p = *a;
 	*a = *b;
@@ -995,7 +800,7 @@ static void _dummy_reset(Model* m){}
 static void _dummy_restore(Model* m){}
 static void _dummy_store(Model* m){}
 static void _dummy_sample(Model* m, double* samples, double* logP){
-	fprintf("Cannot sample from model %s\n", m->name);
+	fprintf(stderr, "Cannot sample from model %s\n", m->name);
 	exit(2);
 }
 

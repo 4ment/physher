@@ -892,6 +892,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
     
 	newtlk->sp->ref_count++;
 	
+	newtlk->root_frequencies = NULL;
 	if(tlk->root_frequencies != NULL){
 		newtlk->root_frequencies = clone_dvector(tlk->root_frequencies, tlk->sm->nstate);
 	}
@@ -4197,66 +4198,3 @@ void OptConfig_copy( const OptConfig *src, OptConfig *dst ){
 //	return hessian;
 //	
 //}
-
-/*char * SingleTreeLikelihood_stringify( SingleTreeLikelihood *stlk ){
-	StringBuffer *buffer = new_StringBuffer(1000);
-	
-	buffer = SingleTreeLikelihood_bufferize( buffer, stlk);
-	
-	char *final = StringBuffer_tochar(buffer);
-	free_StringBuffer(buffer);
-	return final;
- }
- 
- 
- StringBuffer * SingleTreeLikelihood_bufferize( StringBuffer *buffer, SingleTreeLikelihood *stlk ){
-	buffer = StringBuffer_append_format(buffer, "(SingleTreeLikelihood:\n(id:\"stlk%d\")\n", stlk->id );
-	buffer = Tree_Bufferize( buffer, stlk->tree );
-	buffer = StringBuffer_append_char(buffer, '\n');
-	
-	buffer = SiteModel_bufferize( buffer, stlk->sm );
-	buffer = StringBuffer_append_char(buffer, '\n');
-	
-	buffer = BranchModel_bufferize( buffer, stlk->bm );
-	buffer = StringBuffer_append_char(buffer, '\n');
-	
-	buffer = SitePattern_bufferize( buffer, stlk->sp );
-	buffer = StringBuffer_append_char(buffer, '\n');
-	
-	buffer = StringBuffer_append_char(buffer, ')');
-	
-	return buffer;
- }
- 
- 
- void * SingleTreeLikelihood_SML_to_object( ObjectStore *store, SMLNode node ){
-	fprintf(stderr, "SingleTreeLikelihood_SML_to_object\n");
-	
-	
-	SMLNode sm_n = SML_get_element( node, "SiteModel");
-	SiteModel    *sm = SiteModel_SML_to_object( store, sm_n);
-	
-	SitePattern *sp = NULL;
-	fprintf(stderr, "SingleTreeLikelihood_SML_to_object:SitePattern\n");
-	SMLNode sp_n = SML_get_element( node, "SitePattern");
-	if( sp_n != NULL ){
- sp = SitePattern_SML_to_object(store, sp_n);
-	}
- else {
- error("Need a sitepattern\n");
- }
-	
-	BranchModel *bm = NULL;
-	SMLNode bm_n = SML_get_element( node, "BranchModel");
-	if( bm_n != NULL ){
- bm = BranchModel_SML_to_object( store, bm_n);
-	}
-	
-	
-	SMLNode tree_n = SML_get_element( node, "Tree");
-	Tree *tree = Tree_SML_to_object(store, tree_n);
-	
-	SingleTreeLikelihood *stlk = new_SingleTreeLikelihood(tree, sm, sp, bm);
-	
-	return stlk;
- }*/

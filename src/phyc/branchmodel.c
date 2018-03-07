@@ -27,7 +27,6 @@
 #include "matrix.h"
 #include "utils.h"
 #include "mstring.h"
-#include "parser.h"
 #include "random.h"
 #include "statistics.h"
 
@@ -239,68 +238,6 @@ BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree ){
 	newbm->type = bm->type;
 	
 	return newbm;
-}
-
-char *BranchModel_stringify( BranchModel *bm ){
-	StringBuffer *buffer = new_StringBuffer(500);
-
-	buffer = BranchModel_bufferize( buffer, bm );	
-	
-	char *final = StringBuffer_tochar(buffer);
-	free_StringBuffer(buffer);
-	return final;
-}
-
-StringBuffer * BranchModel_bufferize( StringBuffer *buffer, BranchModel *bm ){
-	
-	buffer = StringBuffer_append_format(buffer, "(BranchModel:\n(id:\"bm%d\")\n(type: \"%d\")\n(Tree: &tree%d)\n",bm->id,bm->name, Tree_id(bm->tree));
-	
-	buffer = Parameters_SML_bufferize(buffer, bm->rates);
-	
-	buffer = StringBuffer_append_char(buffer,')');
-	//if( bm->name == LOCAL) buffer = StringBuffer_append_format(buffer, "(local: %d)\n", bm->rates->count);
-	
-	return buffer;
-}
-
-void * BranchModel_SML_to_object( ObjectStore *store, SMLNode node ){
-	fprintf(stderr, "BranchModel_SML_to_object\n");
-	BranchModel *bm = NULL;
-    Parameters *rates = NULL;
-	
-	char *tree_ref = SML_get_data_of_child( node, "Tree");
-	
-	Tree * tree = ObjectStore_get( store, tree_ref );
-	
-	char *type     = SML_get_data_of_child( node, "type");
-	int itype = atoi(type);
-	
-	SMLNode node_p = NULL;
-    switch (itype) {
-        case CLOCK_STRICT:
-            node_p = SML_get_element( node, STRICT_POSTFIX);
-            rates = Parameters_SML_to_object( node_p );
-            bm = new_StrictClock_with_parameters( tree,rates );
-            break;
-        case CLOCK_LOCAL:
-            node_p = SML_get_element( node, LOCAL_POSTFIX);
-            rates = Parameters_SML_to_object( node_p );
-            bm = new_LocalClock_with_parameters( tree, rates );
-            break;
-        default:
-            assert(0);
-    }
-	
-	char *id = SML_get_data_of_child( node, "id");
-	if ( id != NULL ) {
-		while( *id < '0' || *id > '9' ){
-			id++;
-		}
-		bm->id = atoi( id );
-	}
-	else bm->id = 0;
-	
-	return bm;
 }
 
 // Parameters are cloned, including the constraint
@@ -1147,7 +1084,6 @@ void compare_branchmodel( const BranchModel *bm1, const BranchModel *bm2 ){
 	compare_tree( bm1->tree, bm2->tree );
 	assert( bm1->need_update == bm2->need_update );
 	assert( bm1->scalefactor == bm2->scalefactor );
-	compare_parameters(bm1->rates, bm2->rates);
 	assert( memcmp( bm1->indicators, bm2->indicators, Tree_node_count(bm1->tree) * sizeof(bool) ) == 0 );
 	assert( memcmp( bm1->map, bm2->map, Tree_node_count(bm1->tree) * sizeof(int) ) == 0 );
 	assert( memcmp( bm1->unscaled_rates, bm2->unscaled_rates, Tree_node_count(bm1->tree) * sizeof(double) ) == 0 );

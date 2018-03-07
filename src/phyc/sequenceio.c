@@ -410,20 +410,6 @@ Sequences * readPhylip ( const char *infile ){
     return seqs;
 }
 
-char * File_stringify( const char *filename ){
-	StringBuffer *buffer = new_StringBuffer(100);
-	buffer = File_bufferize( buffer, filename );
-	
-	char *final = StringBuffer_tochar(buffer);
-	free_StringBuffer(buffer);
-	return final;
-	
-}
-
-StringBuffer * File_bufferize( StringBuffer *buffer, const char *filename ){
-	return StringBuffer_append_format(buffer, "(File: \"%s\")", filename );
-}
-
 void Sequences_save_fasta( const Sequences *sequences, const char *filename ){
     FILE *pfile = NULL;
     if( filename == NULL ){
