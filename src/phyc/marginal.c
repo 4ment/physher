@@ -128,7 +128,108 @@ double log_marginal_path_sampling_modified(const Vector** values, size_t temp_co
 	return lrps;
 }
 
+// code from BEAST
+double ess(double* values, size_t samples, size_t stepSize) {
+	
+	size_t maxLag = samples - 1;//dmin(samples - 1, MAX_LAG);
+	
+	double* gammaStat = dvector(maxLag);
+	double varStat = 0.0;
+	double mean = dmean(values, samples);
+	
+	for (size_t lag = 0; lag < maxLag; lag++) {
+		for (size_t j = 0; j < samples - lag; j++) {
+			double del1 = values[j] - mean;
+			double del2 = values[j + lag] - mean;
+			gammaStat[lag] += (del1 * del2);
+		}
+		
+		gammaStat[lag] /= ((double) (samples - lag));
+		
+		if (lag == 0) {
+			varStat = gammaStat[0];
+		} else if (lag % 2 == 0) {
+			// fancy stopping criterion :)
+			if (gammaStat[lag - 1] + gammaStat[lag] > 0) {
+				varStat += 2.0 * (gammaStat[lag - 1] + gammaStat[lag]);
+			}
+			// stop
+			else
+				maxLag = lag;
+		}
+	}
+	
+	// standard error of mean
+	double stdErrorOfMean = sqrt(varStat / samples);
+	double ACT;
+	double ESS;
+	
+	// auto correlation time
+	if (gammaStat[0]==0)
+		ACT = 0;
+	else
+		ACT = stepSize * varStat / gammaStat[0];
+	
+	// effective sample size
+	if (ACT==0)
+		ESS=1;
+	else
+		ESS = (stepSize * samples) / ACT;
+	
+	// standard deviation of autocorrelation time
+	double stdErrOfACT = (2.0 * sqrt(2.0 * (2.0 * (double) (maxLag + 1)) / samples) * (varStat / gammaStat[0]) * stepSize);
+	return ESS;
+}
+
 void test_marg(const Vector** values, size_t temp_count, const double* temperatures){
+	Vector** lls = malloc(temp_count*sizeof(Vector*));
+	double* temps = dvector(temp_count);
+	double* means = dvector(temp_count);
+	for (int i = 3; i< temp_count; i*=2) {
+		double incr = ((double)temp_count-0.5)/(i-1);
+		double dindex = 0;
+		for (int j = 0; j < i; j++) {
+			int index = dindex;
+			lls[j] = values[index];
+			temps[j] = temperatures[index];
+			dindex += incr;
+		}
+		double* lrssk = malloc(temp_count*sizeof(double));
+		
+		double lrss = log_marginal_stepping_stone(lls, i, temps, lrssk);
+		printf("%d Stepping stone marginal likelihood: %f\n", i, lrss);
+		//		for (int i = 0; i < temp_count-1; i++) {
+		//			printf("%f: %f\n", temperatures[i], lrssk[i]);
+		//		}
+		
+		double lrps = log_marginal_path_sampling(lls, i, temps, lrssk);
+		printf("%d Path sampling marginal likelihood: %f\n", i, lrps);
+		//		for (int i = 0; i < temp_count-1; i++) {
+		//			printf("%f: %f\n", temperatures[i], lrssk[i]);
+		//		}
+		lrps = log_marginal_path_sampling_modified(lls, i, temps, lrssk);
+		printf("%d Modified Path sampling marginal likelihood: %f\n", i, lrps);
+		//		for (int i = 0; i < temp_count-1; i++) {
+		//			printf("%f: %f\n", temperatures[i], lrssk[i]);
+		//		}
+		free(lrssk);
+		
+		for (int j = 0; j < i; j++) {
+			means[j] = dmean(Vector_data(lls[j]), Vector_length(lls[j]));
+		}
+		double S = 0;
+		for (int j = 0; j < i-1; j++) {
+			S += (temps[j+1] - temps[j])*(means[j+1] - means[j]);
+			printf("  %f\n", (temps[j+1] - temps[j])*(means[j+1] - means[j]));
+		}
+		printf("S: %f\n", S);
+	}
+	free(means);
+	free(temps);
+	free(lls);
+}
+
+void test_marg_gss(const Vector** values, size_t temp_count, const double* temperatures){
 	Vector** lls = malloc(temp_count*sizeof(Vector*));
 	double* temps = dvector(temp_count);
 	for (int i = 3; i< temp_count; i*=2) {
@@ -143,23 +244,9 @@ void test_marg(const Vector** values, size_t temp_count, const double* temperatu
 		double* lrssk = malloc(temp_count*sizeof(double));
 		
 		double lrss = log_marginal_stepping_stone(lls, i, temps, lrssk);
-		printf("%d Stepping stone marginal likelihood: %f\n", i, lrss);
-//		for (int i = 0; i < temp_count-1; i++) {
-//			printf("%f: %f\n", temperatures[i], lrssk[i]);
-//		}
-		
-		double lrps = log_marginal_path_sampling(lls, i, temps, lrssk);
-		printf("%d Path sampling marginal likelihood: %f\n", i, lrps);
-//		for (int i = 0; i < temp_count-1; i++) {
-//			printf("%f: %f\n", temperatures[i], lrssk[i]);
-//		}
-		lrps = log_marginal_path_sampling_modified(lls, i, temps, lrssk);
-		printf("%d Modified Path sampling marginal likelihood: %f\n", i, lrps);
-//		for (int i = 0; i < temp_count-1; i++) {
-//			printf("%f: %f\n", temperatures[i], lrssk[i]);
-//		}
+		printf("%d Generalized stepping stone marginal likelihood: %f\n", i, lrss);
 		free(lrssk);
-
+		
 	}
 	free(temps);
 	free(lls);
@@ -214,6 +301,10 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 			StringBuffer_append_format(buffer, "%d%s",i, margl->file);
 			printf("Temperature: %f - %s\n", margl->temperatures[i],buffer->c);
 			lls[margl->temperature_count-i-1] = read_log_column_with_id(buffer->c, margl->burnin, margl->likelihood_tag);
+//			double* data = Vector_data(lls[margl->temperature_count-i-1]);
+//			double n = Vector_length(lls[margl->temperature_count-i-1]);
+//			double esss = ess(data, n, n);
+//			printf("ESS: %f %f\n", esss, n);
 			temperatures[margl->temperature_count-i-1] = margl->temperatures[i];
 		}
 		
@@ -249,8 +340,11 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 				printf("%f: %f\n", temperatures[i], lrssk[i]);
 			}
 			free(lrssk);
-			test_marg(lls, margl->temperature_count, temperatures);
+			//test_marg(lls, margl->temperature_count, temperatures);
 		}
+	}
+	else if(margl->refdist_tag != NULL){
+		//test_marg_gss(lls, margl->temperature_count, temperatures);
 	}
 	
 	free_StringBuffer(buffer);
