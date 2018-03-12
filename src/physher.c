@@ -100,6 +100,7 @@
 #include "phyc/vbis.h"
 #include "phyc/nest.h"
 #include "phyc/cpo.h"
+#include "phyc/laplace.h"
 #include "phyc/bridge.h"
 #include "phyc/marginal.h"
 #include "phyc/predictive.h"
@@ -1405,169 +1406,11 @@ char* get_program_name(char* argv[]){
     return name;
 }
 
-void test2(Model* mpost){
-	Hashtable* hash = new_Hashtable_string(10);
-	hashtable_set_key_ownership( hash, false );
-	hashtable_set_value_ownership( hash, false );
-	
-	Model* clone = mpost->clone(mpost, hash);
-	mpost->free(mpost);
-	CompoundModel* cm = clone->obj;
-	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)cm->models[0]->obj;
-	SingleTreeLikelihood_update_all_nodes(tlk);
-	
-	printf("LnL clone: %f\n", tlk->calculate(tlk));
-	printf("LnL clone: %f\n", clone->logP(clone));
-//	Model* mtree = new_TreeModel("tree", tree);
-//	Model* mmod = new_SubstitutionModel2("substmodel", mod);
-//	Model* msm = new_SiteModel2("sitemodel", sm, mmod);
-//	Model* mtlk = new_TreeLikelihoodModel("likelihood", tlk, mtree, msm, NULL);
-//	printf("%d\n", mtree->ref_count);
-//	mtree->free(mtree);
-//	printf("%d\n", mtree->ref_count);
-//	msm->free(msm);
-//	mmod->free(mmod);
-//	
-//	CompoundModel* post = new_CompoundModel();
-//	Model* mpost = new_CompoundModel2("posterior", post);
-//	post->add(post, mtlk);
-//	mtlk->free(mtlk);
-//	
-//#endif
-//	Parameters* pp_all = new_Parameters(10);
-//	Parameters* pp_bl = new_Parameters(Tree_node_count(tree)-2);
-//	for(int i = 0; i < Tree_node_count(tree); i++){
-//		Node* node = Tree_node(tree, i);
-//		if(Node_isroot(node) || (Node_isroot(Node_parent(node)) && Node_right(Node_parent(node)) == node)) continue;
-//		if(Parameter_estimate(node->distance))Parameters_add(pp_bl, node->distance);
-//	}
-//	Parameters_add_parameters(pp_all, pp_bl);
-//	
-//	DistributionModel* prior_branches = new_IndependantExpDistributionModel(10, pp_bl);
-//	Model* prior_branches_model = new_DistributionModel2("branch.exp", prior_branches);
-//	post->add(post, prior_branches_model);
-//	
-//	prior_branches_model->free(prior_branches_model);
-//	
-//	if(Parameters_count(sm->m->freqs) > 0){
-//		DistributionModel* prior = new_FlatDirichletDistributionModel(sm->m->freqs);
-//		Model* prior_freqs_model = new_DistributionModel2("freqs.dirichlet", prior);
-//		post->add(post, prior_freqs_model);
-//		prior->free(prior);
-//		prior_freqs_model->free(prior_freqs_model);
-//	}
-//	
-//	if(Parameters_count(sm->m->rates) > 0){
-//		DistributionModel* prior = new_IndependantGammaDistributionModel(0.05, 0.1, sm->m->rates);
-//		Model* prior_rates_model = new_DistributionModel2("mrates.gamma", prior);
-//		post->add(post, prior_rates_model);
-//		prior->free(prior);
-//		prior_rates_model->free(prior_rates_model);
-//	}
-//	
-//	if(Parameters_count(sm->rates) > 0){
-//		DistributionModel* prior = new_IndependantExpDistributionModel(20, sm->rates);
-//		Model* prior_model = new_DistributionModel2("rate.exp", prior);
-//		post->add(post, prior_model);
-//		prior->free(prior);
-//		prior_model->free(prior_model);
-//	}
-//	
-//	
-//	Parameters* pp_m = new_Parameters(4);
-//	for (int i = 0; i < Parameters_count(sm->m->freqs); i++) {
-//		if(Parameters_estimate(sm->m->freqs, i)) Parameters_add(pp_m, Parameters_at(sm->m->freqs, i));
-//	}
-//	for (int i = 0; i < Parameters_count(sm->m->rates); i++) {
-//		if(Parameters_estimate(sm->m->rates, i)) Parameters_add(pp_m, Parameters_at(sm->m->rates, i));
-//	}
-//	if(Parameters_count(pp_m) > 0) Parameters_add_parameters(pp_all, pp_m);
-//	
-//	Parameters_add_parameters(pp_all, sm->rates);
-//	
-//	// Optimization
-//	Optimizer* opt_bl = new_Optimizer(OPT_SERIAL_BRENT);
-//	opt_set_data(opt_bl, mpost);
-//	opt_set_objective_function(opt_bl, _logP);
-//	opt_set_tolx(opt_bl, 0.00000001);
-//	
-//	Optimizer* opt_m = new_Optimizer(OPT_SERIAL_BRENT);
-//	opt_set_data(opt_m, mpost);
-//	opt_set_objective_function(opt_m, _logP);
-//	
-//	Optimizer* opt_sm = new_Optimizer(OPT_SERIAL_BRENT);
-//	opt_set_data(opt_sm, mpost);
-//	opt_set_objective_function(opt_sm, _logP);
-//	
-//	Optimizer* opt_meta = new_Optimizer(OPT_META);
-//	OptimizerSchedule* schedule = opt_get_schedule(opt_meta);
-//	
-//	opt_add_optimizer(opt_meta, opt_bl, pp_bl);
-//	schedule->rounds[schedule->count-1] = 2;
-//	
-//	opt_add_optimizer(opt_meta, opt_m, pp_m);
-//	schedule->post[schedule->count-1] = post_freqs;
-//	schedule->rounds[schedule->count-1] = 20;
-//	
-//	opt_add_optimizer(opt_meta, opt_sm, sm->rates);
-//	
-//	opt_set_data(opt_meta, mpost);
-//	opt_set_objective_function(opt_meta, _logP);
-//	opt_set_tolx(opt_meta, 0.001);
-//	
-//	double logP;
-//	opt_optimize(opt_meta, pp_bl, &logP);
-//	printf("LnL: %f logP: %f Prior: %f\n", mtlk->logP(mtlk), -logP, prior_branches->logP(prior_branches));
-//	
-//	double lnl = mtlk->logP(mtlk);
-//	for(int i = 0; i < Parameters_count(pp_all); i++){
-//		double temp = Parameters_value(pp_all, i);
-//		Parameters_set_value(pp_all, i, temp+(temp*0.0001));
-//		double lnl2 = mtlk->logP(mtlk);
-//		Parameters_set_value(pp_all, i, temp);
-//		//printf("%s %f %f\n", Parameters_name(pp_all, i), Parameters_value(pp_all, i), (lnl2-lnl)/(temp*0.0001));
-//	}
-//	
-//	free_Optimizer(opt_bl);
-//	free_Parameters(pp_bl);
-//	free_Parameters(pp_m);
-//	
-//	mpost->free(mpost);
-}
-
 
 int main(int argc, char* argv[]){
-//	char* filename = "tree0.log";
-//	double tempratures[6] ={1.000000000, 0.475298697, 0.182181456, 0.047155603, 0.004678428, 0.000000000};
-//	double temperatures2[6];
-//	StringBuffer* buffer11 = new_StringBuffer(10);
-//	int temperature_count = 6;
-//	Vector** lls = malloc(temperature_count*sizeof(Vector*));
-//	double* lrssk = malloc(temperature_count*sizeof(double));
-//	int burnin = 0;
-//	
-//	for (int i = 0; i < temperature_count; i++) {
-//		StringBuffer_empty(buffer11);
-//		StringBuffer_append_format(buffer11, "%d%s",i, filename);
-//		lls[temperature_count-i-1] = read_log_last_column2(buffer11->c, burnin);
-//		temperatures2[temperature_count-i-1] = tempratures[i];
-//		if(i == 0) printf("Harmonic mean: %f\n", log_harmonic_mean(lls[temperature_count-i-1]));
-//	}
-//	double lrss = log_marginal_stepping_stone(lls, temperature_count, temperatures2, lrssk);
-//	printf("Stepping stone marginal likelihood: %f\n", lrss);
-//	for (int i = 1; i < temperature_count; i++) {
-//		printf("%f: %f\n", temperatures2[i-1], lrssk[i]);
-//	}
-//	
-//	exit(11);
-	char* content = NULL;
-	if (argc == 1) {
-		content = load_file("/Users/mathieu/Dropbox/physher/jc69.json");
-	}
-	else {
-		content = load_file(argv[1]);
-		printf("Reading file %s\n", argv[1]);
-	}
+	char* content = load_file(argv[1]);
+	printf("Reading file %s\n", argv[1]);
+
 	printf("done\n\n");
 	long seeed = time(NULL);
 	
@@ -1578,6 +1421,7 @@ int main(int argc, char* argv[]){
 	hashtable_set_key_ownership( hash2, false );
 	hashtable_set_value_ownership( hash2, false );
 	
+	json_node* run_node = get_json_node(json, "physher");
 	json_node* init_node = get_json_node(json, "init");
 	
 	if (init_node != NULL) {
@@ -1591,32 +1435,39 @@ int main(int argc, char* argv[]){
 	char* rand_key = "RANDOM_GENERATOR!@";
 	Hashtable_add(hash2, rand_key, r);
 	
-	size_t model_count = json->child_count-1;
-	Model** models = calloc(model_count, sizeof(Model*));
-	for (int i = 0; i < json->child_count; i++) {
-		json_node* child = json->children[i];
-		if (strcasecmp(child->key, "physher") == 0) continue;
-		
-		json_node* type_node = get_json_node(child, "type");
-		char* id = get_json_node_value_string(child, "id");
-		
-		if (strcasecmp((char*)type_node->value, "compound") == 0) {
-			models[i] = new_CompoundModel_from_json(child, hash2);
-			
-			printf("%s %f\n", id, models[i]->logP(models[i]));
-		}
-		else if(strcasecmp((char*)type_node->value, "variational") == 0){
-			models[i] = new_Variational_from_json(child, hash2);
-		}
-		else if(strcasecmp((char*)type_node->value, "treelikelihood") == 0){
-			models[i] = new_TreeLikelihoodModel_from_json(child, hash2);
-			printf("%f\n", models[i]->logP(models[i]));
-		}
-		
-		Hashtable_add(hash2, id, models[i]);
-	}
-	json_node* run_node = get_json_node(json, "physher");
+	size_t model_count = json->child_count;
+	if (run_node != NULL) model_count--; // maybe physher
+	if (init_node != NULL) model_count--; // maybe init
 	
+	Model** models = NULL;
+	if(model_count > 0){
+		models = calloc(model_count, sizeof(Model*));
+		for (int i = 0; i < json->child_count; i++) {
+			json_node* child = json->children[i];
+			if (strcasecmp(child->key, "physher") == 0 || strcasecmp(child->key, "init") == 0) continue;
+			
+			json_node* type_node = get_json_node(child, "type");
+			char* id = get_json_node_value_string(child, "id");
+			
+			if (strcasecmp((char*)type_node->value, "compound") == 0) {
+				models[i] = new_CompoundModel_from_json(child, hash2);
+				
+				printf("%s %f\n", id, models[i]->logP(models[i]));
+			}
+			else if(strcasecmp((char*)type_node->value, "variational") == 0){
+				models[i] = new_Variational_from_json(child, hash2);
+			}
+			else if(strcasecmp((char*)type_node->value, "distribution") == 0){
+				models[i] = new_DistributionModel_from_json(child, hash2);
+			}
+			else if(strcasecmp((char*)type_node->value, "treelikelihood") == 0){
+				models[i] = new_TreeLikelihoodModel_from_json(child, hash2);
+				printf("%f\n", models[i]->logP(models[i]));
+			}
+			
+			Hashtable_add(hash2, id, models[i]);
+		}
+	}
 	
 	Model* treeee = Hashtable_get(hash2, "tree");
 	Tree* tt = treeee->obj;
@@ -1675,6 +1526,11 @@ int main(int argc, char* argv[]){
 			nest->run(nest);
 			free_NEST(nest);
 		}
+		else if(strcasecmp(type, "laplace") == 0){
+			Laplace* laplace = new_Laplace_from_json(child, hash2);
+			laplace->calculate(laplace);
+			laplace->free(laplace);
+		}
 		else if(strcasecmp(type, "bridgesampling") == 0){
 			BridgeSampling* bridge = new_BridgeSampling_from_json(child, hash2);
 			bridge->run(bridge);
@@ -1691,17 +1547,18 @@ int main(int argc, char* argv[]){
 			predictive->free(predictive);
 		}
 	}
-	for (int i = 0; i < model_count; i++) {
-//		printf("%f\n", models[i]->logP(models[i]));
-		models[i]->free(models[i]);
+	if(models != NULL){
+		for (int i = 0; i < model_count; i++) {
+			models[i]->free(models[i]);
+		}
+		free(models);
 	}
-	free(models);
 	free_Hashtable(hash2);
 	
 	//json_tree_to_string(json);
 	json_free_tree(json);
 	gsl_rng_free(r);
-	exit(0);
+	return 0;
 	
     bool overwrite = false;
     char *seq_file  = NULL;

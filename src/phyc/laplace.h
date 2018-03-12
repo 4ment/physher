@@ -11,4 +11,17 @@
 
 #include <stdio.h>
 
+#include "parameters.h"
+
+typedef struct Laplace{
+	Model* model;
+	Parameters* parameters;
+	Model* refdist;
+	double(*calculate)(struct Laplace*);
+	void(*free)(struct Laplace*);
+	// something print
+}Laplace;
+
+Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash);
+
 #endif /* laplace_h */
