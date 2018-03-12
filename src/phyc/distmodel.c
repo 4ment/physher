@@ -243,12 +243,12 @@ double DistributionModel_d2log_gamma(DistributionModel* dm, const Parameter* p){
 static void DistributionModel_gamma_sample(DistributionModel* dm, double* samples){
 	if(Parameters_count(dm->parameters) > 2){
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			samples[i] = gsl_ran_gamma(dm->data, Parameters_value(dm->parameters, i*2), Parameters_value(dm->parameters, i*2+1));
+			samples[i] = gsl_ran_gamma(dm->data, Parameters_value(dm->parameters, i*2), 1.0/Parameters_value(dm->parameters, i*2+1));
 		}
 	}
 	else{
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			samples[i] = gsl_ran_gamma(dm->data, Parameters_value(dm->parameters, 0), Parameters_value(dm->parameters, 1));
+			samples[i] = gsl_ran_gamma(dm->data, Parameters_value(dm->parameters, 0), 1.0/Parameters_value(dm->parameters, 1));
 		}
 	}
 }
@@ -893,6 +893,12 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 				free_Vector(vecs[i]);
 			}
 			free(vecs);
+		}
+		else if(get_json_node(node, "parameters") == NULL){
+			for (int i = 0; i < Parameters_count(x); i++) {
+				Parameters_move(parameters, new_Parameter("alpha", 1, new_Constraint(0, INFINITY)));
+				Parameters_move(parameters, new_Parameter("beta", 1, new_Constraint(0, INFINITY)));
+			}
 		}
 		else{
 			get_parameters_references(node, hash, parameters);

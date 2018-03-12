@@ -131,6 +131,8 @@ static Model* _compound_model_clone( Model *self, Hashtable* hash ){
 	clone->restore = self->restore;
 	clone->storedLogP = self->storedLogP;
 	clone->lp = self->lp;
+	clone->samplable = self->samplable;
+	clone->sample = self->sample;
 	return clone;
 }
 
@@ -207,6 +209,14 @@ double _compoundModel_d2logP2(Model *self, const Parameter* p){
 	return cm->d2logP(cm, p);
 }
 
+void _compound_model_sample(Model *self, double* samples, double* logP){
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	if (logP != NULL) {
+		fprintf(stderr, "_compound_model_sample not implemented\n");
+		exit(1);
+	}
+}
+
 Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	Model *model = new_Model("compound", name, cm);
 	model->logP = _compoundModel_logP2;
@@ -217,6 +227,13 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->get_free_parameters = _compound_model_get_free_parameters;
 	model->store = _compoundModel_store;
 	model->restore = _compoundModel_restore;
+	model->samplable = true;
+	for (int i = 0; i < cm->count; i++) {
+		if (cm->models[i]->samplable) {
+			model->samplable = false;
+			break;
+		}
+	}
 	return model;
 }
 
