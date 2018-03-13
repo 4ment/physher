@@ -11,7 +11,11 @@
 #include <strings.h>
 
 #include "gamma.h"
+#include "beta.h"
 #include "distmodel.h"
+#include "matrix.h"
+#include "utils.h"
+#include "optimize.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_sf_gamma.h>
@@ -81,6 +85,30 @@ double calculate_laplace_lognormal(Laplace* laplace){
 	return logP;
 }
 
+struct AAA{
+	double map;
+	double* x;
+	double* y;
+	double*yy;
+	size_t N;
+};
+
+double _func_betaprime( Parameters *params, double *grad, void *data ){
+	struct AAA* d = ( struct AAA*)data;
+	double beta = Parameters_value(params, 0);
+	double alpha = d->map*(beta+1.0) + 1.0;
+	double sumYY = 0;
+	for (size_t i = 0; i < d->N; i++) {
+		d->yy[i] = dbetaprime(d->x[i], alpha, beta);
+		sumYY += d->yy[i];
+	}
+	double sum = 0;
+	for (size_t i = 0; i < d->N; i++) {
+		sum += pow(d->yy[i]/sumYY/d->N - d->y[i], 2);
+	}
+	return sum;
+}
+
 double calculate_laplace_betaprime(Laplace* laplace){
 //	alpha = 1 - f''(m) * (m^2) * (m + 1)
 //	beta = -f''(m) * m * (m + 1) - 1
@@ -97,35 +125,42 @@ double calculate_laplace_betaprime(Laplace* laplace){
 			double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
 			beta = fabs(dlogP) - 1;
 			alpha = 1;
-//			printf("%e %f %f %s\n", map, dlogP, d2logP, Parameters_name(laplace->parameters, i));
-//			if (beta < 0) {
-//				double x = map*1000;//0.2*map + map;
-//				Parameters_set_value(laplace->parameters, i, x);
-//				dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
-//				beta = (dlogP*x*x + (dlogP+1.0)*x - map)/(map - x);
-//				//alpha = map*(beta + 1.0) + 1.0;
-//				alpha = ((dlogP*x*x + dlogP*x + 1.0)*map - x)/(map - x);
-//				Parameters_set_value(laplace->parameters, i, map);
-//				printf("%e %f dlogP: %f %f\n", alpha, beta, dlogP, (alpha-1.0)*log(map) - (alpha+beta)*log(1.0+map) - gsl_sf_lnbeta(alpha, beta));
-//				double temp[20] = {0.00000001,0.0000001,0.0000002,0.0000005,0.000001,0.000002, 0.000005, 0.000010, 0.00001, 0.0001, 0.001, 0.003, 0.005, 0.01, 0.05, 0.06, 0.1, 0.2, 0.3, 0.5};
-//				for (int j = 0; j < 20; j++) {
-//					Parameters_set_value(laplace->parameters, i, temp[j]);
-//					printf("%e,", laplace->model->logP(laplace->model));
-//				}
-//				printf("\n");
-//				exit(1);
-//			}
-//			else{
-//				double temp[20] = {0.00000001,0.0000001,0.0000002,0.0000005,0.000001,0.000002, 0.000005, 0.000010, 0.00001, 0.0001, 0.001, 0.003, 0.005, 0.01, 0.05, 0.06, 0.1, 0.2, 0.3, 0.5};
-//				for (int j = 0; j < 20; j++) {
-//					Parameters_set_value(laplace->parameters, i, temp[j]);
-//					printf("%e,", laplace->model->logP(laplace->model));
-//				}
-//				printf("\n");
-//				exit(1);
-//			}
+
+			if (beta < 2) {
+				double* x = log_spaced_spaced_vector(map, 0.5, 10);
+				double y[10];
+				double sumY = 0;
+				for (int j = 0; j < 10; j++) {
+					Parameters_set_value(laplace->parameters, i, x[j]);
+					y[j] = laplace->model->logP(laplace->model);
+					sumY += y[j];
+				}
+				double minY = dmin_vector(y, 10);
+				for (int j = 0; j < 10; j++) {
+					y[j] -= minY;
+					y[j] /= sumY/9;
+				}
+				Parameters* ps = new_Parameters(1);
+				Parameters_move(ps, new_Parameter("", 2, new_Constraint(2, 100)));
+				double yy[9];
+				struct AAA data = {map, x, y, yy, 9};
+				Optimizer* opt = new_Optimizer(OPT_BRENT);
+				opt_set_data(opt, &data);
+				opt_set_objective_function(opt, _func_betaprime);
+				opt_set_parameters(opt, ps);
+				double min;
+				opt_optimize(opt, ps, &min);
+
+				beta = Parameters_value(ps, 0);
+				alpha = map*(beta+1) + 1;
+				Parameters_set_value(laplace->parameters, i, map);
+
+				free_Optimizer(opt);
+				free_Parameters(ps);
+				free(x);
+			}
 		}
-		logP -= (alpha-1.0)*log(map) - (alpha+beta)*log(1.0+map) - gsl_sf_lnbeta(alpha, beta);
+		logP -= dlogbetaprime(map, alpha, beta);
 	}
 	
 	printf("Beta' Laplace: %f\n", logP);

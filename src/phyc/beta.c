@@ -16,6 +16,9 @@
 #include "gamma.h"
 #include "utils.h"
 
+#include <gsl/gsl_randist.h>
+#include <gsl/gsl_sf_gamma.h>
+
 #define FPMIN 1.0e-30
 #define EPS 3.0e-7
 
@@ -133,4 +136,12 @@ double invbetai(double p, double a, double b) {
 		if (x >= 1.) x = 0.5*(x + t + 1.); if (fabs(t) < EPS*x && j > 0) break;
 	}
 	return x;
+}
+
+double dbetaprime(double x, double alpha, double beta){
+	 return pow(x, alpha - 1.0)*pow(1.0 + x, -alpha - beta)/gsl_sf_beta(alpha, beta);
+}
+
+double dlogbetaprime(double x, double alpha, double beta){
+	return (alpha - 1.0)*log(x) - (alpha + beta)*log(1.0 + x) - gsl_sf_lnbeta(alpha, beta);
 }

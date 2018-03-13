@@ -13,4 +13,8 @@
 
 double invbetai(double p, double a, double b);
 
+double dbetaprime(double x, double alpha, double beta);
+
+double dlogbetaprime(double x, double alpha, double beta);
+
 #endif /* beta_h */
