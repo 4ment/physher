@@ -98,8 +98,8 @@ void grad_elbo_gamma_meanfield(variational_t* var, double* grads){
 		for (int k = 0; k < dim; k++){
 			Parameter* p = Parameters_at(var->parameters, k);
 
-			double dlogP = Model_first_derivative(posterior, p, 0.001);
-//            double dlogP =  posterior->dlogP(posterior, p);
+//			double dlogP = Model_first_derivative(posterior, p, 0.001);
+            double dlogP =  posterior->dlogP(posterior, p);
 			
 			double alpha = exp(Parameters_value(var->var_parameters, k));
 			double beta = exp(Parameters_value(var->var_parameters, k+dim));
@@ -177,3 +177,84 @@ double elbo_gamma_meanfield(variational_t* var){
     return elbo;
 }
 
+// check success
+bool variational_sample_gamma_meanfield(variational_t* var, double* values){
+	if(!var->ready_to_sample){
+		var->finalize(var);
+		var->ready_to_sample = true;
+	}
+	int dim = Parameters_count(var->parameters);
+	for (int i = 0; i < dim; i++) {
+		Parameter* p = Parameters_at(var->parameters, i);
+		if (!p->estimate) {
+			values[i] = 0;
+			continue;
+		}
+		double alpha = exp(Parameters_value(var->var_parameters, i));
+		double beta = exp(Parameters_value(var->var_parameters, i+dim));
+		values[i] = gsl_ran_gamma(var->rng, alpha, 1.0/beta);
+	}
+	return true;
+}
+
+// assumes that there is transformation
+double variational_gamma_meanfield_parameters_logP(variational_t* var, const Parameters* parameters){
+	size_t dim = Parameters_count(var->parameters);
+	size_t dim2 = Parameters_count(parameters);
+	double logP = 0;
+	for (int i = 0; i < dim2; i++) {
+		Parameter* p = Parameters_at(parameters, i);
+		for (int j = 0; j < dim; j++) {
+			Parameter* p2 = Parameters_at(var->parameters, j);
+			if (p == p2) {
+				double alpha = exp(Parameters_value(var->var_parameters, i));
+				double beta = exp(Parameters_value(var->var_parameters, i+dim));
+				double zeta = Parameter_value(p);
+				logP += log(gsl_ran_gamma_pdf(zeta, alpha, 1.0/beta));
+				break;
+			}
+		}
+	}
+	return logP;
+}
+
+// assumes that there is transformation
+double variational_gamma_meanfield_logP(variational_t* var, double* values){
+	int dim = Parameters_count(var->parameters);
+	double logP = 0;
+	for (int i = 0; i < dim; i++) {
+		Parameter* p = Parameters_at(var->parameters, i);
+		double alpha = exp(Parameters_value(var->var_parameters, i));
+		double beta = exp(Parameters_value(var->var_parameters, i+dim));
+		logP += log(gsl_ran_gamma_pdf(values[i], alpha, 1.0/beta));
+	}
+	return logP;
+}
+
+// assumes that there is transformation
+bool variational_sample_some_gamma_meanfield(variational_t* var, const Parameters* parameters, double* values){
+	if(!var->ready_to_sample){
+		var->finalize(var);
+		var->ready_to_sample = true;
+	}
+	size_t dim = Parameters_count(var->parameters);
+	size_t dim2 = Parameters_count(parameters);
+	for (int i = 0; i < dim2; i++) {
+		Parameter* p = Parameters_at(parameters, i);
+		for (int j = 0; j < dim; j++) {
+			Parameter* p2 = Parameters_at(var->parameters, j);
+			if (p == p2) {
+				if (!p->estimate) {
+					values[i] = 0;
+				}
+				else{
+					double alpha = exp(Parameters_value(var->var_parameters, i));
+					double beta = exp(Parameters_value(var->var_parameters, i+dim));
+					values[i] = gsl_ran_gamma(var->rng, alpha, 1.0/beta);
+				}
+				break;
+			}
+		}
+	}
+	return true;
+}

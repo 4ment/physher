@@ -21,6 +21,8 @@
 
 #include "gamvi.h"
 
+#include "klpq.h"
+
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
@@ -758,8 +760,15 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 				p->id = i+dim;
 				Parameters_move(var->var_parameters, p);
 			}
-			var->elbofn = elbo_meanfield;
-			var->grad_elbofn = grad_elbo_meanfield;
+			bool backward = get_json_node_value_bool(node, "backward", true); // true is KL(Q||P)
+			if(backward){
+				var->elbofn = elbo_meanfield;
+				var->grad_elbofn = grad_elbo_meanfield;
+			}
+			else{
+				var->elbofn = klpq_normal_meanfield;
+				var->grad_elbofn = grad_klpq_normal_meanfield;
+			}
 			var->f = elbo;
 			var->grad_f = grad_elbo;
 			var->sample = variational_sample_meanfield;
@@ -788,12 +797,12 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 			var->grad_elbofn = grad_elbo_gamma_meanfield;
 			var->f = elbo;
 			var->grad_f = grad_elbo;
-			//TODO: implement functions below for gamma
-			var->sample = variational_sample_meanfield;
-			var->sample_some = variational_sample_some_meanfield;
-			var->finalize = _variational_finalize;
-			var->logP = variational_meanfield_logP;
-			var->parameters_logP = variational_meanfield_parameters_logP;
+			
+			var->sample = variational_sample_gamma_meanfield;
+			var->sample_some = variational_sample_some_gamma_meanfield;
+			var->finalize = _variational_finalize; //TODO: implement function
+			var->logP = variational_gamma_meanfield_logP;
+			var->parameters_logP = variational_gamma_meanfield_parameters_logP;
 		}
 		else{
 			fprintf(stderr, "distribution %s not recognized\n", dist_string);

@@ -49,4 +49,8 @@ double elbo( Parameters *params, double *grad, void *data );
 
 void grad_elbo( Parameters *params, double *grad, void *data );
 
+void init_fullrank_normal(variational_t* var);
+
+void init_meanfield_normal(variational_t* var);
+
 #endif /* vb_h */

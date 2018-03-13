@@ -11,4 +11,10 @@
 
 #include <stdio.h>
 
+#include "vb.h"
+
+void grad_klpq_normal_meanfield(variational_t* var, double* grads);
+
+double klpq_normal_meanfield(variational_t* var);
+
 #endif /* klpq_h */
