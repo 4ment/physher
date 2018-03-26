@@ -206,6 +206,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	SiteModel* sm = NULL;
 	// Distribution
 	if ( cat > 1 ) {
+		const char* average_str = get_json_node_value_string(node, "average");
 		// Just laguerre discretization
 		if(discretization_node != NULL && strcasecmp("laguerre", (char*)discretization_node->value) == 0){
 			sm = new_GammaLaguerreSiteModel_with_parameters(m, rates, cat);
@@ -217,11 +218,18 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				Parameters_swap_index(rates, 0, 1);
 			}
 			sm = new_GammaPinvSiteModel_with_parameters(m, rates, cat);
+			if (average_str != NULL && strcasecmp(average_str, "mean") == 0) {
+				sm->type = SITEMODEL_GAMMAINV_MEAN;
+			}
 		}
 		// Just distribution
 		else{
 			sm = new_GammaSiteModel_with_parameters(m, rates, cat);
+			if (average_str != NULL && strcasecmp(average_str, "mean") == 0) {
+				sm->type = SITEMODEL_GAMMA_MEAN;
+			}
 		}
+
 	}
 	else if(invariant){
 		sm = new_PinvSiteModel_with_parameters(m, rates);
@@ -499,19 +507,39 @@ void _gamma_approx_quantile( SiteModel *sm ) {
     const int nCat = sm->cat_count - cat;
     
     const double alpha = Parameters_value(sm->rates, 0);
-    for (int i = 0; i < nCat; i++) {
-        sm->cat_rates[i + cat] = qgamma( (2.0 * i + 1.0) / (2.0 * nCat),alpha, 1.0 / alpha );
-        //sm->cat_rates[i + cat] = qnorm( (2.0 * i + 1.0) / (2.0 * nCat), 1, alpha );
-        mean += sm->cat_rates[i + cat];
-        
-        sm->cat_proportions[i + cat] = propVariable / nCat;
-    }
-    
-    mean = (propVariable * mean) / nCat;
-    
-    for (int i = 0; i < nCat; i++) {
-        sm->cat_rates[i + cat] /= mean;
-    }
+	
+	// median
+	if(sm->type == SITEMODEL_GAMMA || sm->type == SITEMODEL_GAMMAINV){
+		for (int i = 0; i < nCat; i++) {
+			sm->cat_rates[i + cat] = qgamma( (2.0 * i + 1.0) / (2.0 * nCat), alpha, alpha );
+			mean += sm->cat_rates[i + cat];
+			
+			sm->cat_proportions[i + cat] = propVariable / nCat;
+		}
+		
+		mean = (propVariable * mean) / nCat;
+		
+		for (int i = 0; i < nCat; i++) {
+			sm->cat_rates[i + cat] /= mean;
+		}
+	}
+	// mean
+	else{
+		for (int i = 0; i < nCat - 1; i++){
+			sm->cat_proportions[i+cat] = qgamma((i + 1.0) / nCat, alpha, alpha);
+			sm->cat_proportions[i+cat] = gammp(alpha + 1, sm->cat_proportions[i+cat] * alpha);
+		}
+		
+		sm->cat_rates[cat] = sm->cat_proportions[cat]*nCat;
+		for (int i = cat+1; i < nCat - 1; i++){
+			sm->cat_rates[i] = (sm->cat_proportions[i] - sm->cat_proportions[i - 1])*nCat;
+		}
+		sm->cat_rates[nCat - 1] = (1 - sm->cat_proportions[nCat - 2])*nCat;
+		
+		for (int i = 0; i < nCat; i++){
+			sm->cat_proportions[i + cat] = propVariable/nCat;
+		}
+	}
     
     sm->need_update = false;
 }
