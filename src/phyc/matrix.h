@@ -222,6 +222,7 @@ void dvector_sort_track( double *v, size_t size, int *perm );
 
 void print_dvector( const double *m, const size_t dim );
 
+void print_dvector_R(const double *m,  const size_t dim, const char* name);
 
 unsigned int * uivector( const size_t n );
 int     * ivector( const size_t n );

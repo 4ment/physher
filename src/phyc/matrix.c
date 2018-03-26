@@ -973,6 +973,15 @@ void print_dvector(  const double *m,  const size_t dim ){
 	fprintf(stdout, "\n===================\n");
 }
 
+// print a vector that can be copy pasted directly into R
+void print_dvector_R(const double *m,  const size_t dim, const char* name){
+	fprintf(stdout, "%s=c(", name);
+	for( size_t i = 0; i < dim; i++ ){
+		fprintf(stdout, "%e%s", m[i], (dim-1==i ? "":","));
+	}
+	fprintf(stdout, ")\n");
+}
+
 void print_uivector( const unsigned *m, const size_t dim ){
 	//fprintf(stdout, "\n=-------------------\n");
 	for( size_t i = 0; i < dim; i++ ){
