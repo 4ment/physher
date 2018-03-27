@@ -679,6 +679,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	json_node* file_node = get_json_node(node, "file");
 	json_node* init_node = get_json_node(node, "init");
 	json_node* patterns_node = get_json_node(node, "patterns");
+	bool rooted = get_json_node_value_bool(node, "rooted", false);
 	
 	Model* mtree = NULL;
 	
@@ -758,7 +759,12 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	else{
 		exit(1);
 	}
-	
+	if (!rooted) {
+		Tree* tree = mtree->obj;
+		double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
+		Node_set_distance(Tree_root(tree)->right, 0);
+		Node_set_distance(Tree_root(tree)->left, tot);
+	}
 	return mtree;
 }
 
