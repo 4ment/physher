@@ -1442,6 +1442,7 @@ int main(int argc, char* argv[]){
 	Model** models = NULL;
 	if(model_count > 0){
 		models = calloc(model_count, sizeof(Model*));
+		size_t index = 0;
 		for (int i = 0; i < json->child_count; i++) {
 			json_node* child = json->children[i];
 			if (strcasecmp(child->key, "physher") == 0 || strcasecmp(child->key, "init") == 0) continue;
@@ -1450,31 +1451,22 @@ int main(int argc, char* argv[]){
 			char* id = get_json_node_value_string(child, "id");
 			
 			if (strcasecmp((char*)type_node->value, "compound") == 0) {
-				models[i] = new_CompoundModel_from_json(child, hash2);
-				
-				printf("%s %f\n", id, models[i]->logP(models[i]));
+				models[index] = new_CompoundModel_from_json(child, hash2);
 			}
 			else if(strcasecmp((char*)type_node->value, "variational") == 0){
-				models[i] = new_Variational_from_json(child, hash2);
+				models[index] = new_Variational_from_json(child, hash2);
 			}
 			else if(strcasecmp((char*)type_node->value, "distribution") == 0){
-				models[i] = new_DistributionModel_from_json(child, hash2);
+				models[index] = new_DistributionModel_from_json(child, hash2);
 			}
 			else if(strcasecmp((char*)type_node->value, "treelikelihood") == 0){
-				models[i] = new_TreeLikelihoodModel_from_json(child, hash2);
-				printf("%f\n", models[i]->logP(models[i]));
+				models[index] = new_TreeLikelihoodModel_from_json(child, hash2);
 			}
 			
-			Hashtable_add(hash2, id, models[i]);
+			Hashtable_add(hash2, id, models[index]);
+			index++;
 		}
 	}
-	
-	Model* treeee = Hashtable_get(hash2, "tree");
-	Tree* tt = treeee->obj;
-	double tot = Node_distance(Tree_root(tt)->right) + Node_distance(Tree_root(tt)->left);
-	Node_set_distance(Tree_root(tt)->right, 0);
-	Node_set_distance(Tree_root(tt)->left, tot);
-//	Tree_print_newick(stdout, treeee->obj, true);
 	
 	if(run_node != NULL)
 	for (int i = 0; i < run_node->child_count; i++) {
@@ -1518,7 +1510,7 @@ int main(int argc, char* argv[]){
 		}
 		else if(strcasecmp(type, "vbis") == 0){
 			marginal_vb_t* mvb = new_Marginal_VB_from_json(child, hash2);
-			printf("Marginal likelihood using VB: %f\n", mvb->calculate(mvb));
+			printf("Marginal likelihood using IS: %f\n", mvb->calculate(mvb));
 			mvb->free(mvb);
 		}
 		else if(strcasecmp(type, "nest") == 0){
