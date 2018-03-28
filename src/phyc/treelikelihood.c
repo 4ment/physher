@@ -597,7 +597,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
     // Does not work for matrix with odd dimension.
     // If we want to load doubles at indexes 1 and 2 from matrices it will crash
     // same issue with partials, it will try to store at odd indexes
-	else if( sm->nstate >= 60 && !sm->nstate & 1 ){
+	else if( sm->nstate >= 60 && !(sm->nstate & 1) ){
 		tlk->update_partials      = update_partials_codon_SSE;
 		tlk->integrate_partials   = integrate_partials_codon_SSE;
 		tlk->node_log_likelihoods = node_log_likelihoods_codon_SSE;
