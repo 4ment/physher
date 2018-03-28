@@ -711,26 +711,16 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
     }
 	json_node* model_node = get_json_node(node, "model");
     
-    // variational
-    if(model_node != NULL && model_node->node_type == MJSON_OBJECT){
-		const char* ref = get_json_node_value_string(node, "treelikelihood");
-        Model* model = new_Variational_from_json(model_node, hash);
-		struct variational_t* var = model->obj;
-		opt_set_data(opt, var);
-		opt_set_objective_function(opt, var->f);
-		opt->grad_f = var->grad_f;
-		opt->parameters = var->var_parameters;
-        
-    }
-    else if(model_node != NULL){
+	if(model_node != NULL){
         const char* ref = (char*)model_node->value;
         Model* model = Hashtable_get(hash, ref+1);
 		opt_set_data(opt, model);
 		opt_set_objective_function(opt, _negative_logP);
 		opt->grad_f = _gradient;
 		
-		if(model->get_free_parameters != NULL && strcasecmp(algorithm_string, "sg") == 0){
-			model->get_free_parameters(model, parameters);
+		if(strcasecmp(algorithm_string, "sg") == 0){
+//			model->get_free_parameters(model, parameters);
+			get_parameters_references(node, hash, parameters);
 			opt_set_parameters(opt, parameters);
 			opt_set_objective_function(opt, _logP);
 		}

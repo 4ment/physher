@@ -13,10 +13,11 @@
 #include "matrix.h"
 #include "gaussian.h"
 #include "transforms.h"
+#include "klqp.h"
 
 double klpq_normal_meanfield(variational_t* var){
 	if (var->initialized == false) {
-		init_meanfield_normal(var);
+		klqp_meanfield_normal_init(var);
 		var->initialized = true;
 	}
 	double elbo = 0;
@@ -82,7 +83,7 @@ double klpq_normal_meanfield(variational_t* var){
 
 void grad_klpq_normal_meanfield(variational_t* var, double* grads){
 	if (var->initialized == false) {
-		init_meanfield_normal(var);
+		klqp_meanfield_normal_init(var);
 		// save for later
 		//		for (int i = 0; i < Parameters_count(var->parameters); i++) {
 		//			Parameter_store(Parameters_at(var->parameters, i));
