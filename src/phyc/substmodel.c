@@ -113,7 +113,7 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 	
 	Parameters* ps = NULL;
 	Simplex* rates_simplex = NULL;
-	if(msimplex_rates_clone != NULL && Parameters_count(subst->rates) > 0){
+	if(msimplex_rates_clone == NULL && Parameters_count(subst->rates) > 0){
 		ps = new_Parameters(1);
 		for (int i = 0; i < Parameters_count(subst->rates); i++) {
 			char* name = Parameters_name(subst->rates, i);
