@@ -1009,6 +1009,7 @@ void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* pa
                 else if (ref[0] == '%') {
                     Parameters* ps = Hashtable_get(hash, ref+1);
                     Parameters_add_parameters(parameters, ps);
+					Parameters_set_name2(parameters, ref+1);
                 }
                 // simplex
                 else if (ref[0] == '$') {
@@ -1037,6 +1038,7 @@ void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* pa
         else if (ref[0] == '%') {
             Parameters* ps = Hashtable_get(hash, ref+1);
             Parameters_add_parameters(parameters, ps);
+			Parameters_set_name2(parameters, ref+1);
         }
         // simplex
         else if (ref[0] == '$') {

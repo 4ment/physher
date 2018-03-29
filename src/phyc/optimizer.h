@@ -77,6 +77,7 @@ typedef struct OptStopCriterion{
 	double *oldx;
 	
 	int count;
+	size_t frequency_check; // iter%frequency_check == 0 then check convergence
 }OptStopCriterion;
 
 
@@ -138,6 +139,10 @@ double opt_tolx( Optimizer *opt );
 void opt_set_tolg( Optimizer *opt, const double tolg );
 
 int opt_iterations( Optimizer *opt );
+
+size_t opt_frequency_check( Optimizer *opt );
+
+void opt_set_frequency_check( Optimizer *opt, const size_t frequency_check );
 
 int opt_f_evaluations( Optimizer *opt );
 

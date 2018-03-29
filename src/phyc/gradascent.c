@@ -9,103 +9,212 @@
 #include "gradascent.h"
 
 #include <string.h>
+#include <stdlib.h>
+#include <assert.h>
 
 #include "matrix.h"
 
-int compare (const void * a, const void * b){
-	return ( *(double*)a - *(double*)b );
+
+#if defined (PTHREAD_ENABLED)
+#include <pthread.h>
+#endif
+
+#if defined (PTHREAD_ENABLED)
+
+typedef struct threadpool_sg_t{
+	pthread_t *threads;
+	pthread_mutex_t lock;
+	Model** models; // variational models
+	Parameters** parameters; // associated parameters
+	size_t model_count; // number of models available
+	double* etas;
+	double* elbos;
+	OptStopCriterion *stop;
+	opt_func f;
+	opt_grad_func grad_f;
+	size_t index_model;
+	size_t count; // read-write
+	size_t total; // read-only
+	void(*reset)(void*);
+}threadpool_sg_t;
+
+static void * _threadpool_sg_worker( void *threadpool ){
+	threadpool_sg_t* pool = (threadpool_sg_t *)threadpool;
+	
+	size_t index_model = 0;
+	pthread_mutex_lock(&(pool->lock));
+	index_model = pool->index_model++;
+	pthread_mutex_unlock(&(pool->lock));
+	
+	Model* model = pool->models[index_model];
+	Parameters* parameters = pool->parameters[index_model];
+	
+	while ( 1 ) {
+		size_t count;
+		pthread_mutex_lock(&(pool->lock));
+		if( pool->count == pool->total ){
+			pthread_mutex_unlock(&(pool->lock));
+			break;
+		}
+		count = pool->count++;
+		pthread_mutex_unlock(&(pool->lock));
+		
+		// should model reset here
+		OptStopCriterion stop = *pool->stop; // copy
+		stop.iter_max = 50;
+		stop.frequency_check = 1;
+		
+		for (int j = 0; j < Parameters_count(parameters); j++) {
+			Parameter_restore(Parameters_at(parameters, j));
+		}
+		pool->reset(model);
+		
+		optimize_stochastic_gradient(parameters, pool->f, pool->grad_f, pool->etas[count], model, &stop, 0, pool->elbos+count);
+	}
+	pthread_exit(NULL);
+	return NULL;
 }
+#endif
 
 opt_result optimize_stochastic_gradient_adapt(Parameters* parameters, opt_func f, opt_grad_func grad_f, void(*reset)(void*),
 											  double* etas, size_t eta_count, void *data,
-											  OptStopCriterion *stop, int verbose, double *fmin){
-	size_t dim = Parameters_count(parameters);
-	double tau = 1;
-	double pre_factor  = 0.9;
-	double post_factor = 0.1;
-	double* grads = calloc(dim, sizeof(double));
-	double *history_grad_squared = calloc(dim, sizeof(double));
-	double* elbos = dvector(eta_count);
-	for (int i = 0; i < eta_count; i++) {
-		elbos[i] = -INFINITY;
-	}
+											  OptStopCriterion *stop, int verbose, double *best_eta, size_t nthreads){
+	opt_result result = OPT_SUCCESS;
 	
-	for (int i = 0; i < dim; i++) {
+	for (size_t i = 0; i < Parameters_count(parameters); i++) {
 		Parameter_store(Parameters_at(parameters, i));
 	}
+	nthreads = dmin(nthreads, eta_count);
 	
-	int max_iter = 50;
-	
-	opt_result result = OPT_SUCCESS;
-	for (int j = 0; j < eta_count; j++) {
-		int iter = 0;
-		double eta = etas[j];
-		memset(grads, 0, sizeof(double)*dim);
-		memset(history_grad_squared, 0, sizeof(double)*dim);
+	if (nthreads == 1) {
 		
-		for (int i = 0; i < dim; i++) {
+		double* elbos = dvector(eta_count);
+		for (size_t i = 0; i < eta_count; i++) {
+			for (int j = 0; j < Parameters_count(parameters); j++) {
+				Parameter_restore(Parameters_at(parameters, j));
+			}
+			reset(data);
+			
+			OptStopCriterion stop_local = *stop; // copy
+			stop_local.iter_max = 50;
+			stop_local.frequency_check = 1;
+			optimize_stochastic_gradient(parameters, f, grad_f, etas[i], data, &stop_local, 0, elbos+i);
+		}
+		
+		for (size_t i = 0; i < Parameters_count(parameters); i++) {
 			Parameter_restore(Parameters_at(parameters, i));
 		}
-		reset(data);
 		
-		
-		while(iter++ < max_iter){
-			grad_f(parameters, grads, data);
-			
-			double eta_scaled = eta / sqrt(iter);
-			
-			// Update step-size
-			if (stop->iter == 1) {
-				for (int i = 0; i < dim; i++) {
-					history_grad_squared[i] = grads[i]*grads[i];
-				}
-			} else {
-				for (int i = 0; i < dim; i++) {
-					history_grad_squared[i] = pre_factor * history_grad_squared[i] + post_factor * grads[i]*grads[i];
-				}
+		double elbo_max = -INFINITY;
+		int elbo_max_index = -1;
+		for (int i = 0; i < eta_count; i++) {
+			if(!isnan(elbos[i]) && !isnan(elbos[i]) && elbos[i] > elbo_max){
+				elbo_max = elbos[i];
+				elbo_max_index = i;
 			}
-
-			for (int i = 0; i < dim; i++) {
-				if (Parameters_estimate(parameters, i)) {
-					double v = Parameters_value(parameters, i) + eta_scaled * grads[i] / (tau + sqrt(history_grad_squared[i]));
-					Parameters_set_value(parameters, i, v);
-				}
-			}
-			
-			double elbo = f(parameters, NULL, data);
-//			printf("elbo %f\n", elbo);
-			if (isnan(elbo)) {
-				elbo = -INFINITY;
-			}
-			elbos[j] = dmax(elbos[j], elbo);
 		}
-		
-		if(verbose > 0) printf("eta %f elbo %f\n", eta, elbos[j]);
-	}
-	free(grads);
-	free(history_grad_squared);
+		printf("-------\n");
+		printf("eta\telbo\n");
+		for (int i = 0; i < eta_count; i++) {
+			printf("%f\t%f\n", etas[i], elbos[i]);
+		}
+		printf("-------\n");
+		free(elbos);
 	
-	for (int i = 0; i < Parameters_count(parameters); i++) {
+		if (isinf(elbo_max)) {
+			result = OPT_FAIL;
+		}
+		else{
+			*best_eta = etas[elbo_max_index];
+		}
+		return result;
+	}
+
+#if defined (PTHREAD_ENABLED)
+	Hashtable* hash = new_Hashtable_string(10);
+	hashtable_set_key_ownership( hash, false );
+	hashtable_set_value_ownership( hash, false );
+	
+	threadpool_sg_t* threadpool = malloc(sizeof(threadpool_sg_t));
+	assert(threadpool);
+	threadpool->threads = malloc(nthreads*sizeof(pthread_t));
+	threadpool->index_model = 0;
+	threadpool->count = 0;
+	threadpool->total = eta_count;
+	threadpool->models = malloc(nthreads*sizeof(Model*));
+	threadpool->parameters = malloc(nthreads*sizeof(Model*));
+	threadpool->model_count = nthreads;
+	threadpool->etas = etas;
+	threadpool->elbos = dvector(eta_count);
+	threadpool->stop = stop;
+	threadpool->f = f;
+	threadpool->grad_f = grad_f;
+	threadpool->reset = reset;
+	
+	Model* model = data;
+	threadpool->models[0] = model;
+	threadpool->parameters[0] = parameters;
+	
+	for (size_t i = 1; i < threadpool->model_count; i++) {
+		threadpool->models[i] = model->clone(model, hash);
+		threadpool->parameters[i] = Hashtable_get(hash, Parameters_name2(parameters)); // fish parameters out
+		Hashtable_empty(hash);
+	}
+	free_Hashtable(hash);
+	
+	pthread_mutex_init(&(threadpool->lock), NULL);
+	
+	for ( size_t i = 0; i < nthreads; i++ ) {
+		pthread_create( &(threadpool->threads[i]), NULL, _threadpool_sg_worker, threadpool );
+	}
+	for ( size_t i = 0; i < nthreads; i++ ) {
+		pthread_join(threadpool->threads[i], NULL);
+	}
+	
+	for (size_t i = 0; i < Parameters_count(parameters); i++) {
 		Parameter_restore(Parameters_at(parameters, i));
 	}
 	
 	double elbo_max = -INFINITY;
 	int elbo_max_index = -1;
 	for (int i = 0; i < eta_count; i++) {
-		if(elbos[i] > elbo_max){
-			elbo_max = elbos[i];
+		if(!isnan(threadpool->elbos[i]) && !isnan(threadpool->elbos[i]) && threadpool->elbos[i] > elbo_max){
+			elbo_max = threadpool->elbos[i];
 			elbo_max_index = i;
 		}
 	}
-//	printf("=== %d %f\n",elbo_max_index, etas[elbo_max_index] );
-	if(elbo_max_index >= 0){
-		*fmin = etas[elbo_max_index];
-	}
-	else{
-		*fmin = -INFINITY;
+	
+	if (isinf(elbo_max)) {
 		result = OPT_FAIL;
 	}
-	return result;
+	else{
+		*best_eta = etas[elbo_max_index];
+	}
+	
+	free(threadpool->threads);
+	pthread_mutex_destroy(&(threadpool->lock));
+	
+	for (size_t i = 1; i < threadpool->model_count; i++) {
+		threadpool->models[i]->free(threadpool->models[i]);
+	}
+	printf("-------\n");
+	printf("eta\telbo\n");
+	for (int i = 0; i < eta_count; i++) {
+		printf("%f\t%f\n", etas[i], threadpool->elbos[i]);
+	}
+	printf("-------\n");
+	free(threadpool->models);
+	free(threadpool->parameters);
+	free(threadpool->elbos);
+	free(threadpool);
+#endif
+	
+	return OPT_SUCCESS;
+}
+
+
+int compare (const void * a, const void * b){
+	return ( *(double*)a - *(double*)b );
 }
 
 opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin){
@@ -117,7 +226,7 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 	double elbo_prev = -INFINITY;
 	double elbo_best = -INFINITY;
 	double tol_rel_obj = 0.0001;
-	int eval_elbo = 100;
+	size_t eval_elbo = stop->frequency_check;
 	int max_conv = 3;
 	int conv = 0;
 	stop->iter = 0;
@@ -165,6 +274,7 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 			if(verbose > 0)  printf("%zu ELBO: %f (%f)\n", stop->iter, elbo, elbo_prev);
 			if (isnan(elbo) || isinf(elbo)) {
 				result = OPT_FAIL;
+				*fmin = elbo;
 				break;
 			}
 			//            printf("%d ELBO: %f (%f) logL: %f\n",iter, elbo, elbo_prev, var->posterior->logP(var->posterior));
@@ -173,6 +283,7 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 			
 			if (elbo > elbo_best){
 				elbo_best = elbo;
+				*fmin = elbo_best;
 			}
 			double delta_elbo = fabs((elbo_prev - elbo) / elbo);
 			size_t eval_count = stop->iter/eval_elbo;

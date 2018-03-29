@@ -188,7 +188,8 @@ double klqp_meanfield_normal_elbo(variational_t* var){
 		}
 		
 		double logP = posterior->logP(posterior);
-		if(!isinf(logP))elbo += posterior->logP(posterior) + jacobian;
+		if(!isinf(logP))elbo += logP + jacobian;
+		else inf_count++;
 		
 		if(isinf(elbo) || isnan(elbo)){
 			return elbo;

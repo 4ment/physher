@@ -99,7 +99,7 @@ struct _Optimizer{
     double* etas;
 	size_t eta_count;
     bool ascent;
-    
+	size_t threads;
 };
 
 opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptStopCriterion *stop, double *fmin ){
@@ -214,6 +214,7 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->update = dummy_update_data;
 	opt->schedule = NULL;
     
+	opt->stop.frequency_check = 100;
     opt->etas = NULL;
 	opt->eta_count = 0;
     opt->ascent = true;
@@ -235,6 +236,7 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 	clone->stop.iter_min = opt->stop.iter_min;
 	clone->stop.iter_max = opt->stop.iter_max;
 	clone->stop.iter = opt->stop.iter;
+	clone->stop.frequency_check = opt->stop.frequency_check;
 	
 	clone->stop.time_max = opt->stop.time_max;
 	clone->stop.time_start = opt->stop.time_start;
@@ -299,7 +301,7 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 			}
 		}
 	}
-	
+	clone->threads = opt->threads;
 	return clone;
 }
 
@@ -338,6 +340,9 @@ void opt_set_parameters( Optimizer *opt, const Parameters *parameters ){
 	if( opt != NULL ){
 		if(opt->parameters == NULL){
 			opt->parameters = new_Parameters(Parameters_count(parameters));
+			if(Parameters_name2(parameters) != NULL){
+				Parameters_set_name2(opt->parameters, Parameters_name2(parameters));
+			}
 		}
 		Parameters_add_parameters(opt->parameters, parameters);
 	}
@@ -398,6 +403,15 @@ double opt_tolx( Optimizer *opt ){
 void opt_set_tolg( Optimizer *opt, const double tolg ){
 	if( opt != NULL ){
 		opt->stop.tolg = tolg;
+	}
+}
+
+size_t opt_frequency_check( Optimizer *opt ){
+	return opt->stop.frequency_check;
+}
+void opt_set_frequency_check( Optimizer *opt, const size_t frequency_check ){
+	if( opt != NULL ){
+		opt->stop.frequency_check = frequency_check;
 	}
 }
 
@@ -546,7 +560,7 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 			double eta = *opt->etas;
 			opt_result eta_adapt_result = OPT_SUCCESS;
 			if(opt->eta_count > 1){
-				eta_adapt_result = optimize_stochastic_gradient_adapt(opt->parameters, opt->f, opt->grad_f, opt->reset, opt->etas, opt->eta_count, opt->data, &opt->stop, opt->verbosity, &eta);
+				eta_adapt_result = optimize_stochastic_gradient_adapt(opt->parameters, opt->f, opt->grad_f, opt->reset, opt->etas, opt->eta_count, opt->data, &opt->stop, opt->verbosity, &eta, opt->threads);
 			}
 			opt->reset(opt->data);
 			if(eta_adapt_result == OPT_SUCCESS){
@@ -691,6 +705,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
     // stochastic gradient
     else if(strcasecmp(algorithm_string, "sg") == 0){
         opt = new_Optimizer(OPT_SG);
+		opt->stop.frequency_check = get_json_node_value_size_t(node, "frequency_check", 100);
         double tol = get_json_node_value_double(node, "tol", 0.0001);
         json_node* etas = get_json_node(node, "eta");
         if (etas != NULL && etas->node_type == MJSON_ARRAY) {
@@ -719,13 +734,13 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		opt->grad_f = _gradient;
 		
 		if(strcasecmp(algorithm_string, "sg") == 0){
-//			model->get_free_parameters(model, parameters);
 			get_parameters_references(node, hash, parameters);
 			opt_set_parameters(opt, parameters);
 			opt_set_objective_function(opt, _logP);
 		}
 		opt->reset = _reset;
     }
+	opt->threads = get_json_node_value_size_t(node, "threads", 1);
 	opt->verbosity = get_json_node_value_int(node, "verbosity", 1);
 	free_Parameters(parameters);
 	return opt;

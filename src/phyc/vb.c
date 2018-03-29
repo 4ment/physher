@@ -293,6 +293,11 @@ static Model* _variational_model_clone(Model* self, Hashtable *hash){
 	}
 	
 	Parameters* var_parameters = new_Parameters(Parameters_count(var->var_parameters));
+	if (Parameters_name2(var->var_parameters) != NULL) {
+		Parameters_set_name2(var_parameters, Parameters_name2(var->var_parameters));
+	}
+	Hashtable_add(hash, Parameters_name2(var_parameters), var_parameters);
+	
 	for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
 		char* name = Parameters_name(var->var_parameters, i);
 		if (Hashtable_exists(hash, name)) {
