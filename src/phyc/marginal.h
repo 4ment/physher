@@ -24,7 +24,11 @@ typedef struct MarginaLikelihood{
 	char* refdist_tag;
 	void (*run)(struct MarginaLikelihood*);
 	void (*free)(struct MarginaLikelihood*);
-	
+	bool ss;
+	bool ps;
+	bool ps2;
+	bool hm;
+	bool shm;
 }MarginaLikelihood;
 
 double log_arithmetic_mean(const Vector* vecvalues);
