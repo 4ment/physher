@@ -20,6 +20,52 @@
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_sf_gamma.h>
 
+struct laplace_data_t{
+	double map;
+	double* x;
+	double* y;
+	double*yy;
+	size_t N;
+};
+
+// shape is fixed and scale is optimized
+static double _func_gamma_fixed_shape( Parameters *params, double *grad, void *data ){
+	struct laplace_data_t* d = (struct laplace_data_t*)data;
+	double alpha = Parameters_value(params, 0);
+	double beta = d->map;
+	double sumYY = 0;
+	for (size_t i = 0; i < d->N; i++) {
+		d->yy[i] = gsl_ran_gamma_pdf(d->x[i], alpha, 1.0/beta);
+		sumYY += d->yy[i];
+	}
+	double maxY = dmax_vector(d->yy, d->N);
+	double sum = 0;
+	for (size_t i = 0; i < d->N; i++) {
+		sum += pow((d->yy[i]-maxY) - d->y[i], 2);
+	}
+	return sum;
+}
+
+// scale is optimized and shape is constrained
+static double _func_gamma_fixed_mode( Parameters *params, double *grad, void *data ){
+	struct laplace_data_t* d = (struct laplace_data_t*)data;
+	double alpha = Parameters_value(params, 0);
+	// mode = (alpha-1)/beta for alpha >= 1
+	double beta = (alpha - 1.0)/d->map;
+	double sumYY = 0;
+	for (size_t i = 0; i < d->N; i++) {
+		d->yy[i] = gsl_ran_gamma_pdf(d->x[i], alpha, 1.0/beta);
+		sumYY += d->yy[i];
+	}
+	double maxY = dmax_vector(d->yy, d->N);
+	double sum = 0;
+	for (size_t i = 0; i < d->N; i++) {
+		//sum += pow(d->yy[i]/sumYY/d->N - d->y[i], 2);
+		sum += pow((d->yy[i]-maxY) - d->y[i], 2);
+	}
+	return sum;
+}
+
 double calculate_laplace_gamma(Laplace* laplace){
 	// beta = rate = -f''(m) * m
 	// alpha = shape = rate * m + 1
@@ -30,32 +76,125 @@ double calculate_laplace_gamma(Laplace* laplace){
 		dm = refdist->obj;
 	}
 	
+	int N = 10;
+	double* x = calloc(N, sizeof(double));
+	double* y = calloc(N, sizeof(double));
+	double* yy = calloc(N, sizeof(double));
+	
 	double logP = posterior->logP(posterior);
 	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
 		double map = Parameters_value(laplace->parameters, i);
-//		printf("d2logP: %e %f (%f)\n", d2logP, map, Model_second_derivative(posterior, Parameters_at(laplace->parameters, i), NULL, 0.001));
 		double d2logP = laplace->model->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
+		double rate = map * -d2logP;
+		double shape = rate*map + 1;
 		
+		// Very small branch -> exponential shape
 		if (map < 1.e-6 || d2logP >= 0) {
 			double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
-			logP -= log(gsl_ran_gamma_pdf(map, 1.0, -1.0/dlogP));
-//			printf("dlogP: %f %f\n", dlogP, Model_first_derivative(posterior, Parameters_at(laplace->parameters, i), 0.001));
-			if(dm != NULL){
-				Parameters_set_value(dm->parameters, i*2, 1.0);
-				Parameters_set_value(dm->parameters, i*2+1, -dlogP);
+			shape = 1;
+			rate = fabs(dlogP);
+			
+			log_spaced_spaced_vector2(x, map, 0.5, N);
+			
+			for (size_t j = 1; j < N; j++) {
+				Parameters_set_value(laplace->parameters, i, x[j]);
+				y[j] = laplace->model->logP(laplace->model);
 			}
+			Parameters_set_value(laplace->parameters, i, map);
+			y[0] = laplace->model->logP(laplace->model);
+			
+			double maxY = y[0];
+			for (int j = 0; j < N; j++) {
+				y[j] -= maxY;
+			}
+
+			double guess = 1.0 - 0.001;
+			Parameters* ps = new_Parameters(1);
+			Parameters_move(ps, new_Parameter("", guess, new_Constraint(0, 1)));
+			
+			struct laplace_data_t data = {rate, x, y, yy, N};
+			double fx = _func_gamma_fixed_shape(ps, NULL, &data);
+			
+			Parameters_set_value(ps, 0, 0);
+			double fa = _func_gamma_fixed_shape(ps, NULL, &data);
+			Parameters_set_value(ps, 0, 1);
+			double fb = _func_gamma_fixed_shape(ps, NULL, &data);
+			Parameters_set_value(ps, 0, guess);
+			
+			if(fa >= fx && fx <= fb){
+				Optimizer* opt = new_Optimizer(OPT_BRENT);
+				opt_set_data(opt, &data);
+				opt_set_objective_function(opt, _func_gamma_fixed_shape);
+				opt_set_parameters(opt, ps);
+				double min;
+				opt_optimize(opt, ps, &min);
+
+				shape = Parameters_value(ps, 0);
+
+				free_Optimizer(opt);
+			}
+			free_Parameters(ps);
 		}
-		else{
-			double rate = map * -d2logP;
-			//logP += dloggamma(map, map*rate+1.0, rate); // does not always work :(
-			logP -= log(gsl_ran_gamma_pdf(map, map*rate+1.0, 1.0/rate));
-//			printf("%f map: %f mu: %f sigma: %f d2:%f %f\n", log(gsl_ran_gamma_pdf(map, map*rate+1.0, 1.0/rate)), map, map*rate+1.0, rate, d2logP, Model_second_derivative(posterior, Parameters_at(laplace->parameters, i), NULL, 0.00001));
-			if(dm != NULL){
-				Parameters_set_value(dm->parameters, i*2, map*rate+1.0);
-				Parameters_set_value(dm->parameters, i*2+1, rate);
+		// Small branch with a maximum and spurious large variance
+		else if(shape/(rate*rate) > 0.1 && map < 0.0001){
+			double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
+			shape = 1;
+			rate = fabs(dlogP);
+			
+			log_spaced_spaced_vector2(x, map, 0.5, N);
+			
+			for (size_t j = 1; j < N; j++) {
+				Parameters_set_value(laplace->parameters, i, x[j]);
+				y[j] = laplace->model->logP(laplace->model);
 			}
+			Parameters_set_value(laplace->parameters, i, map);
+			y[0] = laplace->model->logP(laplace->model);
+			
+			double maxY = y[0];
+			for (int j = 0; j < N; j++) {
+				y[j] -= maxY;
+			}
+			
+			double guess = 1.0 + 0.001;
+			Parameters* ps = new_Parameters(1);
+			Parameters_move(ps, new_Parameter("", guess, new_Constraint(1, 100)));
+			
+			struct laplace_data_t data = {map, x, y, yy, N};
+			double fx = _func_gamma_fixed_mode(ps, NULL, &data);
+			
+			Parameters_set_value(ps, 0, 1);
+			double fa = _func_gamma_fixed_mode(ps, NULL, &data);
+			Parameters_set_value(ps, 0, 100);
+			double fb = _func_gamma_fixed_mode(ps, NULL, &data);
+			Parameters_set_value(ps, 0, guess);
+
+			if(fa >= fx && fx <= fb){
+				Optimizer* opt = new_Optimizer(OPT_BRENT);
+				opt_set_data(opt, &data);
+				opt_set_objective_function(opt, _func_gamma_fixed_mode);
+				opt_set_parameters(opt, ps);
+				double min;
+				opt_optimize(opt, ps, &min);
+				
+				shape = Parameters_value(ps, 0);
+				rate = (shape - 1)/map;
+				
+				free_Optimizer(opt);
+			}
+			free_Parameters(ps);
+		}
+
+		logP -= log(gsl_ran_gamma_pdf(map, shape, 1.0/rate));
+		
+		if(dm != NULL){
+			Parameters_set_value(dm->parameters, i*2, shape);
+			Parameters_set_value(dm->parameters, i*2+1, rate);
 		}
 	}
+	
+	free(x);
+	free(y);
+	free(yy);
 	
 	printf("Gamma Laplace: %f\n", logP);
 	return logP;
@@ -85,16 +224,8 @@ double calculate_laplace_lognormal(Laplace* laplace){
 	return logP;
 }
 
-struct AAA{
-	double map;
-	double* x;
-	double* y;
-	double*yy;
-	size_t N;
-};
-
 double _func_betaprime( Parameters *params, double *grad, void *data ){
-	struct AAA* d = ( struct AAA*)data;
+	struct laplace_data_t* d = (struct laplace_data_t*)data;
 	double beta = Parameters_value(params, 0);
 	double alpha = d->map*(beta+1.0) + 1.0;
 	double sumYY = 0;
@@ -143,7 +274,7 @@ double calculate_laplace_betaprime(Laplace* laplace){
 				Parameters* ps = new_Parameters(1);
 				Parameters_move(ps, new_Parameter("", 2, new_Constraint(2, 100)));
 				double yy[9];
-				struct AAA data = {map, x, y, yy, 9};
+				struct laplace_data_t data = {map, x, y, yy, 9};
 				Optimizer* opt = new_Optimizer(OPT_BRENT);
 				opt_set_data(opt, &data);
 				opt_set_objective_function(opt, _func_betaprime);
