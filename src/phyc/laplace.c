@@ -107,21 +107,22 @@ double calculate_laplace_gamma(Laplace* laplace){
 			for (int j = 0; j < N; j++) {
 				y[j] -= maxY;
 			}
-
+            double lower = 0.001;
+            double upper = 1;
 			double guess = 1.0 - 0.001;
 			Parameters* ps = new_Parameters(1);
-			Parameters_move(ps, new_Parameter("", guess, new_Constraint(0, 1)));
+			Parameters_move(ps, new_Parameter("", guess, new_Constraint(lower, upper)));
 			
 			struct laplace_data_t data = {rate, x, y, yy, N};
 			double fx = _func_gamma_fixed_shape(ps, NULL, &data);
 			
-			Parameters_set_value(ps, 0, 0);
+			Parameters_set_value(ps, 0, lower);
 			double fa = _func_gamma_fixed_shape(ps, NULL, &data);
-			Parameters_set_value(ps, 0, 1);
+			Parameters_set_value(ps, 0, upper);
 			double fb = _func_gamma_fixed_shape(ps, NULL, &data);
 			Parameters_set_value(ps, 0, guess);
 			
-			if(fa >= fx && fx <= fb){
+			if(fa > fx && fx < fb){
 				Optimizer* opt = new_Optimizer(OPT_BRENT);
 				opt_set_data(opt, &data);
 				opt_set_objective_function(opt, _func_gamma_fixed_shape);
@@ -168,7 +169,7 @@ double calculate_laplace_gamma(Laplace* laplace){
 			double fb = _func_gamma_fixed_mode(ps, NULL, &data);
 			Parameters_set_value(ps, 0, guess);
 
-			if(fa >= fx && fx <= fb){
+			if(fa > fx && fx < fb){
 				Optimizer* opt = new_Optimizer(OPT_BRENT);
 				opt_set_data(opt, &data);
 				opt_set_objective_function(opt, _func_gamma_fixed_mode);
