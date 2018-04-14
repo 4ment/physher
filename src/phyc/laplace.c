@@ -19,6 +19,8 @@
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_sf_gamma.h>
+#include <gsl/gsl_permutation.h>
+#include <gsl/gsl_linalg.h>
 
 struct laplace_data_t{
 	double map;
@@ -201,6 +203,61 @@ double calculate_laplace_gamma(Laplace* laplace){
 	return logP;
 }
 
+double calculate_laplace_multivariate_normal(Laplace* laplace){
+	size_t paramCount = Parameters_count(laplace->parameters);
+	gsl_matrix* H = gsl_matrix_alloc(paramCount, paramCount);
+	gsl_vector* mu = gsl_vector_alloc(paramCount);
+	gsl_matrix * L = gsl_matrix_alloc (paramCount, paramCount);
+	gsl_permutation* perm = gsl_permutation_alloc (paramCount);
+	gsl_vector* work = gsl_vector_alloc(paramCount);
+	gsl_set_error_handler_off();
+	double logP = laplace->model->logP(laplace->model);
+
+	for (int i = 0; i < paramCount; i++) {
+		double mapi = Parameters_value(laplace->parameters, i);
+		double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
+		double d2logP = laplace->model->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
+		double Hii = dlogP*mapi + d2logP*mapi*mapi;
+		gsl_matrix_set(H, i, i, Hii);
+		gsl_vector_set(mu, i, log(mapi));
+		
+		for (int j = i+1; j < paramCount; j++) {
+			double mapj = Parameters_value(laplace->parameters, j);
+			double didj = Model_mixed_derivative(laplace->model, Parameters_at(laplace->parameters, i), Parameters_at(laplace->parameters, j));
+			double Hij = didj * mapi * mapj;
+			gsl_matrix_set(H, i, j, Hij);
+			gsl_matrix_set(H, j, i, Hij);
+		}
+	}
+	int signum;
+	gsl_linalg_LU_decomp (H, perm, &signum);
+	
+	gsl_linalg_LU_invert (H, perm, L);
+	for (int i = 0; i < paramCount; i++) {
+		for (int j = 0; j < paramCount; j++) {
+			gsl_matrix_set(L, i, j, -gsl_matrix_get(L, i, j));
+		}
+	}
+	gsl_linalg_cholesky_decomp1(L);
+	
+	double logQ = 0;
+	gsl_ran_multivariate_gaussian_log_pdf(mu, mu, L, &logQ, work);
+	
+	for (size_t i = 0; i < paramCount; i++) {
+		logQ -= log(Parameters_value(laplace->parameters, i));
+		printf("%f %e\n", log(Parameters_value(laplace->parameters, i)), Parameters_value(laplace->parameters, i));
+	}
+	
+	printf("Multivariatenormal Laplace: %f logQ: %f\n", logP - logQ, logQ);
+
+	gsl_vector_free(work);
+	gsl_matrix_free(H);
+	gsl_matrix_free(L);
+	gsl_vector_free(mu);
+	gsl_permutation_free(perm);
+	return logP - logQ;
+}
+
 double calculate_laplace_lognormal(Laplace* laplace){
 	//	sigma = sqrt(-1/(f''(m)*m^2))
 	//	mu    = log(m)+sigma^2
@@ -329,6 +386,9 @@ Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
 	}
 	else if(strcasecmp(dist_string, "betaprime") == 0){
 		laplace->calculate = calculate_laplace_betaprime;
+	}
+	else if(strcasecmp(dist_string, "multivariate") == 0){
+		laplace->calculate = calculate_laplace_multivariate_normal;
 	}
 	laplace->free = _free_Laplace;
 	return laplace;
