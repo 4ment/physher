@@ -878,8 +878,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		// empirical
 		if (file != NULL) {
 			size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
-			size_t tot;
-			Vector** vecs = read_log_for_parameters(file, burnin, &tot, x);
+			Vector** vecs = read_log_for_parameters_t(file, burnin, x);
 			size_t paramCount = Parameters_count(x);
 			
 			for (int i = 0; i < paramCount; i++) {
@@ -924,8 +923,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		
 		if (file != NULL) {
 			size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
-			size_t tot;
-			Vector** vec = read_log_for_parameters(file, burnin, &tot, x);
+			Vector** vec = read_log_for_parameters_t(file, burnin, x);
 
 			int n = Vector_length(vec[0]);
 			size_t paramCount = Parameters_count(x);
