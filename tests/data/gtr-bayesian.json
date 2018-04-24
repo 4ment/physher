@@ -1,0 +1,139 @@
+{
+"model":{
+	"id":"posterior",
+	"type" : "compound",
+	"distributions":[
+		{
+			"id":"treelikelihood",
+			"type": "treelikelihood",
+			"sitepattern":{
+				"id":"patterns",
+				"type":"sitepattern",		
+				"datatype":"nucleotide",
+				"alignment":{
+					"id": "seqs",
+					"type": "alignment",
+					"file":"fluA.fa",
+					"datatype":"nucleotide"
+				}
+			},
+			"sitemodel":{
+				"id": "sitemodel",
+				"type": "sitemodel",
+				"distribution": "gamma",
+				"categories":4,
+				"substitutionmodel":{
+					"id":"sm",
+					"type":"substitutionmodel",
+					"model":"gtr",
+					"datatype":"nucleotide",
+					"frequencies":{
+						"id":"freqs",
+						"type":"Simplex",
+						"values":[0.25,0.25,0.25,0.25] 
+					},
+					"rates":{
+						"ac":{"id":"ac", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+						"ag":{"id":"ag", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+						"at":{"id":"at", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+						"cg":{"id":"cg", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+						"ct":{"id":"ct", "type":"parameter", "value":1, "lower":0, "upper":"infinity"}
+					},
+					"init":{
+						"id":"aaa",
+						"sitepattern": "&patterns"
+					}
+				},
+				"rates":{
+					"alpha":{"id":"alpha", "type":"parameter", "value":0.1, "lower":0, "upper":"infinity"}
+				}
+					
+			},
+			"tree":{
+				"id":"tree",
+				"type":"tree",
+				"init":{
+					"id":"nj",
+					"algorithm":"nj",
+					"model":"jc69",
+					"sitepattern": "&patterns"
+				},
+				"parameters":"tree.distances"
+			}
+		},
+		{
+			"id":"priorbl",
+			"type": "distribution", 
+			"distribution": "exponential",
+			"parameters":{
+				"lambda":{"id":"lambdabl", "type":"parameter", "value":10, "lower":0}
+			},
+			"tree":"&tree"
+		},
+		{
+			"id":"priorfreqs",
+			"type": "distribution", 
+			"distribution": "dirichlet",
+			"parameters": [1,1,1,1],
+			"x":"&freqs"
+		},
+		{
+			"id":"priorrates",
+			"type": "distribution", 
+			"distribution": "gamma",
+			"parameters":{
+				"shape":{"id":"shape.rates", "type":"parameter", "value":0.5},
+				"rate":{"id":"rate.rates", "type":"parameter", "value":0.5}
+			},
+			"x":["&ac", "&ag", "&at", "&cg", "&ct"]
+		},
+		{
+			"id":"prioralpha",
+			"type": "distribution", 
+			"distribution": "exponential",
+			"parameters":{
+				"lambda":{"id":"lambda.alpha", "type":"parameter", "value":1, "lower":0}
+			},
+			"x": "&alpha"
+		}
+	
+	]
+},
+"physher":[
+	{
+		"id":"metaopt",
+		"type":"optimizer",
+		"algorithm":"meta",
+		"precision":0.001,
+		"max": 1,
+		"min": 0,
+		"model":"&posterior",
+		"list":[
+			{				
+				"id":"optbl",
+				"type":"optimizer",
+				"algorithm":"serial",
+				"model":"&posterior",
+				"parameters":["%tree.distances"],
+				"_treelikelihood": "&treelikelihood"
+			},
+			{				
+				"id":"optgamma",
+				"type":"optimizer",
+				"algorithm":"brent",
+				"model":"&posterior",
+				"parameters":"&alpha"
+			},
+			{				
+				"id":"optfreqs",
+				"type":"optimizer",
+				"algorithm":"serial",
+				"model":"&posterior",
+				"parameters":[
+					"&ac", "&ag", "&at", "&cg", "&ct", "$freqs"
+				]
+			}
+		]
+	}
+]
+}

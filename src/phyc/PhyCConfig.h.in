@@ -28,4 +28,7 @@
 
 #define PHYC_AVX_ENABLED @PHYC_AVX_ENABLED@
 
+#define GIT_BRANCH "@GIT_BRANCH@"
+#define GIT_COMMIT_HASH "@GIT_COMMIT_HASH@"
+
 #endif

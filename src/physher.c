@@ -1408,6 +1408,32 @@ char* get_program_name(char* argv[]){
 
 
 int main(int argc, char* argv[]){
+    
+    if (argc == 1) {
+        
+        fprintf(stdout, "\n%s:\n\n", get_program_name(argv));
+        printf("Fourment M and Holmes EC. Novel non-parametric models to estimate evolutionary rates and divergence times from heterochronous sequence data.\n");
+        printf("BMC Evolutionary Biology 14:163, 2014\n\n");
+        
+#ifndef DISABLED_CONFIG_HEADER
+        fprintf(stdout, "\nLibrary used:\n");
+        fprintf(stdout, "PhyC v%d.%d\n", PHYC_VERSION_MAJOR, PHYC_VERSION_MINOR );
+        if(PHYC_SSE_ENABLED){
+            fprintf(stdout, "  SSE     support: %s\n", PHYC_SSE_LEVEL);
+        }
+        else{
+            fprintf(stdout, "  SSE     support: disabled\n" );
+        }
+        //fprintf(stdout, "  AVX     support: %s\n", (PHYC_AVX_ENABLED ? "enabled" : "disabled") );
+        fprintf(stdout, "  OpenMP  support: %s\n", (PHYC_OPENMP_ENABLED ? "enabled" : "disabled") );
+        fprintf(stdout, "  PThread support: %s\n", (PHYC_PTHREAD_ENABLED ? "enabled" : "disabled") );
+        fprintf(stdout, "\n\n");
+        fprintf(stdout, "Git:\nBranch: %s\nCommit: %s\n", GIT_BRANCH, GIT_COMMIT_HASH);
+        fprintf(stdout, "\n\n");
+#endif
+	return 0;
+	}
+	
 	char* content = load_file(argv[1]);
 	printf("Reading file %s\n", argv[1]);
 
@@ -1750,6 +1776,8 @@ int main(int argc, char* argv[]){
         //fprintf(stdout, "  AVX     support: %s\n", (PHYC_AVX_ENABLED ? "enabled" : "disabled") );
         fprintf(stdout, "  OpenMP  support: %s\n", (PHYC_OPENMP_ENABLED ? "enabled" : "disabled") );
         fprintf(stdout, "  PThread support: %s\n", (PHYC_PTHREAD_ENABLED ? "enabled" : "disabled") );
+        fprintf(stdout, "\n\n");
+        fprintf("Git:\nBranch: %s\nCommit: %s\n", GIT_BRANCH, GIT_COMMIT_HASH);
         fprintf(stdout, "\n\n");
 #endif
         printf("\n");

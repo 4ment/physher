@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 2.8)
 
 SET(DEFAULT_SSE_LEVEL "sse3")
 
@@ -208,8 +208,35 @@ ENDIF(USE_SSE_SUPPORT)
 
 
 #####################################################################
+# GSL
+#####################################################################
+
+find_package(GSL REQUIRED)
+#include_directories(BEFORE SYSTEM ${GSL_INCLUDE_DIRS})
+#link_directories(${GSL_LIBRARY_DIRS})
+
+#####################################################################
 # Config header file
 #####################################################################
+
+# Get the current working branch
+execute_process(
+  COMMAND git rev-parse --abbrev-ref HEAD
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_BRANCH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+# Get the latest abbreviated commit hash of the working branch
+execute_process(
+  COMMAND git log -1 --format=%h
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_COMMIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+add_definitions("-DGIT_COMMIT_HASH=${GIT_COMMIT_HASH}")
+add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
 
 configure_file (
 	"${PROJECT_SOURCE_DIR}/src/phyc/PhyCConfig.h.in"
@@ -269,6 +296,8 @@ ADD_CUSTOM_COMMAND(
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/phyc"
 )
 
+target_link_libraries(phyc GSL::gsl GSL::gslcblas)
+
 IF(NOT LIBRARY_ONLY)	
 	add_executable(physher src/physher.c)
 	target_link_libraries(physher phyc)
@@ -296,3 +325,16 @@ install(FILES ${HEADER_FILES} DESTINATION include/phyc)
 
 install(EXPORT phyc-targets DESTINATION lib/phyc)
 install(FILES phyc-config.cmake DESTINATION lib/phyc)
+
+#
+# Tests
+#
+
+#IF (BUILD_TESTING)
+	enable_testing()
+	add_subdirectory(tests)
+
+#	add_test (NAME Test_clone
+#		WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+#		COMMAND test_clone )
+#ENDIF (BUILD_TESTING)
