@@ -22,6 +22,7 @@ struct _CompoundModel{
 	double (*logP)(CompoundModel*);
 	double (*dlogP)(CompoundModel*, const Parameter*);
 	double (*d2logP)(CompoundModel*, const Parameter*);
+	double (*ddlogP)(CompoundModel*, const Parameter*, const Parameter*);
 	void (*free)(CompoundModel*);
 	void(*add)(CompoundModel*, Model*);
 	void(*move)(CompoundModel*, Model*);

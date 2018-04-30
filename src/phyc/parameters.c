@@ -796,6 +796,7 @@ static void dummyUpdate( Model *self, Model *model, int index ){}
 static double _logP(Model *model){return 0;}
 static double _dlogP(Model *model, const Parameter* p){return 0;}
 static double _d2logP(Model *model, const Parameter* p){return 0;}
+static double _ddlogP(Model *self, const Parameter* p1, const Parameter* p2){return 0;}
 static void _dummy_reset(Model* m){}
 static void _dummy_restore(Model* m){}
 static void _dummy_store(Model* m){}
@@ -816,6 +817,7 @@ Model * new_Model( const char *type, const char *name, void *obj ){
 	model->logP = _logP;
 	model->dlogP = _dlogP;
 	model->d2logP = _d2logP;
+	model->ddlogP = _ddlogP;
 	model->update  = dummyUpdate;
 	model->free = free_Model;
 	model->data = NULL;

@@ -31,6 +31,7 @@ struct _DistributionModel{
 	double (*logP_with_values)(DistributionModel*, const double*);
 	double (*dlogP)(DistributionModel*, const Parameter*);
 	double (*d2logP)(DistributionModel*, const Parameter*);
+	double (*ddlogP)(DistributionModel*, const Parameter*, const Parameter*);
 	void (*sample)(DistributionModel*, double*);
 	void (*free)(DistributionModel*);
 	DistributionModel* (*clone)(DistributionModel*);

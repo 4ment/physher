@@ -38,6 +38,10 @@ static double _DistributionModel_d2log_0(DistributionModel* dm, const Parameter*
 	return 0.0;
 }
 
+static double _DistributionModel_ddlog_0(DistributionModel* dm, const Parameter* p1, const Parameter* p2){
+	return 0.0;
+}
+
 static void _DistributionModel_error_sample(DistributionModel* dm, double* samples){
 	fprintf(stderr, "Sample method not implemented\n");
 	exit(1);
@@ -72,6 +76,7 @@ static DistributionModel* _clone_dist(DistributionModel* dm){
 	clone->logP = dm->logP;
 	clone->dlogP = dm->dlogP;
 	clone->d2logP = dm->d2logP;
+	clone->ddlogP = dm->ddlogP;
 	clone->sample = dm->sample;
 	clone->clone = dm->clone;
 	clone->free = dm->free;
@@ -107,6 +112,7 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	clone->logP = dm->logP;
 	clone->dlogP = dm->dlogP;
 	clone->d2logP = dm->d2logP;
+	clone->ddlogP = dm->ddlogP;
 	clone->sample = dm->sample;
 	clone->logP_with_values = dm->logP_with_values;
 	clone->clone = dm->clone;
@@ -134,6 +140,7 @@ DistributionModel* new_DistributionModel(const Parameters* p, const Parameters* 
 	dm->logP = NULL;
 	dm->dlogP = NULL;
 	dm->d2logP = NULL;
+	dm->ddlogP = NULL;
 	dm->sample = _DistributionModel_error_sample;
 	dm->free = _free_dist;
 	dm->clone = _clone_dist;
@@ -152,6 +159,7 @@ DistributionModel* new_DistributionModelSimplex(Parameters* p, Simplex* simplex)
 	dm->logP = NULL;
 	dm->dlogP = NULL;
 	dm->d2logP = NULL;
+	dm->ddlogP = NULL;
 	dm->sample = _DistributionModel_error_sample;
 	dm->free = _free_dist;
 	dm->clone = _clone_dist;
@@ -359,12 +367,16 @@ static void DistributionModel_dirichlet_sample(DistributionModel* dm, double* sa
 
 //TODO: implement
 double DistributionModel_dlog_dirichlet(DistributionModel* dm, const Parameter* p){
+	// find corresponding alpha
+	// return (alpha-1.0)/Parameter_value(p);
 	exit(1);
 	return 0;
 }
 
 //TODO: implement
 double DistributionModel_d2log_dirichlet(DistributionModel* dm, const Parameter* p){
+	// find corresponding alpha
+	// return -(alpha-1.0)/(Parameter_value(p)*Parameter_value(p));
 	exit(1);
 	return 0;
 }
@@ -378,6 +390,7 @@ DistributionModel* new_IndependantGammaDistributionModel(const double shape, con
 	dm->logP_with_values = DistributionModel_log_gamma_with_values;
 	dm->dlogP = DistributionModel_dlog_gamma;
 	dm->d2logP = DistributionModel_d2log_gamma;
+	dm->ddlogP = _DistributionModel_ddlog_0;
 	dm->clone = _clone_dist;
 	dm->sample = DistributionModel_gamma_sample;
 	free_Parameters(ps);
@@ -390,6 +403,7 @@ DistributionModel* new_IndependantGammaDistributionModel_with_parameters(Paramet
 	dm->logP_with_values = DistributionModel_log_gamma_with_values;
 	dm->dlogP = DistributionModel_dlog_gamma;
 	dm->d2logP = DistributionModel_d2log_gamma;
+	dm->ddlogP = _DistributionModel_ddlog_0;
 	dm->clone = _clone_dist;
 	dm->sample = DistributionModel_gamma_sample;
 	return dm;
@@ -403,6 +417,7 @@ DistributionModel* new_IndependantExpDistributionModel(const double lambda, cons
 	dm->logP_with_values = DistributionModel_log_exp_with_values;
 	dm->dlogP = DistributionModel_dlog_exp;
 	dm->d2logP = DistributionModel_d2log_exp;
+	dm->ddlogP = _DistributionModel_ddlog_0;
 	dm->clone = _clone_dist;
 	dm->sample = DistributionModel_exp_sample;
 	free_Parameters(ps);
@@ -415,6 +430,7 @@ DistributionModel* new_IndependantExpDistributionModel_with_parameters(Parameter
 	dm->logP_with_values = DistributionModel_log_exp_with_values;
 	dm->dlogP = DistributionModel_dlog_exp;
 	dm->d2logP = DistributionModel_d2log_exp;
+	dm->ddlogP = _DistributionModel_ddlog_0;
 	dm->clone = _clone_dist;
 	dm->sample = DistributionModel_exp_sample;
 	return dm;
@@ -426,6 +442,7 @@ DistributionModel* new_FlatDirichletDistributionModel(Simplex* simplex){
 	dm->logP_with_values = DistributionModel_log_flat_dirichlet_with_values;
 	dm->dlogP = DistributionModel_dlog_flat_dirichlet;
 	dm->d2logP = DistributionModel_d2log_flat_dirichlet;
+	dm->ddlogP = _DistributionModel_ddlog_0;
 	dm->clone = _clone_dist;
 	dm->sample = DistributionModel_dirichlet_sample;
 	dm->tempp = dvector(simplex->K);
@@ -445,6 +462,7 @@ DistributionModel* new_DirichletDistributionModel(const double* alpha, Simplex* 
 	dm->logP_with_values = DistributionModel_log_dirichlet_with_values;
 	dm->dlogP = DistributionModel_dlog_dirichlet;
 	dm->d2logP = DistributionModel_d2log_dirichlet;
+	dm->ddlogP = _DistributionModel_ddlog_0;
 	dm->clone = _clone_dist;
 	dm->sample = DistributionModel_dirichlet_sample;
 	dm->tempx = dvector(simplex->K);
@@ -464,6 +482,7 @@ DistributionModel* new_DirichletDistributionModel_with_parameters(const Paramete
 	dm->logP_with_values = DistributionModel_log_dirichlet_with_values;
 	dm->dlogP = DistributionModel_dlog_dirichlet;
 	dm->d2logP = DistributionModel_d2log_dirichlet;
+	dm->ddlogP = _DistributionModel_ddlog_0;
 	dm->clone = _clone_dist;
 	dm->sample = DistributionModel_dirichlet_sample;
 	dm->tempx = dvector(simplex->K);
@@ -539,6 +558,25 @@ static double _multivariate_normal_logP(DistributionModel* dm){
 	return logP + logJocobian;
 }
 
+
+static double _DistributionModel_dlog_mvn(DistributionModel* dm, const Parameter* p){
+	fprintf(stderr, "%s is not implemented (line %d of file %s)\n", __func__, __LINE__, __FILE__);
+	exit(1);
+	return 0.0;
+}
+
+static double _DistributionModel_d2log_mvn(DistributionModel* dm, const Parameter* p){
+	fprintf(stderr, "%s is not implemented (line %d of file %s)\n", __func__, __LINE__, __FILE__);
+	exit(1);
+	return 0.0;
+}
+
+static double _DistributionModel_ddlog_mvn(DistributionModel* dm, const Parameter* p1, const Parameter* p2){
+	fprintf(stderr, "%s is not implemented (line %d of file %s)\n", __func__, __LINE__, __FILE__);
+	exit(1);
+	return 0.0;
+}
+
 static void _free_dist_gsl_multivariate_normal(DistributionModel*dm){
 	if(dm->x != NULL) free_Parameters(dm->x);
 	if(dm->parameters != NULL) free_Parameters(dm->parameters);
@@ -566,8 +604,9 @@ DistributionModel* new_MultivariateNormalDistributionModel_with_parameters(const
 	dm->tempx = NULL;
 	dm->tempp = NULL;
 	dm->logP = _multivariate_normal_logP;
-	dm->dlogP = _DistributionModel_dlog_0;
-	dm->d2logP = _DistributionModel_d2log_0;
+	dm->dlogP = _DistributionModel_dlog_mvn;
+	dm->d2logP = _DistributionModel_d2log_mvn;
+	dm->ddlogP = _DistributionModel_ddlog_mvn;
 	dm->sample = _sample_multivariate_normal;
 	dm->clone = _clone_dist;
 	dm->need_update = true;
@@ -618,6 +657,7 @@ DistributionModel* new_UniformTreeDistribution(Model* tree){
 	dm->logP = DistributionModel_log_uniform_tree;
 	dm->dlogP = _DistributionModel_dlog_0;
 	dm->d2logP = _DistributionModel_d2log_0;
+	dm->ddlogP = _DistributionModel_ddlog_0;
     dm->clone = _clone_dist;
 	dm->need_update = true;
     return dm;
@@ -654,6 +694,22 @@ static double _dist_model_d2logP(Model *self, const Parameter* p){
 			return cm->d2logP(cm, p);
 		}
 	}
+	return 0;
+}
+
+static double _dist_model_ddlogP(Model *self, const Parameter* p1, const Parameter* p2){
+	DistributionModel* cm = (DistributionModel*)self->obj;
+	bool found1 = false;
+	bool found2 = false;
+	for (int i = 0; i < Parameters_count(cm->x); i++) {
+		if(Parameters_at(cm->x, i) == p1){
+			found1 = true;
+		}
+		else if(Parameters_at(cm->x, i) == p2){
+			found2 = true;
+		}
+	}
+	if(found1 && found2) return cm->ddlogP(cm, p1, p2);
 	return 0;
 }
 
@@ -770,6 +826,7 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 	model->logP = _dist_model_logP;
 	model->dlogP = _dist_model_dlogP;
 	model->d2logP = _dist_model_d2logP;
+	model->ddlogP = _dist_model_ddlogP;
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
 	model->get_free_parameters = _dist_model_get_free_parameters;
@@ -785,6 +842,7 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* si
 	model->logP = _dist_model_logP;
 	model->dlogP = _dist_model_dlogP;
 	model->d2logP = _dist_model_d2logP;
+	model->ddlogP = _dist_model_ddlogP;
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
 	model->get_free_parameters = _dist_model_get_free_parameters;
@@ -800,6 +858,7 @@ Model* new_TreeDistributionModel(const char* name, DistributionModel* dm, Model*
     model->logP = _dist_model_logP;
 	model->dlogP = _dist_model_dlogP;
 	model->d2logP = _dist_model_d2logP;
+	model->ddlogP = _dist_model_ddlogP;
     model->free = _dist_model_free;
     model->clone = _dist_model_clone;
     model->get_free_parameters = _dist_model_get_free_parameters;

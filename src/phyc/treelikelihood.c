@@ -238,6 +238,166 @@ double _singleTreeLikelihood_d2logP(Model *self, const Parameter* p){
 	return d2logP;
 }
 
+
+//TODO: update_upper is always true since lower likelihoods are used to calculate mixed derivative of the likelihood
+double _singleTreeLikelihood_ddlogP(Model *self, const Parameter* p1, const Parameter* p2){
+    SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+    
+    Node* node1 = NULL;
+    Node* node2 = NULL;
+
+    for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+        Node* node = Tree_node(tlk->tree, i);
+        if (strcmp(node->distance->name, Parameter_name(p1)) == 0) {
+            node1 = node;
+        }
+        else if (strcmp(node->distance->name, Parameter_name(p2)) == 0) {
+            node2 = node;
+        }
+    }
+    
+    if(node1 == NULL || node2 == NULL){
+        return Model_mixed_derivative(self, p1, p2);
+    }
+	
+	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
+	
+	if(tlk->update_upper){
+		//		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+		//			if (tlk->update_nodes[i]) {
+		//				double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, i));
+		//				tlk->node_upper = Tree_node(tlk->tree, i);
+		//				tlk->use_upper = true;
+		//				//					printf("+ %d %f\n", i, lk);
+		//				tlk->update_nodes[i] = false;
+		//				return lk;
+		//			}
+		//		}
+		//		SingleTreeLikelihood_update_all_nodes(tlk);
+		
+		double logP = tlk->calculate(tlk); // make sure it is updated
+		if (isnan(logP) || isinf(logP)) {
+			return logP;
+		}
+		calculate_upper(tlk, Tree_root(tlk->tree));
+		
+		for (int i = 0; i < tlk->sp->count; i++) {
+			pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
+		}
+		tlk->update_upper = false;
+	}
+	
+	double* pattern_dlikelihoods1 = tlk->pattern_lk + tlk->sp->count*2;
+	double* pattern_dlikelihoods2 = tlk->pattern_lk + tlk->sp->count*3;
+	calculate_dldt_uppper(tlk, node1, pattern_dlikelihoods1);
+	calculate_dldt_uppper(tlk, node2, pattern_dlikelihoods2);
+	
+    double *pmats1 = dvector(tlk->sm->cat_count * tlk->matrix_size);
+    double *pmats2 = dvector(tlk->sm->cat_count * tlk->matrix_size);
+    
+    memcpy(pmats1, tlk->matrices[Node_id(node1)], tlk->sm->cat_count *tlk->matrix_size*sizeof(double));
+    memcpy(pmats2, tlk->matrices[Node_id(node2)], tlk->sm->cat_count *tlk->matrix_size*sizeof(double));
+    
+    double bl1 = Node_distance(node1);
+    double bl2 = Node_distance(node2);
+    
+    for (int i = 0; i < tlk->sm->cat_count; i++) {
+#if defined (SSE3_ENABLED) || (AVX_ENABLED)
+        if( tlk->use_SIMD ){
+            if( Node_isleaf(node1) ){
+                tlk->sm->m->dp_dt_transpose(tlk->sm->m,
+                                            bl1 * tlk->sm->get_rate(tlk->sm, i),
+                                            &tlk->matrices[Node_id(node1)][i*tlk->matrix_size]);
+            }
+            else {
+                tlk->sm->m->dp_dt(tlk->sm->m,
+                                  bl1 * tlk->sm->get_rate(tlk->sm, i),
+                                  &tlk->matrices[Node_id(node1)][i*tlk->matrix_size]);
+            }
+            if( Node_isleaf(node2) ){
+                tlk->sm->m->dp_dt_transpose(tlk->sm->m,
+                                            bl2 * tlk->sm->get_rate(tlk->sm, i),
+                                            &tlk->matrices[Node_id(node2)][i*tlk->matrix_size]);
+            }
+            else {
+                tlk->sm->m->dp_dt(tlk->sm->m,
+                                  bl2 * tlk->sm->get_rate(tlk->sm, i),
+                                  &tlk->matrices[Node_id(node2)][i*tlk->matrix_size]);
+            }
+        }
+        else{
+            tlk->sm->m->dp_dt(tlk->sm->m,
+                              bl1 * tlk->sm->get_rate(tlk->sm, i),
+                              &tlk->matrices[Node_id(node1)][i*tlk->matrix_size]);
+            
+            tlk->sm->m->dp_dt(tlk->sm->m,
+                              bl2 * tlk->sm->get_rate(tlk->sm, i),
+                              &tlk->matrices[Node_id(node2)][i*tlk->matrix_size]);
+        }
+#else
+        tlk->sm->m->dp_dt(tlk->sm->m,
+                          bl1 * tlk->sm->get_rate(tlk->sm, i),
+                          &tlk->matrices[Node_id(node1)][i*tlk->matrix_size]);
+        
+        tlk->sm->m->dp_dt(tlk->sm->m,
+                          bl2 * tlk->sm->get_rate(tlk->sm, i),
+                          &tlk->matrices[Node_id(node2)][i*tlk->matrix_size]);
+#endif
+        
+        for (int k = 0; k < tlk->matrix_size; k++) {
+            tlk->matrices[Node_id(node1)][i*tlk->matrix_size+k] *= tlk->sm->get_rate(tlk->sm, i);
+            tlk->matrices[Node_id(node2)][i*tlk->matrix_size+k] *= tlk->sm->get_rate(tlk->sm, i);
+        }
+        
+    }
+    
+    SingleTreeLikelihood_update_one_node(tlk, node1);
+    SingleTreeLikelihood_update_one_node(tlk, node2);
+    
+    Node* root = Tree_root(tlk->tree);
+    
+    _calculate_partials( tlk, root );
+    
+    tlk->integrate_partials(tlk, tlk->partials[Node_id(root)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
+    int v = 0;
+    int i = 0;
+    
+    const int nstate   = tlk->sm->nstate;
+    const int patternCount = tlk->sp->count;
+    const double* freqs = tlk->get_root_frequencies(tlk);
+    
+    for ( int k = 0; k < patternCount; k++ ) {
+        
+        tlk->pattern_lk[k] = 0;
+        for ( i = 0; i < nstate; i++ ) {
+            
+            tlk->pattern_lk[k] += freqs[i] * tlk->partials[Node_id(root)][v];
+            v++;
+        }
+        //tlk->pattern_lk[k] = log(tlk->pattern_lk[k]);
+        
+        if ( tlk->scale ) {
+            //printf("scaling\n");
+            tlk->pattern_lk[k] += getLogScalingFactor( tlk, k);
+        }
+    }
+	
+    double ddlogP = 0;
+    for ( int i = 0; i < tlk->sp->count; i++) {
+        ddlogP += ((tlk->pattern_lk[i] * pattern_likelihoods[i] - (pattern_dlikelihoods1[i]*pattern_dlikelihoods2[i])) / (pattern_likelihoods[i]*pattern_likelihoods[i])) * tlk->sp->weights[i];
+    }
+    
+    memcpy( tlk->matrices[Node_id(node1)], pmats1, tlk->sm->cat_count *tlk->matrix_size*sizeof(double));
+    SingleTreeLikelihood_update_one_node(tlk, node1);
+    
+    memcpy( tlk->matrices[Node_id(node2)], pmats2, tlk->sm->cat_count *tlk->matrix_size*sizeof(double));
+    SingleTreeLikelihood_update_one_node(tlk, node2);
+    
+    free(pmats1);
+    free(pmats2);
+    return ddlogP;
+}
+
 static void _treeLikelihood_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free treelikelihood model %s\n", self->name);
@@ -338,6 +498,7 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	model->logP = _singleTreeLikelihood_logP;
 	model->dlogP = _singleTreeLikelihood_dlogP;
 	model->d2logP = _singleTreeLikelihood_d2logP;
+	model->ddlogP = _singleTreeLikelihood_ddlogP;
 	model->update = _treelikelihood_handle_change;
 	model->free = _treeLikelihood_model_free;
 	model->clone = _treeLikelihood_model_clone;

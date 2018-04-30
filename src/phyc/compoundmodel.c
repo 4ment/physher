@@ -41,6 +41,14 @@ double _compoundModel_d2logP(CompoundModel* cm, const Parameter* p){
 	return d2logP;
 }
 
+double _compoundModel_ddlogP(CompoundModel* cm, const Parameter* p1, const Parameter* p2){
+	double ddlogP = 0;
+	for(int i = 0; i < cm->count; i++){
+		ddlogP += cm->models[i]->ddlogP(cm->models[i], p1, p2);
+	}
+	return ddlogP;
+}
+
 static void _compoundModel_add(CompoundModel* cm, Model*model){
 	cm->models = realloc(cm->models, sizeof(Model*)*(cm->count+1));
 	cm->models[cm->count] = model;
@@ -97,6 +105,8 @@ CompoundModel* clone_compound_model(CompoundModel* cm){
 	clone->removeAll = cm->removeAll;
 	clone->logP = cm->logP;
 	clone->dlogP = cm->dlogP;
+	clone->d2logP = cm->d2logP;
+	clone->ddlogP = cm->ddlogP;
 	clone->free = cm->free;
 	return clone;
 }
@@ -160,6 +170,7 @@ CompoundModel* new_CompoundModel(){
 	cm->logP = _compoundModel_logP;
 	cm->dlogP = _compoundModel_dlogP;
 	cm->d2logP = _compoundModel_d2logP;
+	cm->ddlogP = _compoundModel_ddlogP;
 	cm->free = _free_compound_model;
 	return cm;
 }
@@ -209,6 +220,11 @@ double _compoundModel_d2logP2(Model *self, const Parameter* p){
 	return cm->d2logP(cm, p);
 }
 
+double _compoundModel_ddlogP2(Model *self, const Parameter* p1, const Parameter* p2){
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	return cm->ddlogP(cm, p1, p2);
+}
+
 void _compound_model_sample(Model *self, double* samples, double* logP){
 	CompoundModel* cm = (CompoundModel*)self->obj;
 	if (logP != NULL) {
@@ -222,6 +238,7 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->logP = _compoundModel_logP2;
 	model->dlogP = _compoundModel_dlogP2;
 	model->d2logP = _compoundModel_d2logP2;
+	model->ddlogP = _compoundModel_ddlogP2;
 	model->free = _compound_model_free;
 	model->clone = _compound_model_clone;
 	model->get_free_parameters = _compound_model_get_free_parameters;
