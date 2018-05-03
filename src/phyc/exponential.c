@@ -28,7 +28,7 @@
 
 // Random number
 double rexp( const double lambda ){
-	return -log(random_double())/lambda;
+	return -log(genrand_real2())/lambda;
 }
 
 // Density probability function
