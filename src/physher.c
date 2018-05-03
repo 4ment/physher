@@ -104,6 +104,7 @@
 #include "phyc/bridge.h"
 #include "phyc/marginal.h"
 #include "phyc/predictive.h"
+#include "phyc/mc.h"
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -1558,6 +1559,11 @@ int main(int argc, char* argv[]){
 			MarginaLikelihood* margl = new_MarginaLikelihood_from_json(child, hash2);
 			margl->run(margl);
 			margl->free(margl);
+		}
+		else if(strcasecmp(type, "mc") == 0){
+			MC* mc = new_MonteCarlo_from_json(child, hash2);
+			mc->calculate(mc);
+			mc->free(mc);
 		}
 		else if(strcasecmp(type, JSON_PREDICTIVE) == 0){
 			Predictive* predictive = new_Predictive_from_json(child, hash2);
