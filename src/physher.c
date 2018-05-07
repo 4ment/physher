@@ -105,6 +105,7 @@
 #include "phyc/marginal.h"
 #include "phyc/predictive.h"
 #include "phyc/mc.h"
+#include "phyc/physim.h"
 
 double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -1569,6 +1570,10 @@ int main(int argc, char* argv[]){
 			Predictive* predictive = new_Predictive_from_json(child, hash2);
 			predictive->calculate(predictive);
 			predictive->free(predictive);
+		}
+		else if(strcasecmp(type, JSON_SIMULTRON) == 0){
+			printf("Simulating sequences...\n");
+			SimulateSequences_from_json(child, hash2);
 		}
 	}
 	if(models != NULL){
