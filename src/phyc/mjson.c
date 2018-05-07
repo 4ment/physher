@@ -81,9 +81,7 @@ size_t get_json_node_value_size_t(json_node* node, const char* key, size_t defau
 int get_json_node_value_int(json_node* node, const char* key, int defaultv){
 	json_node* n = get_json_node(node, key);
 	if(n != NULL){
-		size_t v = 0;
-		int result = atoi((char*)n->value);
-		return v;
+		return atoi((char*)n->value);
 	}
 	return defaultv;
 }
