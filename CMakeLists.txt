@@ -302,9 +302,6 @@ IF(NOT LIBRARY_ONLY)
 	add_executable(physher src/physher.c)
 	target_link_libraries(physher phyc)
 
-	add_executable(simultron src/simultron.c)
-	target_link_libraries(simultron phyc)
-
 	add_executable(bootstrap src/bootstrap.c)
 	target_link_libraries(bootstrap phyc)
 
@@ -312,7 +309,6 @@ IF(NOT LIBRARY_ONLY)
 	target_link_libraries(modelAveraging phyc)
 	
 	install(TARGETS physher RUNTIME DESTINATION bin)
-	install(TARGETS simultron RUNTIME DESTINATION bin)
 	install(TARGETS modelAveraging RUNTIME DESTINATION bin)
 	install(TARGETS bootstrap RUNTIME DESTINATION bin)
 ENDIF()

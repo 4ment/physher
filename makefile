@@ -37,7 +37,7 @@ MKDIR_P = mkdir -p
 
 .PHONY: directories
 
-all: clean directories physher modelavg bootstrap simultron
+all: clean directories physher modelavg bootstrap
 
 directories: ${OBJDIR} ${BINDIR}
 
@@ -59,14 +59,10 @@ modelavg: ${OBJFILES}
 bootstrap: ${OBJFILES}
 	$(CC) $(CFLAGS) $(INCLUDES) -o ${BINDIR}/bootstrap $(SRCDIR)/bootstrap.c $(OBJFILES) $(LIBS)
 
-simultron: ${OBJFILES}
-	$(CC) $(CFLAGS) $(INCLUDES) -o ${BINDIR}/simultron $(SRCDIR)/simultron.c $(OBJFILES) $(LIBS)
-
 clean:
 	rm -f ${BINDIR}/physher
 	rm -f ${BINDIR}/modelavg
 	rm -f ${BINDIR}/bootstrap
-	rm -f ${BINDIR}/simultron
 	rm -f $(OBJDIR)/*.o
 
 	
