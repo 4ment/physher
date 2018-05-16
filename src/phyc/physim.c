@@ -338,7 +338,7 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
 //                            StringBuffer_append_format(buffer, "\n%d Lognormal distribution mean = %f log(stdev) = %f", i, means[i], logsigmas[i]);
                     }
                     else{
-                        exponential_discretize(means[i], temp_rates, counts[i]);
+                        exponential_discretize(lambdas[i], temp_rates, counts[i]);
 //                            StringBuffer_append_format(buffer, "\n%d Exponential distribution mean = %f", i, means[i]);
                     }
                     randomize_dvector( temp_rates, counts[i]);
