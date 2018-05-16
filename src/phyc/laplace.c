@@ -212,18 +212,28 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
 	gsl_vector* work = gsl_vector_alloc(paramCount);
 	gsl_set_error_handler_off();
 	double logP = laplace->model->logP(laplace->model);
+	double epsilon = 0.0001;
 
 	for (int i = 0; i < paramCount; i++) {
 		double mapi = Parameters_value(laplace->parameters, i);
+		if (mapi < 1.0e-6) {
+			mapi += epsilon;
+		}
 		double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
 		double d2logP = laplace->model->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
 		double Hii = dlogP*mapi + d2logP*mapi*mapi;
+		//printf("%f %f %f %f\n",mapi,dlogP,d2logP, Hii);
 		gsl_matrix_set(H, i, i, Hii);
 		gsl_vector_set(mu, i, log(mapi));
 		
 		for (int j = i+1; j < paramCount; j++) {
 			double mapj = Parameters_value(laplace->parameters, j);
-			double didj = Model_mixed_derivative(laplace->model, Parameters_at(laplace->parameters, i), Parameters_at(laplace->parameters, j));
+			if (mapj < 1.0e-6) {
+				mapj += epsilon;
+			}
+//			double didj = Model_mixed_derivative(laplace->model, Parameters_at(laplace->parameters, i), Parameters_at(laplace->parameters, j));
+			double didj = laplace->model->ddlogP(laplace->model, Parameters_at(laplace->parameters, i), Parameters_at(laplace->parameters, j));
+//			printf("%f %f %f\n", didj, Parameters_value(laplace->parameters, i), Parameters_value(laplace->parameters, j));
 			double Hij = didj * mapi * mapj;
 			gsl_matrix_set(H, i, j, Hij);
 			gsl_matrix_set(H, j, i, Hij);
@@ -244,11 +254,15 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
 	gsl_ran_multivariate_gaussian_log_pdf(mu, mu, L, &logQ, work);
 	
 	for (size_t i = 0; i < paramCount; i++) {
-		logQ -= log(Parameters_value(laplace->parameters, i));
-		printf("%f %e\n", log(Parameters_value(laplace->parameters, i)), Parameters_value(laplace->parameters, i));
+		double val = Parameters_value(laplace->parameters, i);
+		if (val < 1.0e-6) {
+			val += epsilon;
+		}
+		logQ -= log(val);
+//		printf("%f %e\n", log(Parameters_value(laplace->parameters, i)), Parameters_value(laplace->parameters, i));
 	}
 	
-	printf("Multivariatenormal Laplace: %f logQ: %f\n", logP - logQ, logQ);
+	printf("Multivariatenormal Laplace: %f logQ: %f %f\n", logP - logQ, logQ, gsl_ran_multivariate_gaussian_log_pdf(mu, mu, L, &logQ, work));
 
 	gsl_vector_free(work);
 	gsl_matrix_free(H);
@@ -263,20 +277,125 @@ double calculate_laplace_lognormal(Laplace* laplace){
 	//	mu    = log(m)+sigma^2
 	Model* posterior = laplace->model;
 	double logP = posterior->logP(posterior);
+	int N = 10;
+	double* x = calloc(N, sizeof(double));
+	double* y = calloc(N, sizeof(double));
+	double* yy = calloc(N, sizeof(double));
+	
 	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
 		double map = Parameters_value(laplace->parameters, i);
 		double d2logP = laplace->model->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
 		
 		double sigma = sqrt(-1.0/(d2logP*map*map));
 		double mu = log(map) + sigma*sigma;
-		if (map < 1.e-4 || d2logP >= 0 || mu > 5) {
-			double dlogP = posterior->dlogP(posterior, Parameters_at(laplace->parameters, i));
-			logP -= log(gsl_ran_gamma_pdf(map, 1.0, 1.0/fabs(dlogP)));
+		if (map < 1.e-6 || d2logP >= 0 || mu > 5) {
+			double rate = map * -d2logP;
+			double shape = rate*map + 1;
+			// Very small branch -> exponential shape
+			if (map < 1.e-6 || d2logP >= 0) {
+				double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
+				shape = 1;
+				rate = fabs(dlogP);
+				
+				log_spaced_spaced_vector2(x, map, 0.5, N);
+				
+				for (size_t j = 1; j < N; j++) {
+					Parameters_set_value(laplace->parameters, i, x[j]);
+					y[j] = laplace->model->logP(laplace->model);
+				}
+				Parameters_set_value(laplace->parameters, i, map);
+				y[0] = laplace->model->logP(laplace->model);
+				
+				double maxY = y[0];
+				for (int j = 0; j < N; j++) {
+					y[j] -= maxY;
+				}
+				double lower = 0.001;
+				double upper = 1;
+				double guess = 1.0 - 0.001;
+				Parameters* ps = new_Parameters(1);
+				Parameters_move(ps, new_Parameter("", guess, new_Constraint(lower, upper)));
+				
+				struct laplace_data_t data = {rate, x, y, yy, N};
+				double fx = _func_gamma_fixed_shape(ps, NULL, &data);
+				
+				Parameters_set_value(ps, 0, lower);
+				double fa = _func_gamma_fixed_shape(ps, NULL, &data);
+				Parameters_set_value(ps, 0, upper);
+				double fb = _func_gamma_fixed_shape(ps, NULL, &data);
+				Parameters_set_value(ps, 0, guess);
+				
+				if(fa > fx && fx < fb){
+					Optimizer* opt = new_Optimizer(OPT_BRENT);
+					opt_set_data(opt, &data);
+					opt_set_objective_function(opt, _func_gamma_fixed_shape);
+					opt_set_parameters(opt, ps);
+					double min;
+					opt_optimize(opt, ps, &min);
+					
+					shape = Parameters_value(ps, 0);
+					
+					free_Optimizer(opt);
+				}
+				free_Parameters(ps);
+			}
+			// Small branch with a maximum and spurious large variance
+			else if(shape/(rate*rate) > 0.1 && map < 0.0001){
+				double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
+				shape = 1;
+				rate = fabs(dlogP);
+				
+				log_spaced_spaced_vector2(x, map, 0.5, N);
+				
+				for (size_t j = 1; j < N; j++) {
+					Parameters_set_value(laplace->parameters, i, x[j]);
+					y[j] = laplace->model->logP(laplace->model);
+				}
+				Parameters_set_value(laplace->parameters, i, map);
+				y[0] = laplace->model->logP(laplace->model);
+				
+				double maxY = y[0];
+				for (int j = 0; j < N; j++) {
+					y[j] -= maxY;
+				}
+				
+				double guess = 1.0 + 0.001;
+				Parameters* ps = new_Parameters(1);
+				Parameters_move(ps, new_Parameter("", guess, new_Constraint(1, 100)));
+				
+				struct laplace_data_t data = {map, x, y, yy, N};
+				double fx = _func_gamma_fixed_mode(ps, NULL, &data);
+				
+				Parameters_set_value(ps, 0, 1);
+				double fa = _func_gamma_fixed_mode(ps, NULL, &data);
+				Parameters_set_value(ps, 0, 100);
+				double fb = _func_gamma_fixed_mode(ps, NULL, &data);
+				Parameters_set_value(ps, 0, guess);
+				
+				if(fa > fx && fx < fb){
+					Optimizer* opt = new_Optimizer(OPT_BRENT);
+					opt_set_data(opt, &data);
+					opt_set_objective_function(opt, _func_gamma_fixed_mode);
+					opt_set_parameters(opt, ps);
+					double min;
+					opt_optimize(opt, ps, &min);
+					
+					shape = Parameters_value(ps, 0);
+					rate = (shape - 1)/map;
+					
+					free_Optimizer(opt);
+				}
+				free_Parameters(ps);
+			}
+			logP -= log(gsl_ran_gamma_pdf(map, shape, 1.0/rate));
+			continue;
 		}
-		else{
-			logP -= log(gsl_ran_lognormal_pdf(map, mu, sigma));
-		}
+		logP -= log(gsl_ran_lognormal_pdf(map, mu, sigma));
 	}
+	
+	free(x);
+	free(y);
+	free(yy);
 	
 	printf("Lognormal Laplace: %f\n", logP);
 	return logP;
