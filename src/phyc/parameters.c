@@ -646,6 +646,14 @@ void Parameters_remove( Parameters *params, size_t index ){
 	}
 }
 
+void Parameters_removeAll( Parameters *params){
+	for( size_t i = 0; i < params->count; i++ ){
+		free_Parameter( params->list[i] );
+		params->list[i] = NULL;
+	}
+	params->count = 0;
+}
+
 void Parameters_pop( Parameters *params ){
 	if( params->count !=0 ){
 		free_Parameter( params->list[params->count-1] );

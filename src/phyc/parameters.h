@@ -236,6 +236,8 @@ void Parameters_set_bounds( Parameters *p, const int index, const double lower, 
 
 void Parameters_remove( Parameters *params, size_t index );
 
+void Parameters_removeAll( Parameters *params);
+
 void Parameters_pop( Parameters *params );
 
 
