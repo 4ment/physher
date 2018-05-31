@@ -54,6 +54,10 @@ Parsimony * new_Parsimony( SitePattern *sp, Tree *tree );
 
 void free_Parsimony( Parsimony *parsimony );
 
+Model * new_ParsimonyModel(char* name, Parsimony* parsimony, Model* tree);
+
+Model * new_ParsimonyModel_from_json(json_node*node, Hashtable*hash);
+
 void Parsimony_update_node( Parsimony *parsimony, Node *node );
 
 void Parsimony_update_all_nodes( Parsimony *parsimony );

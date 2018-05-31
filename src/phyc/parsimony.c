@@ -828,3 +828,118 @@ double _score_fitch_4_sse(Parsimony *parsimony){
     return parsimony->score;
 }
 #endif
+
+#pragma mark -
+#pragma mark ParsimonyModel
+
+void _parsimony_model_handle_change( Model *self, Model *model, int index ){
+	Parsimony *parsimony = (Parsimony*)self->obj;
+	if ( strcmp(model->type, "tree") == 0 ) {
+		parsimony->update_nodes[index] = true;
+		parsimony->update = true;
+	}
+	else {
+		fprintf(stderr, "%s of type %s\n", model->name, model->type);
+		error("Unknown change in Parsimony\n");
+	}
+}
+
+static double _parsimony_model_logP(Model *self){
+	self->lp = ((Parsimony*)self->obj)->calculate((Parsimony*)self->obj);
+	return self->lp;
+}
+
+static void _parsimony_model_free( Model *self ){
+	if(self->ref_count == 1){
+		//printf("Free parsimony model %s\n", self->name);
+		Parsimony* parsimony = (Parsimony*)self->obj;
+		Model* mtree = (Model*)self->data;
+		
+		mtree->free(mtree);
+		
+		free_SitePattern(parsimony->sp);
+		free_Parsimony(parsimony);
+		free_Model(self);
+	}
+	else{
+		self->ref_count--;
+	}
+}
+
+static Model* _parsimony_model_clone(Model* self, Hashtable* hash){
+	Model* mtree = self->data;
+	Model *mtreeclone = NULL;
+
+	if(Hashtable_exists(hash, mtree->name)){
+		mtreeclone = Hashtable_get(hash, mtree->name);
+		mtreeclone->ref_count++;
+	}
+	else{
+		mtreeclone = mtree->clone(mtree, hash);
+		Hashtable_add(hash, mtreeclone->name, mtreeclone);
+	}
+	
+	Parsimony* parsimony = (Parsimony*)self->obj;
+	Parsimony* clonetlk = new_Parsimony(parsimony->sp, mtreeclone->obj);
+	
+	Model* clone = new_ParsimonyModel(self->name, clonetlk, mtreeclone);
+	Hashtable_add(hash, clone->name, clone);
+	mtreeclone->free(mtreeclone);
+
+	return clone;
+}
+
+static void _parsimony_model_get_free_parameters(Model* model, Parameters* parameters){
+	Model* mtree = model->data;
+	mtree->get_free_parameters(mtree, parameters);
+}
+
+Model * new_ParsimonyModel(char* name, Parsimony* parsimony, Model* tree){
+	Model *model = new_Model("parsimony", name, parsimony);
+	tree->listeners->add( tree->listeners, model );
+	model->data = tree;
+	tree->ref_count++;
+	model->update = _parsimony_model_handle_change;
+	model->logP = _parsimony_model_logP;
+	model->free = _parsimony_model_free;
+	model->clone = _parsimony_model_clone;
+	model->get_free_parameters = _parsimony_model_get_free_parameters;
+	return model;
+}
+
+Model * new_ParsimonyModel_from_json(json_node*node, Hashtable*hash){
+	json_node* patterns_node = get_json_node(node, "sitepattern");
+	json_node* tree_node = get_json_node(node, "tree");
+	SitePattern* patterns = NULL;
+	Model* mtree = NULL;
+	
+	if(patterns_node->node_type == MJSON_STRING){
+		char* ref = (char*)patterns_node->value;
+		// check it starts with a &
+		patterns = Hashtable_get(hash, ref+1);
+		patterns->ref_count++;
+	}
+	else{
+		char* id = get_json_node_value_string(patterns_node, "id");
+		patterns = new_SitePattern_from_json(patterns_node, hash);
+		Hashtable_add(hash, id, patterns);
+	}
+	
+	if (tree_node->node_type == MJSON_STRING) {
+		char* ref = (char*)tree_node->value;
+		// check it starts with a &
+		mtree = Hashtable_get(hash, ref+1);
+		mtree->ref_count++;
+	}
+	else{
+		char* id = get_json_node_value_string(tree_node, "id");
+		mtree = new_TreeModel_from_json(tree_node, hash);
+		Hashtable_add(hash, id, mtree);
+	}
+	
+	Parsimony* parsimony = new_Parsimony(patterns, mtree->obj);
+	char* id = get_json_node_value_string(node, "id");
+	Model* model = new_ParsimonyModel(id, parsimony, mtree);
+	mtree->free(mtree);
+	return model;
+}
