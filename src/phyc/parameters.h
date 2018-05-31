@@ -141,6 +141,10 @@ void Parameter_set_name( Parameter *p, const char *name );
 
 void Parameter_set_value( Parameter *p, const double value );
 
+void Parameter_set_value_quietly( Parameter *p, const double value );
+
+void Parameter_fire(Parameter *p);
+
 double Parameter_value( const Parameter *p );
 
 void Parameter_store(Parameter *p);
@@ -214,7 +218,11 @@ size_t Parameters_capacity( const Parameters *p );
 
 void Parameters_set_value( Parameters *p, const int index, const double value );
 
+void Parameters_set_value_quietly( Parameters *p, const int index, const double value );
+
 void Parameters_set_all_value( Parameters *p, const double value );
+
+void Parameters_fire( Parameters *p );
 
 double Parameters_value( const Parameters *p, const int index );
 
