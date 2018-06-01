@@ -11,7 +11,7 @@ SRCDIR = src
 
 PHYCDIR = $(SRCDIR)/phyc
 
-INCLUDES = -I$(PHYCDIR)
+CFLAGS += -I$(PHYCDIR)
 
 OBJDIR = obj
 BINDIR = bin
@@ -30,7 +30,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -lm -lgsl -lgslcblas
+LDLIBS += -lm -lgsl -lgslcblas
 
 
 MKDIR_P = mkdir -p
@@ -51,13 +51,13 @@ $(OBJDIR)/%.o: $(PHYCDIR)/%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 	
 physher: ${OBJFILES}
-	$(CC) $(CFLAGS) $(INCLUDES) -o ${BINDIR}/physher $(SRCDIR)/physher.c $(OBJFILES) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o ${BINDIR}/physher $(SRCDIR)/physher.c $(OBJFILES) $(LDLIBS)
 
 modelavg: ${OBJFILES}
-	$(CC) $(CFLAGS) $(INCLUDES) -o ${BINDIR}/modelavg $(SRCDIR)/modelAveraging.c $(OBJFILES) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o ${BINDIR}/modelavg $(SRCDIR)/modelAveraging.c $(OBJFILES) $(LDLIBS)
 
 bootstrap: ${OBJFILES}
-	$(CC) $(CFLAGS) $(INCLUDES) -o ${BINDIR}/bootstrap $(SRCDIR)/bootstrap.c $(OBJFILES) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o ${BINDIR}/bootstrap $(SRCDIR)/bootstrap.c $(OBJFILES) $(LDLIBS)
 
 clean:
 	rm -f ${BINDIR}/physher

@@ -13,7 +13,7 @@ SRCDIR = src
 
 PHYCDIR = $(SRCDIR)/phyc
 
-INCLUDES = -I$(PHYCDIR)
+CFLAGS += -I$(PHYCDIR) 
 
 OBJDIR = obj
 BINDIR = bin
@@ -32,7 +32,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -pthread -lm -lgsl -lgslcblas
+LDLIBS += -pthread -lm -lgsl -lgslcblas
 
 
 MKDIR_P = mkdir -p
@@ -53,7 +53,7 @@ $(OBJDIR)/%.o: $(PHYCDIR)/%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 	
 physher-pthread: ${OBJFILES}
-	$(CC) $(CFLAGS) $(INCLUDES) -lm -o ${BINDIR}/physher-pthread $(SRCDIR)/physher.c $(OBJFILES)  $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o ${BINDIR}/physher-pthread $(SRCDIR)/physher.c $(OBJFILES)  $(LDLIBS)
 
 clean:
 	rm -f ${BINDIR}/physher-pthread

@@ -14,8 +14,7 @@ SRCDIR = src
 
 PHYCDIR = $(SRCDIR)/phyc
 
-INCLUDES = -I$(PHYCDIR)
-
+CFLAGS += -I$(PHYCDIR) 
 
 OBJDIR = obj
 BINDIR = bin
@@ -34,7 +33,7 @@ endif
 
 OBJFILES := $(patsubst $(PHYCDIR)/%.c,$(OBJDIR)/%.o,$(wildcard $(PHYCDIR)/*.c))
 
-LIBS = -fopenmp -lm -lgsl -lgslcblas
+LDLIBS = -fopenmp -lm -lgsl -lgslcblas
 
 
 MKDIR_P = mkdir -p
@@ -55,7 +54,7 @@ $(OBJDIR)/%.o: $(PHYCDIR)/%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 	
 physher-sse-openmp: ${OBJFILES}
-	$(CC) $(LIBS) $(CFLAGS) $(INCLUDES) -lm -o $(BINDIR)/physher-sse-openmp $(SRCDIR)/physher.c $(OBJFILES) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(BINDIR)/physher-sse-openmp $(SRCDIR)/physher.c $(OBJFILES) $(LDLIBS)
 
 
 clean:
