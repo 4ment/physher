@@ -133,7 +133,7 @@ void nest_run(NEST* nest){
 		size_t worst = which_dmin(logL, N);
 		double lw = logL[worst] + logw - (ii-1.0)/NN;
 		logZ = logaddexp(logZ, lw);
-		H = exp(lw - logZ) * logL[worst] - logZ + exp(logZp - logZ)*(H + logZ);
+		H = exp(lw - logZ) * logL[worst] - logZ + exp(logZp - logZ)*(H + logZp);
 
 		if(i % 100 == 0) printf("%d %f %f", i, logZ, logL[worst]);
 		
