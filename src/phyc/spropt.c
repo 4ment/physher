@@ -821,25 +821,22 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
 
 // neighborhood size 2(n − 3)(2n − 7)
 double spr_optimize_bl_parsimony_only( struct TopologyOptimizer * opt ){
-    SingleTreeLikelihood *tlk = opt->tlk;
-    
-
-    Tree *tree = tlk->tree;
+	Parsimony* parsimony = opt->model->obj;
+	Tree *tree = parsimony->tree;
     Node *root  = NULL;
-    
-    Parsimony *parsimony = new_Parsimony(tlk->sp, tree);
+	
     double score = parsimony->calculate(parsimony);
     
     int total = (Tree_tip_count(tree)-3)*2*(2*Tree_tip_count(tree)-7);
     
-    int max_distance = 20;//5;
-    
-    if(tlk->opt.verbosity > 0){
+	int max_distance = opt->max_distance;
+
+    if(opt->verbosity > 0){
         printf("\nParsimony score: %f (%i)\n\n", score, total);
         printf("Maximum radius %d\n\n", max_distance);
     }
-    
-    int nNodes = Tree_node_count(tlk->tree);
+	
+    int nNodes = Tree_node_count(tree);
     bool failed = false;
     
     double *scores = dvector(nNodes);
@@ -1119,7 +1116,7 @@ double spr_optimize_bl_parsimony_only( struct TopologyOptimizer * opt ){
                 Parsimony_update_all_nodes(parsimony);
 
                 spr_score = parsimony->calculate(parsimony);
-                if(tlk->opt.verbosity > 0){
+                if(opt->verbosity > 0){
                     printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], score);
                 }
                 // skip moves that increase the score
@@ -1148,7 +1145,7 @@ double spr_optimize_bl_parsimony_only( struct TopologyOptimizer * opt ){
                     opt->moves++;
                 }
             }
-            if(tlk->opt.verbosity > 0){
+            if(opt->verbosity > 0){
                 printf("Parsimony score: %f #SPR: %d\n\n", score, accepted);
             }
         }
@@ -1162,10 +1159,7 @@ double spr_optimize_bl_parsimony_only( struct TopologyOptimizer * opt ){
     free(grafts);
     free(scores);
     free(ds);
-    
-    free_Parsimony(parsimony);
-
-    
+	
     opt->best_lnl = score;
     
     return score;
@@ -1175,30 +1169,35 @@ double spr_optimize_bl_parsimony_only( struct TopologyOptimizer * opt ){
    in a different order. This can result in different parsimony scores with different number of threads. */
 
 double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
-    SingleTreeLikelihood *tlk = opt->tlk;
-    
+    Parsimony* parsimony = opt->model->obj;
+	Tree* tree = parsimony->tree;
+
+	Hashtable* hash = new_Hashtable_string(10);
+	hashtable_set_key_ownership( hash, false );
+	hashtable_set_value_ownership( hash, false );
+	
     //opt->threads = 1;
-    Parsimony **pool = malloc(opt->threads*sizeof(Parsimony*));
+    Model **pool = malloc(opt->threads*sizeof(Model*));
     assert(pool);
-    pool[0] = new_Parsimony(tlk->sp, tlk->tree);
+    pool[0] = opt->model;
+
+	for ( int i = 1; i < opt->threads; i++ ) {
+		pool[i] = opt->model->clone(opt->model, hash);
+		Hashtable_empty(hash);
+	}
+	free_Hashtable(hash);
+
+    double score = pool[0]->logP(pool[0]);
     
     
-    if(opt->threads > 1 ){
-        for ( int i = 1; i < opt->threads; i++ ) {
-            pool[i] = new_Parsimony(tlk->sp, clone_Tree(tlk->tree));
-        }
-    }
-    double score = pool[0]->calculate(pool[0]);
     
+    int total = (Tree_tip_count(tree)-3)*2*(2*Tree_tip_count(tree)-7);
     
-    
-    int total = (Tree_tip_count(tlk->tree)-3)*2*(2*Tree_tip_count(tlk->tree)-7);
-    
-    if(tlk->opt.verbosity > 0){
+    if(opt->verbosity > 0){
         printf("\nParsimony score: %f (%i)\n\n", score, total);
     }
     
-    int nNodes = Tree_node_count(tlk->tree);
+    int nNodes = Tree_node_count(tree);
     bool failed = false;
     
     double *scores = dvector(nNodes);
@@ -1217,8 +1216,8 @@ double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
     
     int rounds = 0;
     
-    int max_distance = 20;//5;
-    
+	int max_distance = opt->max_distance;
+	
     while ( !failed && rounds < 5 ) {
         
         
@@ -1234,7 +1233,7 @@ double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
 #if defined (_OPENMP)
             tid = omp_get_thread_num();
 #endif
-            Parsimony *parsimony = pool[tid];
+            Parsimony *parsimony = pool[tid]->obj;
             Tree *tree = parsimony->tree;
             Node *root = Tree_root(tree);
             Tree_init_depth(tree);
@@ -1445,7 +1444,7 @@ double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
                 sort_asc_spr_parsimony2(prunes, grafts, scores, ds, count);
             }
             
-            Parsimony *parsimony = pool[0];
+            Parsimony *parsimony = pool[0]->obj;
             Tree *tree = parsimony->tree;
             Node *root = Tree_root(tree);
             
@@ -1526,19 +1525,19 @@ double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
                     printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], score);
 #endif
                     
-                    Parsimony_update_all_nodes(pool[0]);
-                    for( int j = 1; j < opt->threads; j++ ){
-                        SPR_move(pool[j]->tree, Tree_node(pool[j]->tree, prunes[i]), Tree_node(pool[j]->tree, grafts[i]));
-                        Parsimony_update_all_nodes(pool[j]);
-                    }
-                    
+                    Parsimony_update_all_nodes(pool[0]->obj);
+//                    for( int j = 1; j < opt->threads; j++ ){
+//                        SPR_move(pool[j]->tree, Tree_node(pool[j]->tree, prunes[i]), Tree_node(pool[j]->tree, grafts[i]));
+//                        Parsimony_update_all_nodes(pool[j]->obj);
+//                    }
+					
                     score = spr_score;
                     accepted++;
 
                     opt->moves++;
                 }
             }
-            if(tlk->opt.verbosity > 0){
+            if(opt->verbosity > 0){
                 printf("Parsimony score: %f #SPR: %d\n\n", score, accepted);
             }
         }
@@ -1552,15 +1551,13 @@ double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
     free(grafts);
     free(scores);
     free(ds);
-    
+	
     
     if(opt->threads > 1 ){
         for ( int i = 1; i < opt->threads; i++ ) {
-            free_Tree(pool[i]->tree);
-            free_Parsimony(pool[i]);
+			pool[i]->free(pool[i]);
         }
     }
-    free_Parsimony(pool[0]);
     free(pool);
 
     opt->best_lnl = score;

@@ -24,7 +24,9 @@
 
 
 typedef struct TopologyOptimizer{
-	SingleTreeLikelihood *tlk;
+	Model* model;
+	Model *tlk;
+	Tree* tree;
     double best_lnl;
     double *lnls;
     double *branches;
@@ -32,19 +34,21 @@ typedef struct TopologyOptimizer{
     tree_search_algorithm algorithm;
     
     double (*optimize)( struct TopologyOptimizer * );
-    
+	int max_distance; // for SPR
     int moves;
     double K;
     int threads;
-	
+	int verbosity;
 } TopologyOptimizer;
 
-TopologyOptimizer * new_TopologyOptimizer( SingleTreeLikelihood *tlk, tree_search_algorithm algorithm );
+TopologyOptimizer * new_TopologyOptimizer( Model *tlk );
 
 void free_TopologyOptimizer( TopologyOptimizer *opt );
 
 void TopologyOptimizer_set_algorithm( TopologyOptimizer *opt, tree_search_algorithm algorithm );
 
 void TopologyOptimizer_set_nthreads( TopologyOptimizer *opt, int nthreads );
+
+TopologyOptimizer* new_TopologyOptimizer_from_json(json_node* node, Hashtable* hash);
 
 #endif

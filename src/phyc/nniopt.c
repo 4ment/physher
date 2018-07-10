@@ -169,46 +169,52 @@ void remove_adjacent_nnis( TopologyOptimizer *opt, Node *node, int *map ){
 
 //#define DEBUG_TOPOLOGY 2
 
-//TODO: a second SingleTreeLikelihood is not needed unless we recycle partials
 // there is 2n-6 NNIs
 double nni_optimize_bl( struct TopologyOptimizer * opt ){
-    
-    double lnl = opt->tlk->calculate(opt->tlk);
+//	printf("nni_optimize_bl\n");
+	double lnl = opt->model->logP(opt->model);
     
     unsigned nthreads = opt->threads;
     assert(nthreads > 0);
-    
-    int verbosity = opt->tlk->opt.verbosity;
-    
-    PooledTreeLikelihood *pool = new_PooledTreeLikelihood(opt->tlk, nthreads, true, false);
-    
+	
+	Hashtable* hash = new_Hashtable_string(10);
+	hashtable_set_key_ownership( hash, false );
+	hashtable_set_value_ownership( hash, false );
+	
+	Model** pool = malloc(sizeof(Model*)*nthreads);
+	Model** tlks = malloc(sizeof(Model*)*nthreads);
+	pool[0] = opt->model;
+	tlks[0] = opt->tlk;
+	for (size_t i = 1; i < nthreads; i++) {
+		pool[i] = opt->model->clone(opt->model, hash);
+		tlks[i] = Hashtable_get(hash, opt->tlk->name); // not ref++
+		Hashtable_empty(hash);
+	}
+	free_Hashtable(hash);
+	
     Optimizer **opt_bls = (Optimizer**)malloc(nthreads*sizeof(Optimizer*));
     assert(opt_bls);
-    BrentData **data_brents = (BrentData**)malloc(nthreads*sizeof(BrentData*));
-    assert(data_brents);
 	Parameters **oneparameters = (Parameters**)malloc(nthreads*sizeof(Parameters*));
     assert(oneparameters);
-    
-    for ( int i = 0; i < nthreads; i++ ) {
+	
+	for ( int i = 0; i < nthreads; i++ ) {
         opt_bls[i] = new_Optimizer(OPT_BRENT);
-        data_brents[i] = new_BrentData( pool->tlks[i] );
-        
-        data_brents[i]->f = standard_loglikelihood_brent;
-        if( opt->tlk->use_upper ){
-            data_brents[i]->f = standard_loglikelihood_upper_brent;
-        }
-        
-        opt_set_data(opt_bls[i], data_brents[i]);
-        opt_set_objective_function(opt_bls[i], optimize_brent_branch_length);
-        opt_set_max_iteration(opt_bls[i], opt->tlk->opt.bl.max_iteration);
-        opt_set_tolx( opt_bls[i], opt->tlk->opt.bl.tolx);
-        
-        
-        oneparameters[i] = new_Parameters(1);
+		
+		oneparameters[i] = new_Parameters(1);
+		opt_set_data(opt_bls[i], pool[i]);
+		opt_set_objective_function(opt_bls[i], model_negative_logP);
+		opt_set_treelikelihood(opt_bls[i], tlks[i]->obj);
+//		opt_set_max_iteration(opt, max);
+//		opt_set_tolx(opt, precision);
     }
-    
-    int nNodes = Tree_node_count(opt->tlk->tree);
-    
+	
+	Optimizer* full_opt = new_Optimizer(OPT_SERIAL_BRENT);
+	opt_set_treelikelihood(full_opt, opt->tlk);
+	opt_set_data(full_opt, opt->model);
+	opt_set_objective_function(full_opt, model_negative_logP);
+	
+    int nNodes = Tree_node_count(((SingleTreeLikelihood*)(opt->tlk->obj))->tree);
+	
     Node **temp_node_list[2];
     temp_node_list[0] = (Node**)malloc(sizeof(Node*) * nNodes );
     assert(temp_node_list[0]);
@@ -232,7 +238,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
     opt_result status;
     
     double *branches = dvector(nNodes); // backup branch length in case we need to backtrack
-    Tree_branch_length_to_vector(opt->tlk->tree, branches);
+    Tree_branch_length_to_vector(((SingleTreeLikelihood*)(opt->tlk->obj))->tree, branches);
     
     time_t start_time, end_time;
     double diff_time;
@@ -244,7 +250,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
     opt->moves = 0;
     
     while ( !failed ) {
-        
+
         index = 0;
         int count = 0;
         
@@ -259,14 +265,13 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 #if defined (_OPENMP)
             tid = omp_get_thread_num();
 #endif
-            SingleTreeLikelihood *tlk = pool->tlks[tid];
+            SingleTreeLikelihood *tlk = tlks[tid]->obj;
             Node *node = Tree_node(tlk->tree, i);
             
             if ( Node_isroot(node) || ( Node_isroot(Node_parent(node)) && node == Node_right(Tree_root(tlk->tree))) ) continue;
             
             
             Optimizer *opt_bl = opt_bls[tid];
-            BrentData *data_brent = data_brents[tid];
             Parameters *oneparameter = oneparameters[tid];
             
             if ( !Node_isleaf(node) ) {
@@ -307,9 +312,8 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
                     sibling = Node_left(sibling);
                 }
 #ifdef DEBUG_TOPOLOGY
-                fprintf(stdout,"Node index %d\r",i);
+                //fprintf(stdout,"Node index %d\r",i);
 #endif
-                //double lnl = tlk->calculate(tlk);
                 
 #ifdef DEBUG_TOPOLOGY2
                 printf("\nNNI around %s (%d)\n", Node_name(node), node->id);
@@ -320,16 +324,14 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 #endif
                 double original_bl = Node_distance(node);
                 Parameters_add(oneparameter, node->distance);
-                data_brent->index_param = Node_id(node);
-                
-                
+
                 
                 // NNI 1
-                NNI_move(tlk->tree, sibling, left);
-                //SingleTreeLikelihood_update_all_nodes(tlk);
-                SingleTreeLikelihood_update_one_node(tlk, sibling);
-                SingleTreeLikelihood_update_one_node(tlk, left);
-                tlk->node_upper = NULL;
+				NNI_move(tlk->tree, sibling, left);
+				Parameter_fire(sibling->distance);
+				Parameter_fire(left->distance);
+				SingleTreeLikelihood_update_uppers(tlk);
+                tlk->node_upper = node;
                 
                 double nni_1 = 0;
                 
@@ -339,20 +341,19 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
                 double bl_1 = Node_distance(node);
                 
                 
-                NNI_move(tlk->tree, sibling, left);
-                SingleTreeLikelihood_update_one_node(tlk, sibling);
-                SingleTreeLikelihood_update_one_node(tlk, left);
-                tlk->node_upper = NULL;
-                
+				NNI_move(tlk->tree, sibling, left);
+				Parameter_fire(sibling->distance);
+				Parameter_fire(left->distance);
+				
                 Node_set_distance(node, original_bl);
                 
                 
                 // NNI 2
                 NNI_move(tlk->tree, sibling, right);
-                //SingleTreeLikelihood_update_all_nodes(tlk);
-                SingleTreeLikelihood_update_one_node(tlk, sibling);
-                SingleTreeLikelihood_update_one_node(tlk, right);
-                tlk->node_upper = NULL;
+				Parameter_fire(sibling->distance);
+				Parameter_fire(right->distance);
+				SingleTreeLikelihood_update_uppers(tlk);
+				tlk->node_upper = node;
                 
                 
                 double nni_2 = 0;
@@ -364,14 +365,11 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
                 
                 double bl_2 = Node_distance(node);
                 
-                NNI_move(tlk->tree, sibling, right);
-                //SingleTreeLikelihood_update_all_nodes(tlk);
-                SingleTreeLikelihood_update_one_node(tlk, sibling);
-                SingleTreeLikelihood_update_one_node(tlk, right);
-                tlk->node_upper = NULL;
-                
-                
-                Node_set_distance(node, original_bl);
+				NNI_move(tlk->tree, sibling, right);
+				Parameter_fire(sibling->distance);
+				Parameter_fire(right->distance);
+				
+				Node_set_distance(node, original_bl);
                 
                 double local_lnl = lnl;
                 int local_position = 0;
@@ -425,11 +423,12 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
         //Tree_print_newick(stderr, pool->tlks[0]->tree, true);
         fprintf(stderr, "\n%d potentials NNIs [%f]\n", count, diff_time);
 #endif
+		
+		SingleTreeLikelihood* tlk = opt->tlk->obj;
+		Tree* tree = tlk->tree;
 
         if( count != 0 ){
-            SingleTreeLikelihood *tlk = pool->tlks[0];
             Optimizer *opt_bl = opt_bls[0];
-            BrentData *data_brent = data_brents[0];
             Parameters *oneparameter = oneparameters[0];
             
             if(count > 1){
@@ -444,7 +443,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
             }
             
             // 0..count-1 are valid nnis but not ordererd by LnL (should be done even if there is only one nni)
-            _sort_by_nni(/*order,*/ opt, map_index_to_post, Tree_tip_count(opt->tlk->tree)-3);
+            _sort_by_nni(/*order,*/ opt, map_index_to_post, Tree_tip_count(tree)-3);
             
             // 0..count-1 are valid nnis ordererd by LnL
             _sort_decreasing_lnls(/*order,*/ opt, map_index_to_post, count);
@@ -515,7 +514,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 #endif
                 SingleTreeLikelihood_update_all_nodes(tlk);
                 Tree_set_topology_changed(tlk->tree);
-                
+
 //                if( count == 1 ){
 //                    data_brent->index_param = Node_id(nodes[map_index_to_post[0]]);
 //                    Parameters_set(oneparameter, 0, nodes[map_index_to_post[0]]->distance);
@@ -528,8 +527,9 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 #ifdef DEBUG_TOPOLOGY
                 time(&start_time);
 #endif
-                
-                nni_lnl = optimize_brent_branch_length_all(tlk, opt_bl, data_brent, oneparameter, 1);
+				
+				status = opt_maximize( full_opt, NULL, &nni_lnl);
+				if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
                 
 #ifdef DEBUG_TOPOLOGY
                 time(&end_time);
@@ -563,7 +563,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
             
             // Apply the NNIs to the others
             for ( int i = 1; i < opt->threads; i++ ) {
-                SingleTreeLikelihood *tlk = pool->tlks[i];
+                SingleTreeLikelihood *tlk = tlks[i]->obj;
                 Node **nodes = Tree_nodes(tlk->tree);
                 
                 for ( int j = 0; j < count; j++ ) {
@@ -596,19 +596,19 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
         }
         else {
             failed = true;
-        }
+		}
     }
-    
+	
 #ifdef DEBUG_TOPOLOGY
     fprintf(stderr, "NNI round LnL: %f\n", lnl);
 #endif
     
     for ( int i = 0; i < opt->threads; i++ ) {
-        free_BrentData(data_brents[i]);
         free_Optimizer(opt_bls[i]);
         free_Parameters(oneparameters[i]);
     }
-    free(data_brents);
+	free_Optimizer(full_opt);
+	
     free(opt_bls);
     free(oneparameters);
     
@@ -618,353 +618,15 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
     free(temp_node_list[1]);
     free(branches);
     //free(order);
-    pool->free(pool);
-    
-    opt->tlk->opt.verbosity = verbosity;
+	for (int i = 1; i < nthreads; i++) {
+		pool[i]->free(pool[i]);
+	}
+	free(pool);
+	free(tlks);
+	
     opt->best_lnl = lnl;
-    
-    return lnl;
-}
-
-double nni_optimize_bl2( struct TopologyOptimizer * opt ){
-    SingleTreeLikelihood *tlk = opt->tlk;
-    double lnl = tlk->calculate(tlk);
-    Node **nodes = NULL;
-    SingleTreeLikelihood *tlk2 = clone_SingleTreeLikelihood_share(tlk, true, false);
-    
-    
-    Node **temp_node_list[2];
-    temp_node_list[0] = (Node**)malloc(sizeof(Node*) * (Tree_node_count(tlk->tree)) );
-    assert(temp_node_list[0]);
-    temp_node_list[1] = (Node**)malloc(sizeof(Node*) * (Tree_node_count(tlk->tree)) );
-    assert(temp_node_list[1]);
-    
-    for ( int i = 0; i < (Tree_node_count(tlk->tree)); i++ ) {
-        temp_node_list[0][i] = NULL;
-        temp_node_list[1][i] = NULL;
-    }
-    
-    
-	Optimizer *opt_bl = new_Optimizer(OPT_BRENT);
-    BrentData *data_brent = new_BrentData( tlk2 );
-    data_brent->f = standard_loglikelihood_brent;
-    if( tlk->use_upper ){
-        data_brent->f = standard_loglikelihood_upper_brent;
-    }
-    
-    opt_set_data(opt_bl, data_brent);
-    opt_set_objective_function(opt_bl, optimize_brent_branch_length);
-    opt_set_max_iteration(opt_bl, tlk->opt.bl.max_iteration);
-    opt_set_tolx( opt_bl, tlk->opt.bl.tolx);
-    
-	Parameters *oneparameter = new_Parameters(1);
-    
-    
-    int nNodes = Tree_node_count(tlk->tree);
-    int *map = ivector(nNodes);
-    for( int i = 0; i < nNodes; i++ ){
-        map[i] = -1;
-    }
-    
-    int *map_index_to_post = ivector(Tree_node_count(tlk->tree));
-    //int *order       = ivector(Tree_tip_count(tlk->tree)-3);
-    int index = 0;
-    bool failed = false;
-    opt_result status;
-    
-    double *branches = dvector(Tree_node_count(tlk->tree)); // backup branch length in case we need to backtrack
-    Tree_branch_length_to_vector(tlk->tree, branches);
-    
-    
-#ifdef DEBUG_TOPOLOGY
-    printf("\nStart NNI optimization LnL: %f\n\n", lnl);
-#endif
-    
-    opt->moves = 0;
-    
-    while ( !failed ) {
-        
-        nodes = Tree_nodes(tlk->tree);
-        
-        index = 0;
-        int count = 0;
-        
-        // do not do NNIs on the root and one of its children
-        // choose NNIs than do not change the 'fake' rooting, except for the first child of the root
-        for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
-            
-            if ( Node_isroot(nodes[i]) || ( Node_isroot(Node_parent(nodes[i])) && nodes[i] == Node_right(Tree_root(tlk->tree))) ) continue;
-            
-            if ( !Node_isleaf(nodes[i]) ) {
-                // The node with the branch on which we do NNIs
-                Node *node = Tree_node(tlk2->tree, i);
-                
-                // Do not do NNI on a topology where the sibling is a leaf (d) and its parent is the root
-                //        - a
-                //       |
-                //      -
-                //   * | |
-                //   --|  - b
-                //  |  |
-                //  |   - c
-                //   - d
-                if( Node_isroot(Node_parent(node)) && Node_isleaf(Node_sibling(node)) ){
-                    continue;
-                }
-                
-                Node *left    = Node_left(node);
-                Node *right   = Node_right(node);
-                Node *sibling = Node_sibling(node);
-                
-                // Use the left node of the sibling (d)
-                // NNI 1: Exchange (a,b) with d
-                // NNI 2: Exchange c with d
-                //        - a
-                //       |
-                //      -
-                //   * | |
-                //   --|  - b
-                //  |  |
-                //  |   - c
-                //  |  - d
-                //  | |
-                //   -
-                //    |
-                //     - e
-                if( Node_isroot(Node_parent(node)) ){
-                    sibling = Node_left(sibling);
-                }
-                
-                double lnl = tlk2->calculate(tlk2);
-                
-#ifdef DEBUG_TOPOLOGY
-                printf("\nNNI around %s (%d)\n", Node_name(node), node->id);
-                printf("  %f\n", lnl);
-                
-                printf("  rearragement 1 %s %s\n", left->name, sibling->name);
-                printf("  rearragement 2 %s %s\n", right->name, sibling->name);
-#endif
-                double original_bl = Node_distance(node);
-                Parameters_add(oneparameter, node->distance);
-                
-                
-                // NNI 1
-                NNI_move(tlk2->tree, sibling, left);
-                SingleTreeLikelihood_update_all_nodes(tlk2);
-                
-                double nni_1 = 0;
-                
-                data_brent->index_param = Node_id(node);
-                status = opt_maximize( opt_bl, oneparameter, &nni_1);
-                if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-                //double nni_bl_1 = Parameters_value(oneparameter, 0);
-                
-                
-                NNI_move(tlk2->tree, sibling, left);
-                
-                Node_set_distance(node, original_bl);
-                
-                
-                // NNI 2
-                NNI_move(tlk2->tree, sibling, right);
-                SingleTreeLikelihood_update_all_nodes(tlk2);
-                
-                
-                double nni_2 = 0;
-                
-                data_brent->index_param = Node_id(node);
-                status = opt_maximize( opt_bl, oneparameter, &nni_2);
-                if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-				
-				Parameters_pop(oneparameter);
-                
-                //double nni_bl_2 = Parameters_value(oneparameter, 0);
-                
-                
-                NNI_move(tlk2->tree, sibling, right);
-                SingleTreeLikelihood_update_all_nodes(tlk2);
-                
-                
-                Node_set_distance(node, original_bl);
-                
-                
-                if ( nni_1-0.1 > lnl ) {
-                    // NNI2 is the best
-                    if ( nni_2 > nni_1) {
-                        opt->lnls[index]      = nni_2;
-                        opt->positions[index] = 2;
-                        //printf("  rearragement 2 %s == %s %f bl %f [%f %f]\n\n", right->name, sibling->name, nni_2,nni_bl_2, nni_1, lnl);
-                    }
-                    // NNI1 is the best
-                    else {
-                        opt->lnls[index]      = nni_1;
-                        opt->positions[index] = 1;
-                        //printf("  rearragement 1 %s == %s %f bl %f [%f %f]\n\n", left->name, sibling->name, nni_1,nni_bl_1, nni_2, lnl);
-                    }
-                    count++;
-                }
-                else {
-                    // NNI2 is the best
-                    if ( nni_2-0.1 > lnl ) {
-                        opt->lnls[index]      = nni_2;
-                        opt->positions[index] = 2;
-                        count++;
-                    }
-                    // no good NNI
-                    else {
-                        opt->lnls[index]      = lnl;
-                        opt->positions[index] = 0;
-                        
-                    }
-                }
-#ifdef DEBUG_TOPOLOGY
-                printf("nn1: %f nni2: %fLnL: %f\n", nni_1, nni_2, lnl);
-#endif
-                
-                map_index_to_post[index] = i;
-                map[i] = index++;
-            }
-        }
-        
-        // At this stage tlk and tlk2 should have the same topology and branch length
-        
-#ifdef DEBUG_TOPOLOGY
-        fprintf(stderr, "%d potentials NNIs\n", count);
-#endif
-        
-        if( count != 0 ){
-#ifdef DEBUG_TOPOLOGY
-            for ( int i = 0; i < Tree_tip_count(tlk->tree)-3; i++ ) {
-                if( opt->positions[i] != 0 ){
-                    printf("%s %f %d\n", nodes[map_index_to_post[i]]->name, opt->lnls[i], opt->positions[i]);
-                }
-            }
-#endif
-            if(count > 1){
-                remove_adjacent_nnis(opt, Tree_root(tlk->tree), map);
-            }
-            
-            count = 0;
-            for ( int j = 0; j < Tree_tip_count(tlk->tree)-3; j++ ) {
-                if ( opt->positions[j] != 0 ) {
-                    count++;
-                }
-                //order[j] = j;
-            }
-#ifdef DEBUG_TOPOLOGY
-            fprintf(stderr, "%d potentials non adjacent NNIs\n", count);
-#endif
-            
-            _sort_by_nni(/*order,*/ opt, map_index_to_post, Tree_tip_count(tlk->tree)-3);
-            
-            _sort_decreasing_lnls(/*order,*/ opt, map_index_to_post, count);
-            
-            //Node **nodes2 = Tree_get_nodes(tlk2->tree, POSTORDER);
-            Node **nodes2 = Tree_nodes(tlk2->tree);
-            
-            // used to backtrack
-            for ( int i = 0; i < (Tree_node_count(tlk->tree)); i++ ) {
-                temp_node_list[0][i] = NULL;
-                temp_node_list[1][i] = NULL;
-            }
-            
-            count *= opt->K;
-            count = imax(1, count); // in case we have count == 1, we would get (count * 0.75) == 0
-            double nni_lnl = lnl;
-            
-            while ( count > 0 ) {
-                // apply NNIs
-                for ( int j = 0; j < count; j++ ) {
-                    int node_index = map_index_to_post[j]; // NNI node
-                    
-                    Node *sibling = Node_sibling(nodes2[node_index]);
-                    
-                    if( Node_isroot(Node_parent(nodes2[node_index])) ){
-                        sibling = Node_left(sibling);
-                    }
-                    
-                    Node *child   = NULL;
-                    
-                    // sibling and left
-                    if( opt->positions[j] == 1 ){
-                        child = Node_left(nodes2[node_index]);
-                    }
-                    // sibling and right
-                    else {
-                        child = Node_right(nodes2[node_index]);
-                    }
-                    
-                    //Node_set_distance(nodes2[node_index], branches[ opt->order[j] ]);
-                    
-                    temp_node_list[0][j] = sibling;
-                    temp_node_list[1][j] = child;
-                    
-                    Node_swap_parents(sibling, child);
-                }
-                
-                Tree_set_topology_changed(tlk2->tree);
-                
-                // Optimize all branches
-                nni_lnl = optimize_brent_branch_length_all(tlk2, opt_bl, data_brent, oneparameter, 1);
-                
-#ifdef DEBUG_TOPOLOGY
-                printf("nni LnL: %f (%f)\n", nni_lnl, lnl);
-#endif
-                
-                if( nni_lnl > lnl || count == 1 ){
-                    opt->moves += count;
-                    break;
-                }
-                
-#ifdef DEBUG_TOPOLOGY
-                printf("backtrack\n");
-#endif
-                // backtrack to the previous tree topology using tlk
-                for ( int j = count-1; j >= 0; j-- ) {
-                    Node_swap_parents(temp_node_list[0][j], temp_node_list[1][j]);
-                    
-                }
-                
-                Tree_set_topology_changed(tlk2->tree);
-                
-                Tree_copy_distances(tlk->tree, tlk2->tree);
-                //Tree_vector_to_branch_length(tlk->tree, branches);
-                
-                count *= 0.5;
-            }
-            
-            // tlk now has the old topology with lower log-likelihood
-            // update the tree topology, partials... of tlk using tlk2
-            for ( int j = 0; j <count; j++ ) {
-                Tree_swap_parents_by_name( tlk->tree, Node_name(temp_node_list[0][j]), Node_name(temp_node_list[1][j]) );
-            }
-            
-            Tree_set_topology_changed(tlk->tree);
-            Tree_copy_distances(tlk2->tree, tlk->tree);
-            //Tree_branch_length_to_vector(tlk->tree, branches);
-            
-            lnl = nni_lnl;
-        }
-        else {
-            failed = true;
-        }
-    }
-    
-#ifdef DEBUG_TOPOLOGY
-    fprintf(stderr, "NNI round LnL: %f\n", lnl);
-#endif
-    
-    free_BrentData(data_brent);
-    free_Optimizer(opt_bl);
-    free_Parameters(oneparameter);
-    free_SingleTreeLikelihood_share(tlk2, true, false);
-    free(map);
-    free(map_index_to_post);
-    free(temp_node_list[0]);
-    free(temp_node_list[1]);
-    free(branches);
-    //free(order);
-    
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)(opt->tlk->obj);
+	tlk->use_upper = false;
     return lnl;
 }
 
@@ -1021,41 +683,48 @@ double optimize_brent_branch_length_2( SingleTreeLikelihood *stlk, Optimizer *op
 
 // there is LESS than 2*(N-3) NNIs
 double nnni_optimize_bl( struct TopologyOptimizer * opt ){
-    double lnl = opt->tlk->calculate(opt->tlk);
-    
-    unsigned nthreads = opt->threads;
-    assert(nthreads>0);
-    
-    int verbosity = opt->tlk->opt.verbosity;
-    
-    PooledTreeLikelihood *pool = new_PooledTreeLikelihood(opt->tlk, nthreads, true, false);
-    
-    Optimizer **opt_bls = (Optimizer**)malloc(nthreads*sizeof(Optimizer*));
-    assert(opt_bls);
-    BrentData **data_brents = (BrentData**)malloc(nthreads*sizeof(BrentData*));
-    assert(data_brents);
-    Parameters **oneparameters = (Parameters**)malloc(nthreads*sizeof(Parameters*));
-    assert(oneparameters);
-    
-    for ( int i = 0; i < nthreads; i++ ) {
-        opt_bls[i] = new_Optimizer(OPT_BRENT);
-        data_brents[i] = new_BrentData( pool->tlks[i] );
-        
-        data_brents[i]->f = standard_loglikelihood_brent;
-        if( opt->tlk->use_upper ){
-            data_brents[i]->f = standard_loglikelihood_upper_brent;
-        }
-        
-        opt_set_data(opt_bls[i], data_brents[i]);
-        opt_set_objective_function(opt_bls[i], optimize_brent_branch_length);
-        opt_set_max_iteration(opt_bls[i], opt->tlk->opt.bl.max_iteration);
-        opt_set_tolx( opt_bls[i], opt->tlk->opt.bl.tolx);
-        
-        
-        oneparameters[i] = new_Parameters(1);
-    }
-    
-    int nNodes = Tree_node_count(opt->tlk->tree);
+	double lnl = opt->model->logP(opt->model);
+	
+	unsigned nthreads = opt->threads;
+	assert(nthreads > 0);
+	
+	Hashtable* hash = new_Hashtable_string(10);
+	hashtable_set_key_ownership( hash, false );
+	hashtable_set_value_ownership( hash, false );
+	
+	Model** pool = malloc(sizeof(Model*)*nthreads);
+	Model** tlks = malloc(sizeof(Model*)*nthreads);
+	pool[0] = opt->model;
+	tlks[0] = opt->tlk;
+	for (size_t i = 1; i < nthreads; i++) {
+		pool[i] = opt->model->clone(opt->model, hash);
+		tlks[i] = Hashtable_get(hash, opt->tlk->name); // not ref++
+		Hashtable_empty(hash);
+	}
+	free_Hashtable(hash);
+	
+	Optimizer **opt_bls = (Optimizer**)malloc(nthreads*sizeof(Optimizer*));
+	assert(opt_bls);
+	Parameters **oneparameters = (Parameters**)malloc(nthreads*sizeof(Parameters*));
+	assert(oneparameters);
+	
+	for ( int i = 0; i < nthreads; i++ ) {
+		opt_bls[i] = new_Optimizer(OPT_BRENT);
+		
+		oneparameters[i] = new_Parameters(1);
+		opt_set_data(opt_bls[i], pool[i]);
+		opt_set_objective_function(opt_bls[i], model_negative_logP);
+		opt_set_treelikelihood(opt_bls[i], tlks[i]->obj);
+		//		opt_set_max_iteration(opt, max);
+		//		opt_set_tolx(opt, precision);
+	}
+	
+	Optimizer* full_opt = new_Optimizer(OPT_SERIAL_BRENT);
+	opt_set_treelikelihood(full_opt, opt->tlk);
+	opt_set_data(full_opt, opt->model);
+	opt_set_objective_function(full_opt, model_negative_logP);
+	
+    int nNodes = Tree_node_count(((SingleTreeLikelihood*)(opt->tlk->obj))->tree);
     
     Node **temp_node_list[2];
     temp_node_list[0] = (Node**)malloc(sizeof(Node*) * nNodes );
@@ -1078,9 +747,10 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
     //int *order       = ivector(Tree_tip_count(opt->tlk->tree)-3);
     int index = 0;
     bool failed = false;
+    opt_result status;
     
     double *branches = dvector(nNodes); // backup branch length in case we need to backtrack
-    Tree_branch_length_to_vector(opt->tlk->tree, branches);
+    Tree_branch_length_to_vector(((SingleTreeLikelihood*)(opt->tlk->obj))->tree, branches);
     
     
     
@@ -1104,7 +774,7 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
 #if defined (_OPENMP)
             tid = omp_get_thread_num();
 #endif
-            SingleTreeLikelihood *tlk = pool->tlks[tid];
+			SingleTreeLikelihood *tlk = tlks[tid]->obj;
             Node *node = Tree_node(tlk->tree, i);
             
             if ( Node_isroot(node) || ( Node_isroot(Node_parent(node)) && node == Node_right(Tree_root(tlk->tree))) ) continue;
@@ -1194,30 +864,41 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
                 printf("  rearragement 2 %s %s\n", right->name, uncle->name);
 #endif
                 double original_bl1 = Node_distance(node);
-                //double original_bl2 = Node_distance(Node_parent(node));
+                double original_bl2 = Node_distance(Node_parent(node));
                 
                 // NNI 1
-                NNI_move(tlk->tree, uncle, left);
-                SingleTreeLikelihood_update_all_nodes(tlk);
-                
-                double nni_1 = optimize_brent_branch_length_2(tlk, opt_bls[tid], data_brents[tid], oneparameters[tid], node, Node_parent(node));
+				NNI_move(tlk->tree, uncle, left);
+				SingleTreeLikelihood_update_one_node(tlk, uncle);
+				SingleTreeLikelihood_update_one_node(tlk, left);
+				SingleTreeLikelihood_update_uppers(tlk);
+				tlk->node_upper = node;
+				
+				// should not be commented
+				double nni_1 = 0;//optimize_brent_branch_length_2(tlk, opt_bls[tid], data_brents[tid], oneparameters[tid], node, Node_parent(node));
                 
                 double bl_1 = 0;//Parameters_value(oneparameter, 0);
-                NNI_move(tlk->tree, uncle, left);
-                
+				NNI_move(tlk->tree, uncle, left);
+				SingleTreeLikelihood_update_one_node(tlk, uncle);
+				SingleTreeLikelihood_update_one_node(tlk, left);
+				
                 Tree_vector_to_branch_length(tlk->tree, branches);
                 
                 // NNI 2
-                NNI_move(tlk->tree, uncle, right);
-                SingleTreeLikelihood_update_all_nodes(tlk);
-                
-                double nni_2 = optimize_brent_branch_length_2(tlk, opt_bls[tid], data_brents[tid], oneparameters[tid], node, Node_parent(node));
+				NNI_move(tlk->tree, uncle, right);
+				SingleTreeLikelihood_update_one_node(tlk, uncle);
+				SingleTreeLikelihood_update_one_node(tlk, right);
+				SingleTreeLikelihood_update_uppers(tlk);
+				tlk->node_upper = node;
+				
+				// should not be commented
+				double nni_2 = 0;//optimize_brent_branch_length_2(tlk, opt_bls[tid], data_brents[tid], oneparameters[tid], node, Node_parent(node));
                 
                 double bl_2 = 0;//Parameters_value(oneparameter, 0);
                 
                 
-                NNI_move(tlk->tree, uncle, right);
-                SingleTreeLikelihood_update_all_nodes(tlk);
+				NNI_move(tlk->tree, uncle, right);
+				SingleTreeLikelihood_update_one_node(tlk, uncle);
+				SingleTreeLikelihood_update_one_node(tlk, right);
                 
                 Tree_vector_to_branch_length(tlk->tree, branches);
                 
@@ -1271,12 +952,13 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
 #ifdef DEBUG_TOPOLOGY_NNNI
         fprintf(stderr, "%d potentials NNIs\n", count);
 #endif
-        
-        if( count != 0 ){
-            SingleTreeLikelihood *tlk = pool->tlks[0];
-            Optimizer *opt_bl = opt_bls[0];
-            BrentData *data_brent = data_brents[0];
-            Parameters *oneparameter = oneparameters[0];
+		SingleTreeLikelihood* tlk = opt->tlk->obj;
+		Tree* tree = tlk->tree;
+		//tlk->use_upper = false;
+		
+		if( count != 0 ){
+			Optimizer *opt_bl = opt_bls[0];
+			Parameters *oneparameter = oneparameters[0];
             
 #ifdef DEBUG_TOPOLOGY_NNNI
             for ( int i = 0; i < Tree_tip_count(tlk->tree)-3; i++ ) {
@@ -1354,9 +1036,9 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
                 
                 SingleTreeLikelihood_update_all_nodes(tlk);
                 Tree_set_topology_changed(tlk->tree);
-                
-                // Optimize all branches
-                nni_lnl = optimize_brent_branch_length_all(tlk, opt_bl, data_brent, oneparameter, 1);
+				
+				status = opt_maximize( full_opt, NULL, &nni_lnl);
+				if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
                 
 #ifdef DEBUG_TOPOLOGY_NNNI
                 printf("nni LnL: %f (%f)\n", nni_lnl, lnl);
@@ -1390,8 +1072,9 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
             Tree_branch_length_to_vector(tlk->tree, branches);
             
             // Apply the NNIs to the others
-            for ( int i = 1; i < opt->threads; i++ ) {
-                Node **nodes = Tree_nodes(pool->tlks[i]->tree);
+			for ( int i = 1; i < opt->threads; i++ ) {
+				SingleTreeLikelihood *tlk = tlks[i]->obj;
+                Node **nodes = Tree_nodes(tlk->tree);
                 
                 for ( int j = 0; j < count; j++ ) {
                     int node_index = map_index_to_post[j]; // NNI node
@@ -1414,11 +1097,11 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
                     }
                     
                     Node_swap_parents(uncle, child);
-                }
-                Tree_vector_to_branch_length(pool->tlks[i]->tree, branches);
-                Tree_set_topology_changed(pool->tlks[i]->tree);
+				}
+				Tree_vector_to_branch_length(tlk->tree, branches);
+				Tree_set_topology_changed(tlk->tree);
             }
-            
+			
             lnl = nni_lnl;
             
             //break;// only one round
@@ -1433,11 +1116,10 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
 #endif
     
     for ( int i = 0; i < opt->threads; i++ ) {
-        free_BrentData(data_brents[i]);
         free_Optimizer(opt_bls[i]);
         free_Parameters(oneparameters[i]);
     }
-    free(data_brents);
+    free_Optimizer(full_opt);
     free(opt_bls);
     free(oneparameters);
     
@@ -1447,10 +1129,15 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
     free(temp_node_list[1]);
     free(branches);
     //free(order);
-    pool->free(pool);
+    for (int i = 1; i < nthreads; i++) {
+        pool[i]->free(pool[i]);
+    }
+    free(pool);
+    free(tlks);
     
-    opt->tlk->opt.verbosity = verbosity;
     opt->best_lnl = lnl;
+    SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)(opt->tlk->obj);
+    tlk->use_upper = false;
     
     return lnl;
 }
@@ -1458,299 +1145,300 @@ double nnni_optimize_bl( struct TopologyOptimizer * opt ){
 //TODO: do not allow NNIs on constrained nodes
 // there is 2n-6 NNIs in a rooted tree
 double nni_optimize_heights( struct TopologyOptimizer * opt ){
-    SingleTreeLikelihood *tlk = opt->tlk;
-    double lnl = tlk->calculate(tlk);
-    Node **nodes = NULL;
-    
-    Node **temp_node_list[2];
-    temp_node_list[0] = (Node**)malloc(sizeof(Node*) * (Tree_node_count(tlk->tree)-2) );
-    assert(temp_node_list[0]);
-    temp_node_list[1] = (Node**)malloc(sizeof(Node*) * (Tree_node_count(tlk->tree)-2) );
-    assert(temp_node_list[1]);
-    
-    for ( int i = 0; i < (Tree_node_count(tlk->tree)-2); i++ ) {
-        temp_node_list[0][i] = NULL;
-        temp_node_list[1][i] = NULL;
-    }
-    
-    
-	Optimizer *opt_height = new_Optimizer(OPT_BRENT);
-    BrentData *data_brent = new_BrentData( tlk );
-    opt_set_data(opt_height, data_brent);
-    opt_set_objective_function(opt_height, _brent_optimize_height);
-    opt_set_max_iteration(opt_height, tlk->opt.heights.max_iteration);
-    opt_set_tolx( opt_height, tlk->opt.heights.tolx);
-    
-	Parameters *oneparameter = new_Parameters(1);
-    
-    int nNodes = Tree_node_count(tlk->tree);
-    int *map = ivector(nNodes);
-    map[nNodes-1] = -1;
-    int *map_index_to_post = ivector(Tree_node_count(tlk->tree)-1);
-    //int *order       = ivector(Tree_tip_count(tlk->tree)-2);
-    int index = 0;
-    bool failed = false;
-    
-#ifdef DEBUG_TOPOLOGY
-    printf("\nStart NNI optimization LnL: %f\n\n", lnl);
-#endif
-    
-    opt->moves = 0;
-    
-    double *heights = dvector(Tree_node_count(tlk->tree)); // backup
-    bool done = false;
-    
-    while ( !failed ) {
-        
-        nodes = Tree_get_nodes(tlk->tree, POSTORDER);
-        
-        Tree_heights_to_vector(tlk->tree, heights);
-        
-        index = 0;
-        int count = 0;
-        done = false;
-        
-        // do not do NNIs on the root
-        for ( int i = 0; i < Tree_node_count(tlk->tree)-1; i++ ) {
-            
-            if ( !Node_isleaf(nodes[i]) ) {
-                // The node with the branch on which we do NNIs
-                Node *node = Tree_get_node(tlk->tree, POSTORDER, i);
-                
-                // We don't want to do NNIs on both root's children
-                // If one of the children is a leaf the other one is not and this condition does not apply
-                if ( Node_isroot(Node_parent(node)) && !done) {
-                    done = true;
-                }
-                else if( Node_isroot(Node_parent(node)) && done ){
-                    continue;
-                }
-                
-                Node *left    = Node_left(node);
-                Node *right   = Node_right(node);
-                Node *sibling = Node_sibling(node);
-                
-                double lnl = tlk->calculate(tlk);
-                
-#ifdef DEBUG_TOPOLOGY2
-                printf("\nNNI around %s (%d)\n", Node_name(node), node->postorder_idx);
-                printf("  %f\n", lnl);
-                
-                printf("  rearragement 1 %s %s\n", left->name, sibling->name);
-                printf("  rearragement 2 %s %s\n", right->name, sibling->name);
-#endif
-                
-                // NNI 1
-                
-                if( Node_height(node) < Node_height(sibling) ){
-                    Node_set_height(node, Node_height(sibling)+ Node_time_elapsed(sibling)*0.5);
-                }
-                
-                Node_swap_parents(sibling, left);
-                
-                Tree_update_topology(tlk->tree);
-                Tree_constraint_heights(tlk->tree);
-                SingleTreeLikelihood_rearrange_partials(tlk);
-                
-                double nni_1 = optimize_brent_height_all(tlk, opt_height, data_brent, oneparameter);
-#ifdef DEBUG_TOPOLOGY2
-                printf("NNI 1: %f\n", nni_1);
-#endif
-                SingleTreeLikelihood_rearrange( tlk, sibling, left );
-                //SingleTreeLikelihood_copy_partials(tlk, tlk2);
-                
-                Tree_vector_to_heights(heights, tlk->tree);
-                Tree_constraint_heights(tlk->tree);
-                
-                
-                // NNI 2
-                
-                if( Node_height(node) < Node_height(sibling) ){
-                    Node_set_height(node, Node_height(sibling)+ Node_time_elapsed(sibling)*0.5);
-                }
-                
-                Node_swap_parents(sibling, right);
-                
-                Tree_update_topology(tlk->tree);
-                Tree_constraint_heights(tlk->tree);
-                SingleTreeLikelihood_rearrange_partials(tlk);
-                
-                
-                double nni_2 = optimize_brent_height_all(tlk, opt_height, data_brent, oneparameter);
-#ifdef DEBUG_TOPOLOGY2
-                printf("NNI 2: %f\n", nni_2);
-#endif
-                //SingleTreeLikelihood_rearrange( tlk2, sibling, right );
-                Node_swap_parents(sibling, right);
-                
-                Tree_update_topology(tlk->tree);
-                Tree_vector_to_heights(heights, tlk->tree);
-                Tree_constraint_heights(tlk->tree);
-                SingleTreeLikelihood_rearrange_partials(tlk);
-                
-                
-                if ( nni_1-0.001 > lnl ) {
-                    // NNI2 is the best
-                    if ( nni_2 > nni_1) {
-                        opt->lnls[index]      = nni_2;
-                        opt->positions[index] = 2;
-                    }
-                    // NNI1 is the best
-                    else {
-                        opt->lnls[index]      = nni_1;
-                        opt->positions[index] = 1;
-                        
-                    }
-                    count++;
-                }
-                else {
-                    // NNI2 is the best
-                    if ( nni_2-0.001 > lnl ) {
-                        opt->lnls[index]      = nni_2;
-                        opt->positions[index] = 2;
-                        count++;
-                    }
-                    // no good NNI
-                    else {
-                        opt->lnls[index]      = lnl;
-                        opt->positions[index] = 0;
-                        
-                    }
-                }
-#ifdef DEBUG_TOPOLOGY
-                printf("nn1: %f nni2: %fLnL: %f\n", nni_1, nni_2, lnl);
-#endif
-                
-                map_index_to_post[index] = i;
-                map[i] = index++;
-            }
-        }
-        // At this stage tlk and tlk2 should have the same topology and branch length
-        
-#ifdef DEBUG_TOPOLOGY
-        fprintf(stderr, "%d potentials NNIs\n", count);
-#endif
-        
-        if( count != 0 ){
-#ifdef DEBUG_TOPOLOGY
-            for ( int i = 0; i < Tree_tip_count(tlk->tree)-2; i++ ) {
-                if( opt->positions[i] != 0 ){
-                    printf("%s %f %d\n", nodes[map_index_to_post[i]]->name, opt->lnls[i], opt->positions[i]);
-                }
-            }
-#endif
-            
-            remove_adjacent_nnis(opt, Tree_root(tlk->tree), map);
-            
-            count = 0;
-            for ( int j = 0; j < Tree_tip_count(tlk->tree)-2; j++ ) {
-                if ( opt->positions[j] != 0 ) {
-                    count++;
-                }
-                //order[j] = j;
-            }
-#ifdef DEBUG_TOPOLOGY
-            fprintf(stderr, "%d potentials non adjacent NNIs\n", count);
-#endif
-            
-            _sort_by_nni(/*order,*/ opt, map_index_to_post, Tree_tip_count(tlk->tree)-3);
-            
-            _sort_decreasing_lnls(/*order,*/ opt, map_index_to_post, count);
-            
-            nodes = Tree_get_nodes(tlk->tree, POSTORDER);
-            
-            // used to backtrack
-            for ( int i = 0; i < (Tree_node_count(tlk->tree)-2); i++ ) {
-                temp_node_list[0][i] = NULL;
-                temp_node_list[1][i] = NULL;
-            }
-            
-            count *= opt->K;
-            count = imax(1, count); // in case we have count == 1, we would get (count * 0.75) == 0
-            double nni_lnl = lnl;
-            
-            while ( count > 0 ) {
-                // apply NNIs
-                for ( int j = 0; j < count; j++ ) {
-                    int node_index = map_index_to_post[j]; // NNI node
-                    
-                    Node *sibling = Node_sibling(nodes[node_index]);
-                    Node *child   = NULL;
-                    
-                    // sibling and left
-                    if( opt->positions[j] == 1 ){
-                        child = Node_left(nodes[node_index]);
-                    }
-                    // sibling and right
-                    else {
-                        child = Node_right(nodes[node_index]);
-                    }
-                    
-                    if( Node_height(nodes[node_index]) < Node_height(sibling) ){
-                        Node_set_height(nodes[node_index], Node_height(sibling)+ Node_time_elapsed(sibling)*0.5);
-                    }
-                    
-                    temp_node_list[0][j] = sibling;
-                    temp_node_list[1][j] = child;
-                    
-                    Node_swap_parents(sibling, child);
-                }
-                
-                Tree_update_topology(tlk->tree);
-                SingleTreeLikelihood_rearrange_partials(tlk);
-                
-                // Optimize all branches
-                nni_lnl = optimize_brent_height_all(tlk, opt_height, data_brent, oneparameter);
-                
-#ifdef DEBUG_TOPOLOGY
-                printf("nni LnL: %f (%f)\n", nni_lnl, lnl);
-#endif
-                
-                if( nni_lnl > lnl || count == 1 ){
-                    opt->moves += count;
-                    break;
-                }
-                
-#ifdef DEBUG_TOPOLOGY
-                printf("backtrack\n");
-#endif
-                // backtrack to the previous tree topology
-                for ( int j = count-1; j >= 0; j-- ) {
-                    Node_swap_parents(temp_node_list[0][j], temp_node_list[1][j]);
-                }
-                
-                Tree_update_topology(tlk->tree);
-                Tree_vector_to_heights(heights, tlk->tree);
-                Tree_constraint_heights(tlk->tree);
-                SingleTreeLikelihood_rearrange_partials(tlk);
-                
-                count *= 0.5;
-            }
-            
-            lnl = nni_lnl;
-        }
-        else {
-            failed = true;
-        }
-    }
-    
-#ifdef DEBUG_TOPOLOGY2
-    fprintf(stderr, "NNI round LnL: %f\n", lnl);
-#endif
-    
-    free_BrentData(data_brent);
-    free_Optimizer(opt_height);
-    free_Parameters(oneparameter);
-    free(map);
-    free(map_index_to_post);
-    free(temp_node_list[0]);
-    free(temp_node_list[1]);
-    //free(order);
-    free(heights);
-    
-    opt->best_lnl = lnl;
-    
-    return lnl;
+//    SingleTreeLikelihood *tlk = opt->tlk;
+//    double lnl = tlk->calculate(tlk);
+//    Node **nodes = NULL;
+//
+//    Node **temp_node_list[2];
+//    temp_node_list[0] = (Node**)malloc(sizeof(Node*) * (Tree_node_count(tlk->tree)-2) );
+//    assert(temp_node_list[0]);
+//    temp_node_list[1] = (Node**)malloc(sizeof(Node*) * (Tree_node_count(tlk->tree)-2) );
+//    assert(temp_node_list[1]);
+//
+//    for ( int i = 0; i < (Tree_node_count(tlk->tree)-2); i++ ) {
+//        temp_node_list[0][i] = NULL;
+//        temp_node_list[1][i] = NULL;
+//    }
+//
+//
+//	Optimizer *opt_height = new_Optimizer(OPT_BRENT);
+//    BrentData *data_brent = new_BrentData( tlk );
+//    opt_set_data(opt_height, data_brent);
+//    opt_set_objective_function(opt_height, _brent_optimize_height);
+//    opt_set_max_iteration(opt_height, tlk->opt.heights.max_iteration);
+//    opt_set_tolx( opt_height, tlk->opt.heights.tolx);
+//
+//	Parameters *oneparameter = new_Parameters(1);
+//
+//    int nNodes = Tree_node_count(tlk->tree);
+//    int *map = ivector(nNodes);
+//    map[nNodes-1] = -1;
+//    int *map_index_to_post = ivector(Tree_node_count(tlk->tree)-1);
+//    //int *order       = ivector(Tree_tip_count(tlk->tree)-2);
+//    int index = 0;
+//    bool failed = false;
+//
+//#ifdef DEBUG_TOPOLOGY
+//    printf("\nStart NNI optimization LnL: %f\n\n", lnl);
+//#endif
+//
+//    opt->moves = 0;
+//
+//    double *heights = dvector(Tree_node_count(tlk->tree)); // backup
+//    bool done = false;
+//
+//    while ( !failed ) {
+//
+//        nodes = Tree_get_nodes(tlk->tree, POSTORDER);
+//
+//        Tree_heights_to_vector(tlk->tree, heights);
+//
+//        index = 0;
+//        int count = 0;
+//        done = false;
+//
+//        // do not do NNIs on the root
+//        for ( int i = 0; i < Tree_node_count(tlk->tree)-1; i++ ) {
+//
+//            if ( !Node_isleaf(nodes[i]) ) {
+//                // The node with the branch on which we do NNIs
+//                Node *node = Tree_get_node(tlk->tree, POSTORDER, i);
+//
+//                // We don't want to do NNIs on both root's children
+//                // If one of the children is a leaf the other one is not and this condition does not apply
+//                if ( Node_isroot(Node_parent(node)) && !done) {
+//                    done = true;
+//                }
+//                else if( Node_isroot(Node_parent(node)) && done ){
+//                    continue;
+//                }
+//
+//                Node *left    = Node_left(node);
+//                Node *right   = Node_right(node);
+//                Node *sibling = Node_sibling(node);
+//
+//                double lnl = tlk->calculate(tlk);
+//
+//#ifdef DEBUG_TOPOLOGY2
+//                printf("\nNNI around %s (%d)\n", Node_name(node), node->postorder_idx);
+//                printf("  %f\n", lnl);
+//
+//                printf("  rearragement 1 %s %s\n", left->name, sibling->name);
+//                printf("  rearragement 2 %s %s\n", right->name, sibling->name);
+//#endif
+//
+//                // NNI 1
+//
+//                if( Node_height(node) < Node_height(sibling) ){
+//                    Node_set_height(node, Node_height(sibling)+ Node_time_elapsed(sibling)*0.5);
+//                }
+//
+//                Node_swap_parents(sibling, left);
+//
+//                Tree_update_topology(tlk->tree);
+//                Tree_constraint_heights(tlk->tree);
+//                SingleTreeLikelihood_rearrange_partials(tlk);
+//
+//                double nni_1 = optimize_brent_height_all(tlk, opt_height, data_brent, oneparameter);
+//#ifdef DEBUG_TOPOLOGY2
+//                printf("NNI 1: %f\n", nni_1);
+//#endif
+//                SingleTreeLikelihood_rearrange( tlk, sibling, left );
+//                //SingleTreeLikelihood_copy_partials(tlk, tlk2);
+//
+//                Tree_vector_to_heights(heights, tlk->tree);
+//                Tree_constraint_heights(tlk->tree);
+//
+//
+//                // NNI 2
+//
+//                if( Node_height(node) < Node_height(sibling) ){
+//                    Node_set_height(node, Node_height(sibling)+ Node_time_elapsed(sibling)*0.5);
+//                }
+//
+//                Node_swap_parents(sibling, right);
+//
+//                Tree_update_topology(tlk->tree);
+//                Tree_constraint_heights(tlk->tree);
+//                SingleTreeLikelihood_rearrange_partials(tlk);
+//
+//
+//                double nni_2 = optimize_brent_height_all(tlk, opt_height, data_brent, oneparameter);
+//#ifdef DEBUG_TOPOLOGY2
+//                printf("NNI 2: %f\n", nni_2);
+//#endif
+//                //SingleTreeLikelihood_rearrange( tlk2, sibling, right );
+//                Node_swap_parents(sibling, right);
+//
+//                Tree_update_topology(tlk->tree);
+//                Tree_vector_to_heights(heights, tlk->tree);
+//                Tree_constraint_heights(tlk->tree);
+//                SingleTreeLikelihood_rearrange_partials(tlk);
+//
+//
+//                if ( nni_1-0.001 > lnl ) {
+//                    // NNI2 is the best
+//                    if ( nni_2 > nni_1) {
+//                        opt->lnls[index]      = nni_2;
+//                        opt->positions[index] = 2;
+//                    }
+//                    // NNI1 is the best
+//                    else {
+//                        opt->lnls[index]      = nni_1;
+//                        opt->positions[index] = 1;
+//
+//                    }
+//                    count++;
+//                }
+//                else {
+//                    // NNI2 is the best
+//                    if ( nni_2-0.001 > lnl ) {
+//                        opt->lnls[index]      = nni_2;
+//                        opt->positions[index] = 2;
+//                        count++;
+//                    }
+//                    // no good NNI
+//                    else {
+//                        opt->lnls[index]      = lnl;
+//                        opt->positions[index] = 0;
+//
+//                    }
+//                }
+//#ifdef DEBUG_TOPOLOGY
+//                printf("nn1: %f nni2: %fLnL: %f\n", nni_1, nni_2, lnl);
+//#endif
+//
+//                map_index_to_post[index] = i;
+//                map[i] = index++;
+//            }
+//        }
+//        // At this stage tlk and tlk2 should have the same topology and branch length
+//
+//#ifdef DEBUG_TOPOLOGY
+//        fprintf(stderr, "%d potentials NNIs\n", count);
+//#endif
+//
+//        if( count != 0 ){
+//#ifdef DEBUG_TOPOLOGY
+//            for ( int i = 0; i < Tree_tip_count(tlk->tree)-2; i++ ) {
+//                if( opt->positions[i] != 0 ){
+//                    printf("%s %f %d\n", nodes[map_index_to_post[i]]->name, opt->lnls[i], opt->positions[i]);
+//                }
+//            }
+//#endif
+//
+//            remove_adjacent_nnis(opt, Tree_root(tlk->tree), map);
+//
+//            count = 0;
+//            for ( int j = 0; j < Tree_tip_count(tlk->tree)-2; j++ ) {
+//                if ( opt->positions[j] != 0 ) {
+//                    count++;
+//                }
+//                //order[j] = j;
+//            }
+//#ifdef DEBUG_TOPOLOGY
+//            fprintf(stderr, "%d potentials non adjacent NNIs\n", count);
+//#endif
+//
+//            _sort_by_nni(/*order,*/ opt, map_index_to_post, Tree_tip_count(tlk->tree)-3);
+//
+//            _sort_decreasing_lnls(/*order,*/ opt, map_index_to_post, count);
+//
+//            nodes = Tree_get_nodes(tlk->tree, POSTORDER);
+//
+//            // used to backtrack
+//            for ( int i = 0; i < (Tree_node_count(tlk->tree)-2); i++ ) {
+//                temp_node_list[0][i] = NULL;
+//                temp_node_list[1][i] = NULL;
+//            }
+//
+//            count *= opt->K;
+//            count = imax(1, count); // in case we have count == 1, we would get (count * 0.75) == 0
+//            double nni_lnl = lnl;
+//
+//            while ( count > 0 ) {
+//                // apply NNIs
+//                for ( int j = 0; j < count; j++ ) {
+//                    int node_index = map_index_to_post[j]; // NNI node
+//
+//                    Node *sibling = Node_sibling(nodes[node_index]);
+//                    Node *child   = NULL;
+//
+//                    // sibling and left
+//                    if( opt->positions[j] == 1 ){
+//                        child = Node_left(nodes[node_index]);
+//                    }
+//                    // sibling and right
+//                    else {
+//                        child = Node_right(nodes[node_index]);
+//                    }
+//
+//                    if( Node_height(nodes[node_index]) < Node_height(sibling) ){
+//                        Node_set_height(nodes[node_index], Node_height(sibling)+ Node_time_elapsed(sibling)*0.5);
+//                    }
+//
+//                    temp_node_list[0][j] = sibling;
+//                    temp_node_list[1][j] = child;
+//
+//                    Node_swap_parents(sibling, child);
+//                }
+//
+//                Tree_update_topology(tlk->tree);
+//                SingleTreeLikelihood_rearrange_partials(tlk);
+//
+//                // Optimize all branches
+//                nni_lnl = optimize_brent_height_all(tlk, opt_height, data_brent, oneparameter);
+//
+//#ifdef DEBUG_TOPOLOGY
+//                printf("nni LnL: %f (%f)\n", nni_lnl, lnl);
+//#endif
+//
+//                if( nni_lnl > lnl || count == 1 ){
+//                    opt->moves += count;
+//                    break;
+//                }
+//
+//#ifdef DEBUG_TOPOLOGY
+//                printf("backtrack\n");
+//#endif
+//                // backtrack to the previous tree topology
+//                for ( int j = count-1; j >= 0; j-- ) {
+//                    Node_swap_parents(temp_node_list[0][j], temp_node_list[1][j]);
+//                }
+//
+//                Tree_update_topology(tlk->tree);
+//                Tree_vector_to_heights(heights, tlk->tree);
+//                Tree_constraint_heights(tlk->tree);
+//                SingleTreeLikelihood_rearrange_partials(tlk);
+//
+//                count *= 0.5;
+//            }
+//
+//            lnl = nni_lnl;
+//        }
+//        else {
+//            failed = true;
+//        }
+//    }
+//
+//#ifdef DEBUG_TOPOLOGY2
+//    fprintf(stderr, "NNI round LnL: %f\n", lnl);
+//#endif
+//
+//    free_BrentData(data_brent);
+//    free_Optimizer(opt_height);
+//    free_Parameters(oneparameter);
+//    free(map);
+//    free(map_index_to_post);
+//    free(temp_node_list[0]);
+//    free(temp_node_list[1]);
+//    //free(order);
+//    free(heights);
+//
+//    opt->best_lnl = lnl;
+//
+//    return lnl;
+	return 0;
 }
 
 

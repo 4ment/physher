@@ -1490,6 +1490,9 @@ int main(int argc, char* argv[]){
 			else if(strcasecmp((char*)type_node->value, "treelikelihood") == 0){
 				models[index] = new_TreeLikelihoodModel_from_json(child, hash2);
 			}
+			else if(strcasecmp((char*)type_node->value, "parsimony") == 0){
+				models[index] = new_ParsimonyModel_from_json(child, hash2);
+			}
 			
 			Hashtable_add(hash2, id, models[index]);
 			index++;
@@ -2780,8 +2783,9 @@ int main(int argc, char* argv[]){
         time_t t2;
         time(&t1);
         
-        TopologyOptimizer *topology = new_TopologyOptimizer( tlk, TREE_SEARCH_PARSIMONY_SPR );
-        
+		TopologyOptimizer *topology = new_TopologyOptimizer( tlk );
+		TopologyOptimizer_set_algorithm(topology, TREE_SEARCH_PARSIMONY_SPR);
+		
         if ( nthreads > 1 ) {
             TopologyOptimizer_set_nthreads( topology, nthreads);
         }

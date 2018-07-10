@@ -1349,31 +1349,10 @@ double ** SingleTreeLikelihood_posterior_sites( SingleTreeLikelihood *tlk ){
 	return posteriors;
 }
 
-
-double _calculate( SingleTreeLikelihood *tlk ){
-	if (tlk->use_upper) {
-		tlk->use_upper = false;
-		// In brent the initial point is calculated without changing the parameter
-		if(tlk->update){
-			for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
-				if (tlk->update_nodes[i]) {
-					double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, i));
-					tlk->node_upper = Tree_node(tlk->tree, i);
-					tlk->use_upper = true;
-//					printf("+ %d %f\n", i, lk);
-					tlk->update_nodes[i] = false;
-					return lk;
-				}
-			}
-		}
-		
-		tlk->calculate(tlk);
-		calculate_upper(tlk, Tree_root(tlk->tree));
-		tlk->use_upper = true;
-//		printf("== %f\n", tlk->lk);
-		return tlk->lk;
-	}
-	
+double _calculate_simple( SingleTreeLikelihood *tlk ){
+#ifdef UPPER_PARTIALS
+	printf("simple\n");
+#endif
 	if( !tlk->update ){
 		return tlk->lk;
 	}
@@ -1424,6 +1403,83 @@ double _calculate( SingleTreeLikelihood *tlk ){
 	tlk->update_upper = true;
 	//printf("calculate lower %.11f\n", tlk->lk);
 	return tlk->lk;
+}
+
+//#define UPPER_PARTIALS 1
+
+void SingleTreeLikelihood_update_uppers(SingleTreeLikelihood *tlk){
+	_calculate_simple(tlk);
+#ifdef UPPER_PARTIALS
+	printf("calculate_upper root update\n");
+#endif
+	calculate_upper(tlk, Tree_root(tlk->tree));
+	tlk->update_upper = false;
+	tlk->use_upper = true;
+}
+
+// use_upper==true usage:
+// tlk->calculate(tlk) should be called before using upper
+// In brent optimization the first call will have no updates since it is evaluated at the current value
+// If only one branch has changed then it is part of the brent optimization
+// Once we optimize the next branch there should be 2 update_nodes[i]==true
+double _calculate( SingleTreeLikelihood *tlk ){
+	if (tlk->use_upper) {
+#ifdef UPPER_PARTIALS
+		printf("-----------------\n");
+#endif
+		// In brent the initial point is calculated without changing the parameter
+		if(tlk->update){
+			int updateCount = 0;
+			int indexUpdate = -1;
+			int nodeCount = Tree_node_count(tlk->tree);
+			for (int i = 0; i < nodeCount; i++) {
+				if(tlk->update_nodes[i]){
+					updateCount++;
+					indexUpdate = i;
+				}
+			}
+			// only one branch has changed
+			if (updateCount == 1) {
+				double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, indexUpdate));
+				tlk->node_upper = Tree_node(tlk->tree, indexUpdate);
+#ifdef UPPER_PARTIALS
+				printf("fast %d\n", indexUpdate);
+#endif
+				return lk;
+			}
+			
+		}
+		else{
+#ifdef UPPER_PARTIALS
+			printf("no update\n");
+#endif
+			return  tlk->lk;
+		}
+		tlk->use_upper = false;
+		int nodeCount = Tree_node_count(tlk->tree);
+		int indexUpdate = -1;
+		int previousID = Node_id(tlk->node_upper);
+		for (int i = 0; i < nodeCount; i++) {
+			if(tlk->update_nodes[i] && i != previousID){
+				indexUpdate = i;
+			}
+		}
+#ifdef UPPER_PARTIALS
+		printf("more than 1 branch %d\n", indexUpdate);
+#endif
+		tlk->update_nodes[previousID] = false;
+		double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, indexUpdate));
+		tlk->node_upper = Tree_node(tlk->tree, indexUpdate);
+//		tlk->calculate(tlk);
+//		printf("calculate_upper root\n");
+//		calculate_upper(tlk, Tree_root(tlk->tree));
+		tlk->use_upper = true;
+		return tlk->lk;
+	}
+#ifdef UPPER_PARTIALS
+	printf("standard\n");
+#endif
+	return _calculate_simple(tlk);
 }
 
 bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
@@ -3414,7 +3470,10 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 		if ( tlk->node_upper != node ) {
 			if ( tlk->node_upper == NULL || ( Node_isleaf(node) && Node_sibling(node) != tlk->node_upper &&  Node_right(node->parent) == node ) || ( !Node_isleaf(node) && Node_right(node) != tlk->node_upper) ) {
 				//  make sure lower partials are calculated
-				tlk->calculate(tlk);
+				_calculate_simple(tlk);
+#ifdef UPPER_PARTIALS
+				printf("calculate_upper\n");
+#endif
 				calculate_upper(tlk, Tree_root(tlk->tree));
 			}
 			else {
@@ -3447,6 +3506,10 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 				tlk->update_partials(tlk, Node_id(Node_parent(n)), Node_id(n), Node_id(n), Node_id(Node_sibling(n)), Node_id(Node_sibling(n)) );
 				
 				// update upper partials of its sibling and its sibling's descendents
+				// although they technically don't need to be updated if node is a right node since its sibling&descendents won't be reused in postorder
+#ifdef UPPER_PARTIALS
+				printf("calculate_upper descendents\n");
+#endif
 				calculate_upper(tlk, Node_sibling(n));
 				
 			}

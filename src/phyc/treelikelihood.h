@@ -293,5 +293,6 @@ double calculate_uppper_2nodes( SingleTreeLikelihood *tlk, Node *node );
 
 double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 
+void SingleTreeLikelihood_update_uppers(SingleTreeLikelihood *tlk);
 
 #endif

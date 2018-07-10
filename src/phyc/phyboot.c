@@ -105,7 +105,8 @@ static void * _resampling_thread_worker( void *threadpool  ){
         OptConfig_copy(&pool->tlk->opt, &tlk2->opt);
         
         if( tlk2->opt.topology_optimize ){
-            TopologyOptimizer *topology = new_TopologyOptimizer( tlk2, TREE_SEARCH_PARSIMONY_SPR );
+            TopologyOptimizer *topology = new_TopologyOptimizer( tlk2 );
+			TopologyOptimizer_set_algorithm(topology, TREE_SEARCH_PARSIMONY_SPR);
             topology->optimize(topology);
             free_TopologyOptimizer(topology);
             SingleTreeLikelihood_update_all_nodes(tlk2);
@@ -404,7 +405,8 @@ void SingleTreeLikelihood_resampling_openmp( const SingleTreeLikelihood *tlk, re
 		OptConfig_copy(&tlk->opt, &tlk2->opt);
         
         if( tlk2->opt.topology_optimize ){
-            TopologyOptimizer *topology = new_TopologyOptimizer( tlk2, TREE_SEARCH_PARSIMONY_SPR );            
+			TopologyOptimizer *topology = new_TopologyOptimizer( tlk2 );
+			TopologyOptimizer_set_algorithm(topology, TREE_SEARCH_PARSIMONY_SPR);
             topology->optimize(topology);
             free_TopologyOptimizer(topology);
             SingleTreeLikelihood_update_all_nodes(tlk2);

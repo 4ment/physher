@@ -50,6 +50,7 @@ typedef enum opt_algorithm {
     OPT_CG_FR,
     OPT_META,
     OPT_SG,
+	OPT_TOPOLOGY
 }opt_algorithm;
 
 static const char *OPT_ALGORITHMS[7] = {"POWELL","BRENT","BFGS","CG_PR","CG_FR","META","SG"};
@@ -99,6 +100,7 @@ struct _OptimizerSchedule{
 	int capacity;
 };
 
+double model_negative_logP( Parameters *params, double *grad, void *data );
 
 Optimizer * new_Optimizer( opt_algorithm algorithm );
 
@@ -124,6 +126,8 @@ void opt_set_parameters( Optimizer *opt, const Parameters *parameters );
 void opt_set_max_evaluation( Optimizer *opt, const size_t maxeval );
 
 void opt_set_max_iteration( Optimizer *opt, const size_t maxiter );
+
+void opt_set_treelikelihood( Optimizer *opt, Model* likelihood);
 
 void opt_set_time_max( Optimizer *opt, const double maxtime );
 void opt_set_time_max_minutes( Optimizer *opt, const double maxtime );

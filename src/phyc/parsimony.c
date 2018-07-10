@@ -853,12 +853,11 @@ static void _parsimony_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free parsimony model %s\n", self->name);
 		Parsimony* parsimony = (Parsimony*)self->obj;
+		free_SitePattern(parsimony->sp);
+		free_Parsimony(parsimony);
 		Model* mtree = (Model*)self->data;
 		
 		mtree->free(mtree);
-		
-		free_SitePattern(parsimony->sp);
-		free_Parsimony(parsimony);
 		free_Model(self);
 	}
 	else{

@@ -872,7 +872,7 @@ double optimize_singletreelikelihood( SingleTreeLikelihood *stlk ){
     int topo_failure = 0;
     
 	if ( opt.topology_optimize ) {
-        topology = new_TopologyOptimizer( stlk, opt.topology_alogrithm );
+        topology = new_TopologyOptimizer( stlk );
         TopologyOptimizer_set_nthreads(topology, opt.topology_threads);
     }
     
@@ -1930,7 +1930,7 @@ double optimize_singletreelikelihood2( SingleTreeLikelihood *stlk ){
     int topo_failure = 0;
     
 	if ( opt.topology_optimize ) {
-        topology = new_TopologyOptimizer( stlk, opt.topology_alogrithm );
+        topology = new_TopologyOptimizer( stlk );
     }
     
     bool optimize_sitemmodel = false;
