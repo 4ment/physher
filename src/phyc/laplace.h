@@ -17,6 +17,7 @@ typedef struct Laplace{
 	Model* model;
 	Parameters* parameters;
 	Model* refdist;
+    Model* empirical;
 	double(*calculate)(struct Laplace*);
 	void(*free)(struct Laplace*);
 	// something print

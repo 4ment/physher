@@ -475,10 +475,33 @@ double calculate_laplace_betaprime(Laplace* laplace){
 	return logP;
 }
 
+double calculate_laplace_gamma_from_mcmc(Laplace* laplace){
+    Model* posterior = laplace->model;
+    Model* refdist = laplace->refdist;
+    Model* empirical = laplace->empirical;
+    DistributionModel* dm = NULL;
+    if(refdist != NULL){
+        dm = refdist->obj;
+    }
+	for (int i = 0; i< Parameters_count(laplace->parameters); i++) {
+		DistributionModel* dm = empirical->obj;
+		double alpha = Parameters_value(dm->parameters, i*2);
+		double beta = Parameters_value(dm->parameters, i*2+1);
+		printf("%f %f %f\n", alpha/beta, Parameters_value(laplace->parameters, i), (alpha-1.0)/beta);
+	}
+    double logP = posterior->logP(posterior);
+    double logQ = empirical->logP(empirical);
+    double logLaplace = logP - logQ;
+    
+    printf("Gamma MCMC Laplace: %f\n", logLaplace);
+    return logLaplace;
+}
+
 void _free_Laplace(Laplace* laplace){
 	free_Parameters(laplace->parameters);
 	laplace->model->free(laplace->model);
 	if(laplace->refdist != NULL)laplace->refdist->free(laplace->refdist);
+    if(laplace->empirical != NULL) laplace->empirical->free(laplace->empirical);
 	free(laplace);
 }
 
@@ -491,6 +514,8 @@ Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
 	laplace->model->ref_count++;
 	laplace->parameters = new_Parameters(1);
 	laplace->refdist = NULL;
+	laplace->empirical = NULL;
+	json_node* empirical = get_json_node(node, "empirical");
 	get_parameters_references(node, hash, laplace->parameters);
 	if (ref != NULL) {
 		char* r = get_json_node_value_string(node, "ref");
@@ -498,7 +523,27 @@ Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
 		laplace->refdist->ref_count++;
 	}
 	if(strcasecmp(dist_string, "gamma") == 0){
-		laplace->calculate = calculate_laplace_gamma;
+		if(empirical != NULL){
+			Model* empiricalDist = NULL;
+			if (empirical->node_type == MJSON_OBJECT) {
+				empiricalDist = new_DistributionModel_from_json(empirical, hash);
+				char* id = get_json_node_value_string(empirical, "id");
+				Hashtable_add(hash, id, empiricalDist);
+			}
+			else if(empirical->node_type == MJSON_STRING){
+				char* ref = (char*)empirical->value;
+				empiricalDist = Hashtable_get(hash, ref+1);
+				empiricalDist->ref_count++;
+			}
+			else{
+				exit(10);
+			}
+			laplace->empirical = empiricalDist;
+			laplace->calculate = calculate_laplace_gamma_from_mcmc;
+		}
+		else{
+			laplace->calculate = calculate_laplace_gamma;
+		}
 	}
 	else if(strcasecmp(dist_string, "lognormal") == 0){
 		laplace->calculate = calculate_laplace_lognormal;
