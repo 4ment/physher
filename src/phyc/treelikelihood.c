@@ -1440,12 +1440,12 @@ double _calculate( SingleTreeLikelihood *tlk ){
 			}
 			// only one branch has changed
 			if (updateCount == 1) {
-				double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, indexUpdate));
+				tlk->lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, indexUpdate));
 				tlk->node_upper = Tree_node(tlk->tree, indexUpdate);
 #ifdef UPPER_PARTIALS
 				printf("fast %d\n", indexUpdate);
 #endif
-				return lk;
+				return tlk->lk;
 			}
 			
 		}
@@ -1468,11 +1468,8 @@ double _calculate( SingleTreeLikelihood *tlk ){
 		printf("more than 1 branch %d\n", indexUpdate);
 #endif
 		tlk->update_nodes[previousID] = false;
-		double lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, indexUpdate));
+		tlk->lk = tlk->calculate_upper(tlk, Tree_node(tlk->tree, indexUpdate));
 		tlk->node_upper = Tree_node(tlk->tree, indexUpdate);
-//		tlk->calculate(tlk);
-//		printf("calculate_upper root\n");
-//		calculate_upper(tlk, Tree_root(tlk->tree));
 		tlk->use_upper = true;
 		return tlk->lk;
 	}
