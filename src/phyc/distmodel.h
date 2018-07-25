@@ -38,6 +38,7 @@ struct _DistributionModel{
 	void* data;
 	double lp;
 	bool need_update;
+	gsl_rng* rng;
 };
 
 
