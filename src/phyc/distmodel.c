@@ -28,6 +28,7 @@
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_linalg.h>
+#include <gsl/gsl_cdf.h>
 
 
 static double _DistributionModel_dlog_0(DistributionModel* dm, const Parameter* p){
@@ -248,6 +249,7 @@ double DistributionModel_d2log_gamma(DistributionModel* dm, const Parameter* p){
 	return 0;
 }
 
+//TODO: rethink rng in data
 static void DistributionModel_gamma_sample(DistributionModel* dm, double* samples){
 	if(Parameters_count(dm->parameters) > 2){
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
@@ -628,6 +630,138 @@ DistributionModel* new_MultivariateNormalDistributionModel_with_parameters(const
 	gsl_linalg_cholesky_decomp1(wrapper->L);
 	wrapper->rng = rng;
 	dm->data = wrapper;
+	return dm;
+}
+
+//MARK: copula
+
+typedef struct gsl_gaussian_copula_wrapper_t{
+	gsl_vector* mu;
+	gsl_matrix* L;
+	gsl_vector* x; // used for sampling or pdf
+	gsl_vector * work;
+	gsl_matrix* cor;
+	gsl_permutation* p;
+	double det;
+	gsl_rng* rng;
+}gsl_gaussian_copula_wrapper_t;
+
+static void _gaussian_copula_gamma_sample(DistributionModel* dm, double* dst){
+	gsl_gaussian_copula_wrapper_t* wrapper = (gsl_gaussian_copula_wrapper_t*)dm->data;
+	size_t paramCount = Parameters_count(dm->x);
+	gsl_ran_multivariate_gaussian(wrapper->rng, wrapper->mu, wrapper->L, wrapper->x);
+	
+	for (int i = 0; i < paramCount; i++) {
+		double u = gsl_cdf_gaussian_P(gsl_vector_get(wrapper->x, i), 1.0); // uniform
+		double z = gsl_cdf_gamma_Pinv(u, Parameters_value(dm->parameters, i*2), 1.0/Parameters_value(dm->parameters, i*2+1)); // gamma distributed
+		if(dst == NULL){
+			Parameters_set_value(dm->x, i, z);
+		}
+		else{
+			dst[i] = z;
+		}
+	}
+}
+
+double _gaussian_copula_gamma_logP_with_values(DistributionModel* dm, const double* values){
+	gsl_gaussian_copula_wrapper_t* wrapper = (gsl_gaussian_copula_wrapper_t*)dm->data;
+	size_t paramCount = Parameters_count(dm->x);
+	double logP = -log(sqrt(wrapper->det));
+	for (int i = 0; i < paramCount; i++) {
+		logP += log(gsl_ran_gamma_pdf(values[i], Parameters_value(dm->parameters, i*2), 1.0/Parameters_value(dm->parameters, i*2+1)));
+	}
+	return logP;
+}
+
+static double _gaussian_copula_gamma_logP(DistributionModel* dm){
+	gsl_gaussian_copula_wrapper_t* wrapper = (gsl_gaussian_copula_wrapper_t*)dm->data;
+	size_t paramCount = Parameters_count(dm->x);
+	double logP = -log(sqrt(wrapper->det));
+	for (int i = 0; i < paramCount; i++) {
+		logP += log(gsl_ran_gamma_pdf(Parameters_value(dm->x, i), Parameters_value(dm->parameters, i*2), 1.0/Parameters_value(dm->parameters, i*2+1)));
+	}
+	return logP;
+}
+
+static void _free_dist_gsl_gaussian_copula(DistributionModel*dm){
+	if(dm->x != NULL) free_Parameters(dm->x);
+	if(dm->parameters != NULL) free_Parameters(dm->parameters);
+	if(dm->tempx != NULL) free(dm->tempx);
+	if(dm->tempp != NULL) free(dm->tempp);
+	if(dm->simplex != NULL) free_Simplex(dm->simplex);
+	gsl_gaussian_copula_wrapper_t* wrapper = dm->data;
+	gsl_vector_free(wrapper->mu);
+	gsl_vector_free(wrapper->x);
+	gsl_vector_free(wrapper->work);
+	gsl_matrix_free(wrapper->L);
+	gsl_matrix_free(wrapper->cor);
+	gsl_permutation_free(wrapper->p);
+	free(wrapper);
+	free(dm);
+}
+
+static double _gaussian_copula_gamma_determinant(DistributionModel* dm){
+	gsl_gaussian_copula_wrapper_t* wrapper = (gsl_gaussian_copula_wrapper_t*)dm->data;
+	size_t paramCount = Parameters_count(dm->x);
+	size_t offset = paramCount*2;
+	
+	for (size_t i = 0; i < paramCount; i++) {
+		for (size_t j = 0; j < paramCount; j++) {
+			gsl_matrix_set(wrapper->cor, i, j, Parameters_value(dm->parameters, offset+i*paramCount+j));
+		}
+	}
+	
+	int signum;
+	gsl_linalg_LU_decomp(wrapper->cor, wrapper->p , &signum);
+	return gsl_linalg_LU_det(wrapper->cor, signum);
+}
+
+DistributionModel* new_CopulaDistributionModel_with_parameters(const Parameters* p, const Parameters* x, gsl_rng* rng){
+	DistributionModel* dm = (DistributionModel*)malloc(sizeof(DistributionModel));
+	assert(dm);
+	dm->parameters = NULL;
+	if(p != NULL){
+		dm->parameters = new_Parameters(Parameters_count(p));
+		Parameters_add_parameters(dm->parameters, p);
+	}
+	dm->x = new_Parameters(Parameters_count(x));
+	Parameters_add_parameters(dm->x, x);
+	dm->simplex = NULL;
+	dm->free = _free_dist_gsl_gaussian_copula;
+	dm->clone = _clone_dist;//TODO
+	dm->tempx = NULL;
+	dm->tempp = NULL;
+	dm->logP = _gaussian_copula_gamma_logP;
+	dm->logP_with_values = _gaussian_copula_gamma_logP_with_values;
+	//TODO: copula methods
+	dm->dlogP = _DistributionModel_dlog_mvn;
+	dm->d2logP = _DistributionModel_d2log_mvn;
+	dm->ddlogP = _DistributionModel_ddlog_mvn;
+	dm->sample = _gaussian_copula_gamma_sample;
+	dm->need_update = true;
+	
+	gsl_gaussian_copula_wrapper_t* wrapper = (gsl_gaussian_copula_wrapper_t*)malloc(sizeof(gsl_gaussian_copula_wrapper_t));
+	size_t paramCount = Parameters_count(x);
+	wrapper->mu = gsl_vector_calloc(paramCount);
+	wrapper->L = gsl_matrix_calloc(paramCount, paramCount);
+	wrapper->cor = gsl_matrix_calloc(paramCount, paramCount);
+	wrapper->x = gsl_vector_calloc(paramCount);
+	wrapper->work = gsl_vector_calloc(paramCount);
+	wrapper->p = gsl_permutation_alloc(paramCount);
+	size_t offset = paramCount*2;
+	
+	for (int i = 0; i < paramCount; i++) {
+		gsl_vector_set(wrapper->mu, i, 0);
+		for (int j = 0; j < paramCount; j++) {
+			gsl_matrix_set(wrapper->cor, i, j, Parameters_value(dm->parameters, offset+i*paramCount+j));
+		}
+	}
+	gsl_matrix_memcpy(wrapper->L, wrapper->cor);
+	gsl_linalg_cholesky_decomp1(wrapper->L);
+	
+	wrapper->rng = rng;
+	dm->data = wrapper;
+	wrapper->det = _gaussian_copula_gamma_determinant(dm);
 	return dm;
 }
 
@@ -1022,6 +1156,70 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
 		wrapper->transform = true;
 		
+	}
+	else if(strcasecmp(d_string, "copula") == 0){
+		char* margin_str = get_json_node_value_string(node, "margin");
+		char* file = get_json_node_value_string(node, "file");
+		parameters = new_Parameters(1);
+		x = new_Parameters(1);
+		get_parameters_references2(node, hash, x, "x");
+		parameters = new_Parameters(1);
+		
+		if (file != NULL) {
+			size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
+			Vector** vecs = read_log_for_parameters_t(file, burnin, x);
+			
+			int n = Vector_length(vecs[0]);
+			size_t paramCount = Parameters_count(x);
+			double* means = dvector(paramCount);
+			double* variances = dvector(paramCount);
+			
+			for (int i = 0; i < paramCount; i++) {
+				double* vec = Vector_data(vecs[i]);
+				means[i] = mean(vec, n);
+				variances[i] = variance(vec, n, means[i]);
+			}
+			
+			// calculate margins parameters
+			if(strcasecmp(margin_str, "gamma") == 0){
+				for (int i = 0; i < paramCount; i++) {
+					Parameters_move(parameters, new_Parameter("alpha", means[i]*means[i]/variances[i], NULL));
+					Parameters_move(parameters, new_Parameter("beta", means[i]/variances[i], NULL));
+				}
+			}
+			
+			// Calculate sample covariance matrix
+			for (int i = 0; i < paramCount; i++) {
+				double* pp = Vector_data(vecs[i]);
+				for (int j = 0; j < paramCount; j++) {
+					double* pp2 = Vector_data(vecs[j]);
+					double covij = covariance(pp, pp2, means[i], means[j], n)/(sqrt(variances[i])*sqrt(variances[j]));
+					Parameters_move(parameters, new_Parameter("ij", covij, NULL));
+				}
+			}
+			
+			// sample correlation matrix
+			for (int i = 0; i < paramCount; i++) {
+				double covii = sqrt(Parameters_value(parameters, 2*paramCount + i*paramCount + i));
+				for (int j = 0; j < paramCount; j++) {
+					double covjj = sqrt(Parameters_value(parameters, 2*paramCount + j*paramCount + j));
+					double covij = Parameters_value(parameters, 2*paramCount + i*paramCount + j);
+					Parameters_set_value(parameters, 2*paramCount + i*paramCount + j, covij/(covii*covjj));
+				}
+			}
+			
+			dm = new_CopulaDistributionModel_with_parameters(parameters, x, Hashtable_get(hash, "RANDOM_GENERATOR!@"));
+			
+			for (int i = 0; i < paramCount; i++) {
+				free_Vector(vecs[i]);
+			}
+			free(vecs);
+			free(means);
+			free(variances);
+		}
+		model = new_DistributionModel2(id, dm);
+		model->sample = _dist_model_sample;
+		model->samplable = true;
 	}
 	else{
 		printf("%s\n", d_string);

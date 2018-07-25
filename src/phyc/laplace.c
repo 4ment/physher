@@ -477,17 +477,15 @@ double calculate_laplace_betaprime(Laplace* laplace){
 
 double calculate_laplace_gamma_from_mcmc(Laplace* laplace){
     Model* posterior = laplace->model;
-    Model* refdist = laplace->refdist;
     Model* empirical = laplace->empirical;
-    DistributionModel* dm = NULL;
-    if(refdist != NULL){
-        dm = refdist->obj;
-    }
+    DistributionModel* dm = empirical->obj;
+	
 	for (int i = 0; i< Parameters_count(laplace->parameters); i++) {
-		DistributionModel* dm = empirical->obj;
 		double alpha = Parameters_value(dm->parameters, i*2);
 		double beta = Parameters_value(dm->parameters, i*2+1);
-		printf("%f %f %f\n", alpha/beta, Parameters_value(laplace->parameters, i), (alpha-1.0)/beta);
+//		printf("mean: %f MLE: %f mode: %f diff: %f [%f %f] var: %f skew: %f\n", alpha/beta, Parameters_value(laplace->parameters, i), (alpha-1.0)/beta,
+//			   Parameters_value(laplace->parameters, i)- (alpha-1.0)/beta, alpha, beta, alpha/beta/beta, 2.0/(sqrt(alpha)));
+		Parameters_set_value(laplace->parameters, i, (alpha-1.0)/beta);
 	}
     double logP = posterior->logP(posterior);
     double logQ = empirical->logP(empirical);
