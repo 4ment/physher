@@ -30,6 +30,7 @@ double _calculate_marginal_vb( marginal_vb_t* mvb ){
 			//            printf(",%f",logP);
 		}
 		lmarg = sum-log(n);
+		free(samples);
 	}
 	else{
 		double* samples = dvector(dim);
@@ -59,6 +60,7 @@ double _calculate_marginal_vb( marginal_vb_t* mvb ){
 void _free_Marginal_VB(marginal_vb_t* mvb){
 	mvb->model->free(mvb->model);
 	mvb->distribution->free(mvb->distribution);
+	free_Parameters(mvb->parameters);
 	free(mvb);
 }
 

@@ -26,12 +26,13 @@ json_node* create_json_node(json_node* parent){
 }
 
 void add_json_node(json_node* parent, json_node* child){
-	if(parent->child_count == 0){
-		parent->children = calloc(1, sizeof(json_node));
-		parent->children[0] = child;
-	}
 	parent->child_count++;
-	parent->children = realloc(parent->children, sizeof(json_node)*parent->child_count);
+	if(parent->child_count == 0){
+		parent->children = calloc(1, sizeof(json_node*));
+	}
+	else{
+		parent->children = realloc(parent->children, sizeof(json_node*)*parent->child_count);
+	}
 	parent->children[parent->child_count-1] = child;
 }
 
