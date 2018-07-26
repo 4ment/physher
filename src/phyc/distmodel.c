@@ -23,6 +23,7 @@
 #include "filereader.h"
 #include "statistics.h"
 #include "parametersio.h"
+#include "utilsio.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
@@ -1172,6 +1173,40 @@ Model* get_simplex(json_node* node, Hashtable* hash){
 	return Hashtable_get(hash, ref+1);
 }
 
+
+double _gamma_wrapper(void* data, double x){
+	double* params = (double*)data;
+	return gsl_cdf_gamma_P(x, params[0], 1.0/params[1]);
+}
+
+double _lognormal_wrapper(void* data, double x){
+	double* params = (double*)data;
+	return gsl_cdf_lognormal_P(x, params[0], params[1]);
+}
+
+double _exponential_wrapper(void* data, double x){
+	double* params = (double*)data;
+	return gsl_cdf_exponential_P(x, params[0]);
+}
+
+double ks(double* x, size_t length, double(*cdf)(void*, double), void* data){
+	qsort(x, length, sizeof(double), qsort_asc_dvector);
+	double fn = 0;
+	double fo = 0;
+	double d = 0;
+	for (size_t i = 0; i < length; i++) {
+		fn = (double)i/length;
+		double ff = cdf(data, x[i]);
+		double dt = dmax(fabs(fo-ff), fabs(fn-ff));
+		if(dt > d){
+			d = dt;
+		}
+		fo = fn;
+	}
+	return d;
+}
+
+
 Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	char* d_string = get_json_node_value_string(node, "distribution");
 	char* id = get_json_node_value_string(node, "id");
@@ -1356,40 +1391,54 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 				variances[i] = variance(vec, n, means[i]);
 			}
 			
-			// calculate margins parameters
-			if(strcasecmp(margin_str, "gamma") == 0){
-				for (int i = 0; i < paramCount; i++) {
-					Parameters_move(parameters, new_Parameter("alpha", means[i]*means[i]/variances[i], NULL));
-					Parameters_move(parameters, new_Parameter("beta", means[i]/variances[i], NULL));
-				}
-			}
-			else if(strcasecmp(margin_str, "lognormal") == 0){
-				for (int i = 0; i < paramCount; i++) {
-					double mean2 = means[i]*means[i];
-					Parameters_move(parameters, new_Parameter("mu", log(mean2/sqrt(variances[i] + mean2)), NULL));
-					Parameters_move(parameters, new_Parameter("s", sqrt(log(1.0 + variances[i]/mean2)), NULL));
-				}
-			}
+			json_node* from_node = get_json_node(node, "from");
 			
+			// calculate margins parameters
+			if(from_node == NULL){
+				if(strcasecmp(margin_str, "gamma") == 0){
+					for (int i = 0; i < paramCount; i++) {
+						Parameters_move(parameters, new_Parameter("alpha", means[i]*means[i]/variances[i], NULL));
+						Parameters_move(parameters, new_Parameter("beta", means[i]/variances[i], NULL));
+					}
+				}
+				else if(strcasecmp(margin_str, "lognormal") == 0){
+					for (int i = 0; i < paramCount; i++) {
+						double mean2 = means[i]*means[i];
+						Parameters_move(parameters, new_Parameter("mu", log(mean2/sqrt(variances[i] + mean2)), NULL));
+						Parameters_move(parameters, new_Parameter("s", sqrt(log(1.0 + variances[i]/mean2)), NULL));
+					}
+				}
+			}
+			else{
+				char* ref = (char*)from_node->value;
+				Model* simpleModel = Hashtable_get(hash, ref+1);
+				DistributionModel* simpleDM = simpleModel->obj;
+				for (int i = 0; i < paramCount*2; i++) {
+					Parameters_move(parameters, clone_Parameter(Parameters_at(simpleDM->parameters, i)));
+				}
+			}
+		
+			double* cov = dvector(paramCount*paramCount);
 			// Calculate sample covariance matrix
 			for (int i = 0; i < paramCount; i++) {
 				double* pp = Vector_data(samples[i]);
-				for (int j = 0; j < paramCount; j++) {
+				cov[i*paramCount+i] = covariance(pp, pp, means[i], means[i], n);
+				for (int j = i+1; j < paramCount; j++) {
 					double* pp2 = Vector_data(samples[j]);
-					double covij = covariance(pp, pp2, means[i], means[j], n)/(sqrt(variances[i])*sqrt(variances[j]));
-					Parameters_move(parameters, new_Parameter("ij", covij, NULL));
+					cov[i*paramCount+j] = cov[j*paramCount+i] = covariance(pp, pp2, means[i], means[j], n);
 				}
 			}
 			
 			// sample correlation matrix
 			for (int i = 0; i < paramCount; i++) {
-				double covii = sqrt(Parameters_value(parameters, 2*paramCount + i*paramCount + i));
+				double covii = sqrt(cov[i*paramCount + i]);
 				for (int j = 0; j < paramCount; j++) {
-					double covjj = sqrt(Parameters_value(parameters, 2*paramCount + j*paramCount + j));
-					double covij = Parameters_value(parameters, 2*paramCount + i*paramCount + j);
-					Parameters_set_value(parameters, 2*paramCount + i*paramCount + j, covij/(covii*covjj));
+					double covjj = sqrt(cov[j*paramCount + j]);
+					double covij = cov[i*paramCount + j];
+					Parameters_move(parameters, new_Parameter("ij", covij/(covii*covjj), NULL));
 				}
 			}
+			free(cov);
 			
 			dm = new_CopulaDistributionModel_with_parameters(parameters, x);
 			

@@ -485,14 +485,39 @@ double calculate_laplace_gamma_from_mcmc(Laplace* laplace){
 		double beta = Parameters_value(dm->parameters, i*2+1);
 //		printf("mean: %f MLE: %f mode: %f diff: %f [%f %f] var: %f skew: %f\n", alpha/beta, Parameters_value(laplace->parameters, i), (alpha-1.0)/beta,
 //			   Parameters_value(laplace->parameters, i)- (alpha-1.0)/beta, alpha, beta, alpha/beta/beta, 2.0/(sqrt(alpha)));
-		Parameters_set_value(laplace->parameters, i, (alpha-1.0)/beta);
+		double mode = (alpha-1.0)/beta;
+		if (mode < 0) {
+			mode = 1.e-6;
+		}
+		Parameters_set_value(laplace->parameters, i, mode);
 	}
     double logP = posterior->logP(posterior);
     double logQ = empirical->logP(empirical);
-    double logLaplace = logP - logQ;
-    
+	double logLaplace = logP - logQ;
+	
     printf("Gamma MCMC Laplace: %f\n", logLaplace);
     return logLaplace;
+}
+
+double calculate_laplace_lognormal_from_mcmc(Laplace* laplace){
+	Model* posterior = laplace->model;
+	Model* empirical = laplace->empirical;
+	DistributionModel* dm = empirical->obj;
+	
+	for (int i = 0; i< Parameters_count(laplace->parameters); i++) {
+		double mu = Parameters_value(dm->parameters, i*2);
+		double sigma = Parameters_value(dm->parameters, i*2+1);
+		//		printf("mean: %f MLE: %f mode: %f diff: %f [%f %f] var: %f skew: %f\n", alpha/beta, Parameters_value(laplace->parameters, i), exp(mu-sigma*sigma),
+		//			   Parameters_value(laplace->parameters, i)- exp(mu-sigma*sigma), mu, sigma, (exp(sigma*sigma)-1.0)*exp(2.0*mu+sigma*sigma), exp(sigma*sigma + 2.0)*sqrt(exp(sigma*sigma) - 1.0));
+		double mode = exp(mu-sigma*sigma);
+		Parameters_set_value(laplace->parameters, i, mode);
+	}
+	double logP = posterior->logP(posterior);
+	double logQ = empirical->logP(empirical);
+	double logLaplace = logP - logQ;
+	
+	printf("Lognormal MCMC Laplace: %f\n", logLaplace);
+	return logLaplace;
 }
 
 void _free_Laplace(Laplace* laplace){
@@ -544,7 +569,27 @@ Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	else if(strcasecmp(dist_string, "lognormal") == 0){
-		laplace->calculate = calculate_laplace_lognormal;
+		if(empirical != NULL){
+			Model* empiricalDist = NULL;
+			if (empirical->node_type == MJSON_OBJECT) {
+				empiricalDist = new_DistributionModel_from_json(empirical, hash);
+				char* id = get_json_node_value_string(empirical, "id");
+				Hashtable_add(hash, id, empiricalDist);
+			}
+			else if(empirical->node_type == MJSON_STRING){
+				char* ref = (char*)empirical->value;
+				empiricalDist = Hashtable_get(hash, ref+1);
+				empiricalDist->ref_count++;
+			}
+			else{
+				exit(10);
+			}
+			laplace->empirical = empiricalDist;
+			laplace->calculate = calculate_laplace_lognormal_from_mcmc;
+		}
+		else{
+			laplace->calculate = calculate_laplace_lognormal;
+		}
 	}
 	else if(strcasecmp(dist_string, "betaprime") == 0){
 		laplace->calculate = calculate_laplace_betaprime;
