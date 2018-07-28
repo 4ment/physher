@@ -18,11 +18,98 @@ json_node* create_json_node(json_node* parent){
 	node->parent = parent;
 	node->children = NULL;
 	node->child_count = 0;
-	node->id = NULL;
-	node->type = NULL;
 	node->key = NULL;
 	node->value = NULL;
+	node->node_type = MJSON_UNDEFINED;
 	return node;
+}
+
+json_node* create_json_node_object(json_node* parent, char* name){
+	json_node* node = malloc(sizeof(json_node));
+	node->parent = parent;
+	node->children = NULL;
+	node->child_count = 0;
+	node->key = (name == NULL ? NULL : String_clone(name));
+	node->value = NULL;
+	node->node_type = MJSON_OBJECT;
+	return node;
+}
+
+json_node* create_json_node_array(json_node* parent, char* name){
+	json_node* node = malloc(sizeof(json_node));
+	node->parent = parent;
+	node->children = NULL;
+	node->child_count = 0;
+	node->key = String_clone(name);
+	node->value = NULL;
+	node->node_type = MJSON_ARRAY;
+	return node;
+}
+
+json_node* add_json_node_aux(json_node* parent, char* key, char* value, json_node_t type){
+//	if(parent->node_type != MJSON_UNDEFINED && parent->node_type != MJSON_OBJECT){
+//		error("Can only add key and value to an object (add_json_node_aux)\n");
+//	}
+	json_node* new = create_json_node(parent);
+	//new->id = id;
+	new->node_type = type;
+	new->key = key;
+	new->value = value;
+	add_json_node(parent, new);
+	return new;
+}
+
+json_node* add_json_node_string(json_node* parent, const char* key, const char* value){
+	StringBuffer* buffer = new_StringBuffer(10);
+	StringBuffer_append_format(buffer, "%s", key);
+	char* nkey = StringBuffer_tochar(buffer);
+	StringBuffer_empty(buffer);
+	StringBuffer_append_format(buffer, "%s", value);
+	char* nvalue = StringBuffer_tochar(buffer);
+	free_StringBuffer(buffer);
+	return add_json_node_aux(parent, nkey, nvalue, MJSON_STRING);
+}
+
+json_node* add_json_node_size_t(json_node* parent, const char* key, size_t value){
+	StringBuffer* buffer = new_StringBuffer(10);
+	StringBuffer_append_format(buffer, "%s", key);
+	char* nkey = StringBuffer_tochar(buffer);
+	StringBuffer_empty(buffer);
+	StringBuffer_append_format(buffer, "%zu", value);
+	char* nvalue = StringBuffer_tochar(buffer);
+	free_StringBuffer(buffer);
+	return add_json_node_aux(parent, nkey, nvalue, MJSON_PRIMITIVE);
+}
+
+json_node* add_json_node_double(json_node* parent, const char* key, double value){
+	StringBuffer* buffer = new_StringBuffer(10);
+	char* nkey = NULL;
+	if(key != NULL){
+		StringBuffer_append_format(buffer, "%s", key);
+		nkey = StringBuffer_tochar(buffer);
+		StringBuffer_empty(buffer);
+	}
+	StringBuffer_append_format(buffer, "%f", value);
+	char* nvalue = StringBuffer_tochar(buffer);
+	free_StringBuffer(buffer);
+	return add_json_node_aux(parent, nkey, nvalue, MJSON_PRIMITIVE);
+}
+
+json_node* add_json_node_array_double(json_node* parent, const char* key, double* values, size_t dim){
+	json_node* new = create_json_node(parent);
+	add_json_node(parent, new);
+	new->node_type = MJSON_ARRAY;
+	
+	StringBuffer* buffer = new_StringBuffer(10);
+	StringBuffer_append_format(buffer, "%s", key);
+	new->key = StringBuffer_tochar(buffer);
+	
+	for(size_t i = 0; i < dim; i++){
+		add_json_node_double(new, NULL, values[i]);
+	}
+	
+	free_StringBuffer(buffer);
+	return new;
 }
 
 void add_json_node(json_node* parent, json_node* child){
@@ -233,6 +320,51 @@ void json_tree_to_string(json_node* node){
 	for (int i = 0; i < node->child_count; i++) {
 		json_tree_to_string(node->children[i]);
 	}
+}
+
+void json_tree_print_aux(json_node* node, size_t level){
+	for(size_t i = 0; i < level; i++) printf("  ");
+	if(node->node_type == MJSON_STRING && node->key != NULL){
+		printf("\"%s\":\"%s\"", (char*)node->key, (char*)node->value);
+	}
+	else if(node->node_type == MJSON_PRIMITIVE && node->key != NULL){
+		printf("\"%s\":%s", (char*)node->key, (char*)node->value);
+	}
+	else if(node->node_type == MJSON_STRING){
+		printf("\"%s\"", (char*)node->value);
+	}
+	else if(node->node_type == MJSON_PRIMITIVE){
+		printf("%s", (char*)node->value);
+	}
+	else if(node->node_type == MJSON_ARRAY){
+		printf("\"%s\": [\n", (char*)node->key);
+	}
+	else if(node->node_type == MJSON_OBJECT){
+		// root node and anonymous object in arrays
+		if(node->parent != NULL && node->key != NULL) printf("\"%s\": ", (char*)node->key);
+		printf("{\n");
+	}
+	else{
+		error("error json_tree_print_aux");
+	}
+	level++;
+	for (int i = 0; i < node->child_count; i++) {
+		json_tree_print_aux(node->children[i], level);
+		if(i != node->child_count-1) printf(",\n");
+		else printf("\n");
+	}
+	if(node->node_type == MJSON_ARRAY){
+		for(size_t i = 0; i < level-1; i++) printf("  ");
+		printf("]");
+	}
+	else if(node->node_type == MJSON_OBJECT){
+		for(size_t i = 0; i < level-1; i++) printf("  ");
+		printf("}");
+	}
+}
+
+void json_tree_print(json_node* node){
+	json_tree_print_aux(node, 0);
 }
 
 void json_free_tree(json_node* node){
