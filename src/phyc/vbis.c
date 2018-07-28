@@ -17,6 +17,8 @@ double _calculate_marginal_vb( marginal_vb_t* mvb ){
 	size_t n = mvb->samples;
 	double lmarg;
 	size_t dim = Parameters_count(mvb->parameters);
+	double* backup = dvector(dim);
+	Parameters_store_value(mvb->parameters, backup);
 	if(mvb->normalize == false){
 		double* samples = dvector(dim);
 		double sum = -DBL_MAX;
@@ -53,6 +55,7 @@ double _calculate_marginal_vb( marginal_vb_t* mvb ){
 		}
 		lmarg = sum - denom;
 	}
+	Parameters_restore_value(mvb->parameters, backup);
 	
 	return lmarg;
 	
