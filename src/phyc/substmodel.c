@@ -61,15 +61,7 @@ static void _substitution_model_free( Model *self ){
 			}
 			free(msimplex);
 		}
-		free(m->name);
-		if( m->eigendcmp != NULL ) free_EigenDecomposition(m->eigendcmp);
-		if( m->Q != NULL ) free_dmatrix(m->Q, m->nstate);
-		if( m->PP != NULL ) free_dmatrix(m->PP, m->nstate);
-		free_Parameters(m->rates);
-		if( m->model != NULL ) m->model->free(m->model);
-		if( m->dQ != NULL ) free(m->dQ);
-		free(m);
-		
+		m->free(m);
 		free_Model(self);
 	}
 	else{
@@ -849,7 +841,7 @@ void free_SubstitutionModel( SubstitutionModel *m){
 	if( m->Q != NULL ) free_dmatrix(m->Q, m->nstate);
 	if( m->PP != NULL ) free_dmatrix(m->PP, m->nstate);
 	if( m->rates != NULL ) free_Parameters(m->rates);
-    if( m->model != NULL ) free(m->model);
+    if( m->model != NULL ) m->model->free(m->model);
     if( m->dQ != NULL ) free(m->dQ);
 	free_Simplex(m->simplex);
 	if(m->rates_simplex != NULL) free_Simplex(m->rates_simplex);
