@@ -22,4 +22,6 @@
 
 void asr_marginal( SingleTreeLikelihood *tlk );
 
+void asr_marginal_calculator_from_json(json_node* node, Hashtable* hash);
+
 #endif

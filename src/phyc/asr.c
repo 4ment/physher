@@ -22,6 +22,7 @@
 
 #include "treelikelihood.h"
 #include "matrix.h"
+#include "sequenceio.h"
 
 
 void _traverse2( SingleTreeLikelihood *tlk, Node *node, double *partials, int *index ){
@@ -236,3 +237,27 @@ void asr_marginal( SingleTreeLikelihood *tlk ){
     free(partials);
 }
 
+void asr_marginal_calculator_from_json(json_node* node, Hashtable* hash){
+	char* ref = get_json_node_value_string(node, "model");
+	Model* mtlk = Hashtable_get(hash, ref+1);
+	const char *file = get_json_node_value_string(node, "file");
+	int verbosity = get_json_node_value_int(node, "verbosity", 0);
+	
+	SingleTreeLikelihood *tlk = mtlk->data;
+	
+	if(verbosity > 0) printf("Inferring ancestral sequences...");
+	asr_marginal(tlk);
+	Sequences *sequences = SitePattern_to_Sequences( tlk->sp );
+	Sequences_save_fasta(sequences, file);
+	free_Sequences(sequences);
+	
+	if(verbosity > 0) printf("done\n");
+	
+	Node **nodes = Tree_nodes(tlk->tree);
+	for ( int i = 0; i < Tree_node_count(tlk->tree); i++ ) {
+		tlk->mapping[i] = get_sequence_index(tlk->sp, nodes[i]->name);
+	}
+	tlk->mapping[Tree_root(tlk->tree)->id] = -1;
+	
+	tlk->sm->need_update = true;
+}
