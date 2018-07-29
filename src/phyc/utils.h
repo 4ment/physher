@@ -109,6 +109,7 @@ void randomize_uivector( unsigned int *v, int n );
 
 void uivector_canonical( unsigned *vec, size_t len_vec, int *helper, size_t helper_len );
 
+unsigned umax_vector( const unsigned *array, int n );
 
 #pragma mark -
 #pragma mark real

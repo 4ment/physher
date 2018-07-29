@@ -233,6 +233,14 @@ void uivector_canonical( unsigned *vec, size_t len_vec, int *helper, size_t help
 	}
 }
 
+unsigned umax_vector( const unsigned *array, int n ){
+	unsigned max = array[0];
+	for (int i = 1; i < n; i++) {
+		if( array[i] > max ) max = array[i];
+	}
+	return max;
+}
+
 #pragma mark -
 #pragma mark size_t
 

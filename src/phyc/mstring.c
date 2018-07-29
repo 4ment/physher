@@ -892,23 +892,37 @@ StringBuffer * StringBuffer_append_format( StringBuffer *buffer, const char *for
 					buffer = StringBuffer_append_string( buffer, buf );
 				}
 				else if( specifier == 'l' ){
-                    specifier = *(++cp);
-                    StringBuffer_append_char(buffer2, *cp);
-
-                    if( *cp == 'u' ){
-                        unsigned long var = va_arg(ap, unsigned long);
-                        sprintf(buf, buffer2->c, var);
-                        buffer = StringBuffer_append_string( buffer, buf );
-                    }
-                    else if( cp[1] == 'd' || specifier == 'i' ){
-                        long int var = va_arg(ap, long int);
-                        sprintf(buf, buffer2->c, var);
-                        buffer = StringBuffer_append_string( buffer, buf );
-                    }
-                    else {
-                        printf("specifier l %c %c\n", cp[1], cp[2]);
-                        exit(1);
-                    }
+					specifier = *(++cp);
+					StringBuffer_append_char(buffer2, *cp);
+					
+					if( *cp == 'u' ){
+						unsigned long var = va_arg(ap, unsigned long);
+						sprintf(buf, buffer2->c, var);
+						buffer = StringBuffer_append_string( buffer, buf );
+					}
+					else if( cp[1] == 'd' || specifier == 'i' ){
+						long int var = va_arg(ap, long int);
+						sprintf(buf, buffer2->c, var);
+						buffer = StringBuffer_append_string( buffer, buf );
+					}
+					else {
+						printf("specifier l %c %c\n", cp[1], cp[2]);
+						exit(1);
+					}
+				}
+				else if( specifier == 'z' ){
+					specifier = *(++cp);
+					StringBuffer_append_char(buffer2, *cp);
+					
+					if( *cp == 'u' ){
+						size_t var = va_arg(ap, size_t);
+						sprintf(buf, buffer2->c, var);
+						buffer = StringBuffer_append_string( buffer, buf );
+					}
+					else {
+						printf("specifier z %c %c\n", cp[1], cp[2]);
+						exit(1);
+					}
 				}
 			}
 		}

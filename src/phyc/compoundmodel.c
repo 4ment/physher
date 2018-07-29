@@ -325,7 +325,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			compound->free(compound);
 		}
 		else{
-			printf("json CompoundModel unknown: (%s)\n", child->type);
+			printf("json CompoundModel unknown: (%s)\n", type);
 			exit(1);
 		}
 	}

@@ -24,7 +24,7 @@ json_node* create_json_node(json_node* parent){
 	return node;
 }
 
-json_node* create_json_node_object(json_node* parent, char* name){
+json_node* create_json_node_object(json_node* parent, const char* name){
 	json_node* node = malloc(sizeof(json_node));
 	node->parent = parent;
 	node->children = NULL;
@@ -59,6 +59,14 @@ json_node* add_json_node_aux(json_node* parent, char* key, char* value, json_nod
 	return new;
 }
 
+json_node* add_json_node_bool(json_node* parent, const char* key, bool value){
+	char* nkey = String_clone(key);
+	char* nvalue = NULL;
+	if(value) nvalue = String_clone("1");
+	else nvalue = String_clone("0");
+	return add_json_node_aux(parent, nkey, nvalue, MJSON_STRING);
+}
+
 json_node* add_json_node_string(json_node* parent, const char* key, const char* value){
 	StringBuffer* buffer = new_StringBuffer(10);
 	StringBuffer_append_format(buffer, "%s", key);
@@ -81,6 +89,18 @@ json_node* add_json_node_size_t(json_node* parent, const char* key, size_t value
 	return add_json_node_aux(parent, nkey, nvalue, MJSON_PRIMITIVE);
 }
 
+
+json_node* add_json_node_unsigned(json_node* parent, const char* key, unsigned value){
+	StringBuffer* buffer = new_StringBuffer(10);
+	StringBuffer_append_format(buffer, "%s", key);
+	char* nkey = StringBuffer_tochar(buffer);
+	StringBuffer_empty(buffer);
+	StringBuffer_append_format(buffer, "%u", value);
+	char* nvalue = StringBuffer_tochar(buffer);
+	free_StringBuffer(buffer);
+	return add_json_node_aux(parent, nkey, nvalue, MJSON_PRIMITIVE);
+}
+
 json_node* add_json_node_double(json_node* parent, const char* key, double value){
 	StringBuffer* buffer = new_StringBuffer(10);
 	char* nkey = NULL;
@@ -89,7 +109,20 @@ json_node* add_json_node_double(json_node* parent, const char* key, double value
 		nkey = StringBuffer_tochar(buffer);
 		StringBuffer_empty(buffer);
 	}
-	StringBuffer_append_format(buffer, "%f", value);
+	if(isinf(value)){
+		if (value < 0) {
+			StringBuffer_append_format(buffer, "-infinity", value);
+		}
+		else{
+			StringBuffer_append_format(buffer, "infinity", value);
+		}
+	}
+	else if(isnan(value)){
+		StringBuffer_append_format(buffer, "nan", value);
+	}
+	else{
+		StringBuffer_append_format(buffer, "%f", value);
+	}
 	char* nvalue = StringBuffer_tochar(buffer);
 	free_StringBuffer(buffer);
 	return add_json_node_aux(parent, nkey, nvalue, MJSON_PRIMITIVE);
@@ -106,6 +139,23 @@ json_node* add_json_node_array_double(json_node* parent, const char* key, double
 	
 	for(size_t i = 0; i < dim; i++){
 		add_json_node_double(new, NULL, values[i]);
+	}
+	
+	free_StringBuffer(buffer);
+	return new;
+}
+
+json_node* add_json_node_array_unsigned(json_node* parent, const char* key, unsigned* values, size_t dim){
+	json_node* new = create_json_node(parent);
+	add_json_node(parent, new);
+	new->node_type = MJSON_ARRAY;
+	
+	StringBuffer* buffer = new_StringBuffer(10);
+	StringBuffer_append_format(buffer, "%s", key);
+	new->key = StringBuffer_tochar(buffer);
+	
+	for(size_t i = 0; i < dim; i++){
+		add_json_node_unsigned(new, NULL, values[i]);
 	}
 	
 	free_StringBuffer(buffer);
