@@ -32,6 +32,7 @@ typedef struct json_node {
 json_node* create_json_node(json_node* parent);
 json_node* create_json_node_object(json_node* parent, const char* name);
 json_node* create_json_node_array(json_node* parent, char* name);
+json_node* create_json_node_parameter(json_node* parent, const char* name, double value, double lower, double upper);
 void add_json_node(json_node* parent, json_node* child);
 json_node* add_json_node_bool(json_node* parent, const char* key, bool value);
 json_node* add_json_node_string(json_node* parent, const char* key, const char* value);

@@ -46,6 +46,17 @@ json_node* create_json_node_array(json_node* parent, char* name){
 	return node;
 }
 
+json_node* create_json_node_parameter(json_node* parent, const char* name, double value, double lower, double upper){
+	json_node* jnode = create_json_node_object(parent, name);
+	add_json_node(parent, jnode);
+	add_json_node_string(jnode, "id", name);
+	add_json_node_string(jnode, "type", "parameter");
+	add_json_node_double(jnode, "value", value);
+	add_json_node_double(jnode, "lower", lower);
+	add_json_node_double(jnode, "upper", upper);
+	return jnode;
+}
+
 json_node* add_json_node_aux(json_node* parent, char* key, char* value, json_node_t type){
 //	if(parent->node_type != MJSON_UNDEFINED && parent->node_type != MJSON_OBJECT){
 //		error("Can only add key and value to an object (add_json_node_aux)\n");
