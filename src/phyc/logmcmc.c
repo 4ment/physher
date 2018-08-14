@@ -157,6 +157,9 @@ void _free_Log(Log* logger){
 	if (logger->format != NULL) {
 		free(logger->format);
 	}
+	if(logger->simplexes != NULL){
+		free(logger->simplexes);
+	}
 	free(logger);
 }
 
@@ -236,18 +239,13 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	logger->simplexes = NULL;
 	if (simplexes_node != NULL) {
 		if (simplexes_node->node_type == MJSON_ARRAY) {
+			logger->simplex_count = simplexes_node->child_count;
+			logger->simplexes = malloc(sizeof(Model*)*logger->simplex_count);
 			for (int i = 0; i < simplexes_node->child_count; i++) {
 				json_node* child = simplexes_node->children[i];
 				char* child_string = child->value;
 				Model* m = Hashtable_get(hash, child_string+1);
-				if(logger->simplex_count == 0){
-					logger->simplexes = malloc(sizeof(Model*));
-				}
-				else{
-					logger->simplexes = realloc(logger->simplexes, sizeof(Model*)*(logger->simplex_count+1));
-				}
 				logger->simplexes[i] = m;
-				logger->simplex_count++;
 			}
 		}
 		else if (simplexes_node->node_type == MJSON_STRING) {

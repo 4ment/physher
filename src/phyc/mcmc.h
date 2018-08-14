@@ -23,6 +23,7 @@ typedef struct MCMC{
 	double chain_temperature;
 	Log** logs;
 	size_t log_count;
+	size_t tuning_frequency;
 	int verbose;
 	bool gss;
 } MCMC;

@@ -22,8 +22,6 @@ void run(MCMC* mcmc){
 	
 	size_t iter = 0;
 	
-	int tuneFrequency = 10;
-	
 	double* weights = dvector(mcmc->operator_count);
 	double sum = 0;
 	for (int i = 0; i < mcmc->operator_count; i++) {
@@ -121,7 +119,7 @@ void run(MCMC* mcmc){
 				op->rejected_count++;
 			}
 			
-			if(op->optimize != NULL){// && iter % tuneFrequency == 0){
+			if(op->optimize != NULL && iter % mcmc->tuning_frequency == 0){
 				op->optimize(op, alpha);
 			}
 		}
@@ -168,6 +166,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	json_node* ops = get_json_node(node, "operators");
 	json_node* logs = get_json_node(node, "log");
 	mcmc->chain_length = get_json_node_value_size_t(node, "length", 100000);
+	mcmc->tuning_frequency = get_json_node_value_size_t(node, "tuningfrequency", 100);
 	mcmc->verbose = get_json_node_value_int(node, "verbose", 1);
 	mcmc->run = run;
 	

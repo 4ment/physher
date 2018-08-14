@@ -21,6 +21,8 @@
 #include "opvb.h"
 #include "ophmc.h"
 
+#include <gsl/gsl_randist.h>
+
 double tune(int accepted, int count, double target, double tuner, double min, double max, bool inverse){
 	double delta = 1./sqrt(count);
 	//delta = fmin(0.01, delta);
@@ -133,16 +135,26 @@ bool operator_slider(Operator* op, double* logHR){
 bool operator_dirichlet(Operator* op, double* logHR){
 	Simplex* simplex = op->models[0]->obj;
 	double alpha = op->parameters[0];
-	double sum = 0;
 	double* scaledOld = dvector(simplex->K);
 	double* newScaled = dvector(simplex->K);
 	double* newValues = dvector(simplex->K);
 	
+	const double* oldValues = simplex->get_values(simplex);
 	for (int i = 0; i < simplex->K; i++) {
-		scaledOld[i] = alpha*simplex->values[i];
+		scaledOld[i] = alpha*oldValues[i];
 	}
 	
-	rdirichlet(newValues, simplex->K, scaledOld);
+	bool ok = false;
+	while (!ok) {
+		gsl_ran_dirichlet(op->rng, simplex->K, scaledOld, newValues); //rdirichlet(newValues, simplex->K, scaledOld);
+		for(int i = 0; i < simplex->K; i++){
+			ok = true;
+			if (newValues[i] < 0.00001 || newValues[i] > 1000.0) {
+				ok = false;
+				break;
+			}
+		}
+	}
 	
 	for (int i = 0; i < simplex->K; i++) {
 		newScaled[i] = alpha*newValues[i];
@@ -158,9 +170,10 @@ bool operator_dirichlet(Operator* op, double* logHR){
 		}
 	}
 	simplex->set_values(simplex, newValues);
-	
-	double f = ddirchletln(newValues, simplex->K, scaledOld);
-	double b = ddirchletln(simplex->values, simplex->K, newScaled);
+
+	double f = gsl_ran_dirichlet_lnpdf(simplex->K, scaledOld, newValues);// ddirchletln(newValues, simplex->K, scaledOld);
+	double b = gsl_ran_dirichlet_lnpdf(simplex->K, newScaled, oldValues); //ddirchletln(oldValues, simplex->K, newScaled);
+
 	*logHR = b-f;
 	free(scaledOld);
 	free(newValues);
@@ -221,7 +234,7 @@ void operator_slider_optimize(Operator* op, double alpha){
 }
 
 void operator_dirichlet_optimize(Operator* op, double alpha){
-	op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.1, 10000, true);
+	op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.01, 10000, true);
 }
 
 Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
@@ -245,6 +258,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	op->parameters = NULL;
 	op->indexes = NULL;
 	op->models = NULL;
+	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	
 	if (strcasecmp(algorithm_string, "scaler") == 0) {
 		op->x = new_Parameters(1);
@@ -272,7 +286,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->propose = operator_dirichlet;
 		op->optimize = operator_dirichlet_optimize;
 		op->parameters = dvector(1);
-		op->parameters[0] = 1000;
+		op->parameters[0] = 100;
 	}
 	else if (strcasecmp(algorithm_string, "nni") == 0) {
 		char* ref = get_json_node_value_string(node, "x");

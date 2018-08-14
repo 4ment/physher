@@ -146,15 +146,12 @@ SubstitutionModel * new_GTR_with_simplexes( Simplex* freqs, Simplex* rates){
 	
 	SubstitutionModel *m = create_nucleotide_model("GTR", GTR, freqs);
 	
-	m->update_Q = gtr_update_Q;
+	m->update_Q = gtr_simplexes_update_Q;
 	
 	m->dPdp = gtr_dQ;
 	m->dQ = dvector(16);
 	
 	m->rates_simplex = rates;
-	m->rates = new_Parameters(5);
-	Parameters_add_parameters(m->rates, m->rates_simplex->parameters);
-	m->relativeTo = 5;
 	
 	return m;
 }
@@ -178,6 +175,22 @@ void gtr_update_Q( SubstitutionModel *m ){
 	update_eigen_system( m );
 	m->need_update = false;
 }
+
+void gtr_simplexes_update_Q( SubstitutionModel *m ){
+	int index = 0;
+	const double* freqs = m->simplex->get_values(m->simplex);
+	const double* rates = m->rates_simplex->get_values(m->rates_simplex);
+	for ( int i = 0; i < 4; i++ )  {
+		for ( int j = i + 1; j < 4; j++ ) {
+			m->Q[i][j] = rates[index] * freqs[j];
+			m->Q[j][i] = rates[index] * freqs[i];
+			index++;
+		}
+	}
+	update_eigen_system( m );
+	m->need_update = false;
+}
+
 
 void gtr_dQ(SubstitutionModel *m, int index, double* mat, double t){
 	

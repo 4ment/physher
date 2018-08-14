@@ -49,12 +49,23 @@ static void _DistributionModel_error_sample(DistributionModel* dm, double* sampl
 	exit(1);
 }
 
-static void _free_dist(DistributionModel*dm){
+// do not free tree and simplex since they are managed by their model
+static void _free_partial_distribution(DistributionModel*dm){
+	if(dm->x != NULL) free_Parameters(dm->x);
+	if(dm->parameters != NULL) free_Parameters(dm->parameters);
+	if(dm->tempx != NULL) free(dm->tempx);
+	if(dm->tempp != NULL) free(dm->tempp);
+	// freeing data is left to the user
+	free(dm);
+}
+
+static void _free_full_distribution(DistributionModel*dm){
 	if(dm->x != NULL) free_Parameters(dm->x);
 	if(dm->parameters != NULL) free_Parameters(dm->parameters);
 	if(dm->tempx != NULL) free(dm->tempx);
 	if(dm->tempp != NULL) free(dm->tempp);
 	if(dm->simplex != NULL) free_Simplex(dm->simplex);
+	if(dm->tree != NULL) free_Tree(dm->tree);
 	// freeing data is left to the user
 	free(dm);
 }
@@ -143,12 +154,13 @@ DistributionModel* new_DistributionModel(const Parameters* p, const Parameters* 
 	dm->x = new_Parameters(Parameters_count(x));
 	Parameters_add_parameters(dm->x, x);
 	dm->simplex = NULL;
+	dm->tree = NULL;
 	dm->logP = NULL;
 	dm->dlogP = NULL;
 	dm->d2logP = NULL;
 	dm->ddlogP = NULL;
 	dm->sample = _DistributionModel_error_sample;
-	dm->free = _free_dist;
+	dm->free = _free_full_distribution;
 	dm->clone = _clone_dist;
 	dm->data = NULL;
 	dm->tempx = NULL;
@@ -162,12 +174,13 @@ DistributionModel* new_DistributionModelSimplex(Parameters* p, Simplex* simplex)
 	dm->parameters = p;
 	dm->x = NULL;
 	dm->simplex = simplex;
+	dm->tree = NULL;
 	dm->logP = NULL;
 	dm->dlogP = NULL;
 	dm->d2logP = NULL;
 	dm->ddlogP = NULL;
 	dm->sample = _DistributionModel_error_sample;
-	dm->free = _free_dist;
+	dm->free = _free_full_distribution;
 	dm->clone = _clone_dist;
 	dm->data = NULL;
 	dm->tempx = NULL;
@@ -902,6 +915,7 @@ DistributionModel* new_CopulaDistributionModel_with_parameters(const Parameters*
 	dm->x = new_Parameters(Parameters_count(x));
 	Parameters_add_parameters(dm->x, x);
 	dm->simplex = NULL;
+	dm->tree = NULL;
 	dm->free = _free_gaussian_copula_gamma;
 	dm->clone = _clone_gaussian_copula_gamma;
 	dm->tempx = NULL;
@@ -943,23 +957,22 @@ DistributionModel* new_CopulaDistributionModel_with_parameters(const Parameters*
 
 double DistributionModel_log_uniform_tree(DistributionModel* dm){
 	if(dm->need_update){
-		Tree* tree = ((Model*)dm->data)->obj;
-		int n = Tree_tip_count(tree);
+		int n = Tree_tip_count(dm->tree);
 		dm->lp = logDoubleFactorial(n*2-5);
 		dm->need_update = false;
 	}
 	return dm->lp;
 }
 
-DistributionModel* new_UniformTreeDistribution(Model* tree){
+DistributionModel* new_UniformTreeDistribution(Tree* tree){
     DistributionModel* dm = (DistributionModel*)malloc(sizeof(DistributionModel));
     assert(dm);
     dm->parameters = NULL;
     dm->x = NULL;
     dm->simplex = NULL;
-    dm->free = _free_dist;
+    dm->free = _free_full_distribution;
     dm->clone = _clone_dist;
-    dm->data = tree;
+    dm->tree = tree;
     dm->tempx = NULL;
     dm->tempp = NULL;
 	dm->logP = DistributionModel_log_uniform_tree;
@@ -1025,7 +1038,12 @@ static void _dist_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free distribution model %s\n", self->name);
 		DistributionModel* cm = (DistributionModel*)self->obj;
-		cm->free(cm);
+		// tree or simplex
+		if(self->data != NULL){
+			Model* model = self->data;
+			model->free(model);
+		}
+		_free_partial_distribution(cm);
 		free_Model(self);
 	}
 	else{
@@ -1331,7 +1349,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
     else if (strcasecmp(d_string, "topology") == 0) {
         char* ref = get_json_node_value_string(node, "tree");
         Model* mtree = Hashtable_get(hash, ref+1);
-        dm = new_UniformTreeDistribution(mtree);
+        dm = new_UniformTreeDistribution(mtree->obj);
         model = new_TreeDistributionModel(id, dm, mtree);
     }
 	else if(strcasecmp(d_string, "normal") == 0){

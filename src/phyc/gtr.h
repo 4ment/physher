@@ -130,6 +130,8 @@ struct SubstitutionModel * new_GTR_with_simplexes( Simplex* freqs, Simplex* rate
 
 void gtr_update_Q( struct SubstitutionModel *m );
 
+void gtr_simplexes_update_Q( struct SubstitutionModel *m );
+
 void gtr_dQ(struct SubstitutionModel *m, int index, double* mat, double t);
 
 #endif /* gtr_h */

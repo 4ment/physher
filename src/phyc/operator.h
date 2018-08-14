@@ -13,6 +13,8 @@
 
 #include "parameters.h"
 
+#include <gsl/gsl_rng.h>
+
 typedef struct Operator{
 	char* name;
 	Parameters* x;
@@ -29,6 +31,7 @@ typedef struct Operator{
 	void (*store)(struct Operator*);
 	void (*restore)(struct Operator*);
 	void (*optimize)(struct Operator*, double);
+	gsl_rng* rng;
 }Operator;
 
 Operator* new_Operator_from_json(json_node* node, Hashtable* hash);
