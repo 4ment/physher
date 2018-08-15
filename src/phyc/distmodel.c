@@ -958,7 +958,7 @@ DistributionModel* new_CopulaDistributionModel_with_parameters(const Parameters*
 double DistributionModel_log_uniform_tree(DistributionModel* dm){
 	if(dm->need_update){
 		int n = Tree_tip_count(dm->tree);
-		dm->lp = logDoubleFactorial(n*2-5);
+		dm->lp = -logDoubleFactorial(n*2-5);
 		dm->need_update = false;
 	}
 	return dm->lp;
