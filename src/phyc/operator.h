@@ -27,6 +27,7 @@ typedef struct Operator{
 	size_t rejected_count;
 	size_t accepted_count;
 	size_t failure_count;
+	size_t tuning_delay;
 	bool (*propose)(struct Operator*, double*);
 	void (*store)(struct Operator*);
 	void (*restore)(struct Operator*);

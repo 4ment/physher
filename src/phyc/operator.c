@@ -51,7 +51,7 @@ double getDeltaP(int count, double logAlpha, double target){
 double optimizeScaleFactor(double scaleFactor, int count, double logAlpha, double target ){
 	double delta = getDeltaP(count, logAlpha, target);
 	delta += log(1./scaleFactor-1.0);
-	return 1./(exp(delta)+1);
+	return 1./(exp(delta)+1.0);
 }
 
 void operator_store(Operator* op){
@@ -132,6 +132,45 @@ bool operator_slider(Operator* op, double* logHR){
 	return true;
 }
 
+bool operator_simplex_exchange(Operator* op, double* logHR){
+	Simplex* simplex = op->models[0]->obj;
+	double lambda = op->parameters[0];
+	long idx1 = gsl_rng_uniform_int(op->rng, simplex->K);
+	long idx2 = idx1;
+	while(idx1 == idx2){
+		idx2 = gsl_rng_uniform_int(op->rng, simplex->K);
+	}
+	
+	const double* oldValues = simplex->get_values(simplex);
+	double* newValues = clone_dvector(oldValues, simplex->K);
+	
+	double w = gsl_rng_uniform(op->rng)*lambda;
+	
+	newValues[idx1] += w;
+	newValues[idx2] -= w;
+	
+	for(int i = 0; i < simplex->K; i++){
+		if (newValues[i] < 0.0001) {
+			free(newValues);
+			op->rejected_count++;;
+			op->failure_count++;
+			return false;
+		}
+	}
+	
+	for (int i = 0; i < simplex->K; i++) {
+		if (isnan(newValues[i])) {
+			free(newValues);
+			op->rejected_count++;;
+			op->failure_count++;
+			return false;
+		}
+	}
+	simplex->set_values(simplex, newValues);
+	free(newValues);
+	return true;
+}
+
 bool operator_dirichlet(Operator* op, double* logHR){
 	Simplex* simplex = op->models[0]->obj;
 	double alpha = op->parameters[0];
@@ -139,21 +178,32 @@ bool operator_dirichlet(Operator* op, double* logHR){
 	double* newScaled = dvector(simplex->K);
 	double* newValues = dvector(simplex->K);
 	
-	const double* oldValues = simplex->get_values(simplex);
+	double* oldValues = clone_dvector(simplex->get_values(simplex), simplex->K);
 	for (int i = 0; i < simplex->K; i++) {
 		scaledOld[i] = alpha*oldValues[i];
 	}
 	
 	bool ok = false;
-	while (!ok) {
+	int failures = 0;
+	while (!ok && failures != 50) {
 		gsl_ran_dirichlet(op->rng, simplex->K, scaledOld, newValues); //rdirichlet(newValues, simplex->K, scaledOld);
 		for(int i = 0; i < simplex->K; i++){
 			ok = true;
-			if (newValues[i] < 0.00001 || newValues[i] > 1000.0) {
+			if (newValues[i] < 0.00001) {
 				ok = false;
+				failures++;
 				break;
 			}
 		}
+	}
+	if(failures == 50){
+		free(oldValues);
+		free(scaledOld);
+		free(newValues);
+		free(newScaled);
+		op->rejected_count++;
+		op->failure_count++;
+		return false;
 	}
 	
 	for (int i = 0; i < simplex->K; i++) {
@@ -162,10 +212,12 @@ bool operator_dirichlet(Operator* op, double* logHR){
 	
 	for (int i = 0; i < simplex->K; i++) {
 		if (isnan(newValues[i])) {
+			free(oldValues);
 			free(scaledOld);
 			free(newValues);
 			free(newScaled);
 			op->rejected_count++;
+			op->failure_count++;
 			return false;
 		}
 	}
@@ -175,6 +227,7 @@ bool operator_dirichlet(Operator* op, double* logHR){
 	double b = gsl_ran_dirichlet_lnpdf(simplex->K, newScaled, oldValues); //ddirchletln(oldValues, simplex->K, newScaled);
 
 	*logHR = b-f;
+	free(oldValues);
 	free(scaledOld);
 	free(newValues);
 	free(newScaled);
@@ -226,15 +279,31 @@ bool operator_sNNI(Operator* op, double* logHR){
 }
 
 void operator_scaler_optimize(Operator* op, double alpha){
-	op->parameters[0] = optimizeScaleFactor(op->parameters[0], op->accepted_count+op->rejected_count+1, alpha, 0.24);
+	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
+	if(count >= 0){
+		op->parameters[0] = optimizeScaleFactor(op->parameters[0], count+1, alpha, 0.24);
+	}
 }
 
 void operator_slider_optimize(Operator* op, double alpha){
-	op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.0001, 20, false);
+	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
+	if(count >= 0){
+		op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.0001, 20, false);
+	}
 }
 
 void operator_dirichlet_optimize(Operator* op, double alpha){
-	op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.01, 10000, true);
+	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
+	if(count >= 0){
+		op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.01, 10000, true);
+	}
+}
+void operator_exchange_optimize(Operator* op, double alpha){
+	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
+	if(count >= 0){
+		double delta = getDeltaP(count+1, alpha, 0.24) + log(op->parameters[0]);
+		op->parameters[0] = exp(delta);
+	}
 }
 
 Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
@@ -259,6 +328,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	op->indexes = NULL;
 	op->models = NULL;
 	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
+	op->tuning_delay = get_json_node_value_size_t(node, "delay", 10000);
 	
 	if (strcasecmp(algorithm_string, "scaler") == 0) {
 		op->x = new_Parameters(1);
@@ -287,6 +357,17 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->optimize = operator_dirichlet_optimize;
 		op->parameters = dvector(1);
 		op->parameters[0] = 100;
+	}
+	else if (strcasecmp(algorithm_string, "exchange") == 0) {
+		char* ref = get_json_node_value_string(node, "x");
+		op->model_count = 1;
+		op->models = malloc(op->model_count*sizeof(Model*));
+		op->models[0] = Hashtable_get(hash, ref+1);
+		op->models[0]->ref_count++;
+		op->propose = operator_simplex_exchange;
+		op->optimize = operator_exchange_optimize;
+		op->parameters = dvector(1);
+		op->parameters[0] = 0.01;
 	}
 	else if (strcasecmp(algorithm_string, "nni") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
