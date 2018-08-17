@@ -13,6 +13,7 @@
 
 #include "matrix.h"
 #include "beta.h"
+#include "compoundmodel.h"
 
 void mmcmc_run(MMCMC* mmcmc){
 	StringBuffer* buffer = new_StringBuffer(10);
@@ -30,6 +31,13 @@ void mmcmc_run(MMCMC* mmcmc){
 		mcmc->gss = true;
 		i = 1;
 	}
+	// Check that we can sample directly from prior withtou MCMC
+	bool sampleable = mmcmc->prior_samples > 0;
+	CompoundModel* cm = (CompoundModel*)(mcmc->model->obj);
+	for (int i = 1; i < cm->count; i++) {
+		sampleable &= cm->models[i]->samplable;
+	}
+	
 	// temperatures should be in decreasing order
 	for (; i < mmcmc->temperature_count; i++) {
 		for (int j = 0; j < mcmc->log_count; j++) {
@@ -42,13 +50,38 @@ void mmcmc_run(MMCMC* mmcmc){
 		}
 		printf("Temperature: %f - %s\n", mmcmc->temperatures[i],buffer->c);
 		mcmc->chain_temperature = mmcmc->temperatures[i];
-		mcmc->run(mcmc);
+		
+		if(sampleable && mcmc->chain_temperature == 0){
+			// Initialize loggers
+			for (int j = 0; j < mcmc->log_count; j++) {
+				mcmc->logs[j]->initialize(mcmc->logs[j]);
+			}
+			
+			for (size_t s = 0; s < mmcmc->prior_samples; s++) {
+				for (int j = 1; j < cm->count; j++) {
+					cm->models[j]->sample_evaluate(cm->models[j]);
+				}
+				mcmc->model->logP(mcmc->model);
+				for (int j = 0; j < mcmc->log_count; j++) {
+					// log every sample to file but not to stdout
+					if(filenames[j] != NULL || (s % mcmc->logs[j]->every == 0 && filenames[j] == NULL)){
+						mcmc->logs[j]->write(mcmc->logs[j], s);
+					}
+				}
+			}
+			for (int j = 0; j < mcmc->log_count; j++) {
+				mcmc->logs[j]->finalize(mcmc->logs[j]);
+			}
+		}
+		else{
+			mcmc->run(mcmc);
+		}
 	}
 	
 	// Leave it as a standard mcmc with original loggers
 	mcmc->chain_temperature = -1;
 	for (int j = 0; j < mcmc->log_count; j++) {
-		if(filenames != NULL){
+		if(filenames[j] != NULL){
 			free(mcmc->logs[j]->filename);
 			mcmc->logs[j]->filename = String_clone(filenames[j]);
 			free(filenames[j]);
@@ -73,6 +106,7 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	json_node* temp_node = get_json_node(node, "temperatures");
 	json_node* steps_node = get_json_node(node, "steps");
 	mmcmc->gss = get_json_node_value_bool(node, "gss", false);
+	mmcmc->prior_samples = get_json_node_value_size_t(node, "samples", 0);
 	
 	if (temp_node != NULL) {
 		if (temp_node->node_type != MJSON_ARRAY) {

@@ -830,6 +830,10 @@ static void _dummy_sample(Model* m, double* samples, double* logP){
 	fprintf(stderr, "Cannot sample from model %s\n", m->name);
 	exit(2);
 }
+static double _dummy_sample_evaluate(Model* m){
+	fprintf(stderr, "Cannot sample and evaluate from model %s\n", m->name);
+	exit(2);
+}
 
 #pragma mark -
 
@@ -857,6 +861,7 @@ Model * new_Model( const char *type, const char *name, void *obj ){
 	model->logP = 0;
 	model->lp = 0;
 	model->sample = _dummy_sample;
+	model->sample_evaluate = _dummy_sample_evaluate;
 	model->samplable = false;
 	return model;
 }

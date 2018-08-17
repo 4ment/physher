@@ -39,6 +39,12 @@ void run(MCMC* mcmc){
 		mcmc->logs[i]->initialize(mcmc->logs[i]);
 	}
 	
+	for (int i = 0; i < mcmc->operator_count; i++) {
+		mcmc->operators[i]->rejected_count = 0;
+		mcmc->operators[i]->accepted_count = 0;
+		mcmc->operators[i]->failure_count = 0;
+	}
+	
 	// loggers log headers
 	if(mcmc->chain_temperature < 0){
 		logP = model->logP(model);
@@ -119,7 +125,7 @@ void run(MCMC* mcmc){
 				op->rejected_count++;
 			}
 			
-			if(op->optimize != NULL && iter % mcmc->tuning_frequency == 0){
+			if(op->optimize != NULL /*&& iter % mcmc->tuning_frequency == 0 && iter >	1000*/){
 				op->optimize(op, alpha);
 			}
 		}
@@ -139,7 +145,7 @@ void run(MCMC* mcmc){
 	if( mcmc->verbose > 0){
 		for (int i = 0; i < mcmc->operator_count; i++) {
 			Operator* op = mcmc->operators[i];
-			printf("Acceptance ratio %s: %f %f (failures: %zu)\n", op->name, ((double)op->accepted_count/(op->accepted_count+op->rejected_count)), op->parameters[0], op->failure_count);
+			printf("Acceptance ratio %s: %f %f (failures: %zu; attempts: %zu)\n", op->name, ((double)op->accepted_count/(op->accepted_count+op->rejected_count)), op->parameters[0], op->failure_count, op->accepted_count+op->rejected_count);
 		}
 	}
 	free(weights);
@@ -166,7 +172,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	json_node* ops = get_json_node(node, "operators");
 	json_node* logs = get_json_node(node, "log");
 	mcmc->chain_length = get_json_node_value_size_t(node, "length", 100000);
-	mcmc->tuning_frequency = get_json_node_value_size_t(node, "tuningfrequency", 100);
+	mcmc->tuning_frequency = get_json_node_value_size_t(node, "tuningfrequency", 1);
 	mcmc->verbose = get_json_node_value_int(node, "verbose", 1);
 	mcmc->run = run;
 	
@@ -224,7 +230,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
             mcmc->log_count++;
         }
     }
-	mcmc->chain_temperature = -1;
+	mcmc->chain_temperature = get_json_node_value_double(node, "temperature", -1);
 	mcmc->gss = get_json_node_value_bool(node, "gss", false);
 	mcmc->free = _free_MCMC;
 	return mcmc;

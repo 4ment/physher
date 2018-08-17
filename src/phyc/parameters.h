@@ -314,6 +314,7 @@ struct _Model {
 	void (*get_free_parameters)(Model*, Parameters*);
 	void (*reset)(Model*);
 	void (*sample)(Model*, double*, double* logP);
+	double (*sample_evaluate)(Model*);
 	
 	ListenerList *listeners;
 	int ref_count;

@@ -35,6 +35,7 @@ struct _DistributionModel{
 	double (*d2logP)(DistributionModel*, const Parameter*);
 	double (*ddlogP)(DistributionModel*, const Parameter*, const Parameter*);
 	void (*sample)(DistributionModel*, double*);
+	double (*sample_evaluate)(DistributionModel*);
 	void (*free)(DistributionModel*);
 	DistributionModel* (*clone)(DistributionModel*);
 	void* data;

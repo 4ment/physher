@@ -233,6 +233,15 @@ void _compound_model_sample(Model *self, double* samples, double* logP){
 	}
 }
 
+double _compound_model_sample_evaluate(Model *self){
+	self->lp = 0;
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	for (int i = 0; i < cm->count; i++) {
+		self->lp += cm->models[i]->sample_evaluate(cm->models[i]);
+	}
+	return self->lp;
+}
+
 Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	Model *model = new_Model("compound", name, cm);
 	model->logP = _compoundModel_logP2;
@@ -246,11 +255,13 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->restore = _compoundModel_restore;
 	model->samplable = true;
 	for (int i = 0; i < cm->count; i++) {
-		if (cm->models[i]->samplable) {
+		if (!cm->models[i]->samplable) {
 			model->samplable = false;
 			break;
 		}
 	}
+	model->sample = _compound_model_sample;
+	model->sample_evaluate = _compound_model_sample_evaluate;
 	return model;
 }
 
