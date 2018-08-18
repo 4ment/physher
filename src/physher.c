@@ -42,7 +42,7 @@
 #include "phyc/mcmc.h"
 #include "phyc/mmcmc.h"
 #include "phyc/hessian.h"
-#include "phyc/vbis.h"
+#include "phyc/is.h"
 #include "phyc/nest.h"
 #include "phyc/cpo.h"
 #include "phyc/laplace.h"
@@ -1105,8 +1105,8 @@ int main(int argc, char* argv[]){
 			cpo->calculate(cpo);
 			cpo->free(cpo);
 		}
-		else if(strcasecmp(type, "vbis") == 0){
-			marginal_vb_t* mvb = new_Marginal_VB_from_json(child, hash2);
+		else if(strcasecmp(type, "vbis") == 0 || strcasecmp(type, "is") == 0){
+			ImportanceSampler* mvb = new_ImportanceSampler_from_json(child, hash2);
 			printf("Marginal likelihood using IS: %f\n", mvb->calculate(mvb));
 			mvb->free(mvb);
 		}
