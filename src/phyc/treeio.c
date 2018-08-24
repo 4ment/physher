@@ -246,6 +246,29 @@ void Tree_print_newick( FILE *pf, Tree *tree, bool internal ){
     Tree_print_newick_subtree(pf, Tree_root(tree), internal);
 }
 
+static void _Tree_print_height_newick_aux( FILE *pf, Tree *tree, const Node *n, bool internal ){
+	if( n == NULL ) return;
+	if( !Node_isleaf(n) ) fprintf(pf, "(");
+	else {
+		fprintf(pf, "%s:%.8f", n->name, Node_time_elapsed((Node*)n) );
+		return;
+	}
+	
+	_Tree_print_height_newick_aux( pf, tree, n->left, internal );
+	fprintf(pf, ",");
+	_Tree_print_height_newick_aux( pf, tree, n->right, internal );
+	if( Node_isroot(n) ){
+		fprintf(pf, ");" );
+	}
+	else {
+		fprintf(pf, ")%s:%f", (internal?n->name:""), Node_time_elapsed((Node*)n) );
+	}
+}
+
+void Tree_print_height_newick( FILE *pf, Tree *tree, bool internal ){
+	_Tree_print_height_newick_aux(pf, tree, Tree_root(tree), internal);
+}
+
 
 #pragma mark -
 // MARK: read tree
