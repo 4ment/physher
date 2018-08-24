@@ -31,7 +31,12 @@ void _log(struct Logger* logger){
 		fprintf(logger->file, "\n");
 	}
 	if (logger->tree) {
-		Tree_print_newick(logger->file, logger->tree->obj, true);
+		if(logger->time){
+			Tree_print_height_newick(logger->file, logger->tree->obj, true);
+		}
+		else{
+			Tree_print_newick(logger->file, logger->tree->obj, true);
+		}
 	}
 	fprintf(logger->file, "\n");
 }
@@ -157,6 +162,7 @@ struct Logger* new_logger_from_json(json_node* node, Hashtable* hash){
 	logger->models = NULL;
 	logger->simplexes = NULL;
 	logger->tree = NULL;
+	logger->time = get_json_node_value_bool(node, "time", false);
 	get_references(node, hash, logger);
 	
 	json_node* file_node = get_json_node(node, "file");

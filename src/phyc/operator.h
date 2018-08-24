@@ -20,10 +20,10 @@ typedef struct Operator{
 	Parameters* x;
 	Model** models;
 	size_t model_count;
-	int index;
 	double* parameters;
 	int* indexes;
 	double weight;
+	bool all;
 	size_t rejected_count;
 	size_t accepted_count;
 	size_t failure_count;

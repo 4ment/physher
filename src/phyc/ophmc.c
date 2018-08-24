@@ -35,8 +35,8 @@ void operator_hmc_restore(Operator* op){
 }
 
 bool operator_hmc(Operator* op, double* logHR){
-	op->index = random_int(Parameters_count(op->x)-1);
-	Parameter* p = Parameters_at(op->x, op->index);
+	op->indexes[0] = random_int(Parameters_count(op->x)-1);
+	Parameter* p = Parameters_at(op->x, op->indexes[0]);
 	Model* posterior = op->models[0];
 	double p0 = rnorm();
 	double x0 = Parameter_value(p);

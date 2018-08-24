@@ -47,6 +47,7 @@ struct _Tree{
 	bool dated;
 	bool time_mode;
 	Parameters* distances;
+	Parameters* heights;
 };
 
 static void tree_init_distance_parameters( Tree *t, Parameters *ps );
@@ -403,6 +404,12 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 		}
 	}
 	
+	atree->heights = new_Parameters(Tree_node_count(atree));
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		Node* node = Tree_node(atree, i);
+		Parameters_add(atree->heights, node->height);
+	}
+	
 	free_StringBuffer(buffer);
 	
 	return atree;
@@ -462,6 +469,13 @@ Tree * new_Tree2( Node *root, bool containBL ){
 			Parameters_add(atree->distances, node->distance);
 		}
 	}
+	
+	
+	atree->heights = new_Parameters(Tree_node_count(atree));
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		Node* node = Tree_node(atree, i);
+		Parameters_add(atree->heights, node->height);
+	}
 	return atree;
 }
 
@@ -470,7 +484,25 @@ Tree * new_Tree2( Node *root, bool containBL ){
 // This function is called when the tree branches contain time in the newick file
 void Tree_init_heights ( Tree *atree ) {
 
-	parse_dates(atree);
+	bool isDated = parse_dates(atree);
+	
+	if(!isDated){
+		Node **nodes = Tree_get_nodes(atree, POSTORDER);
+		for ( int i = 0; i < Tree_node_count(atree); i++) {
+			Node* node = nodes[i];
+			if( !Node_isleaf(node) ){
+				double max_children = dmax( Node_height(Node_left(node)), Node_height(Node_right(node)));
+				double max_children_d = dmax( Node_distance(Node_left(node)), Node_distance(Node_right(node)));
+				
+				Node_set_height(node, max_children+ max_children_d);
+			}
+			else{
+				Node_set_height(nodes[i], 0);
+			}
+		}
+		Tree_constraint_heights(atree);
+		return;
+	}
 
 	double *heights = dvector( Tree_node_count(atree) );
 	bool *set = bvector( Tree_node_count(atree) );
@@ -580,10 +612,10 @@ void _tree_handle_change( Model *self, Model *model, int index ){
 		if( !Node_isleaf(node) ){
 			Tree_constrain_height( Node_left(node) );
 			Tree_constrain_height( Node_right(node) );
+			
+			self->listeners->fire( self->listeners, self, Node_id(Node_left(node)) );
+			self->listeners->fire( self->listeners, self, Node_id(Node_right(node)) );
 		}
-		
-		self->listeners->fire( self->listeners, self, Node_id(Node_left(node)) );
-		self->listeners->fire( self->listeners, self, Node_id(Node_right(node)) );
 	}
 	self->listeners->fire( self->listeners, self, index );
 }
@@ -625,6 +657,9 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 	
 	Parameters_set_name2(clonetree->distances, Parameters_name2(tree->distances));
 	Hashtable_add(hash, Parameters_name2(clonetree->distances), clonetree->distances);
+	
+	Parameters_set_name2(clonetree->heights, Parameters_name2(tree->heights));
+	Hashtable_add(hash, Parameters_name2(clonetree->heights), clonetree->heights);
 	
 	for (int i = 0; i < Tree_node_count(clonetree); i++) {
 		Node* node = Tree_node(clonetree, i);
@@ -680,12 +715,14 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	json_node* init_node = get_json_node(node, "init");
 	json_node* patterns_node = get_json_node(node, "patterns");
 	bool rooted = get_json_node_value_bool(node, "rooted", false);
+	bool time_tree = get_json_node_value_bool(node, "time", false);
 	
 	Model* mtree = NULL;
 	
 	if (newick_node != NULL) {
 		char* newick = (char*)newick_node->value;
-		Tree* tree = new_Tree(newick, true);
+		Tree* tree = new_Tree(newick, !time_tree);
+		tree->time_mode = time_tree;
 		char* id = get_json_node_value_string(node, "id");
 		mtree = new_TreeModel(id, tree);
 		Parameters_set_name2(tree->distances, get_json_node_value_string(node, "parameters"));
@@ -693,11 +730,18 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		for (int i = 0; i < Parameters_count(tree->distances); i++) {
 			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
 		}
+		
+		Parameters_set_name2(tree->heights, get_json_node_value_string(node, "heights"));
+		Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
+		for (int i = 0; i < Parameters_count(tree->heights); i++) {
+			Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+		}
 	}
 	else if (file_node != NULL) {
         const char* filename = (const char*)file_node->value;
         char* tree_string = readTree(filename);
-        Tree *tree = new_Tree( tree_string, true );
+        Tree *tree = new_Tree( tree_string, !time_tree );
+		tree->time_mode = time_tree;
         free(tree_string);
         char* id = get_json_node_value_string(node, "id");
 		mtree = new_TreeModel(id, tree);
@@ -706,7 +750,12 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
         for (int i = 0; i < Parameters_count(tree->distances); i++) {
             Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
         }
-
+		
+		Parameters_set_name2(tree->heights, get_json_node_value_string(node, "heights"));
+		Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
+		for (int i = 0; i < Parameters_count(tree->heights); i++) {
+			Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+		}
 	}
 	else if (init_node != NULL) {
 		json_node* algorithm_node = get_json_node(init_node, "algorithm");
@@ -750,6 +799,12 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		for (int i = 0; i < Parameters_count(tree->distances); i++) {
 			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
 		}
+		
+		Parameters_set_name2(tree->heights, get_json_node_value_string(node, "heights"));
+		Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
+		for (int i = 0; i < Parameters_count(tree->heights); i++) {
+			Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+		}
 	}
 	else if (node->node_type != MJSON_STRING) {
 		char* ref = (char*)node->value;
@@ -759,7 +814,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	else{
 		exit(1);
 	}
-	if (!rooted) {
+	if (!rooted && Node_distance(Tree_root(mtree->obj)->right) != 0) {
 		Tree* tree = mtree->obj;
 		double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
 		Node_set_distance(Tree_root(tree)->right, 0);
@@ -784,6 +839,7 @@ void free_Tree( Tree *t){
 	t->preorder = NULL;
 	free(t->nodes);
 	free_Parameters(t->distances);
+	free_Parameters(t->heights);
 	free(t);
 	t = NULL;
 }
@@ -864,6 +920,12 @@ Tree * clone_Tree( const Tree *tree ){
 			Parameters_add(newTree->distances, node->distance);
 		}
 	}
+	
+	newTree->heights = new_Parameters(Tree_node_count(newTree));
+	for (int i = 0; i < Tree_node_count(newTree); i++) {
+		Node* node = Tree_node(newTree, i);
+		Parameters_add(newTree->heights, node->height);
+	}
 	return newTree;
 }
 
@@ -910,6 +972,12 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
 		if ( node != root && root->right != node) {
 			Parameters_add(newTree->distances, node->distance);
 		}
+	}
+	
+	newTree->heights = new_Parameters(Tree_node_count(newTree));
+	for (int i = 0; i < Tree_node_count(newTree); i++) {
+		Node* node = Tree_node(newTree, i);
+		Parameters_add(newTree->heights, node->height);
 	}
 	
 	return newTree;
@@ -1137,25 +1205,6 @@ void Tree_init_depth( Tree *tree ){
 	_Tree_init_depth_aux( Tree_root(tree) );
 }
 
-// What happens when memory is alraady allocated for a parameter
-void tree_init_distance_parameters( Tree *t, Parameters *ps ){
-	/*if ( t->parameters == NULL ) {
-		t->parameters = new_Parameters( ps->count );
-	}*/
-	int i;
-	Node ** nodes = Tree_get_nodes( t, POSTORDER );
-	for ( i = 0; i < t->nNodes; i++ ) {
-		nodes[i]->distance = Parameters_at(ps,i);
-	}
-}
-
-void tree_init_height_parameters( Tree *t, Parameters *ps ){
-	int i;
-	Node ** nodes = Tree_get_nodes( t, POSTORDER );
-	for ( i = 0; i < t->nNodes; i++ ) {
-		nodes[i]->height = Parameters_at(ps,i);
-	}
-}
 
 static void preorder( Node *n,  Node **nodes, bool tipsOnly, int *pos ){
 	if( n == NULL ) return;

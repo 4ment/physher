@@ -68,6 +68,29 @@ void operator_snni_store(Operator* op){
 	
 }
 
+// we do not know in advance which node is going to move so store all of them
+void operator_height_store(Operator* op){
+	Tree* tree = op->models[0]->obj;
+	for(int i = 0; i < Tree_node_count(tree); i++){
+		Node* node = Tree_node(tree, i);
+		Parameter_store(node->height);
+	}
+}
+
+void operator_tree_scaler_restore(Operator* op){
+	Tree* tree = op->models[0]->obj;
+	if(op->all){
+		for(int i = 0; i < Tree_node_count(tree); i++){
+			Node* node = Tree_node(tree, i);
+			Parameter_restore(node->height);
+		}
+	}
+	else{
+		Node* node = Tree_node(tree, op->indexes[0]);
+		Parameter_restore(node->height);
+	}
+}
+
 void operator_restore(Operator* op){
 	Parameters* ps = op->x;
 	if(op->models != NULL){
@@ -87,27 +110,82 @@ void operator_snni_restore(Operator* op){
 	node2->distance->listeners->fire(node2->distance->listeners, NULL, Node_id(node2));
 }
 
+void operator_uniform_heigh_restore(Operator* op){
+	Tree* tree = op->models[0]->obj;
+	Node* node = Tree_node(tree, op->indexes[0]);
+	Parameter_restore(node->height);
+	node->height->listeners->fire(node->height->listeners, NULL, Node_id(node));
+}
+
+bool operator_uniform_height(Operator* op, double* logHR){
+	Tree* tree = op->models[0]->obj;
+	Node* internal = Tree_root(tree);
+	int nodeCount = Tree_node_count(tree);
+	while (Node_isroot(internal) || Node_isleaf(internal)) {
+		size_t idx = gsl_rng_uniform_int(op->rng, nodeCount);
+		internal = Tree_node(tree, idx);
+	}
+	op->indexes[0] = Node_id(internal);
+	double lower = Parameter_lower(internal->height);
+	double upper = Parameter_upper(internal->height);
+	double newValue = (gsl_rng_uniform(op->rng) * (upper - lower)) + lower;
+	Node_set_height(internal, newValue);
+	return true;
+}
 
 bool operator_scaler(Operator* op, double* logHR){
-	op->index = random_int(Parameters_count(op->x)-1);
-	Parameter* p = Parameters_at(op->x, op->index);
-	double scaler_scaleFactor = op->parameters[0];
-	double v = Parameter_value(p);
-	double vv = v;
-	double s = (scaler_scaleFactor + (random_double() * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
-	vv *= s;
-	*logHR = -log(s);
-	if ( vv > Parameter_upper(p) || vv < Parameter_lower(p ) ) {
-		op->rejected_count++;
-		return false;
+	if(op->x != NULL){
+		op->indexes[0] = random_int(Parameters_count(op->x)-1);
+		Parameter* p = Parameters_at(op->x, op->indexes[0]);
+		double scaler_scaleFactor = op->parameters[0];
+		double v = Parameter_value(p);
+		double vv = v;
+		double s = (scaler_scaleFactor + (random_double() * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
+		vv *= s;
+		*logHR = -log(s);
+		if ( vv > Parameter_upper(p) || vv < Parameter_lower(p ) ) {
+			op->rejected_count++;
+			return false;
+		}
+		Parameter_set_value(p, vv);
 	}
-	Parameter_set_value(p, vv);
+	else{
+		Tree* tree = op->models[0]->obj;
+		double scaler_scaleFactor = op->parameters[0];
+		double s = (scaler_scaleFactor + (random_double() * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
+		
+		if (op->all) {
+			Node** nodes = Tree_nodes(tree);
+			int nodeCount = Tree_node_count(tree);
+			for(int i = 0; i < nodeCount; i++){
+				if(!Node_isleaf(nodes[i])){
+					double newValue = s*Node_height(nodes[i]);
+					Node_set_height(nodes[i], newValue);
+				}
+			}
+			int internalNodes = nodeCount - Tree_tip_count(tree);
+			*logHR = log(s)*(internalNodes - 2);
+		}
+		else{
+			Node* root = Tree_root(tree);
+			op->indexes[0] = Node_id(root);
+			double newValue = s*Node_height(root);
+			double lower = Parameter_lower(root->height);
+			double upper = Parameter_upper(root->height);
+			if(newValue < lower || newValue > upper){
+				op->rejected_count++;
+				return false;
+			}
+			Node_set_height(root, newValue);
+			*logHR = -log(s);
+		}
+	}
 	return true;
 }
 
 bool operator_slider(Operator* op, double* logHR){
-	op->index = random_int(Parameters_count(op->x)-1);
-	Parameter* p = Parameters_at(op->x, op->index);
+	op->indexes[0] = random_int(Parameters_count(op->x)-1);
+	Parameter* p = Parameters_at(op->x, op->indexes[0]);
 	double v = Parameter_value(p);
 	double vv = v;
 	double w = (random_double() - 0.5)*op->parameters[0];//slider_delta;
@@ -327,16 +405,30 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	op->parameters = NULL;
 	op->indexes = NULL;
 	op->models = NULL;
+	op->optimize = NULL;
 	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	op->tuning_delay = get_json_node_value_size_t(node, "delay", 10000);
+	op->all = get_json_node_value_bool(node, "all", false);
 	
 	if (strcasecmp(algorithm_string, "scaler") == 0) {
-		op->x = new_Parameters(1);
-		get_parameters_references2(node, hash, op->x, "x");
+		char* ref_tree = get_json_node_value_string(node, "tree");
+		if(ref_tree != NULL){
+			op->model_count = 1;
+			op->models = malloc(op->model_count*sizeof(Model*));
+			op->models[0] = Hashtable_get(hash, ref_tree+1);
+			op->models[0]->ref_count++;
+			op->store = operator_height_store;
+			op->restore = operator_tree_scaler_restore;
+		}
+		else{
+			op->x = new_Parameters(1);
+			get_parameters_references2(node, hash, op->x, "x");
+		}
 		op->propose = operator_scaler;
 		op->optimize = operator_scaler_optimize;
 		op->parameters = dvector(1);
 		op->parameters[0] = 0.9;
+		op->indexes = ivector(1);
 		
 	}
 	else if (strcasecmp(algorithm_string, "slider") == 0) {
@@ -346,6 +438,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->optimize = operator_slider_optimize;
 		op->parameters = dvector(1);
 		op->parameters[0] = 0.001;
+		op->indexes = ivector(1);
 	}
 	else if (strcasecmp(algorithm_string, "dirichlet") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
@@ -378,10 +471,20 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->propose = operator_sNNI;
 		op->store = operator_snni_store;
 		op->restore = operator_snni_restore;
-		op->optimize = NULL;
 		op->parameters = dvector(1);
 		op->indexes = ivector(2);
 		op->parameters[0] = 1000;
+	}
+	else if (strcasecmp(algorithm_string, "uniform") == 0) {
+		char* ref = get_json_node_value_string(node, "x");
+		op->model_count = 1;
+		op->models = malloc(op->model_count*sizeof(Model*));
+		op->models[0] = Hashtable_get(hash, ref+1);
+		op->models[0]->ref_count++;
+		op->propose = operator_uniform_height;
+		op->store = operator_height_store;
+		op->restore = operator_uniform_heigh_restore;
+		op->indexes = ivector(1);
 	}
 	
 	op->rejected_count = 0;

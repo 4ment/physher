@@ -25,6 +25,7 @@ struct Logger{
 	FILE* file;
 	char* filename;
 	char* format;
+	bool time; // if true then tree heights are printed
 };
 
 

@@ -198,6 +198,32 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
 	return model;
 }
 
+Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
+	char* model = get_json_node_value_string(node, "model");
+	BranchModel* bm = NULL;
+	
+	json_node* tree_node = get_json_node(node, "tree");
+	char* ref = (char*)tree_node->value;
+	// check it starts with a &
+	Model* mtree = Hashtable_get(hash, ref+1);
+	mtree->ref_count++;
+	
+	if(strcasecmp(model, "strict") == 0){
+		json_node* p_node = get_json_node(node, "rate");
+		Parameter* p = new_Parameter_from_json(p_node, hash);
+		bm = new_StrictClock_with_parameter(mtree->obj, p);
+		free_Parameter(p);
+	}
+	else{
+		fprintf(stderr, "BranchModel type unknown %s\n", model);
+		exit(1);
+	}
+
+	char* id = get_json_node_value_string(node, "id");
+	Model* mbm = new_BranchModel2(id, bm, mtree);
+	mtree->free(mtree);
+	return mbm;
+}
 
 BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree ){
 	BranchModel *newbm = (BranchModel *)malloc(sizeof(BranchModel));
@@ -303,6 +329,25 @@ BranchModel * new_StrictClock_with_parameters( Tree *tree, const Parameters *rat
 	
 	bm->rates = new_Parameters(1);
 	Parameters_add_parameters(bm->rates, rates);
+	
+	bm->need_update = false; // nothing to do
+	
+	bm->indicators = NULL;
+	bm->unscaled_rates = NULL;
+	bm->map = NULL;
+	
+	
+	return bm;
+}
+
+BranchModel * new_StrictClock_with_parameter( Tree *tree, Parameter *rate ){
+	BranchModel *bm = BranchModel_init(tree, CLOCK_STRICT);
+	
+	bm->get = _get_strict_clock;
+	bm->set = _set_strickclock;
+	
+	bm->rates = new_Parameters(1);
+	Parameters_add(bm->rates, rate);
 	
 	bm->need_update = false; // nothing to do
 	

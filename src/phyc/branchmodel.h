@@ -64,6 +64,8 @@ typedef struct BranchModel{
 #pragma mark -
 #pragma mark BranchModel
 
+Model* new_BranchModel_from_json(json_node*node, Hashtable*hash);
+
 Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree);
 
 BranchModel * new_BranchModel( Tree *tree, branchmodel type );
@@ -89,6 +91,7 @@ BranchModel * new_StrictClock( Tree *tree );
 
 BranchModel * new_StrictClock_with_parameters( Tree *tree, const Parameters *rates );
 
+BranchModel * new_StrictClock_with_parameter( Tree *tree, Parameter *rate );
 
 
 #pragma mark -
