@@ -20,6 +20,7 @@
 #include "treesearch.h"
 #include "opvb.h"
 #include "ophmc.h"
+#include "demographicmodels.h"
 
 #include <gsl/gsl_randist.h>
 
@@ -74,6 +75,24 @@ void operator_height_store(Operator* op){
 	for(int i = 0; i < Tree_node_count(tree); i++){
 		Node* node = Tree_node(tree, i);
 		Parameter_store(node->height);
+	}
+}
+
+void operator_interval_store(Operator* op){
+	Coalescent* coal = op->models[0]->obj;
+	for(int i = 0; i < Tree_node_count(coal->tree); i++){
+		Node* node = Tree_node(coal->tree, i);
+		Parameter_store(node->height);
+	}
+}
+
+void operator_interval_scaler_restore(Operator* op){
+	Coalescent* coal = op->models[0]->obj;
+	for(int i = 0; i < Tree_node_count(coal->tree); i++){
+		if(op->indexes[i] == 1){
+			Node* node = Tree_node(coal->tree, op->indexes[i]);
+			Parameter_restore(node->height);
+		}
 	}
 }
 
@@ -133,6 +152,39 @@ bool operator_uniform_height(Operator* op, double* logHR){
 	return true;
 }
 
+bool operator_interval_scaler(Operator* op, double* logHR){
+	double scaler_scaleFactor = op->parameters[0];
+	double s = (scaler_scaleFactor + (random_double() * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
+	
+	Coalescent* coal = op->models[0]->obj;
+	Node* internal = Tree_root(coal->tree);
+	int nodeCount = Tree_node_count(coal->tree);
+	while (Node_isleaf(internal)) {
+		size_t idx = gsl_rng_uniform_int(op->rng, nodeCount);
+		internal = Tree_node(coal->tree, idx);
+	}
+	int endPoint = 0;
+	for( ; endPoint < coal->n; endPoint++){
+		if(coal->nodes[endPoint] == Node_id(internal)) break;
+	}
+	double oldInterval = Node_height(internal);
+	if (endPoint > 0) {
+		oldInterval -= Node_height(Tree_node(coal->tree, coal->nodes[endPoint-1]));
+	}
+	double intervalIncrement = s*oldInterval - oldInterval;
+//	printf("%f %f %f\n", intervalIncrement, oldInterval, s);
+	memset(op->indexes, 0, sizeof(int)*Tree_node_count(coal->tree));
+	
+	for(int i = endPoint; i < coal->n; i++){
+		Node* node = Tree_node(coal->tree, coal->nodes[i]);
+		Node_set_height(node, Node_height(node)+intervalIncrement);
+		op->indexes[coal->nodes[i]] = 1;
+	}
+
+	*logHR = -log(s);
+	return true;
+}
+
 bool operator_scaler(Operator* op, double* logHR){
 	if(op->x != NULL){
 		op->indexes[0] = random_int(Parameters_count(op->x)-1);
@@ -143,6 +195,7 @@ bool operator_scaler(Operator* op, double* logHR){
 		double s = (scaler_scaleFactor + (random_double() * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
 		vv *= s;
 		*logHR = -log(s);
+		
 		if ( vv > Parameter_upper(p) || vv < Parameter_lower(p ) ) {
 			op->rejected_count++;
 			return false;
@@ -412,23 +465,36 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	
 	if (strcasecmp(algorithm_string, "scaler") == 0) {
 		char* ref_tree = get_json_node_value_string(node, "tree");
-		if(ref_tree != NULL){
+		char* ref_coalescent = get_json_node_value_string(node, "coalescent");
+		if(ref_coalescent != NULL){
 			op->model_count = 1;
 			op->models = malloc(op->model_count*sizeof(Model*));
-			op->models[0] = Hashtable_get(hash, ref_tree+1);
+			op->models[0] = Hashtable_get(hash, ref_coalescent+1);
 			op->models[0]->ref_count++;
-			op->store = operator_height_store;
-			op->restore = operator_tree_scaler_restore;
+			op->store = operator_interval_store;
+			op->restore = operator_interval_scaler_restore;
+			op->propose = operator_interval_scaler;
+			op->indexes = ivector(Tree_node_count(((Coalescent*)op->models[0]->obj)->tree));
 		}
 		else{
-			op->x = new_Parameters(1);
-			get_parameters_references2(node, hash, op->x, "x");
+			if(ref_tree != NULL){
+				op->model_count = 1;
+				op->models = malloc(op->model_count*sizeof(Model*));
+				op->models[0] = Hashtable_get(hash, ref_tree+1);
+				op->models[0]->ref_count++;
+				op->store = operator_height_store;
+				op->restore = operator_tree_scaler_restore;
+			}
+			else{
+				op->x = new_Parameters(1);
+				get_parameters_references2(node, hash, op->x, "x");
+			}
+			op->propose = operator_scaler;
+			op->indexes = ivector(1);
 		}
-		op->propose = operator_scaler;
 		op->optimize = operator_scaler_optimize;
 		op->parameters = dvector(1);
 		op->parameters[0] = 0.9;
-		op->indexes = ivector(1);
 		
 	}
 	else if (strcasecmp(algorithm_string, "slider") == 0) {

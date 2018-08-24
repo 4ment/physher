@@ -145,7 +145,9 @@ void run(MCMC* mcmc){
 	if( mcmc->verbose > 0){
 		for (int i = 0; i < mcmc->operator_count; i++) {
 			Operator* op = mcmc->operators[i];
-			printf("Acceptance ratio %s: %f %f (failures: %zu; attempts: %zu)\n", op->name, ((double)op->accepted_count/(op->accepted_count+op->rejected_count)), op->parameters[0], op->failure_count, op->accepted_count+op->rejected_count);
+			printf("Acceptance ratio %s: %f", op->name, ((double)op->accepted_count/(op->accepted_count+op->rejected_count)));
+			if(op->parameters != NULL) printf(" %f", op->parameters[0]);
+			printf(" (failures: %zu; attempts: %zu)\n", op->failure_count, op->accepted_count+op->rejected_count);
 		}
 	}
 	free(weights);
