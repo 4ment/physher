@@ -54,8 +54,6 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash);
 
 void free_Coalescent( Coalescent *coalescent );
 
-Coalescent * clone_Coalescent( const Coalescent *coal, Tree *tree );
-
 #pragma mark -
 #pragma mark Constant coalescent
 

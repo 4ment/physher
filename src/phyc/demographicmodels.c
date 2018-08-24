@@ -179,32 +179,6 @@ void free_Coalescent( Coalescent *coalescent ){
     }
 }
 
-Coalescent * clone_Coalescent( const Coalescent *coal, Tree *tree ){
-    Coalescent *coalescent = NULL;
-    switch ( coal->type ) {
-        case CONSTANT_DEMOGRAPHY:{
-            coalescent = clone_ConstantCoalescent(coal, tree);
-            break;
-        }
-        default:
-            assert(0);
-    }
-    return coalescent;
-}
-
-Coalescent * clone_Coalescent_with_parameters( const Coalescent *coal, Parameters* p, Model *tree ){
-	Coalescent *coalescent = NULL;
-	switch ( coal->type ) {
-		case CONSTANT_DEMOGRAPHY:{
-			coalescent = clone_ConstantCoalescent(coal, tree);
-			break;
-		}
-		default:
-			assert(0);
-	}
-	return coalescent;
-}
-
 #pragma mark -
 #pragma mark Constant coalescent
 
@@ -235,11 +209,6 @@ void free_ConstantCoalescent( Coalescent *coal ){
     free(coal->times);
     free(coal->iscoalescent);
 	free(coal);
-}
-
-Coalescent * clone_ConstantCoalescent( const Coalescent *coal, Tree *tree ){
-    Coalescent *newcoal = new_ConstantCoalescent( tree, Parameters_value(coal->p, 0) );
-    return newcoal;
 }
 
 double get_demographic_constant( const Coalescent *coal, double time ){
