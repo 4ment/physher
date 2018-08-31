@@ -205,19 +205,15 @@ double DistributionModel_log_gamma(DistributionModel* dm){
 			double alpha = Parameters_value(dm->parameters, i*2);
 			double beta = Parameters_value(dm->parameters, i*2+1);
 			double x = Parameters_value(dm->x, i);
-//			logP += gammln(alpha) - log(pow(beta, alpha)*pow(x,alpha-1.0)) - beta*x;
 			logP += log(gsl_ran_gamma_pdf(x, alpha, 1.0/beta));
 		}
 	}
 	else{
 		double alpha = Parameters_value(dm->parameters, 0);
 		double beta = Parameters_value(dm->parameters, 1);
-		logP = -gammln(alpha) * Parameters_count(dm->x);
-		double beta_alpha = pow(beta, alpha);
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
 			double x = Parameters_value(dm->x, i);
-			logP += log(beta_alpha*pow(x,alpha-1.0)) - beta*x;
-	//		logP += dloggamma(Parameters_value(dm->x, i), alpha, beta);
+			logP += log(gsl_ran_gamma_pdf(x, alpha, 1.0/beta));
 		}
 	}
 	return logP;
@@ -229,20 +225,14 @@ double DistributionModel_log_gamma_with_values(DistributionModel* dm, const doub
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
 			double alpha = Parameters_value(dm->parameters, i*2);
 			double beta = Parameters_value(dm->parameters, i*2+1);
-			double x = values[i];
-			//			logP += gammln(alpha) - log(pow(beta, alpha)*pow(x,alpha-1.0)) - beta*x;
-			logP += log(gsl_ran_gamma_pdf(x, alpha, 1.0/beta));
+			logP += log(gsl_ran_gamma_pdf(values[i], alpha, 1.0/beta));
 		}
 	}
 	else{
 		double alpha = Parameters_value(dm->parameters, 0);
 		double beta = Parameters_value(dm->parameters, 1);
-		logP = -gammln(alpha) * Parameters_count(dm->x);
-		double beta_alpha = pow(beta, alpha);
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double x = values[i];
-			logP += log(beta_alpha*pow(x,alpha-1.0)) - beta*x;
-			//		logP += dloggamma(Parameters_value(dm->x, i), alpha, beta);
+			logP += log(gsl_ran_gamma_pdf(values[i], alpha, 1.0/beta));
 		}
 	}
 	return logP;
@@ -513,7 +503,7 @@ double DistributionModel_log_dirichlet(DistributionModel* dm){
 		}
 	}
 	else if(dm->simplex != NULL){
-		return log(ddirchlet(dm->simplex->get_values(dm->simplex), dm->simplex->K, dm->tempp));
+		return gsl_ran_dirichlet_lnpdf(dm->simplex->K, dm->tempp, dm->simplex->get_values(dm->simplex));
 	}
 	else{
 		assert(0);
@@ -522,7 +512,7 @@ double DistributionModel_log_dirichlet(DistributionModel* dm){
 }
 
 double DistributionModel_log_dirichlet_with_values(DistributionModel* dm, const double* values){
-	return log(ddirchlet(values, Parameters_count(dm->x), dm->tempp));
+	return gsl_ran_dirichlet_lnpdf(dm->simplex->K, dm->tempp, dm->simplex->get_values(dm->simplex));
 }
 static void DistributionModel_dirichlet_sample(DistributionModel* dm, double* samples){
 	gsl_ran_dirichlet(dm->rng, dm->simplex->K, dm->tempp, samples);
@@ -1324,7 +1314,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	
 	char* file = get_json_node_value_string(node, "file");
 	Vector** samples = NULL;
-	if (file != NULL) {
+	if (file != NULL && strcasecmp(d_string, "dirichlet") != 0){
 		get_parameters_references2(node, hash, x, "x");
 		size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
 		samples = read_log_for_parameters_t(file, burnin, x);
@@ -1356,19 +1346,63 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	}
 	else if (strcasecmp(d_string, "dirichlet") == 0) {
 		parameters = new_Parameters(1);
-		get_parameters_references(node, hash, parameters);
-		Model* simplex = get_simplex(node, hash);
-		int i = 0;
-		for ( ; i < Parameters_count(parameters); i++) {
-			if(Parameters_value(parameters, i) != 1) break;
-		}
-		if(i == Parameters_count(parameters)){
-			dm = new_FlatDirichletDistributionModel((Simplex*)simplex->obj);
+		Model* msimplex = get_simplex(node, hash);
+		Simplex* simplex = msimplex->obj;
+
+		if (file != NULL) {
+			char* name = msimplex->name;
+			char** names = malloc(sizeof(char*)*simplex->K);
+			StringBuffer* buffer = new_StringBuffer(10);
+			for(int i = 0; i < simplex->K; i++){
+				StringBuffer_empty(buffer);
+				StringBuffer_append_format(buffer, "%s%d", name, i+1);
+				names[i] = StringBuffer_tochar(buffer);
+			}
+			size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
+			samples = read_log_for_names_t(file, burnin, names, simplex->K);
+			
+			size_t paramCount = simplex->K;
+			double* means = dvector(paramCount);
+			double* variances = dvector(paramCount);
+			for (int i = 0; i < paramCount; i++) {
+				means[i] = mean(Vector_data(samples[i]), Vector_length(samples[i]));
+				variances[i] = variance(Vector_data(samples[i]), Vector_length(samples[i]), means[i]);
+			}
+			double num = 0;
+			double denom = 0;
+			for (int i = 0; i < paramCount; i++) {
+				num += means[i]*pow(1.0 - means[i], 2);
+				denom += means[i]*variances[i]*(1.0 - means[i]);
+			}
+			double mhat = num/denom - 1.0;
+			for (int i = 0; i < paramCount; i++) {
+				Parameters_move(parameters, new_Parameter("alpha", mhat*means[i], NULL));
+//				printf("%s %f %f %f\n", names[i], mhat*means[i], mhat, means[i]);
+				free(names[i]);
+			}
+//			printf("\n");
+			dm = new_DirichletDistributionModel_with_parameters(parameters, simplex);
+			
+			free(means);
+			free(variances);
+			free(names);
+			free_StringBuffer(buffer);
 		}
 		else{
-			dm = new_DirichletDistributionModel_with_parameters(parameters, (Simplex*)simplex->obj);
+			get_parameters_references(node, hash, parameters);
+			int i = 0;
+			for ( ; i < Parameters_count(parameters); i++) {
+				if(Parameters_value(parameters, i) != 1) break;
+			}
+			if(i == Parameters_count(parameters)){
+				dm = new_FlatDirichletDistributionModel(simplex);
+			}
+			else{
+				dm = new_DirichletDistributionModel_with_parameters(parameters, simplex);
+			}
 		}
-		model = new_DistributionModel3(id, dm, simplex);
+		
+		model = new_DistributionModel3(id, dm, msimplex);
 		model->sample = _dist_model_sample;
 		model->sample_evaluate = _dist_model_sample_evaluate;
 		model->samplable = true;
