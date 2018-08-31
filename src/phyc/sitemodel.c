@@ -31,6 +31,8 @@
 
 #include "model.h"
 
+#include <gsl/gsl_cdf.h>
+
 static void _gamma_approx_quantile( SiteModel *sm );
 static void _invariant( SiteModel *sm );
 static void _calculate_rates_discrete( SiteModel *sm );
@@ -511,7 +513,8 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 	// median
 	if(sm->type == SITEMODEL_GAMMA || sm->type == SITEMODEL_GAMMAINV){
 		for (int i = 0; i < nCat; i++) {
-			sm->cat_rates[i + cat] = qgamma( (2.0 * i + 1.0) / (2.0 * nCat), alpha, alpha );
+			//sm->cat_rates[i + cat] = qgamma( (2.0 * i + 1.0) / (2.0 * nCat), alpha, alpha );
+			sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), alpha, 1.0/alpha );
 			mean += sm->cat_rates[i + cat];
 			
 			sm->cat_proportions[i + cat] = propVariable / nCat;

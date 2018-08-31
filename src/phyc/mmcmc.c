@@ -156,5 +156,13 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	mmcmc->run = mmcmc_run;
 	mmcmc->free = _free_MMCMC;
 	
+	if (mmcmc->gss) {
+		CompoundModel* cm = mmcmc->mcmc->model->obj;
+		if (cm->count != 2) {
+			fprintf(stderr, "Exactly 2 models (posterior and reference distributions) should be specified for GSS\n");
+			exit(2);
+		}
+	}
+	
 	return mmcmc;
 }

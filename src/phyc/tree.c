@@ -730,11 +730,13 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		for (int i = 0; i < Parameters_count(tree->distances); i++) {
 			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
 		}
-		
-		Parameters_set_name2(tree->heights, get_json_node_value_string(node, "heights"));
-		Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
-		for (int i = 0; i < Parameters_count(tree->heights); i++) {
-			Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+		json_node* h_node = get_json_node(node, "heights");
+		if(h_node != NULL){
+			Parameters_set_name2(tree->heights, h_node->value);
+			Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
+			for (int i = 0; i < Parameters_count(tree->heights); i++) {
+				Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+			}
 		}
 	}
 	else if (file_node != NULL) {
@@ -751,10 +753,13 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
             Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
         }
 		
-		Parameters_set_name2(tree->heights, get_json_node_value_string(node, "heights"));
-		Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
-		for (int i = 0; i < Parameters_count(tree->heights); i++) {
-			Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+		json_node* h_node = get_json_node(node, "heights");
+		if(h_node != NULL){
+			Parameters_set_name2(tree->heights, h_node->value);
+			Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
+			for (int i = 0; i < Parameters_count(tree->heights); i++) {
+				Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+			}
 		}
 	}
 	else if (init_node != NULL) {
@@ -799,11 +804,13 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		for (int i = 0; i < Parameters_count(tree->distances); i++) {
 			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
 		}
-		
-		Parameters_set_name2(tree->heights, get_json_node_value_string(node, "heights"));
-		Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
-		for (int i = 0; i < Parameters_count(tree->heights); i++) {
-			Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+		json_node* h_node = get_json_node(node, "heights");
+		if(h_node != NULL){
+			Parameters_set_name2(tree->heights, h_node->value);
+			Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
+			for (int i = 0; i < Parameters_count(tree->heights); i++) {
+				Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+			}
 		}
 	}
 	else if (node->node_type != MJSON_STRING) {
