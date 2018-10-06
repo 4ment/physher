@@ -343,34 +343,34 @@ void free_cVector( cVector *v ){
 
 Matrix * new_Matrix( const size_t nrow, const size_t ncol ){
 	Matrix *m = (Matrix *)malloc(sizeof(Matrix));
-    assert(m);
-    size_t i;
-//	assert(m != NULL);
-//	m->matrix = (double **)malloc((size_t) nrow*sizeof(double*));
-//	
-//	m->nrow = nrow;
-//	m->ncol = ncol;
-//	
-//	if (!m->matrix) error("row allocation failure in vector()");
-//	assert(m->matrix != NULL);
-//	m->matrix[0] = (double *)calloc(nrow*ncol, sizeof(double));
-//	
-//	for( size_t i = 1; i<nrow; i++ ) m->matrix[i] = m->matrix[i-1]+ncol;
-	
+	assert(m);
+	m->rowNames = NULL;
+	m->colNames = NULL;
 	m->matrix = (double **)malloc((size_t) nrow*sizeof(double*));
-    assert(m->matrix);
-    for( i = 0; i< nrow; i++ ){
-        m->matrix[i] = (double *)calloc(ncol, sizeof(double));
-        assert(m->matrix[i]);
-    }
+	assert(m->matrix);
+	for( size_t i = 0; i< nrow; i++ ){
+		m->matrix[i] = (double *)calloc(ncol, sizeof(double));
+		assert(m->matrix[i]);
+	}
 	
 	m->nrow = nrow;
 	m->ncol = ncol;
-
+	
 	return m;
 }
 
-
+Matrix * new_Matrix_from( double** matrix, const size_t nrow, const size_t ncol ){
+	Matrix *m = (Matrix *)malloc(sizeof(Matrix));
+	assert(m);
+	m->rowNames = NULL;
+	m->colNames = NULL;
+	m->matrix = matrix;
+	
+	m->nrow = nrow;
+	m->ncol = ncol;
+	
+	return m;
+}
 
 Matrix *Transpose( const Matrix *m ){
 	Matrix *m2 = new_Matrix(m->ncol, m->nrow);
@@ -451,6 +451,18 @@ Matrix *Subtract2( const Matrix *m1, const Matrix *m2 ){
 
 void free_Matrix( Matrix *m ){
 	free_dmatrix( m->matrix, m->nrow );
+	if (m->rowNames != NULL) {
+		for (int i = 0; i < m->nrow; i++) {
+			free(m->rowNames[i]);
+		}
+		free(m->rowNames);
+	}
+	if (m->colNames != NULL) {
+		for (int i = 0; i < m->ncol; i++) {
+			free(m->colNames[i]);
+		}
+		free(m->colNames);
+	}
 	free( m );
 }
 

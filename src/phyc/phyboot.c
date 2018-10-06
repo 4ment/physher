@@ -1809,7 +1809,7 @@ static void * _resampling_thread_worker_distance( void *threadpool  ){
             tree = new_NJ(taxa, pool->sequences->size, matrix);
         }
         else if( pool->algorithm == CLUSTERING_UPGMA){
-            tree = new_UPGMA(resampled, matrix);
+            tree = new_UPGMA(taxa, pool->sequences->size, matrix);
         }
         else {
             error("clustering algorithm not yet implemented\n");
@@ -1942,7 +1942,7 @@ void Distance_resampling_openmp( const Sequences *sequences, resampling_scheme s
             tree = new_NJ(taxa, sequences->size, matrix);
         }
         else if( algorithm == CLUSTERING_UPGMA){
-            tree = new_UPGMA(resampled, matrix);
+            tree = new_UPGMA(taxa, sequences->size, matrix);
         }
         else {
             error("clustering algorithm not yet implemented\n");

@@ -23,6 +23,7 @@
 #include "node.h"
 #include "mjson.h"
 #include "nj.h"
+#include "upgma.h"
 
 typedef enum  treeorder {PREORDER, POSTORDER} treeorder;
 
@@ -95,6 +96,10 @@ void Tree_update_topology( Tree *tree );
 void rename_tree( Tree *tree, treeorder order );
 
 void Tree_init_depth( Tree *tree );
+
+void Tree_set_rooted(Tree* tree, bool rooted);
+
+bool Tree_rooted(Tree* tree);
 
 #pragma mark -
 #pragma mark Height

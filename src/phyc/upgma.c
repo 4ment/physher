@@ -21,32 +21,32 @@
 #include <assert.h>
 
 #include "matrix.h"
+#include "distancematrix.h"
 
 static void _findMinIndexes( double **matrix, int ncluster, int *alias, int *imin, int *jmin);
 
-Tree * new_UPGMA( const Sequences *sequences, double **_matrix ){
-    int nTips = sequences->size;
+Tree * new_UPGMA( const char **taxa, size_t dim, double **matrix ){
     
-    Node **nodes = (Node**)malloc(nTips*sizeof(Node*));
+    Node **nodes = (Node**)malloc(dim*sizeof(Node*));
     assert(nodes);
-    int *alias = ivector(nTips);
-    double *h = dvector(nTips);
-    int *counts = ivector(nTips);
+    int *alias = ivector(dim);
+    double *h = dvector(dim);
+    int *counts = ivector(dim);
     
     int imin=0;
     int jmin=0;
     
     int i = 0;
-    for ( ; i < nTips; i++ ) {
-        nodes[i] = new_Node(NULL, sequences->seqs[i]->name, i);
+    for ( ; i < dim; i++ ) {
+        nodes[i] = new_Node(NULL, taxa[i], i);
         alias[i] = i;
         counts[i] = 1;
     }
-    int ncluster = nTips;
+    int ncluster = dim;
     
     while( ncluster > 2 ){
         
-        _findMinIndexes(_matrix, ncluster, alias, &imin, &jmin);
+        _findMinIndexes(matrix, ncluster, alias, &imin, &jmin);
         
         Node *node = new_Node(NULL, NULL, ncluster);
         
@@ -59,7 +59,7 @@ Tree * new_UPGMA( const Sequences *sequences, double **_matrix ){
         Node_set_parent(inode, node);
         Node_set_parent(jnode, node);
         
-        double l = dmax(0.0, _matrix[ alias[imin] ][ alias[jmin] ]*0.5);
+        double l = dmax(0.0, matrix[ alias[imin] ][ alias[jmin] ]*0.5);
         
         Node_set_distance(inode, l-h[alias[imin]]);
         Node_set_distance(jnode, l-h[alias[jmin]]);
@@ -71,13 +71,13 @@ Tree * new_UPGMA( const Sequences *sequences, double **_matrix ){
         
         int k = 0;
         for ( ; k < imin; k++) {
-            _matrix[alias[k]][alias[imin]] = _matrix[alias[imin]][alias[k]] = (counts[alias[imin]]*_matrix[ alias[k] ][ alias[imin] ] + counts[alias[jmin]]*_matrix[ alias[k] ][ alias[jmin] ]) / (counts[alias[imin]]+counts[alias[jmin]]);
+            matrix[alias[k]][alias[imin]] = matrix[alias[imin]][alias[k]] = (counts[alias[imin]]*matrix[ alias[k] ][ alias[imin] ] + counts[alias[jmin]]*matrix[ alias[k] ][ alias[jmin] ]) / (counts[alias[imin]]+counts[alias[jmin]]);
         }
         for ( k++; k < jmin; k++) {
-            _matrix[alias[k]][alias[imin]] = _matrix[alias[imin]][alias[k]] = (counts[alias[imin]]*_matrix[ alias[k] ][ alias[imin] ] + counts[alias[jmin]]*_matrix[ alias[k] ][ alias[jmin] ]) / (counts[alias[imin]]+counts[alias[jmin]]);
+            matrix[alias[k]][alias[imin]] = matrix[alias[imin]][alias[k]] = (counts[alias[imin]]*matrix[ alias[k] ][ alias[imin] ] + counts[alias[jmin]]*matrix[ alias[k] ][ alias[jmin] ]) / (counts[alias[imin]]+counts[alias[jmin]]);
         }
         for ( k++; k < ncluster; k++) {
-            _matrix[alias[k]][alias[imin]] = _matrix[alias[imin]][alias[k]] = (counts[alias[imin]]*_matrix[ alias[k] ][ alias[imin] ] + counts[alias[jmin]]*_matrix[ alias[k] ][ alias[jmin] ]) / (counts[alias[imin]]+counts[alias[jmin]]);
+            matrix[alias[k]][alias[imin]] = matrix[alias[imin]][alias[k]] = (counts[alias[imin]]*matrix[ alias[k] ][ alias[imin] ] + counts[alias[jmin]]*matrix[ alias[k] ][ alias[jmin] ]) / (counts[alias[imin]]+counts[alias[jmin]]);
         }
         if(ncluster-jmin-1 != 0 ){
             memmove(&alias[jmin], &alias[jmin+1], sizeof(int)*(ncluster-jmin-1));
@@ -96,7 +96,7 @@ Tree * new_UPGMA( const Sequences *sequences, double **_matrix ){
     Node_set_parent(inode, node);
     Node_set_parent(jnode, node);
     
-    double l = dmax(0.0, _matrix[ alias[0] ][ alias[1] ]*0.5);
+    double l = dmax(0.0, matrix[ alias[0] ][ alias[1] ]*0.5);
     
     Node_set_distance(inode, l-h[ alias[0] ]);
     Node_set_distance(jnode, l-h[ alias[1] ]);
@@ -105,8 +105,9 @@ Tree * new_UPGMA( const Sequences *sequences, double **_matrix ){
     free(nodes);
     free(alias);
     free(h);
-    
-    return new_Tree2(node, false);
+	Tree* tree = new_Tree2(node, false);
+	Tree_set_rooted(tree, true);
+    return tree;
 }
 
 void _findMinIndexes( double **matrix, int ncluster, int *alias, int *imin, int *jmin){
@@ -226,7 +227,15 @@ Tree * new_UPGMA_float( const Sequences *sequences, float **_matrix ){
     free(nodes);
     free(alias);
     free(h);
-    
-    return new_Tree2(node, false);
+	Tree* tree = new_Tree2(node, false);
+	Tree_set_rooted(tree, true);
+	return tree;
+}
+
+Tree* create_UPGMA_from_json( json_node* node, Hashtable* hash ){
+	Matrix* matrix = create_DistanceMatrix_from_json(node, hash);
+	Tree* tree = new_UPGMA((const char**)matrix->rowNames, matrix->nrow, matrix->matrix);
+	free_Matrix(matrix);
+	return tree;
 }
 

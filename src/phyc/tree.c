@@ -713,105 +713,42 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	json_node* newick_node = get_json_node(node, "newick");
 	json_node* file_node = get_json_node(node, "file");
 	json_node* init_node = get_json_node(node, "init");
-	json_node* patterns_node = get_json_node(node, "patterns");
-	bool rooted = get_json_node_value_bool(node, "rooted", false);
 	bool time_tree = get_json_node_value_bool(node, "time", false);
 	
 	Model* mtree = NULL;
+	Tree* tree = NULL;
 	
 	if (newick_node != NULL) {
 		char* newick = (char*)newick_node->value;
-		Tree* tree = new_Tree(newick, !time_tree);
+		tree = new_Tree(newick, !time_tree);
 		tree->time_mode = time_tree;
+		tree->rooted = time_tree;
 		char* id = get_json_node_value_string(node, "id");
 		mtree = new_TreeModel(id, tree);
-		Parameters_set_name2(tree->distances, get_json_node_value_string(node, "parameters"));
-		Hashtable_add(hash, Parameters_name2(tree->distances), tree->distances);
-		for (int i = 0; i < Parameters_count(tree->distances); i++) {
-			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
-		}
-		json_node* h_node = get_json_node(node, "heights");
-		if(h_node != NULL){
-			Parameters_set_name2(tree->heights, h_node->value);
-			Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
-			for (int i = 0; i < Parameters_count(tree->heights); i++) {
-				Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
-			}
-		}
 	}
 	else if (file_node != NULL) {
         const char* filename = (const char*)file_node->value;
         char* tree_string = readTree(filename);
-        Tree *tree = new_Tree( tree_string, !time_tree );
+        tree = new_Tree( tree_string, !time_tree );
 		tree->time_mode = time_tree;
+		tree->rooted = time_tree;
         free(tree_string);
         char* id = get_json_node_value_string(node, "id");
 		mtree = new_TreeModel(id, tree);
-		Parameters_set_name2(tree->distances, get_json_node_value_string(node, "parameters"));
-		Hashtable_add(hash, Parameters_name2(tree->distances), tree->distances);
-        for (int i = 0; i < Parameters_count(tree->distances); i++) {
-            Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
-        }
-		
-		json_node* h_node = get_json_node(node, "heights");
-		if(h_node != NULL){
-			Parameters_set_name2(tree->heights, h_node->value);
-			Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
-			for (int i = 0; i < Parameters_count(tree->heights); i++) {
-				Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
-			}
-		}
 	}
 	else if (init_node != NULL) {
-		json_node* algorithm_node = get_json_node(init_node, "algorithm");
-		json_node* model_node = get_json_node(init_node, "model");
-		json_node* patterns_node = get_json_node(init_node, "sitepattern");
-		
-		if (algorithm_node != NULL) {
-			char* algorithm = (char*)algorithm_node->value;
+		char* algorithm = get_json_node_value_string(init_node, "algorithm");
+		if (strcasecmp(algorithm, "nj") == 0) {
+			tree = create_NJ_from_json(init_node, hash);
 		}
-		char* patterns_ref = (char*)patterns_node->value;
-		
-		SitePattern* patterns = Hashtable_get(hash, patterns_ref+1);
-
-		distancematrix_model tt = DISTANCE_MATRIX_UNCORRECTED;
-		if (model_node != NULL) {
-			const char* model = (char*)model_node->value;
-			if (strcasecmp("raw", model) == 0) {
-				tt = DISTANCE_MATRIX_UNCORRECTED;
-			}
-			else if (strcasecmp("jc69", model) == 0) {
-				tt = DISTANCE_MATRIX_JC69;
-			}
-			else if (strcasecmp("k2p", model) == 0) {
-				tt = DISTANCE_MATRIX_K2P;
-			}
-			else if (strcasecmp("kimura", model) == 0) {
-				tt = DISTANCE_MATRIX_KIMURA;
-			}
-			else{
-				exit(1);
-			}
+		else if (strcasecmp(algorithm, "upgma") == 0) {
+			tree = create_UPGMA_from_json(init_node, hash);
 		}
-		
-		double** matrix = SitePattern_distance(patterns, tt);
-		Tree* tree = new_NJ((const char**)patterns->names, patterns->size, matrix);
-		json_node* id = get_json_node(node, "id");
-		mtree = new_TreeModel((char*)id->value, tree);
-		free_dmatrix(matrix, patterns->size);
-		Parameters_set_name2(tree->distances, get_json_node_value_string(node, "parameters"));
-		Hashtable_add(hash, Parameters_name2(tree->distances), tree->distances);
-		for (int i = 0; i < Parameters_count(tree->distances); i++) {
-			Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
+		else{
+			exit(2);
 		}
-		json_node* h_node = get_json_node(node, "heights");
-		if(h_node != NULL){
-			Parameters_set_name2(tree->heights, h_node->value);
-			Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
-			for (int i = 0; i < Parameters_count(tree->heights); i++) {
-				Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
-			}
-		}
+		char* id = get_json_node_value_string(node, "id");
+		mtree = new_TreeModel(id, tree);
 	}
 	else if (node->node_type != MJSON_STRING) {
 		char* ref = (char*)node->value;
@@ -821,7 +758,28 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	else{
 		exit(1);
 	}
-	if (!rooted && Node_distance(Tree_root(mtree->obj)->right) != 0) {
+	// New tree so add node parameters to hashtable
+	if (tree != NULL) {
+		char* p = get_json_node_value_string(node, "parameters");
+		if (p != NULL) {
+			Parameters_set_name2(tree->distances, p);
+			Hashtable_add(hash, Parameters_name2(tree->distances), tree->distances);
+			for (int i = 0; i < Parameters_count(tree->distances); i++) {
+				Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
+			}
+		}
+		
+		p = get_json_node_value_string(node, "heights");
+		if (p != NULL) {
+			Parameters_set_name2(tree->heights, p);
+			Hashtable_add(hash, Parameters_name2(tree->heights), tree->heights);
+			for (int i = 0; i < Parameters_count(tree->heights); i++) {
+				Hashtable_add(hash, Parameters_name(tree->heights, i), Parameters_at(tree->heights, i));
+			}
+		}
+		
+	}
+	if (!Tree_rooted(mtree->obj) && Node_distance(Tree_root(mtree->obj)->right) != 0) {
 		Tree* tree = mtree->obj;
 		double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
 		Node_set_distance(Tree_root(tree)->right, 0);
@@ -1402,6 +1360,14 @@ void Tree_swap_parents_by_name( Tree *tree, char *name1, char *name2 ){
 
 int Tree_distance_nodes( Tree *tree, Node *node1, Node *node2 ){
     return Node_graph_distance(node1, node2);
+}
+
+void Tree_set_rooted(Tree* tree, bool rooted){
+	tree->rooted = rooted;
+}
+
+bool Tree_rooted(Tree* tree){
+	return tree->rooted;
 }
 
 #pragma mark -

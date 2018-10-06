@@ -42,6 +42,8 @@ typedef struct __matrix{
 	size_t nrow;
 	size_t ncol;
 	double **matrix;
+	char** rowNames;
+	char** colNames;
 } Matrix;
 
 
@@ -133,7 +135,7 @@ void free_cVector( cVector *v );
 // MARK: Matrix
 
 Matrix *new_Matrix( const size_t nrow, const size_t ncol );
-
+Matrix * new_Matrix_from( double** matrix, const size_t nrow, const size_t ncol );
 
 void Add( Matrix *m1, const Matrix *m2);
 

@@ -27,6 +27,7 @@
 #include "tree.h"
 #include "node.h"
 #include "matrix.h"
+#include "distancematrix.h"
 
 
 static Node * cluster( Node **nodes, double **matrix, int nTips );
@@ -421,4 +422,9 @@ struct _Tree * new_NJ_float( const char **taxa, size_t dim, float **matrix ){
     return new_Tree2(node, false);
 }
 
-
+Tree* create_NJ_from_json( json_node* node, Hashtable* hash ){
+	Matrix* matrix = create_DistanceMatrix_from_json(node, hash);
+	Tree* tree = new_NJ((const char**)matrix->rowNames, matrix->nrow, matrix->matrix);
+	free_Matrix(matrix);
+	return tree;
+}

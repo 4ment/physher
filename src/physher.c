@@ -1059,6 +1059,9 @@ int main(int argc, char* argv[]){
 			else if(strcasecmp((char*)type_node->value, "parsimony") == 0){
 				models[index] = new_ParsimonyModel_from_json(child, hash2);
 			}
+			else if(strcasecmp((char*)type_node->value, "tree") == 0){
+				models[index] = new_TreeModel_from_json(child, hash2);
+			}
 			
 			Hashtable_add(hash2, id, models[index]);
 			index++;

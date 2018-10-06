@@ -29,4 +29,6 @@ struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix );
 
 struct _Tree * new_NJ2( const char **taxa, size_t dim, double **_matrix );
 
+struct _Tree* create_NJ_from_json( json_node* node, Hashtable* hash );
+
 #endif

@@ -665,3 +665,40 @@ double ** SitePattern_distance( const SitePattern *patterns, distancematrix_mode
 	return matrix;
 }
 
+Matrix* create_DistanceMatrix_from_json( json_node* node, Hashtable* hash ){
+	SitePattern* patterns = NULL;
+	json_node* patterns_node = get_json_node(node, "sitepattern");
+	char* model = get_json_node_value_string(node, "model");
+	if(patterns_node->node_type == MJSON_STRING){
+		char* ref = (char*)patterns_node->value;
+		// check it starts with a &
+		patterns = Hashtable_get(hash, ref+1);
+		patterns->ref_count++;
+	}
+	else{
+		char* id = get_json_node_value_string(patterns_node, "id");
+		patterns = new_SitePattern_from_json(patterns_node, hash);
+		Hashtable_add(hash, id, patterns);
+	}
+	distancematrix_model modelt = DISTANCE_MATRIX_UNCORRECTED;
+	if (strcasecmp(model, "uncorrected")) {
+		modelt = DISTANCE_MATRIX_UNCORRECTED;
+	}
+	else if (strcasecmp(model, "jc69")) {
+		modelt = DISTANCE_MATRIX_JC69;
+	}
+	else if (strcasecmp(model, "k2p")) {
+		modelt = DISTANCE_MATRIX_K2P;
+	}
+	else if (strcasecmp(model, "kimura")) {
+		modelt = DISTANCE_MATRIX_KIMURA;
+	}
+	double** matrix = SitePattern_distance(patterns, modelt);
+	Matrix * mat = new_Matrix_from(matrix, patterns->size, patterns->size);
+	mat->rowNames = malloc(patterns->size*sizeof(char*));
+	for (int i = 0; i < patterns->size; i++) {
+		mat->rowNames[i] = String_clone(patterns->names[i]);
+	}
+	free_SitePattern(patterns);
+	return mat;
+}

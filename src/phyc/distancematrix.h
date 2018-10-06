@@ -22,6 +22,7 @@
 
 #include "sequence.h"
 #include "sitepattern.h"
+#include "matrix.h"
 
 typedef enum distancematrix_model{
     DISTANCE_MATRIX_UNCORRECTED,
@@ -36,5 +37,7 @@ double ** Sequences_distance( const Sequences *sequences, distancematrix_model m
 float ** Sequences_distance_float( const Sequences *sequences, distancematrix_model model );
 
 double ** SitePattern_distance( const SitePattern *patterns, distancematrix_model model );
+
+Matrix* create_DistanceMatrix_from_json( json_node* node, Hashtable* hash );
 
 #endif /* defined(__PhyC__distancematrix__) */
