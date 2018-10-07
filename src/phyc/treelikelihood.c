@@ -526,6 +526,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	Model* msm = NULL;
 	SitePattern* patterns = NULL;
 	Model* mbm = NULL;
+	BranchModel* bm = NULL;
 	
 	if(patterns_node->node_type == MJSON_STRING){
 		char* ref = (char*)patterns_node->value;
@@ -575,9 +576,10 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 			mbm = new_BranchModel_from_json(bm_node, hash);
 			Hashtable_add(hash, id, mbm);
 		}
+		bm = mbm->obj;
 	}
 	
-	SingleTreeLikelihood* tlk = new_SingleTreeLikelihood((Tree*)mtree->obj, (SiteModel*)msm->obj, patterns, (BranchModel*)mbm->obj);
+	SingleTreeLikelihood* tlk = new_SingleTreeLikelihood((Tree*)mtree->obj, (SiteModel*)msm->obj, patterns, bm);
 	char* id = get_json_node_value_string(node, "id");
 	Model* model = new_TreeLikelihoodModel(id, tlk, mtree, msm, mbm);
 	mtree->free(mtree);
