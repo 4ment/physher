@@ -212,8 +212,8 @@ ENDIF(USE_SSE_SUPPORT)
 #####################################################################
 
 find_package(GSL REQUIRED)
-#include_directories(BEFORE SYSTEM ${GSL_INCLUDE_DIRS})
-#link_directories(${GSL_LIBRARY_DIRS})
+include_directories(BEFORE SYSTEM ${GSL_INCLUDE_DIRS})
+link_directories(${GSL_LIBRARY_DIRS})
 
 #####################################################################
 # Config header file

@@ -122,11 +122,68 @@ char* get_program_name(char* argv[]){
     return name;
 }
 
-void create_json_file(int argc, char* argv[]){
+void create_json_distance(json_node* root, char* algorithm, char* seq_file, char* model_string, bool nucleotide){
+
+	json_node* jtree = create_json_node_object(root, "model");
+	add_json_node(root, jtree);
+
+	add_json_node_string(jtree, "id", "tree");
+	add_json_node_string(jtree, "type", "tree");
+
+	json_node* jinittree = create_json_node_object(jtree, "init");
+	add_json_node(jtree, jinittree);
+
+
+	add_json_node_string(jinittree, "algorithm", algorithm);
+
+	if ( model_string != NULL ) {
+		if( strcasecmp(model_string, "K2P") == 0 ){
+			add_json_node_string(jinittree, "model", "k2p");
+		}
+		else if( strcasecmp(model_string, "JC69") == 0 ){
+			add_json_node_string(jinittree, "model", "jc69");
+		}
+		else if( strcasecmp(model_string, "K83") == 0 ){
+			add_json_node_string(jinittree, "model", "k83");
+		}
+		else {
+			add_json_node_string(jinittree, "model", "uncorrected");
+		}
+	}
+	else {
+		add_json_node_string(jinittree, "model", "uncorrected");
+	}
+
+	// sitepattern
+	json_node* jsitepatterns = create_json_node_object(jinittree, "sitepattern");
+	add_json_node(jinittree, jsitepatterns);
+	add_json_node_string(jsitepatterns, "id", "patterns");
+	add_json_node_string(jsitepatterns, "type", "sitepattern");
+	add_json_node_string(jsitepatterns, "datatype", (nucleotide ? "nucleotide": "aa"));
+
+	// alignment
+	json_node* jsequences = create_json_node_object(jsitepatterns, "alignment");
+	add_json_node(jsitepatterns, jsequences);
+	add_json_node_string(jsequences, "id", "sequences");
+	add_json_node_string(jsequences, "type", "alignment");
+	add_json_node_string(jsequences, "file", seq_file);
+	add_json_node_string(jsequences, "datatype", (nucleotide ? "nucleotide": "aa"));
+
+	// physher
+	json_node* jphysher = create_json_node_array(root, "physher");
+	add_json_node(root, jphysher);
+
+	// logger
+	json_node* jlogger = create_json_node_object(jphysher, NULL);
+	add_json_node(jphysher, jlogger);
+	add_json_node_string(jlogger, "id", "log");
+	add_json_node_string(jlogger, "type", "logger");
+	add_json_node_string(jlogger, "tree", "&tree");
+}
+
+json_node* create_json_file(int argc, char* argv[]){
 	json_node* jroot = create_json_node(NULL);
 	jroot->node_type = MJSON_OBJECT;
-	json_node* jinit = create_json_node_object(jroot, "init");
-	add_json_node(jroot, jinit);
 	
 	bool overwrite = false;
 	char *seq_file  = NULL;
@@ -137,6 +194,7 @@ void create_json_file(int argc, char* argv[]){
 	char* clock_algorithm = NULL;
 	int nexus_index = -1;
 	int genetic_code = 0;
+	char* data_type = NULL;
 	long seed = time(NULL);
 	
 	char* markov_states = NULL;
@@ -202,6 +260,10 @@ void create_json_file(int argc, char* argv[]){
 	
 	char* fix = NULL;
 	char* sitemodel_string = NULL;
+	char* output_stem = NULL;
+	char* model_string = NULL;
+	StringBuffer *buffer = new_StringBuffer(100);
+	StringBuffer_empty(buffer);
 	
 	struct argsparser_option options[] = {
 		{ARGS_OPTION_STRING,  'i', "sequences",    "input.sequences", &seq_file, "Input alignment file"},
@@ -209,6 +271,7 @@ void create_json_file(int argc, char* argv[]){
 		{ARGS_OPTION_STRING,  'o', "stem",         "output.stem", &output_stem_user, "Output stem file"},
 		
 		{ARGS_OPTION_INTEGER, 0,   "gc",           "sequences.geneticcode", &genetic_code, "Genetic Code"},
+		{ARGS_OPTION_INTEGER, 0,   "dt",           "sequences.type", &data_type, "Data type (nucleotide or aa)"},
 		
 		{ARGS_OPTION_STRING,  'm', "model",        "substmodel.type", &model_string_user, "Susbtitution model"},
 		{ARGS_OPTION_STRING,  0,   "states",       "substmodel.states", &markov_states, "State space of Markov process. For nucleotide --states A,C,G,T"},
@@ -336,6 +399,18 @@ void create_json_file(int argc, char* argv[]){
 		exit(0);
 	}
 	
+	if(distance != NULL){
+		bool nucleotide = true;
+		if (data_type != NULL && strcasecmp(data_type, "aa") == 0) {
+			nucleotide = false;
+		}
+		create_json_distance(jroot, distance, seq_file, model_string_user, nucleotide);
+		goto CLEANUP;
+	}
+
+	json_node* jinit = create_json_node_object(jroot, "init");
+	add_json_node(jroot, jinit);
+
 	if (fix != NULL) {
 		alpha_fixed = String_contains(fix, 'a');
 		pinv_fixed = String_contains(fix, 'i');
@@ -344,16 +419,12 @@ void create_json_file(int argc, char* argv[]){
 		rates_fixed = String_contains(fix, 'r');
 	}
 	
-	char* output_stem = NULL;
 	if (output_stem_user != NULL) {
 		output_stem = output_stem_user;
 	}
 	else {
 		output_stem = String_clone(seq_file);
 	}
-	
-	StringBuffer *buffer = new_StringBuffer(100);
-	StringBuffer_empty(buffer);
 	
 	bool run_strict = false;
 	bool run_greedy_local = false;
@@ -453,7 +524,6 @@ void create_json_file(int argc, char* argv[]){
 	// Determine the data type from model or number of states
 	unsigned matrixDimension = 0;
 	
-	char* model_string = NULL;
 	
 	if( markov_states != NULL ){
 		char ** states = String_to_string_array( markov_states, ',', &matrixDimension );
@@ -937,12 +1007,13 @@ void create_json_file(int argc, char* argv[]){
 		add_json_node_size_t(jopt_topo, "threads", nthreads);
 	}
 	
+CLEANUP:
+
 	json_tree_print(jroot);
 	
 	/*************************************************************************************************
 	 **************************************** Free memory ********************************************
 	 *************************************************************************************************/
-	json_free_tree(jroot);
 	
 	free(argsparser);
 	
@@ -958,12 +1029,13 @@ void create_json_file(int argc, char* argv[]){
 	if(topology_optimization_algorithm) free(topology_optimization_algorithm);
 	if(clock_algorithm) free(clock_algorithm);
 	if(model_string_user)free(model_string_user);
-	free(output_stem);
-	free(ic);
+	if(output_stem)free(output_stem);
+	if(ic)free(ic);
 	
-	free(model_string);
+	if(model_string)free(model_string);
 	
-	free_StringBuffer(buffer);
+	if(buffer)free_StringBuffer(buffer);
+	return jroot;
 }
 
 int main(int argc, char* argv[]){
@@ -975,6 +1047,8 @@ int main(int argc, char* argv[]){
 	time(&start_time);
 	beginning_of_time = start_time;
 	
+	json_node* json = NULL;
+
     if (argc == 1) {
         fprintf(stdout, "\n%s:\n\n", get_program_name(argv));
         printf("Fourment M and Holmes EC. Novel non-parametric models to estimate evolutionary rates and divergence times from heterochronous sequence data.\n");
@@ -999,17 +1073,19 @@ int main(int argc, char* argv[]){
 		return 0;
 	}
 	else if(argc > 2){
-		create_json_file(argc, argv);
+		json = create_json_file(argc, argv);
 	}
-	
-	char* content = load_file(argv[1]);
-	printf("Reading file %s\n", argv[1]);
+	else{
+		char* content = load_file(argv[1]);
+		printf("Reading file %s\n", argv[1]);
+		printf("done\n\n");
 
-	printf("done\n\n");
+		json = create_json_tree(content);
+		free(content);
+	}
+
 	long seeed = time(NULL);
 	
-	json_node* json = create_json_tree(content);
-	free(content);
 	
 	Hashtable* hash2 = new_Hashtable_string(100);
 	hashtable_set_key_ownership( hash2, false );
