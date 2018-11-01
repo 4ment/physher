@@ -314,7 +314,7 @@ static double DistributionModel_gamma_sample_evaluate(DistributionModel* dm){
 			Parameters_set_value(dm->x, i, sample);
 		}
 	}
-	return DistributionModel_lognormal_logP(dm);
+	return DistributionModel_log_gamma(dm);
 }
 
 double DistributionModel_lognormal_logP_with_values(DistributionModel* dm, const double* values){
