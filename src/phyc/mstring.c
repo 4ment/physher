@@ -655,6 +655,18 @@ void String_print_join( FILE *pf, const char *sep, const char **array, int n){
     }
 }
 
+size_t String_count_char(const char* str, char character){
+	const char* pch = str;
+	size_t count = 0;
+	while ( *pch != '\0' ) {
+		if (*pch == character) {
+			count++;
+		}
+		pch++;
+	}
+	return count;
+}
+
 #pragma mark -
 #pragma mark StringBuffer
 

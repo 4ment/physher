@@ -492,6 +492,7 @@ Sequences* new_Sequences_from_json(json_node* node, Hashtable* hash){
 		sequences = readSequences(filename);
 	}
 	else{
+		fprintf(stderr, "No `sequences' input (use file option)\n");
 		exit(1);
 	}
 	return sequences;

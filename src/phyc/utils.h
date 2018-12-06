@@ -129,6 +129,11 @@ int qsort_desc_rvector( const void *a, const void *b );
 int qsort_asc_rvector( const void *a, const void *b );
 
 #pragma mark -
+#pragma mark strings
+
+bool array_of_string_contains(const char *str, const char *array[], int count, bool casesensitive);
+
+#pragma mark -
 #pragma mark sequences
 
 double * linearly_spaced_vector( double lower, double upper, int n );

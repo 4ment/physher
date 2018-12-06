@@ -92,6 +92,8 @@ bool String_iequals_n( const char *s1, const char *s2, size_t n );
 
 void String_print_join( FILE *pf, const char *sep, const char **array, int n);
 
+size_t String_count_char(const char* str, char character);
+
 #pragma mark -
 #pragma mark StringBuffer
 

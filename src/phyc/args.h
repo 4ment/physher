@@ -15,13 +15,14 @@
  *  write to the Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
-#include "utils.h"
-
 #ifndef _ARGS_H_
 #define _ARGS_H_
 
+#include "utils.h"
+#include "hashtable.h"
 
 struct argsparser_option;
+struct argsparser2_option;
 
 enum argsparser_option_type {
     ARGS_OPTION_FLAG,
@@ -42,11 +43,29 @@ struct argsparser_option {
     const char *help;
 };
 
+struct argsparser2_option {
+	enum argsparser_option_type type;
+	const char short_name;
+	const char* long_name;
+	char* value;
+	const char *help;
+};
+
 typedef struct args_parser {
     struct argsparser_option *options;
     int option_count;
 }args_parser;
 
+typedef struct args_parser2 {
+	struct argsparser2_option *options;
+	int option_count;
+}args_parser2;
+
+args_parser2* argsparser2_init(struct argsparser2_option options[], int count);
+
+Hashtable * argsparser2_parse(args_parser2* args, char* argv[], int argc);
+
+void argsparser2_free(args_parser2* args);
 
 args_parser* argsparser_init(struct argsparser_option options[], int count);
 
@@ -55,6 +74,8 @@ void argsparser_parse(args_parser* args, char* argv[], int argc);
 void argsparser_parse_file(args_parser* args, const char* filename);
 
 void argsparser_help(args_parser* args, int level);
+
+void argsparser2_help(args_parser2* args);
 
 
 int args_get_index( int argc, char* argv[], const char flag[] );
@@ -79,6 +100,8 @@ int * args_get_int_array( int argc, char* argv[], const char flag[], const char 
 double * args_get_double_array( int argc, char* argv[], const char flag[], const char sep, int *count );
 
 bool args_get_boolean( int argc, char* argv[], const char flag[] );
+
+char* get_program_name(char* argv[]);
 
 
 #endif

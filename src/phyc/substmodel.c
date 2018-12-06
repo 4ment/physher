@@ -200,6 +200,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	json_node* freqs_node = get_json_node(node, "frequencies");
 	json_node* rates_node = get_json_node(node, "rates");
 	json_node* datatype_node = get_json_node(node, "datatype");
+	json_node* structure_node = get_json_node(node, "structure");
 	char* id = get_json_node_value_string(node, "id");
 	
 	// DataType
@@ -282,10 +283,9 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 		}
 	}
 	
-	char* model_string = NULL;
 	// General model
 	//TODO: use rate simplex
-	if (model_node != NULL && model_node->node_type == MJSON_OBJECT) {
+	if (structure_node != NULL) {
 		DiscreteParameter* dp = new_DiscreteParameter_from_json(model_node, hash);
 		check_constraints(rates, 0, INFINITY, 0.001, 1000);
 		bool normalize = get_json_node_value_bool(node, "normalize", true);
@@ -300,12 +300,8 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 		if(assignment != NULL) free(assignment);
 		return mm;
 	}
-	else if(model_node != NULL && model_node->node_type == MJSON_STRING){
-		model_string = String_clone((char*)model_node->value);
-	}
-	else{
-		exit(1);
-	}
+	
+	char* model_string = (char*)model_node->value;
 	
 	SubstitutionModel* m = SubstitutionModel_factory(model_string, datatype, freqs_simplex, rates_simplex, rates, assignment);
 	
@@ -357,7 +353,6 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	if(mfreqs_simplex != NULL) mfreqs_simplex->free(mfreqs_simplex);
 	if(mrates_simplex != NULL) mrates_simplex->free(mrates_simplex);
 	if(assignment != NULL) free(assignment);
-	free(model_string);
 	return mm;
 }
 
@@ -1295,19 +1290,19 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 		char* model_string2 = NULL;
 		if( model_string[0] == '0' ){
 			if(strcasecmp("00000", model_string) == 0 && equal_frequencies){
-				model_string = String_clone("JC69");
+				model_string2 = String_clone("JC69");
 			}
 			else if( strcasecmp("01001", model_string) == 0 && equal_frequencies){
-				model_string = String_clone("K80");
+				model_string2 = String_clone("K80");
 			}
 			else if(strcasecmp("00000", model_string) == 0){
-				model_string = String_clone("F81");
+				model_string2 = String_clone("F81");
 			}
 			else if( strcasecmp("01001", model_string) == 0){
-				model_string = String_clone("HKY");
+				model_string2 = String_clone("HKY");
 			}
 			else if( strcasecmp("01234", model_string) == 0){
-				model_string = String_clone("GTR");
+				model_string2 = String_clone("GTR");
 			}
 			else{
 				model_string2 = String_clone(model_string);
@@ -1329,7 +1324,7 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 		else if( strcasecmp("HKY", model_string2) == 0 ){
 			mod = new_HKY_with_parameters(freqSimplex, Parameters_at(rates, 0));
 		}
-		else if( strcasecmp("GTR", model_string2) == 0 ){
+		else if( strcasecmp("GTR", model_string2) == 0 || strcasecmp("SYM", model_string2) == 0 ){
 			if(rates_simplex == NULL){
 				Parameter* ac = NULL;
 				Parameter* ag = NULL;

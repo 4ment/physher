@@ -775,7 +775,7 @@ unsigned SitePattern_polymorphic_count(SitePattern *sp){
 SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 	json_node* alignment_node = get_json_node(node, "alignment");
 	json_node* datatype_node = get_json_node(node, "datatype");
-	json_node* start_node = get_json_node(node, "every");
+	json_node* start_node = get_json_node(node, "start");
 	json_node* length_node = get_json_node(node, "length");
 	json_node* every_node = get_json_node(node, "every");
 	SitePattern* patterns = NULL;
@@ -824,6 +824,7 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		free_Sequences(sequences);
 	}
 	else{
+		fprintf(stderr, "No `alignment' provided in sitepattern object\n");
 		exit(1);
 	}
 	return patterns;

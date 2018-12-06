@@ -364,6 +364,27 @@ void exp_spaced_spaced_vector2( double *v, double lower, double upper, int n ){
 }
 
 #pragma mark -
+#pragma mark strings
+
+bool array_of_string_contains(const char *str, const char *array[], int count, bool casesensitive){
+	if (casesensitive) {
+		for ( int i = 0; i < count; i++) {
+			if( strcmp(str, array[i]) == 0 ){
+				return true;
+			}
+		}
+	}
+	else{
+		for ( int i = 0; i < count; i++) {
+			if( strcasecmp(str, array[i]) == 0 ){
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+#pragma mark -
 #pragma mark Other
 
 void error( const char message[] ){

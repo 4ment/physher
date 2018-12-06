@@ -38,6 +38,15 @@ args_parser* argsparser_init(struct argsparser_option options[], int count){
     return args;
 }
 
+args_parser2* argsparser2_init(struct argsparser2_option options[], int count){
+	struct args_parser2* args = malloc(sizeof(args_parser2));
+	assert(args);
+	args->option_count = count;
+	args->options = options;
+	assert(args->options);
+	
+	return args;
+}
 
 void argsparser_help(args_parser* args, int level){
     int max = 0;
@@ -99,6 +108,38 @@ void argsparser_help(args_parser* args, int level){
     }
 }
 
+void argsparser2_help(args_parser2* args){
+	int max = 0;
+	for(int j = 0; j < args->option_count; j++){
+		if(args->options[j].long_name != NULL){
+			max = dmax(max, strlen(args->options[j].long_name));
+		}
+	}
+	
+	for(int j = 0; j < args->option_count; j++){
+		if(args->options[j].short_name != 0){
+			fprintf(stdout, "-%c ", args->options[j].short_name);
+		}
+		else{
+			fprintf(stdout, "   ");
+		}
+		
+		if(args->options[j].long_name != NULL){
+			fprintf(stdout, "--%-*s ", max+2, args->options[j].long_name);
+		}
+		else{
+			fprintf(stdout, " ");
+		}
+		
+		fprintf(stdout, "%s ", args->options[j].help);
+		
+		if(args->options[j].value != NULL && args->options[j].type != ARGS_OPTION_FLAG){
+			fprintf(stdout, " [default: %s] ", args->options[j].value);
+		}
+		fprintf(stdout, "\n");
+	}
+}
+
 void argsparser_check(args_parser* args, char* argv[], int argc){
     Hashtable *hash = new_Hashtable_string(10);
     hashtable_set_key_ownership( hash, false );
@@ -112,6 +153,21 @@ void argsparser_check(args_parser* args, char* argv[], int argc){
         Hashtable_add(hash, argv[i], a);
     }
     free_Hashtable(hash);
+}
+
+void argsparser2_check(args_parser2* args, char* argv[], int argc){
+	Hashtable *hash = new_Hashtable_string(10);
+	hashtable_set_key_ownership( hash, false );
+	hashtable_set_value_ownership( hash, false );
+	char* a = "a";
+	for(int i = 1; i < argc; i++){
+		if (Hashtable_exists(hash, argv[i])){
+			fprintf(stderr, "Duplicate option %s\n", argv[i]);
+			exit(1);
+		}
+		Hashtable_add(hash, argv[i], a);
+	}
+	free_Hashtable(hash);
 }
 
 void argsparser_parse(args_parser* args, char* argv[], int argc){
@@ -575,4 +631,120 @@ bool args_get_boolean( int argc, char* argv[], const char flag[] ){
         if ( strcmp(argv[i], flag) == 0 ) return true;		
 	}
 	return false;
+}
+
+char* get_program_name(char* argv[]){
+	char *name = argv[0]+strlen(argv[0]);
+	while( name != argv[0] ){
+		if ( *name == '/' || *name == '\\' ) {
+			name++;
+			break;
+		}
+		name--;
+	}
+	return name;
+}
+
+void argsparser2_free(args_parser2* args){
+	for (int i = 0; i < args->option_count; i++) {
+		if(args->options[i].value != NULL){
+			free(args->options[i].value);
+		}
+	}
+	free(args);
+}
+
+Hashtable * argsparser2_parse(args_parser2* args, char* argv[], int argc){
+	
+	argsparser2_check(args, argv, argc);
+	
+	int i = 0;
+	for ( ; i < argc; i++) {
+		int j = 0;
+		bool option_flag = false;
+		for(; j < args->option_count; j++){
+			if(argv[i][0] == '-') option_flag = true;
+			if ( strlen(argv[i]) > 2 && argv[i][0] == '-' && argv[i][1] == '-' && strcmp(argv[i]+2, args->options[j].long_name) == 0 ) {
+				break;
+			}
+			else if (strlen(argv[i]) == 2 && argv[i][0] == '-' && args->options[j].short_name == argv[i][1]){
+				break;
+			}
+		}
+		
+		if(j != args->option_count && option_flag == true){
+			if(args->options[j].value != NULL) free(args->options[j].value);
+			
+			switch(args->options[j].type){
+				case ARGS_OPTION_FLAG:{
+					args->options[j].value = String_clone("1");
+					break;
+				}
+				case ARGS_OPTION_BOOLEAN:{
+					if(strcasecmp(argv[i+1], "true") == 0 || strcmp(argv[i+1], "1") == 0){
+						args->options[j].value = String_clone("1");
+					}
+					else if(strcasecmp(argv[i+1], "false") == 0 || strcmp(argv[i+1], "0") == 0){
+						args->options[j].value = String_clone("0");
+					}
+					else{
+						fprintf(stderr, "Option %s %s is not valid. Expect a boolean argument", argv[i], argv[i+1]);
+						exit(1);
+					}
+					break;
+				}
+				case ARGS_OPTION_INTEGER:{
+					if (!isInt(argv[i+1])) {
+						fprintf(stderr, "Option %s %s is not an integer", argv[i], argv[i+1]);
+					}
+					args->options[j].value = String_clone(argv[i+1]);
+					break;
+				}
+				case ARGS_OPTION_LONG:{
+					if (!isInt(argv[i+1])) {
+						fprintf(stderr, "Option %s %s is not a long", argv[i], argv[i+1]);
+					}
+					args->options[j].value = String_clone(argv[i+1]);
+					break;
+				}
+				case ARGS_OPTION_STRING:{
+					args->options[j].value = String_clone(argv[i+1]);
+					break;
+				}
+				case ARGS_OPTION_DOUBLE:{
+					if (!isFloat(argv[i+1])) {
+						fprintf(stderr, "Option %s %s is not a double", argv[i], argv[i+1]);
+					}
+					args->options[j].value = String_clone(argv[i+1]);
+					break;
+				}
+				case ARGS_OPTION_FLOAT:{
+					if (!isFloat(argv[i+1])) {
+						fprintf(stderr, "Option %s %s is not a float", argv[i], argv[i+1]);
+					}
+					args->options[j].value = String_clone(argv[i+1]);
+					break;
+				}
+			}
+			if (args->options[j].type != ARGS_OPTION_FLAG) {
+				i++;
+			}
+		}
+		else if(option_flag == true){
+			fprintf(stderr, "Unknown option: %s\n", argv[i]);
+			exit(1);
+		}
+	}
+	
+	
+	Hashtable* hash = new_Hashtable_string(10);
+	for(int i = 0; i < args->option_count; i++){
+		char* name = args->options[i].long_name;
+		char* value = args->options[i].value;
+		if (value == NULL) {
+			value = "";
+		}
+		Hashtable_add(hash, String_clone(name), String_clone(value));
+	}
+	return hash;
 }
