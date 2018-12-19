@@ -68,6 +68,63 @@ static double _func_gamma_fixed_mode( Parameters *params, double *grad, void *da
 	return sum;
 }
 
+// Parameters are modeled with a beta distribution B(alpha,beta)
+// Bounds of the parameters are (0,1)
+// Shoud check out the Kumaraswamy distribution
+double calculate_laplace_beta(Laplace* laplace){
+	/*
+	a = m*m/(1-m)/(1-m)
+	b = 1 - m*m*f''(m)
+	c = 1 - m
+	d = 2*m - 1
+	x = (b*c + d)/m
+	beta = (a*c - x*m)/(a*c - m)
+	alpha = (beta - 1)*a + b
+	*/
+	
+	Model* posterior = laplace->model;
+	Model* refdist = laplace->refdist;
+	DistributionModel* dm = NULL;
+	if(refdist != NULL){
+		dm = refdist->obj;
+	}
+	double logP = posterior->logP(posterior);
+	
+	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
+		double map = Parameters_value(laplace->parameters, i);
+		double d2logP = posterior->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
+		double a = map*map/(1.0 - map)/(1.0 - map);
+		double b = 1.0 - map*map*d2logP;
+		double c = 1.0 - map;
+		double d = 2.0*map - 1.0;
+		double x = (b*c + d)/map;
+		double beta = (a*c - x*map)/(a*c - map);
+		double alpha = (beta - 1.0)*a + b;
+		
+		// should handle small values B(alpha, 1) (exponential shape)
+		// should handle large values B(1, Beta) (mirror-image exponential shape)
+		// check that we don't get alpha <= 1 or beta <= 1
+		
+		if (map < 1.e-6) {
+			
+		}
+		else if (1.0-map < 1.e-6) {
+			
+		}
+		if (alpha <= 1 || beta <=1 ) {
+			
+		}
+		
+		logP -= log(gsl_ran_beta_pdf(map, alpha, beta));
+		
+		if(dm != NULL){
+			Parameters_set_value(dm->parameters, i*2, alpha);
+			Parameters_set_value(dm->parameters, i*2+1, beta);
+		}
+	}
+	return logP;
+}
+
 double calculate_laplace_gamma(Laplace* laplace){
 	// beta = rate = -f''(m) * m
 	// alpha = shape = rate * m + 1
@@ -596,6 +653,9 @@ Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
 	}
 	else if(strcasecmp(dist_string, "multivariate") == 0){
 		laplace->calculate = calculate_laplace_multivariate_normal;
+	}
+	else if(strcasecmp(dist_string, "beta") == 0){
+		laplace->calculate = calculate_laplace_beta;
 	}
 	laplace->free = _free_Laplace;
 	return laplace;
