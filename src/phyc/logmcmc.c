@@ -61,13 +61,19 @@ static void _log_write_header(Log* logger){
 }
 
 void log_tree(Log* logger, size_t iter){
-	Tree* tree = logger->models[0]->data;
+	Tree* tree = logger->models[0]->obj;
 	if(strcasecmp(logger->format, "newick") == 0){
 		Tree_print_newick(logger->file, tree, false);
 	}
 	else if(strcasecmp(logger->format, "nexus") == 0){
-		
+		char root_tag = 'U';
+		if(Tree_rooted(tree)){
+			root_tag = 'R';
+		}
+		fprintf(logger->file, "tree STATE_%lu = [&%c] ", iter, root_tag);
+		Tree_print_nexus(logger->file, tree);
 	}
+	fprintf(logger->file, "\n");
 }
 
 void log_log(Log* logger, size_t iter){
@@ -126,9 +132,12 @@ void log_initialize(Log* logger){
 		logger->file = fopen(logger->filename, a);
 	}
 	if(logger->tree && strcasecmp(logger->format, "nexus") == 0){
-		
+		Tree* tree = logger->models[0]->obj;
+		fprintf(logger->file, "#NEXUS\n\n");
+		Tree_print_nexus_taxa_block(logger->file, tree);
+		Tree_print_nexus_header_figtree_BeginTrees(logger->file, tree);
 	}
-	else if(!logger->tree || (logger->tree && strcasecmp(logger->format, "newick") == 0)){
+	else if(!logger->tree || (logger->tree && strcasecmp(logger->format, "newick") != 0)){
 		_log_write_header(logger);
 	}
 }
@@ -178,16 +187,12 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	logger->write_with = log_log_with;
 	logger->file = stdout;
 	logger->filename = NULL;
-	logger->tree = get_json_node_value_bool(node, "tree", false);
+	logger->tree = false;
 	logger->format = NULL;
 	char* format = get_json_node_value_string(node, "format");
 	if(format != NULL){
 		logger->format = String_clone(format);
 	}
-	else if(logger->tree){
-		logger->format = String_clone("newick");
-	}
-	
 	
 	if (filename_node != NULL) {
 		char* filename = (char*)filename_node->value;
@@ -224,6 +229,9 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 				}
 				logger->models[i] = m;
 				logger->model_count++;
+				if (m->type == MODEL_TREE) {
+					logger->tree = true;
+				}
 			}
 		}
 		else if (models_node->node_type == MJSON_STRING) {
@@ -231,7 +239,15 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 			logger->models = malloc(sizeof(Model*));
 			logger->models[0] = Hashtable_get(hash, ref+1);;
 			logger->model_count++;
+			if (logger->models[0]->type == MODEL_TREE) {
+				logger->tree = true;
+			}
 		}
+	}
+	
+	if (logger->tree) {
+		logger->write = log_tree;
+		if(format == NULL)logger->format = String_clone("newick");
 	}
 	
 	json_node* simplexes_node = get_json_node(node, "simplexes");

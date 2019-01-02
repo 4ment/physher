@@ -199,7 +199,12 @@ static void _Tree_print_nexus_aux( FILE *pf, Tree *tree, const Node *n, int *cou
     if( n == NULL ) return;
 	if( !Node_isleaf(n) ) fprintf(pf, "(");
 	else {
-        fprintf(pf, "%d:%f", ++(*count), (n->parent->height->value - n->height->value) );
+		if(Tree_is_time_mode(tree)){
+        	fprintf(pf, "%d:%f", ++(*count), (n->parent->height->value - n->height->value) );
+		}
+		else{
+			fprintf(pf, "%d:%f", ++(*count), Node_distance(n) );
+		}
 		return;
 	}
 	
@@ -213,7 +218,12 @@ static void _Tree_print_nexus_aux( FILE *pf, Tree *tree, const Node *n, int *cou
         fprintf(pf, ");" );
     }
     else {
-        fprintf(pf, "):%f", Node_time_elapsed((Node*)n) );
+		if(Tree_is_time_mode(tree)){
+        	fprintf(pf, "):%f", Node_distance(n) );
+		}
+		else{
+			fprintf(pf, "):%f", Node_time_elapsed((Node*)n) );
+		}
     }
 }
 
@@ -239,7 +249,7 @@ void Tree_print_newick_subtree( FILE *pf, const Node *n, bool internal ){
 		if( internal ) fprintf(pf, "%s", n->name);
 		fprintf(pf, ":%.8f", n->distance->value);
 	}
-	else fprintf(pf, ";\n");
+	else fprintf(pf, ";");
 }
 
 void Tree_print_newick( FILE *pf, Tree *tree, bool internal ){

@@ -201,5 +201,7 @@ char * Tree_to_string_nexus_with_annotation( Tree *tree );
 
 void Tree_StringBuffer_nexus_with_annotation( StringBuffer *treebuffer, Tree *tree );
 
+bool Tree_is_time_mode(Tree* tree);
+
 #endif
 

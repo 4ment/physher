@@ -2110,7 +2110,9 @@ void Tree_scale_heights( Node *node, const double scaler ){
 	}
 }
 
-
+bool Tree_is_time_mode(Tree* tree){
+	return tree->time_mode;
+}
 
 #pragma mark -
 #pragma mark Misc

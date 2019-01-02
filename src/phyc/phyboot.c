@@ -1821,7 +1821,7 @@ static void * _resampling_thread_worker_distance( void *threadpool  ){
         pthread_mutex_lock(&(pool->lock));
         {
             Tree_print_newick(pool->pfile, tree, false);
-            //fprintf(pool->pfile, "\n");
+            fprintf(pool->pfile, "\n");
 #ifdef FEEDBACK
             printf("#%d\n", (count+1));
 #else
@@ -1954,7 +1954,7 @@ void Distance_resampling_openmp( const Sequences *sequences, resampling_scheme s
         {
             
             Tree_print_newick(pfile, tree, false);
-            //fprintf(pfile, "\n");
+            fprintf(pfile, "\n");
 #ifdef FEEDBACK
             printf("#%d\n", rep);
 #else
