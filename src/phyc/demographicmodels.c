@@ -104,7 +104,7 @@ static void _coalescent_model_handle_change( Model *self, Model *model, int inde
 	if(model == NULL){
 		c->need_update = true;
 	}
-	else if ( strcmp(model->type, "tree") == 0 ) {
+	else if ( model->type == MODEL_TREE ) {
 		c->need_update_intervals = true;
 		c->need_update = true;
 	}
@@ -116,7 +116,7 @@ static void _coalescent_model_handle_change( Model *self, Model *model, int inde
 }
 
 Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree){
-	Model* model = new_Model("distribution", name, coalescent);
+	Model* model = new_Model(MODEL_DISTRIBUTION, name, coalescent);
 	for ( int i = 0; i < Parameters_count(coalescent->p); i++ ) {
 		Parameters_at(coalescent->p, i)->listeners->add( Parameters_at(coalescent->p, i)->listeners, model );
 	}
@@ -205,8 +205,9 @@ Coalescent * new_ConstantCoalescent_with_parameter( Tree *tree, Parameter* theta
 
 void free_ConstantCoalescent( Coalescent *coal ){
 	free_Parameters(coal->p);
-    free(coal->lineages);
-    free(coal->times);
+	free(coal->lineages);
+	free(coal->nodes);
+	free(coal->times);
     free(coal->iscoalescent);
 	free(coal);
 }

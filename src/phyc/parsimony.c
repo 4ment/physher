@@ -834,12 +834,12 @@ double _score_fitch_4_sse(Parsimony *parsimony){
 
 void _parsimony_model_handle_change( Model *self, Model *model, int index ){
 	Parsimony *parsimony = (Parsimony*)self->obj;
-	if ( strcmp(model->type, "tree") == 0 ) {
+	if ( model->type == MODEL_TREE ) {
 		parsimony->update_nodes[index] = true;
 		parsimony->update = true;
 	}
 	else {
-		fprintf(stderr, "%s of type %s\n", model->name, model->type);
+		fprintf(stderr, "%s of type %s\n", model->name, model_type_strings[model->type]);
 		error("Unknown change in Parsimony\n");
 	}
 }
@@ -894,7 +894,7 @@ static void _parsimony_model_get_free_parameters(Model* model, Parameters* param
 }
 
 Model * new_ParsimonyModel(char* name, Parsimony* parsimony, Model* tree){
-	Model *model = new_Model("parsimony", name, parsimony);
+	Model *model = new_Model(MODEL_PARSIMONY, name, parsimony);
 	tree->listeners->add( tree->listeners, model );
 	model->data = tree;
 	tree->ref_count++;

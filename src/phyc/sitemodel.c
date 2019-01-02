@@ -139,7 +139,7 @@ static void _site_model_get_free_parameters(Model* model, Parameters* parameters
 
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
-	Model *model = new_Model("sitemodel", name, sm);
+	Model *model = new_Model(MODEL_SITEMODEL, name, sm);
 
 	if ( sm->rates != NULL ) {
 		for ( int i = 0; i < Parameters_count(sm->rates); i++ ) {

@@ -243,7 +243,7 @@ double _compound_model_sample_evaluate(Model *self){
 }
 
 Model* new_CompoundModel2(const char* name, CompoundModel* cm){
-	Model *model = new_Model("compound", name, cm);
+	Model *model = new_Model(MODEL_COMPOUND, name, cm);
 	model->logP = _compoundModel_logP2;
 	model->dlogP = _compoundModel_dlogP2;
 	model->d2logP = _compoundModel_d2logP2;
@@ -274,6 +274,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 	for (int i = 0; i < distributions_node->child_count; i++) {
 		json_node* child = distributions_node->children[i];
 		char* type = get_json_node_value_string(child, "type");
+		model_t model_type = check_model(type);
 		//printf("type %s\n", type);
 		if (child->node_type == MJSON_STRING) {
 			char* ref = (char*)child->value;
@@ -282,7 +283,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			cm->add(cm, model);
 			model->free(model);
 		}
-		else if(strcasecmp(type, "treelikelihood") == 0){
+		else if(model_type == MODEL_TREELIKELIHOOD){
 			Model* likelihood = NULL;
 			if (child->node_type == MJSON_OBJECT) {
 				likelihood = new_TreeLikelihoodModel_from_json(child, hash);
@@ -300,7 +301,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			cm->add(cm, likelihood);
 			likelihood->free(likelihood);
 		}
-		else if (strcasecmp(type, "distribution") == 0){
+		else if (model_type == MODEL_DISTRIBUTION){
 			Model* compound = NULL;
 			if (child->node_type == MJSON_OBJECT) {
 				compound = new_DistributionModel_from_json(child, hash);
@@ -317,7 +318,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			}
 			cm->add(cm, compound);
 			compound->free(compound);
-		}else if (strcasecmp(type, "compound") == 0){
+		}else if (model_type == MODEL_COMPOUND){
 			Model* compound = NULL;
 			if (child->node_type == MJSON_OBJECT) {
 				compound = new_CompoundModel_from_json(child, hash);

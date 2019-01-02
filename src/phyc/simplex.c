@@ -189,7 +189,7 @@ static void _simplex_get_free_parameters(Model* model, Parameters* parameters){
 
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SimplexModel( const char* name, Simplex *simplex ){
-	Model *model = new_Model("simplex", name, simplex);
+	Model *model = new_Model(MODEL_SIMPLEX, name, simplex);
 	int i = 0;
 	
 	if ( simplex->parameters != NULL ) {

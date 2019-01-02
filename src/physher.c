@@ -142,22 +142,32 @@ int main(int argc, char* argv[]){
 			json_node* type_node = get_json_node(child, "type");
 			char* id = get_json_node_value_string(child, "id");
 			
-			if (strcasecmp((char*)type_node->value, "compound") == 0) {
+			model_t model_type = check_model(type_node->value);
+			if (model_type < 0) {
+				fprintf(stderr, "model type not recognized: %s\n\n", (char*)type_node->value);
+				fprintf(stderr, "Possible models:\n");
+				for (int j = 0; j < sizeof(model_type_strings)/sizeof(model_type_strings[0]); j++) {
+					fprintf(stderr, "%s\n", model_type_strings[j]);
+				}
+				exit(2);
+			}
+			
+			if (model_type == MODEL_COMPOUND) {
 				models[index] = new_CompoundModel_from_json(child, hash2);
 			}
-			else if(strcasecmp((char*)type_node->value, "variational") == 0){
+			else if(model_type == MODEL_VARIATIONAL){
 				models[index] = new_Variational_from_json(child, hash2);
 			}
-			else if(strcasecmp((char*)type_node->value, "distribution") == 0){
+			else if(model_type == MODEL_DISTRIBUTION){
 				models[index] = new_DistributionModel_from_json(child, hash2);
 			}
-			else if(strcasecmp((char*)type_node->value, "treelikelihood") == 0){
+			else if(model_type == MODEL_TREELIKELIHOOD){
 				models[index] = new_TreeLikelihoodModel_from_json(child, hash2);
 			}
-			else if(strcasecmp((char*)type_node->value, "parsimony") == 0){
+			else if(model_type == MODEL_PARSIMONY){
 				models[index] = new_ParsimonyModel_from_json(child, hash2);
 			}
-			else if(strcasecmp((char*)type_node->value, "tree") == 0){
+			else if(model_type == MODEL_TREE){
 				models[index] = new_TreeModel_from_json(child, hash2);
 			}
 			

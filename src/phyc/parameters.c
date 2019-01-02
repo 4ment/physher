@@ -838,11 +838,11 @@ static double _dummy_sample_evaluate(Model* m){
 #pragma mark -
 
 
-Model * new_Model( const char *type, const char *name, void *obj ){
+Model * new_Model( model_t type, const char *name, void *obj ){
 	Model *model = (Model*)malloc(sizeof(Model));
 	assert(model);
 	model->name = String_clone(name);
-	model->type = String_clone(type);
+	model->type = type;
 	model->obj = obj;
 	model->logP = _logP;
 	model->dlogP = _dlogP;
@@ -870,7 +870,6 @@ void free_Model( Model *model ){
 	assert(model->ref_count >= 1);
 	if(model->ref_count == 1){
 		free(model->name);
-		free(model->type);
 		model->listeners->free(model->listeners);
 		free(model);
 	}
@@ -878,6 +877,16 @@ void free_Model( Model *model ){
 		model->ref_count--;
 	}
 	
+}
+
+model_t check_model(const char* type){
+	int len = sizeof(model_type_strings)/sizeof(model_type_strings[0]);
+	for (int i = 0; i < len; i++) {
+		if (strcasecmp(model_type_strings[i], type) == 0) {
+			return i;
+		}
+	}
+	return -1;
 }
 
 #pragma mark -

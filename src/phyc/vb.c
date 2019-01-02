@@ -377,7 +377,7 @@ void _variational_model_sample(Model* self, double* samples, double* logP){
 }
 
 Model* new_VariationalModel(const char* name, variational_t* var){
-	Model *model = new_Model("variational", name, var);
+	Model *model = new_Model(MODEL_VARIATIONAL, name, var);
 	model->free = _variational_model_free;
 	model->clone = _variational_model_clone;
 	model->logP = _variational_model_logP;

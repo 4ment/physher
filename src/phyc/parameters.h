@@ -298,10 +298,38 @@ struct _ListenerList {
 	void (*removeAll)( ListenerList*);
 };
 
+typedef enum model_t{
+	MODEL_BRANCHMODEL=0,
+	MODEL_COMPOUND,
+	MODEL_DISTRIBUTION,
+	MODEL_PARSIMONY,
+	MODEL_SIMPLEX,
+	MODEL_SITEMODEL,
+	MODEL_SUBSTITUTION,
+	MODEL_TREE,
+	MODEL_TREELIKELIHOOD,
+	MODEL_VARIATIONAL
+}model_t;
+
+static const char* model_type_strings[] = {
+	"branchmodel",
+	"compound",
+	"distribution",
+	"parsimony",
+	"simplex",
+	"sitemodel",
+	"substitutionmodel",
+	"tree",
+	"treelikelihood",
+	"variational"
+};
+
+model_t check_model(const char* type);
+
 struct _Model {
 	void *obj; // pointer to model
 	char *name;
-	char* type;
+	model_t type;
 	void* data;
 	double (*logP)( Model * );
 	double (*dlogP)( Model *, const Parameter* );
@@ -329,7 +357,7 @@ struct _Model {
 
 #pragma mark -
 
-Model * new_Model( const char *type, const char *name, void *obj );
+Model * new_Model( model_t type, const char *name, void *obj );
 
 void free_Model( Model *model );
 

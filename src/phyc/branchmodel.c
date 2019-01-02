@@ -133,7 +133,7 @@ static void _branch_model_free( Model *self ){
 		
 		//bm->free(bm, false);
 		if( bm->indicators != NULL ) free(bm->indicators);
-		bm->map->free(bm->map);
+		if(bm->map != NULL) bm->map->free(bm->map);
 		if( bm->unscaled_rates != NULL ) free(bm->unscaled_rates);
 		free_Parameters(bm->rates);
 		free(bm);
@@ -182,7 +182,7 @@ static void _branch_model_get_free_parameters(Model* model, Parameters* paramete
 
 // BranchModel2 listen to the rate parameters
 Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
-	Model *model = new_Model("branchmodel", name, bm);
+	Model *model = new_Model(MODEL_BRANCHMODEL, name, bm);
 	for ( int i = 0; i < Parameters_count(bm->rates); i++ ) {
 		Parameters_at(bm->rates, i)->listeners->add( Parameters_at(bm->rates, i)->listeners, model );
 	}

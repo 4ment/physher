@@ -689,7 +689,7 @@ static void _tree_model_get_free_parameters(Model* model, Parameters* parameters
 
 // TreeModel listen to the height and distance parameters
 Model * new_TreeModel( const char* name, Tree *tree ){
-	Model *model = new_Model("tree", name, tree);
+	Model *model = new_Model(MODEL_TREE, name, tree);
 	StringBuffer* buffer = new_StringBuffer(10);
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
 		StringBuffer_set_string(buffer, name);

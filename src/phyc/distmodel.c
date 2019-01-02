@@ -1217,7 +1217,7 @@ static double _dist_model_sample_evaluate(Model* model){
 }
 
 Model* new_DistributionModel2(const char* name, DistributionModel* dm){
-	Model *model = new_Model("distribution",name, dm);
+	Model *model = new_Model(MODEL_DISTRIBUTION,name, dm);
 	model->logP = _dist_model_logP;
 	model->dlogP = _dist_model_dlogP;
 	model->d2logP = _dist_model_d2logP;
@@ -1231,7 +1231,7 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 }
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex){
-	Model *model = new_Model("distribution",name, dm);
+	Model *model = new_Model(MODEL_DISTRIBUTION,name, dm);
 	model->data = simplex;
 	if(simplex != NULL) simplex->ref_count++;
 	model->logP = _dist_model_logP;
@@ -1247,7 +1247,7 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* si
 }
 
 Model* new_TreeDistributionModel(const char* name, DistributionModel* dm, Model* tree){
-    Model *model = new_Model("distribution",name, dm);
+    Model *model = new_Model(MODEL_DISTRIBUTION,name, dm);
     model->data = tree;
     tree->ref_count++;
     model->logP = _dist_model_logP;
@@ -1712,6 +1712,8 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	}
 	else if(strcasecmp(d_string, "coalescent") == 0){
 		Model* model = new_CoalescentModel_from_json(node, hash);
+		free_Parameters(parameters);
+		free_Parameters(x);
 		return model;
 	}
 	else{
