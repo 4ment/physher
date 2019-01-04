@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
+#include <strings.h>
 
 #include "tree.h"
 #include "mstring.h"

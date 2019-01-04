@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+#include <strings.h>
 
 #include "sequence.h"
 #include "sequenceio.h"

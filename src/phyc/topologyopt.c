@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <strings.h>
 
 #include "matrix.h"
 #include "tree.h"

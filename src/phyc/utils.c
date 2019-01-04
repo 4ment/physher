@@ -19,6 +19,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 
 #include "random.h"

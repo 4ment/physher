@@ -19,6 +19,7 @@
 
 #include <ctype.h>
 #include <assert.h>
+#include <strings.h>
 
 #include "matrix.h"
 
