@@ -710,6 +710,16 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 }
 
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"init",
+		"file",
+		"heights", // height parameters
+		"parameters", // distance parameters
+		"newick",
+		"time"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	json_node* newick_node = get_json_node(node, "newick");
 	json_node* file_node = get_json_node(node, "file");
 	json_node* init_node = get_json_node(node, "init");

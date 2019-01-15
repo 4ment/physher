@@ -238,6 +238,13 @@ void asr_marginal( SingleTreeLikelihood *tlk ){
 }
 
 void asr_marginal_calculator_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"file",
+		"model",
+		"verbosity"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* ref = get_json_node_value_string(node, "model");
 	Model* mtlk = Hashtable_get(hash, ref+1);
 	const char *file = get_json_node_value_string(node, "file");

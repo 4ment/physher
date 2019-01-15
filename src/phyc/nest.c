@@ -175,6 +175,19 @@ void nest_run(NEST* nest){
 }
 
 NEST* new_NEST_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"burnin",
+		"length",
+		"likelihood",
+		"N",
+		"operators",
+		"precision",
+		"prior",
+		"steps",
+		"x"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	NEST* nest = malloc(sizeof(NEST));
 	
 	json_node* likelihood_node = get_json_node(node, "likelihood");

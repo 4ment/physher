@@ -200,14 +200,30 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
 }
 
 Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
+	char* allowed[] = {
+		"model",
+		"rate",
+		"tree",
+		
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* model = get_json_node_value_string(node, "model");
 	BranchModel* bm = NULL;
+	Model* mtree = NULL;
 	
 	json_node* tree_node = get_json_node(node, "tree");
-	char* ref = (char*)tree_node->value;
-	// check it starts with a &
-	Model* mtree = Hashtable_get(hash, ref+1);
-	mtree->ref_count++;
+	if (tree_node->node_type == MJSON_OBJECT) {
+		mtree = new_TreeModel_from_json(tree_node, hash);
+		json_node* id_node = get_json_node(tree_node, "id");
+		Hashtable_add(hash, (char*)id_node->value, mtree);
+	}
+	else if(tree_node->node_type == MJSON_STRING){
+		char* ref = (char*)tree_node->value;
+		// check it starts with a &
+		mtree = Hashtable_get(hash, ref+1);
+		mtree->ref_count++;
+	}
 	
 	if(strcasecmp(model, "strict") == 0){
 		json_node* p_node = get_json_node(node, "rate");

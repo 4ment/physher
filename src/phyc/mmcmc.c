@@ -48,7 +48,7 @@ void mmcmc_run(MMCMC* mmcmc){
 				mcmc->logs[j]->filename = StringBuffer_tochar(buffer);
 			}
 		}
-		printf("Temperature: %f - %s\n", mmcmc->temperatures[i],buffer->c);
+		printf("Temperature: %e - %s\n", mmcmc->temperatures[i],buffer->c);
 		mcmc->chain_temperature = mmcmc->temperatures[i];
 		
 		if(sampleable && mcmc->chain_temperature == 0){
@@ -101,6 +101,16 @@ static void _free_MMCMC(MMCMC* mmcmc){
 }
 
 MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"distribution",
+		"gss",
+		"mcmc",
+		"samples",
+		"steps",
+		"temperatures"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	MMCMC* mmcmc = malloc(sizeof(MMCMC));
 	json_node* mcmc_node = get_json_node(node, "mcmc");
 	json_node* temp_node = get_json_node(node, "temperatures");

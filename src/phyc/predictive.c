@@ -85,6 +85,12 @@ void _free_predictive(Predictive* predictive){
 
 
 Predictive* new_Predictive_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"burnin",
+		"filename"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* filename = get_json_node_value_string(node, "filename");
 	Predictive* predictive = malloc(sizeof(Predictive));
 	predictive->filename = String_clone(filename);

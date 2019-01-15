@@ -168,6 +168,18 @@ void _free_MCMC(MCMC* mcmc){
 }
 
 MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"gss",
+		"log",
+		"length",
+		"model",
+		"operators",
+		"temperature",
+		"tuningfrequency",
+		"verbose"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	MCMC* mcmc = malloc(sizeof(MCMC));
 	json_node* model_node = get_json_node(node, "model");
 	mcmc->operator_count = 0;

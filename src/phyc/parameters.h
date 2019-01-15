@@ -300,6 +300,7 @@ struct _ListenerList {
 
 typedef enum model_t{
 	MODEL_BRANCHMODEL=0,
+	MODEL_COALESCENT,
 	MODEL_COMPOUND,
 	MODEL_DISTRIBUTION,
 	MODEL_PARSIMONY,
@@ -313,6 +314,7 @@ typedef enum model_t{
 
 static const char* model_type_strings[] = {
 	"branchmodel",
+	"coalescent",
 	"compound",
 	"distribution",
 	"parsimony",

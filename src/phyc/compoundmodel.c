@@ -15,6 +15,7 @@
 
 #include "treelikelihood.h"
 #include "distmodel.h"
+#include "demographicmodels.h"
 
 
 double _compoundModel_logP(CompoundModel* cm){
@@ -266,6 +267,11 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 }
 
 Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
+	char* allowed[] = {
+		"distributions"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	CompoundModel* cm = new_CompoundModel();
 	json_node* distributions_node = get_json_node(node, "distributions");
 	char* id = get_json_node_value_string(node, "id");
@@ -335,6 +341,24 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			}
 			cm->add(cm, compound);
 			compound->free(compound);
+		}
+		else if(model_type == MODEL_COALESCENT){
+			Model* coalescent = NULL;
+			if (child->node_type == MJSON_OBJECT) {
+				coalescent = new_CoalescentModel_from_json(child, hash);
+				char* id = get_json_node_value_string(child, "id");
+				Hashtable_add(hash, id, coalescent);
+			}
+			else if(child->node_type == MJSON_STRING){
+				char* ref = (char*)child->value;
+				coalescent = Hashtable_get(hash, ref+1);
+				coalescent->ref_count++;
+			}
+			else{
+				exit(10);
+			}
+			cm->add(cm, coalescent);
+			coalescent->free(coalescent);
 		}
 		else{
 			printf("json CompoundModel unknown: (%s)\n", type);

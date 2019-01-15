@@ -129,6 +129,18 @@ void TopologyOptimizer_set_nthreads( TopologyOptimizer *opt, int nthreads ){
 
 
 TopologyOptimizer* new_TopologyOptimizer_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"algorithm",
+		"criterion",
+		"model",
+		"move",
+		"radius",
+		"treelikelihood",
+		"threads",
+		"verbosity"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* algorithm_string = get_json_node_value_string(node, "move");
 	char* criterion = get_json_node_value_string(node, "criterion");
 	int nthreads = get_json_node_value_int(node, "threads", 1);

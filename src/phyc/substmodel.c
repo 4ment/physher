@@ -196,11 +196,24 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 }
 
 Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
+	char* allowed[] ={
+		"datatype",
+		"frequencies",
+		"init",
+		"model",
+		"normalize",
+		"rates",
+		"structure"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	json_node* model_node = get_json_node(node, "model");
 	json_node* freqs_node = get_json_node(node, "frequencies");
 	json_node* rates_node = get_json_node(node, "rates");
 	json_node* datatype_node = get_json_node(node, "datatype");
 	json_node* structure_node = get_json_node(node, "structure");
+	json_node* init_node = get_json_node(node, "init");
+	bool normalize = get_json_node_value_bool(node, "normalize", true);
 	char* id = get_json_node_value_string(node, "id");
 	
 	// DataType
@@ -288,7 +301,6 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	if (structure_node != NULL) {
 		DiscreteParameter* dp = new_DiscreteParameter_from_json(model_node, hash);
 		check_constraints(rates, 0, INFINITY, 0.001, 1000);
-		bool normalize = get_json_node_value_bool(node, "normalize", true);
 		SubstitutionModel* m = new_GeneralModel_with_parameters(dp, rates, freqs_simplex, -1, normalize);
 		Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex, mrates_simplex);
 
@@ -304,8 +316,6 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	char* model_string = (char*)model_node->value;
 	
 	SubstitutionModel* m = SubstitutionModel_factory(model_string, datatype, freqs_simplex, rates_simplex, rates, assignment);
-	
-	json_node* init_node = get_json_node(node, "init");
 	
 	if(init_node != NULL && datatype->type == DATA_TYPE_NUCLEOTIDE && Parameters_count(m->rates) >= 5){
 		json_node* patterns_node = get_json_node(init_node, "sitepattern");

@@ -66,7 +66,7 @@ Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataT
             accum += sm->get_proportion(sm,i);
         }
         if( accum < 0.000001 ){
-            printf("Proportions in SiteModel must add up to 1\n");
+            printf(stderr, "Proportions in SiteModel must add up to 1\n");
             for ( int i = 0; i < sm->cat_count; i++ ) {
                 fprintf(stderr, "%d %e\n",i, sm->get_proportion(sm,i));
             }
@@ -192,6 +192,21 @@ char * Node_get_string_from_info2( const Node *node, const char *str ){
 }
 
 void SimulateSequences_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"branchmodel",
+		"datatype",
+		"distribution",
+		"format",
+		"internal",
+		"length",
+		"output",
+		"scaler",
+		"sitemodel",
+		"tree",
+		"verbosity"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
     char* output = get_json_node_value_string(node, "output");
     char* format = get_json_node_value_string(node, "format");
     json_node* tree_node = get_json_node(node, "tree");
@@ -202,6 +217,7 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     bool internal = get_json_node_value_bool(node, "internal", false);
     double scaler = get_json_node_value_double(node, "scaler", 1.0);
     char* rate_dist = get_json_node_value_string(node, "distribution");
+	int verbosity = get_json_node_value_int(node, "verbosity", 1);
 
 	if(format == NULL){
 		format = "fasta";
@@ -445,8 +461,10 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     for ( int i = 0; i < Tree_node_count(tree)-1; i++ ) {
         tree_length += Node_distance(nodes[i]);
     }
-    printf("Tree length %f\n", tree_length);
-    fprintf(stdout, "Number of polymorphic sites: %d/%d (%f)\n", polymorphisms, length,((double)polymorphisms/length) );
+	if (verbosity > 0) {
+		printf("Tree length %f\n", tree_length);
+		fprintf(stdout, "Number of polymorphic sites: %d/%d (%f)\n", polymorphisms, length,((double)polymorphisms/length) );
+	}
 	
     free_Sequences(sim);
     mtree->free(mtree);

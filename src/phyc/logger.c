@@ -155,6 +155,17 @@ void get_references(json_node* node, Hashtable* hash, struct Logger* logger){
 }
 
 struct Logger* new_logger_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"file",
+		"format",
+		"models",
+		"parameters",
+		"tree",
+		"time",
+		"trees"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	struct Logger* logger = malloc(sizeof(struct Logger));
 	logger->parameters = new_Parameters(1);
 	logger->simplexCount = 0;

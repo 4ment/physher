@@ -773,6 +773,15 @@ unsigned SitePattern_polymorphic_count(SitePattern *sp){
 
 
 SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"alignment",
+		"datatype",
+		"every",
+		"length",
+		"start"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	json_node* alignment_node = get_json_node(node, "alignment");
 	json_node* datatype_node = get_json_node(node, "datatype");
 	json_node* start_node = get_json_node(node, "start");

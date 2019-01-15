@@ -97,6 +97,12 @@ const char * _state_string( const DataType *datatype, int encoding){
 }
 
 DataType* new_DataType_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"code",
+		"states"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	DataType* datatype = NULL;
 	if(node->node_type == MJSON_OBJECT){
 		json_node* states_node = get_json_node(node, "states");

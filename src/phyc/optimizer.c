@@ -392,6 +392,12 @@ void opt_set_max_iteration( Optimizer *opt, const size_t maxiter ){
 	}
 }
 
+void opt_set_min_iteration( Optimizer *opt, const size_t miniter ){
+	if( opt != NULL ){
+		opt->stop.iter_min = miniter;
+	}
+}
+
 // In seconds by default
 void opt_set_time_max( Optimizer *opt, const double maxtime ){
 	if( opt != NULL ){
@@ -697,19 +703,45 @@ bool fxStop( double fx, double *fxold, const double tolfx){
 
 
 Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
+
 	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
+	if (algorithm_string == NULL) {
+		fprintf(stderr, "The `algorithm' key is not specified for object %s\n", get_json_node_value_string(node, "id"));
+		exit(13);
+	}
+	
+	if(strcasecmp(algorithm_string, "topology") == 0){
+		Optimizer* opt = new_Optimizer(OPT_TOPOLOGY);
+		opt->data = new_TopologyOptimizer_from_json(node, hash);
+		return opt;
+	}
+	
+	char* allowed[] = {
+		"algorithm",
+		"eta",
+		"frequency_check",
+		"list",
+		"max",
+		"min",
+		"model",
+		"parameters",
+		"precision",
+		"rounds",
+		"threads",
+		"tol",
+		"treelikelihood",
+		"verbosity"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
+	
 	size_t max = get_json_node_value_size_t(node, "max", 1000);
+	size_t min = get_json_node_value_size_t(node, "min", 1);
 	double precision = get_json_node_value_double(node, "precision", 0.001);
 	Parameters* parameters = new_Parameters(1);
 	Optimizer* opt = NULL;
 	
-	if(strcasecmp(algorithm_string, "topology") == 0){
-		opt = new_Optimizer(OPT_TOPOLOGY);
-		opt->data = new_TopologyOptimizer_from_json(node, hash);
-		free_Parameters(parameters);
-		return opt;
-	}
-	else if (strcasecmp(algorithm_string, "meta") == 0) {
+	if (strcasecmp(algorithm_string, "meta") == 0) {
 		opt = new_Optimizer(OPT_META);
 		OptimizerSchedule* schedule = opt_get_schedule(opt);
 		json_node* list_node = get_json_node(node, "list");
@@ -721,6 +753,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 			opt->schedule->rounds[opt->schedule->count-1] = child_rounds;
 		}
 		opt_set_max_iteration(opt, max);
+		opt_set_min_iteration(opt, min);
 		opt_set_tolfx(opt, precision);
 	}
 	// Conjugate gradient
@@ -729,6 +762,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		get_parameters_references(node, hash, parameters);
 		opt_set_parameters(opt, parameters);
 		opt_set_max_iteration(opt, max);
+		opt_set_min_iteration(opt, min);
 		opt_set_tolfx(opt, precision);
 	}
 	else if (strcasecmp(algorithm_string, "brent") == 0 || strcasecmp(algorithm_string, "serial") == 0) {
@@ -749,6 +783,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 			opt_set_parameters(opt, parameters);
 		}
 		opt_set_max_iteration(opt, max);
+		opt_set_min_iteration(opt, min);
 		opt_set_tolx(opt, precision);
 	}
     // stochastic gradient
@@ -772,6 +807,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		}
 		
 		opt_set_max_iteration(opt, max);
+		opt_set_min_iteration(opt, min);
     }
 	json_node* model_node = get_json_node(node, "model");
     

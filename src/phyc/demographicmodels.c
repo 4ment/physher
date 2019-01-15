@@ -141,6 +141,12 @@ Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree
 }
 
 Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"model",
+		"tree"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* model = get_json_node_value_string(node, "model");
 	Coalescent* c = NULL;
 	

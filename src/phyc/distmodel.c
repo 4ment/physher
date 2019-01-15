@@ -25,8 +25,6 @@
 #include "parametersio.h"
 #include "utilsio.h"
 
-#include "demographicmodels.h"
-
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
@@ -1303,6 +1301,18 @@ double ks(double* x, size_t length, double(*cdf)(void*, double), void* data){
 
 
 Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"distribution",
+		"file",
+		"from",
+		"margin",
+		"parameters",
+		"posterior",
+		"tree",
+		"x"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* d_string = get_json_node_value_string(node, "distribution");
 	char* id = get_json_node_value_string(node, "id");
 	json_node* tree_node = get_json_node(node, "tree");
@@ -1709,12 +1719,6 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		model->sample = _dist_model_sample;
 		model->sample_evaluate = _dist_model_sample_evaluate;
 		model->samplable = true;
-	}
-	else if(strcasecmp(d_string, "coalescent") == 0){
-		Model* model = new_CoalescentModel_from_json(node, hash);
-		free_Parameters(parameters);
-		free_Parameters(x);
-		return model;
 	}
 	else{
 		printf("%s\n", d_string);

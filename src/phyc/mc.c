@@ -33,6 +33,14 @@ void _free_MC(MC* mc){
 }
 
 MC* new_MonteCarlo_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"likelihood",
+		"parameters",
+		"prior",
+		"samples"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	MC* mc = malloc(sizeof(MC));
 	char* ref_lk = get_json_node_value_string(node, "likelihood");
 	char* ref_prior = get_json_node_value_string(node, "prior");

@@ -49,6 +49,7 @@
 #include "phyc/predictive.h"
 #include "phyc/mc.h"
 #include "phyc/physim.h"
+#include "phyc/demographicmodels.h"
 
 #include "phyc/physhercmd.h"
 
@@ -169,6 +170,9 @@ int main(int argc, char* argv[]){
 			}
 			else if(model_type == MODEL_TREE){
 				models[index] = new_TreeModel_from_json(child, hash2);
+			}
+			else if(model_type == MODEL_COALESCENT){
+				models[index] = new_CoalescentModel_from_json(child, hash2);
 			}
 			
 			Hashtable_add(hash2, id, models[index]);

@@ -206,6 +206,12 @@ Model * new_SimplexModel( const char* name, Simplex *simplex ){
 }
 
 Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
+	char* allowed[] = {
+		"dimension",
+		"values"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	json_node* values = get_json_node(node, "values");
 	Simplex* simplex = NULL;
 	

@@ -81,6 +81,16 @@ void _free_ImportanceSampler(ImportanceSampler* mvb){
 }
 
 ImportanceSampler* new_ImportanceSampler_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"distribution",
+		"model",
+		"normalize",
+		"parameters",
+		"samples",
+		"weights",
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* ref = get_json_node_value_string(node, "model");
 	json_node* dist_node = get_json_node(node, "distribution");
 	ImportanceSampler* mvb = malloc(sizeof(ImportanceSampler));

@@ -158,7 +158,19 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	return model;
 }
 
+
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
+	char* allowed[] = {
+		"categories",
+		"discretization",
+		"distribution",
+		"model",
+		"mu",
+		"rates",
+		"substitutionmodel"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	json_node* categories_node = get_json_node(node, "categories");
 	json_node* model_node = get_json_node(node, "model");
 	json_node* rates_node = get_json_node(node, "rates");
@@ -168,8 +180,9 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	json_node* mu_node = get_json_node(node, "mu");
 
 	Model* mm = NULL;
-	if (m_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)m_node->value)) {
-		mm = Hashtable_get(hash, (char*)m_node->value);
+	if (m_node->node_type == MJSON_STRING && ((char*)m_node->value)[0] == '&') {
+		char* ref = (char*)m_node->value;
+		mm = Hashtable_get(hash, ref+1);
 		mm->ref_count++;
 	}
 	else{
@@ -209,6 +222,15 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	// Distribution
 	if ( cat > 1 ) {
 		const char* average_str = get_json_node_value_string(node, "average");
+		if (average_str != NULL) {
+			char* average_allowed[] = {"mean", "median", "laguerre"};
+			if(!array_of_string_contains(average_str, average_allowed, 3, false)){
+				fprintf(stderr, "In %s of type %s\n", get_json_node_value_string(node, "id"), get_json_node_value_string(node, "type"));
+				fprintf(stderr, "%s is not a valid value for key %s\n", average_str, "average");
+				exit(13);
+			}
+			
+		}
 		// Just laguerre discretization
 		if(discretization_node != NULL && strcasecmp("laguerre", (char*)discretization_node->value) == 0){
 			sm = new_GammaLaguerreSiteModel_with_parameters(m, rates, cat);

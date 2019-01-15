@@ -586,6 +586,15 @@ void _free_Laplace(Laplace* laplace){
 }
 
 Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"distribution",
+		"empirical",
+		"model",
+		"parameters",
+		"ref"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* ref_model = get_json_node_value_string(node, "model");
 	char* dist_string = get_json_node_value_string(node, "distribution");
 	json_node* ref = get_json_node(node, "ref");
@@ -656,6 +665,10 @@ Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
 	}
 	else if(strcasecmp(dist_string, "beta") == 0){
 		laplace->calculate = calculate_laplace_beta;
+	}
+	else{
+		fprintf(stderr, "Laplace distribution not available %s\n", dist_string);
+		exit(13);
 	}
 	laplace->free = _free_Laplace;
 	return laplace;

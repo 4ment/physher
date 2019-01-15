@@ -907,6 +907,12 @@ Model * new_ParsimonyModel(char* name, Parsimony* parsimony, Model* tree){
 }
 
 Model * new_ParsimonyModel_from_json(json_node*node, Hashtable*hash){
+	char* allowed[] = {
+		"sitepattern",
+		"tree"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	json_node* patterns_node = get_json_node(node, "sitepattern");
 	json_node* tree_node = get_json_node(node, "tree");
 	SitePattern* patterns = NULL;

@@ -213,6 +213,9 @@ json_node* get_json_node(json_node* node, const char* key){
 char* get_json_node_value_string(json_node* node, const char* key){
 	json_node* n = get_json_node(node, key);
 	if(n != NULL){
+//		if(n->node_type != MJSON_STRING){
+//			fprintf(stderr, "value (%s) for key %s is not a string\n", (char*)n->value, key);
+//		}
 		return (char*)n->value;
 	}
 	return NULL;
@@ -221,6 +224,9 @@ char* get_json_node_value_string(json_node* node, const char* key){
 bool get_json_node_value_bool(json_node* node, const char* key, bool defaultv){
 	json_node* n = get_json_node(node, key);
 	if(n != NULL){
+		if(n->node_type != MJSON_PRIMITIVE){
+			fprintf(stderr, "value (%s) for key %s is not a number\n", (char*)n->value, key);
+		}
 		return atoi((char*)n->value);
 	}
 	return defaultv;
@@ -229,6 +235,9 @@ bool get_json_node_value_bool(json_node* node, const char* key, bool defaultv){
 double get_json_node_value_double(json_node* node, const char* key, double defaultv){
 	json_node* n = get_json_node(node, key);
 	if(n != NULL){
+		if(n->node_type != MJSON_PRIMITIVE){
+			fprintf(stderr, "value (%s) for key %s is not a number\n", (char*)n->value, key);
+		}
 		return atof((char*)n->value);
 	}
 	return defaultv;
@@ -237,6 +246,9 @@ double get_json_node_value_double(json_node* node, const char* key, double defau
 size_t get_json_node_value_size_t(json_node* node, const char* key, size_t defaultv){
 	json_node* n = get_json_node(node, key);
 	if(n != NULL){
+		if(n->node_type != MJSON_PRIMITIVE){
+			fprintf(stderr, "value (%s) for key %s is not a number\n", (char*)n->value, key);
+		}
 		size_t v = 0;
 		int result = sscanf((char*)n->value, "%zu", &v);
 		return v;
@@ -247,6 +259,9 @@ size_t get_json_node_value_size_t(json_node* node, const char* key, size_t defau
 int get_json_node_value_int(json_node* node, const char* key, int defaultv){
 	json_node* n = get_json_node(node, key);
 	if(n != NULL){
+		if(n->node_type != MJSON_PRIMITIVE){
+			fprintf(stderr, "value (%s) for key %s is not a number\n", (char*)n->value, key);
+		}
 		return atoi((char*)n->value);
 	}
 	return defaultv;
@@ -453,4 +468,37 @@ void json_free_tree(json_node* node){
 	if(node->child_count > 0)free(node->children);
 	if(node->value!= NULL) free(node->value);
 	free(node);
+}
+
+void json_check_allowed(json_node* node, char** allowed, int length){
+	int id = -1;
+	int type = -1;
+	for (int i = 0; i < node->child_count; i++) {
+		if (strcasecmp(node->children[i]->key, "id") == 0) {
+			id = i;
+		}
+		else if (strcasecmp(node->children[i]->key, "type") == 0) {
+			type = i;
+		}
+	}
+	
+	for (int i = 0; i < node->child_count; i++) {
+		if (node->children[i]->key[0] == '_' || i == id || i == type) continue; // keys starting with _ are comments
+		
+		int j = 0;
+		for ( ; j < length; j++) {
+			if (strcasecmp(node->children[i]->key, allowed[j]) == 0) {
+				break;
+			}
+		}
+		if (j == length) {
+			fprintf(stderr, "Key not recognised: %s in %s of type %s\n", node->children[i]->key, node->children[id]->value, node->children[type]->value);
+			fprintf(stderr, "Possible keys:\n");
+			for (int j = 0; j < length; j++) {
+				fprintf(stderr, " %s\n", allowed[j]);
+			}
+			fprintf(stderr, "\n");
+			exit(12);
+		}
+	}
 }

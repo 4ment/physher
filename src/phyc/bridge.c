@@ -241,6 +241,15 @@ static void _free_BridgeSampling(BridgeSampling* bs){
 }
 
 BridgeSampling* new_BridgeSampling_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"burnin",
+		"file",
+		"model",
+		"treelikelihood",
+		"x"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	BridgeSampling* bs = malloc(sizeof(BridgeSampling));
 	bs->burnin = get_json_node_value_double(node, "burnin", 0);
 	char* likelihood_tag = get_json_node_value_string(node, "treelikelihood");

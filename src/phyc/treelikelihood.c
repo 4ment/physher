@@ -517,6 +517,15 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 }
 
 Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
+	char* allowed[] = {
+		"branchmodel",
+		"root_frequencies",
+		"sitemodel",
+		"sitepattern",
+		"tree"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	json_node* patterns_node = get_json_node(node, "sitepattern");
 	json_node* tree_node = get_json_node(node, "tree");
 	json_node* sm_node = get_json_node(node, "sitemodel");

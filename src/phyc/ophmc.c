@@ -73,6 +73,18 @@ bool operator_hmc(Operator* op, double* logHR){
 }
 
 Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"algorithm",
+		"coalescent",
+		"delay",
+		"model",
+		"parameters",
+		"tree",
+		"weight",
+		"x"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	Operator* op = malloc(sizeof(Operator));
 	const char* id_string = get_json_node_value_string(node, "id");
 	op->weight = get_json_node_value_double(node, "weight", 1);

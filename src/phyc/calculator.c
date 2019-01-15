@@ -14,6 +14,9 @@
 #include "ppsites.h"
 
 void calculatorModel_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {"whattodo"};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* what_node = get_json_node_value_string(node, "whattodo");
 	
 	if(strcasecmp(what_node, "asr") == 0){

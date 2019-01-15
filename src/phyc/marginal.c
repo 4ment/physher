@@ -405,6 +405,18 @@ static void _free_MarginaLikelihood(MarginaLikelihood* margl){
 }
 
 MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"algorithm",
+		"burnin",
+		"distribution",
+		"file",
+		"reference",
+		"steps",
+		"temperatures",
+		"treelikelihood"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	MarginaLikelihood* margl = malloc(sizeof(MarginaLikelihood));
 	json_node* temp_node = get_json_node(node, "temperatures");
 	json_node* steps_node = get_json_node(node, "steps");

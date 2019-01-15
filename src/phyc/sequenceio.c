@@ -478,6 +478,12 @@ void Sequences_save_phylip( const Sequences *sequences, const char *filename ){
 }
 
 Sequences* new_Sequences_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"file",
+		"sequences"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	json_node* file_node = get_json_node(node, "file");
 	json_node* sequences_node = get_json_node(node, "sequences");
 	Sequences* sequences = NULL;

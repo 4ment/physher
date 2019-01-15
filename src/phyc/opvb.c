@@ -238,6 +238,18 @@ bool operator_vb_1(Operator* op, double* logHR){
 }
 
 Operator* new_VariationalOperator_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"algorithm",
+		"coalescent",
+		"delay",
+		"parameters",
+		"tree",
+		"var",
+		"weight",
+		"x"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	Operator* op = malloc(sizeof(Operator));
 	const char* id_string = get_json_node_value_string(node, "id");
 	const char* algorithm_string = get_json_node_value_string(node, "algorithm");

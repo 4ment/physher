@@ -20,7 +20,7 @@
 #include "phyc/filereader.h"
 #include "phyc/vb.h"
 #include "phyc/random.h"
-
+#include "phyc/optimizer.h"
 
 char* test_jc69_clone(){
 	Hashtable* hash = new_Hashtable_string(10);
@@ -37,7 +37,7 @@ char* test_jc69_clone(){
 	free(content);
 	
 	json_node* child = json->children[0];
-	Model* model = new_CompoundModel_from_json(child, hash);
+	Model* model = new_TreeLikelihoodModel_from_json(child, hash);
 	double logP = model->logP(model);
 	Model* clone = model->clone(model, hash2);
 	model->free(model);
@@ -52,8 +52,6 @@ char* test_jc69_clone(){
 	return NULL;
 }
 
-#include "phyc/optimizer.h"
-
 char* test_gtr_clone(){
 	Hashtable* hash = new_Hashtable_string(10);
 	hashtable_set_key_ownership( hash, false );
@@ -63,7 +61,7 @@ char* test_gtr_clone(){
 	hashtable_set_key_ownership( hash2, false );
 	hashtable_set_value_ownership( hash2, false );
 	
-	char* content = load_file("gtr-bayesian.json");
+	char* content = load_file("gtr-c2-priors.json");
 	json_node* json = create_json_tree(content);
 	free(content);
 	

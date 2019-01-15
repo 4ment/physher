@@ -447,6 +447,19 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		return new_HMCOperator_from_json(node, hash);
 	}
 	
+	char* allowed[] = {
+		"algorithm",
+		"coalescent",
+		"delay",
+		"parameters",
+		"tree",
+		"weight",
+		"x"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
+	json_node* p_node = get_json_node(node, "parameters");
+	
 	Operator* op = malloc(sizeof(Operator));
 	const char* id_string = get_json_node_value_string(node, "id");
 	const char* x_string = get_json_node_value_string(node, "x");
@@ -495,7 +508,16 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->optimize = operator_scaler_optimize;
 		op->parameters = dvector(1);
 		op->parameters[0] = 0.9;
-		
+		if(p_node != NULL){
+			if (p_node->node_type == MJSON_PRIMITIVE){
+				op->parameters[0] = get_json_node_value_double(node, "parameters", 0.9);
+			}
+			else if(p_node->node_type == MJSON_ARRAY){
+				json_node* child = p_node->children[0];
+				op->parameters[0] = get_json_node_value_double(child, "parameters", 0.9);
+				
+			}
+		}
 	}
 	else if (strcasecmp(algorithm_string, "slider") == 0) {
 		op->x = new_Parameters(1);
@@ -504,6 +526,16 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->optimize = operator_slider_optimize;
 		op->parameters = dvector(1);
 		op->parameters[0] = 0.001;
+		if(p_node != NULL){
+			if (p_node->node_type == MJSON_PRIMITIVE){
+				op->parameters[0] = get_json_node_value_double(node, "parameters", 0.001);
+			}
+			else if(p_node->node_type == MJSON_ARRAY){
+				json_node* child = p_node->children[0];
+				op->parameters[0] = get_json_node_value_double(child, "parameters", 0.001);
+				
+			}
+		}
 		op->indexes = ivector(1);
 	}
 	else if (strcasecmp(algorithm_string, "dirichlet") == 0) {
@@ -516,6 +548,16 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->optimize = operator_dirichlet_optimize;
 		op->parameters = dvector(1);
 		op->parameters[0] = 100;
+		if(p_node != NULL){
+			if (p_node->node_type == MJSON_PRIMITIVE){
+				op->parameters[0] = get_json_node_value_double(node, "parameters", 100);
+			}
+			else if(p_node->node_type == MJSON_ARRAY){
+				json_node* child = p_node->children[0];
+				op->parameters[0] = get_json_node_value_double(child, "parameters", 100);
+				
+			}
+		}
 	}
 	else if (strcasecmp(algorithm_string, "exchange") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
@@ -526,7 +568,17 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->propose = operator_simplex_exchange;
 		op->optimize = operator_exchange_optimize;
 		op->parameters = dvector(1);
-		op->parameters[0] = 0.01;
+		op->parameters[0] = 0.001;
+		if(p_node != NULL){
+			if (p_node->node_type == MJSON_PRIMITIVE){
+				op->parameters[0] = get_json_node_value_double(node, "parameters", 0.01);
+			}
+			else if(p_node->node_type == MJSON_ARRAY){
+				json_node* child = p_node->children[0];
+				op->parameters[0] = get_json_node_value_double(child, "parameters", 0.01);
+				
+			}
+		}
 	}
 	else if (strcasecmp(algorithm_string, "nni") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
@@ -540,6 +592,16 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->parameters = dvector(1);
 		op->indexes = ivector(2);
 		op->parameters[0] = 1000;
+		if(p_node != NULL){
+			if (p_node->node_type == MJSON_PRIMITIVE){
+				op->parameters[0] = get_json_node_value_double(node, "parameters", 1000);
+			}
+			else if(p_node->node_type == MJSON_ARRAY){
+				json_node* child = p_node->children[0];
+				op->parameters[0] = get_json_node_value_double(child, "parameters", 1000);
+				
+			}
+		}
 	}
 	else if (strcasecmp(algorithm_string, "uniform") == 0) {
 		char* ref = get_json_node_value_string(node, "x");

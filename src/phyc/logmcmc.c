@@ -173,6 +173,19 @@ void _free_Log(Log* logger){
 }
 
 Log* new_Log_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"append",
+		"cpo",
+		"every",
+		"file",
+		"format",
+		"header",
+		"models",
+		"simplexes",
+		"x"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	Log* logger = malloc(sizeof(Log));
 	logger->x = new_Parameters(1);
 	json_node* header_node = get_json_node(node, "header");

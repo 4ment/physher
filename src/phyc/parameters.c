@@ -169,6 +169,13 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 }
 
 Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"lower",
+		"upper",
+		"value"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	if (node->node_type == MJSON_STRING) {
 		char* ref = (char*)node->value;
 		Parameter*p = Hashtable_get(hash, ref+1);

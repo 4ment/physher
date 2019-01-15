@@ -23,6 +23,20 @@
 
 
 Model* new_Variational_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"backward",
+		"distribution",
+		"elbosamples",
+		"gradsamples",
+		"log",
+		"parameters",
+		"posterior",
+		"tree",
+		"var",
+		"var_parameters"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	const char* posterior_string = get_json_node_value_string(node, "posterior");
 	const char* var_string = get_json_node_value_string(node, "var");
 	const char* dist_string = get_json_node_value_string(node, "distribution");

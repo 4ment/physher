@@ -81,6 +81,12 @@ void _free_cpo(CPO* cpo){
 
 
 CPO* new_CPO_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"burnin",
+		"filename"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
 	char* filename = get_json_node_value_string(node, "filename");
 	CPO* cpo = malloc(sizeof(CPO));
 	cpo->filename = String_clone(filename);
