@@ -128,6 +128,30 @@ double log_marginal_path_sampling_modified(const Vector** values, size_t temp_co
 	return lrps;
 }
 
+// temperatures should be sorted in increasing order
+double log_bf_stepping_stone(const Vector** values, const Vector** values1, size_t temp_count, const double* temperatures, double* lrssk){
+	double* diffll = dvector(Vector_length(values[0]));
+	double lrss = 0;
+	for(int i = 1; i < temp_count; i++){
+		int size = Vector_length(values[i-1]);
+		double tempdiff = temperatures[i]-temperatures[i-1];
+		double* v = Vector_data(values[i-1]);
+		double* v1 = Vector_data(values1[i-1]);
+		double logmaxll = -INFINITY;
+		for (int j = 0; j < size; j++) {
+			diffll[j] = v1[j] - v[j];
+			logmaxll = dmax(logmaxll, diffll[j]);
+		}
+		double temp = 0;
+		for (int j = 0; j < size; j++) {
+			temp += exp(tempdiff * (diffll[j] - logmaxll));
+		}
+		lrssk[i-1] = tempdiff*logmaxll + log(temp/size);
+		lrss += lrssk[i-1];
+	}
+	return lrss;
+}
+
 // code from BEAST
 double ess(double* values, size_t samples, size_t stepSize) {
 	
@@ -252,19 +276,70 @@ void test_marg_gss(const Vector** values, size_t temp_count, const double* tempe
 	free(lls);
 }
 
+static void _bayes_factor_run(MarginaLikelihood* margl){
+	StringBuffer* buffer = new_StringBuffer(10);
+	Vector** lls = malloc(margl->temperature_count*sizeof(Vector*));
+	Vector** lls1 = malloc(margl->temperature_count*sizeof(Vector*));
+	double* temperatures = malloc(margl->temperature_count*sizeof(double));
+	
+	int start_file = strlen(margl->file)-1;
+	for (; start_file >= 0; start_file--) {
+		if (margl->file[start_file] == '/') break;
+	}
+	
+	// temperatures should be in decreasing order
+	for (int i = 0; i < margl->temperature_count; i++) {
+		// saved in increasing order
+		StringBuffer_empty(buffer);
+		if (start_file >= 0) {
+			StringBuffer_append_substring(buffer, margl->file, start_file+1);
+			StringBuffer_append_format(buffer, "%d%s",i, margl->file+start_file+1);
+
+		}
+		else{
+			StringBuffer_append_format(buffer, "%d%s",i, margl->file);
+		}
+		printf("Temperature: %f - %s\n", margl->temperatures[i],buffer->c);
+		lls[margl->temperature_count-i-1] = read_log_column_with_id(buffer->c, margl->burnin, margl->likelihood_tag[0]);
+		lls1[margl->temperature_count-i-1] = read_log_column_with_id(buffer->c, margl->burnin, margl->likelihood_tag[1]);
+		temperatures[margl->temperature_count-i-1] = margl->temperatures[i];
+	}
+
+	double* lrssk = malloc(margl->temperature_count*sizeof(double));
+	
+	if(margl->ss){
+		double lrss = log_bf_stepping_stone(lls, lls1, margl->temperature_count, temperatures, lrssk);
+		printf("Stepping stone Bayes factor: %f\n", lrss);
+		for (int i = 0; i < margl->temperature_count-1; i++) {
+			printf("%f: %f\n", temperatures[i], lrssk[i]);
+		}
+	}
+	
+	free(lrssk);
+	
+	free_StringBuffer(buffer);
+	free(temperatures);
+	for (int i = 0; i < margl->temperature_count; i++) {
+		free_Vector(lls[i]);
+		free_Vector(lls1[i]);
+	}
+	free(lls);
+	free(lls1);
+}
+
 static void _marginal_likelihood_run(MarginaLikelihood* margl){
 	StringBuffer* buffer = new_StringBuffer(10);
 	Vector** lls = malloc(margl->temperature_count*sizeof(Vector*));
 	double* temperatures = malloc(margl->temperature_count*sizeof(double));
 	
 	if(margl->temperature_count == 1){
-		lls[0] = read_log_column_with_id(margl->file, margl->burnin, margl->likelihood_tag);
+		lls[0] = read_log_column_with_id(margl->file, margl->burnin, margl->likelihood_tag[0]);
 	}
 	// Generalized stepping stone
 	else if(margl->refdist_tag != NULL){
 		double* lrssk = malloc(margl->temperature_count*sizeof(double));
 		char* ids[2];
-		ids[0] = margl->likelihood_tag;
+		ids[0] = margl->likelihood_tag[0];
 		ids[1] = margl->refdist_tag;
 		
 		int start_file = strlen(margl->file)-1;
@@ -325,7 +400,7 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 				StringBuffer_append_format(buffer, "%d%s",i, margl->file);
 			}
 			printf("Temperature: %f - %s\n", margl->temperatures[i],buffer->c);
-			lls[margl->temperature_count-i-1] = read_log_column_with_id(buffer->c, margl->burnin, margl->likelihood_tag);
+			lls[margl->temperature_count-i-1] = read_log_column_with_id(buffer->c, margl->burnin, margl->likelihood_tag[0]);
 //			double* data = Vector_data(lls[margl->temperature_count-i-1]);
 //			double n = Vector_length(lls[margl->temperature_count-i-1]);
 //			double esss = ess(data, n, n);
@@ -398,6 +473,8 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 
 static void _free_MarginaLikelihood(MarginaLikelihood* margl){
 	free(margl->file);
+	free(margl->likelihood_tag[0]);
+	if (margl->bf) free(margl->likelihood_tag[1]);
 	free(margl->likelihood_tag);
 	if(margl->refdist_tag != NULL) free(margl->refdist_tag);
 	if(margl->temperatures != NULL)free(margl->temperatures);
@@ -421,7 +498,7 @@ MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* h
 	json_node* temp_node = get_json_node(node, "temperatures");
 	json_node* steps_node = get_json_node(node, "steps");
 	margl->burnin = get_json_node_value_double(node, "burnin", 0);
-	char* likelihood_tag = get_json_node_value_string(node, "treelikelihood");
+	json_node* likelihood_node = get_json_node(node, "treelikelihood");
 	char* ref_dist_tag = get_json_node_value_string(node, "reference"); // reference distribution for GSS
 
 	margl->refdist_tag = NULL;
@@ -430,11 +507,23 @@ MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* h
 		margl->refdist_tag = String_clone(ref_dist_tag);
 	}
 	
-	if(likelihood_tag == NULL){
-		margl->likelihood_tag = String_clone("treelikelihood");
+	// BF
+	if (likelihood_node->node_type == MJSON_ARRAY) {
+		margl->bf = true;
+		margl->likelihood_tag = malloc(likelihood_node->child_count*sizeof(char*));
+		for (int i = 0; i < likelihood_node->child_count; i++) {
+			margl->likelihood_tag[i] = String_clone((char*)likelihood_node->children[i]->value);
+		}
 	}
 	else{
-		margl->likelihood_tag = String_clone(likelihood_tag);
+		char* likelihood_tag = get_json_node_value_string(node, "treelikelihood");
+		margl->likelihood_tag = malloc(sizeof(char*));
+		if(likelihood_tag == NULL){
+			margl->likelihood_tag[0] = String_clone("treelikelihood");
+		}
+		else{
+			margl->likelihood_tag[0] = String_clone(likelihood_tag);
+		}
 	}
 	
 	if (temp_node != NULL) {
@@ -498,5 +587,8 @@ MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* h
 	margl->file = String_clone(file);
 	margl->run = _marginal_likelihood_run;
 	margl->free = _free_MarginaLikelihood;
+	if (margl->bf) {
+		margl->run = _bayes_factor_run;
+	}
 	return margl;
 }

@@ -18,6 +18,7 @@ typedef struct MMCMC{
 	void (*run)(struct MMCMC*);
 	void (*free)(struct MMCMC*);
 	bool gss;
+	bool bf;
 	size_t prior_samples;
 } MMCMC;
 

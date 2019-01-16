@@ -60,6 +60,13 @@ void run(MCMC* mcmc){
 		
 		logP = posteriorLogP + referenceLogP;
 	}
+	// bayes factor
+	else if(mcmc->bf){
+		model->logP(model);
+		CompoundModel* cm = (CompoundModel*)model->obj;
+		logP = cm->models[0]->logP(cm->models[0]) * (1.0 - mcmc->chain_temperature);
+		logP += cm->models[1]->logP(cm->models[1]) * mcmc->chain_temperature;
+	}
 	else{
 		model->logP(model);
 		CompoundModel* cm = (CompoundModel*)model->obj;
@@ -99,6 +106,13 @@ void run(MCMC* mcmc){
 				double referenceLogP = cm->models[1]->logP(cm->models[1]) * (1.0 - mcmc->chain_temperature);
 				
 				proposed_logP = posteriorLogP + referenceLogP;
+			}
+			// bayes factor
+			else if(mcmc->bf){
+				model->logP(model);
+				CompoundModel* cm = (CompoundModel*)model->obj;
+				proposed_logP = cm->models[0]->logP(cm->models[0]) * (1.0 - mcmc->chain_temperature);
+				proposed_logP += cm->models[1]->logP(cm->models[1]) * mcmc->chain_temperature;
 			}
 			else{
 				model->logP(model);
@@ -169,6 +183,7 @@ void _free_MCMC(MCMC* mcmc){
 
 MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
+		"bf",
 		"gss",
 		"log",
 		"length",
@@ -246,6 +261,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
     }
 	mcmc->chain_temperature = get_json_node_value_double(node, "temperature", -1);
 	mcmc->gss = get_json_node_value_bool(node, "gss", false);
+	mcmc->bf = get_json_node_value_bool(node, "bf", false);
 	mcmc->free = _free_MCMC;
 	return mcmc;
 }

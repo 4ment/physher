@@ -27,9 +27,15 @@ void mmcmc_run(MMCMC* mmcmc){
 		}
 	}
 	int i = 0;
+	size_t temperature_count = mmcmc->temperature_count;
 	if (mmcmc->gss) {
 		mcmc->gss = true;
 		i = 1;
+	}
+	else if (mmcmc->bf) {
+		mcmc->bf = true;
+//		i = 1;
+//		temperature_count--;
 	}
 	// Check that we can sample directly from prior withtou MCMC
 	bool sampleable = mmcmc->prior_samples > 0;
@@ -39,7 +45,7 @@ void mmcmc_run(MMCMC* mmcmc){
 	}
 	
 	// temperatures should be in decreasing order
-	for (; i < mmcmc->temperature_count; i++) {
+	for (; i < temperature_count; i++) {
 		for (int j = 0; j < mcmc->log_count; j++) {
 			if(filenames[j] != NULL){
 				StringBuffer_empty(buffer);
@@ -88,6 +94,7 @@ void mmcmc_run(MMCMC* mmcmc){
 		}
 	}
 	mcmc->gss = false;
+	mcmc->bf = false;
 	
 	free(filenames);
 	free_StringBuffer(buffer);
@@ -102,6 +109,7 @@ static void _free_MMCMC(MMCMC* mmcmc){
 
 MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
+		"bf",
 		"distribution",
 		"gss",
 		"mcmc",
@@ -116,6 +124,7 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	json_node* temp_node = get_json_node(node, "temperatures");
 	json_node* steps_node = get_json_node(node, "steps");
 	mmcmc->gss = get_json_node_value_bool(node, "gss", false);
+	mmcmc->bf = get_json_node_value_bool(node, "bf", false);
 	mmcmc->prior_samples = get_json_node_value_size_t(node, "samples", 0);
 	
 	if (temp_node != NULL) {

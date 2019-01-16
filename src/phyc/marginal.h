@@ -20,7 +20,7 @@ typedef struct MarginaLikelihood{
 	double* temperatures;
 	size_t temperature_count;
 	size_t burnin;
-	char* likelihood_tag;
+	char** likelihood_tag;
 	char* refdist_tag;
 	void (*run)(struct MarginaLikelihood*);
 	void (*free)(struct MarginaLikelihood*);
@@ -29,6 +29,7 @@ typedef struct MarginaLikelihood{
 	bool ps2;
 	bool hm;
 	bool shm;
+	bool bf;
 }MarginaLikelihood;
 
 double log_arithmetic_mean(const Vector* vecvalues);

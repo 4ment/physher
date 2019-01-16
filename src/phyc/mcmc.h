@@ -26,6 +26,7 @@ typedef struct MCMC{
 	size_t tuning_frequency;
 	int verbose;
 	bool gss;
+	bool bf;
 } MCMC;
 
 MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash);
