@@ -104,6 +104,9 @@ int main(int argc, char* argv[]){
 
 		json = create_json_tree(content);
 		free(content);
+		
+		// remove json_nodes containing "ignore": true
+		json_prune_ignored(json);
 	}
 
 	long seeed = time(NULL);
@@ -184,9 +187,6 @@ int main(int argc, char* argv[]){
 	for (int i = 0; i < run_node->child_count; i++) {
         json_node* child = run_node->children[i];
         char* type = get_json_node_value_string(child, "type");
-        bool ignore = get_json_node_value_bool(child, "ignore", false);
-        
-        if(ignore) continue;
         
 		if (strcasecmp(type, "optimizer") == 0) {
 			Optimizer* opt = new_Optimizer_from_json(child, hash2);

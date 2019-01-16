@@ -9,6 +9,7 @@
 #include "mjson.h"
 
 #include <string.h>
+#include <strings.h>
 
 #include "mstring.h"
 #include "ctype.h"
@@ -413,6 +414,28 @@ void json_tree_to_string(json_node* node){
 	for (int i = 0; i < node->child_count; i++) {
 		json_tree_to_string(node->children[i]);
 	}
+}
+
+bool json_prune_ignored(json_node* node){
+	for (int i = 0; i < node->child_count; i++) {
+		if (node->children[i]->node_type == MJSON_PRIMITIVE && node->children[i]->key != NULL &&
+			strcasecmp(node->children[i]->key, "ignore") == 0 && strcasecmp((char*)node->children[i]->value, "1") == 0) {
+			return true;
+		}
+	}
+	
+	for (int i = 0; i < node->child_count; i++) {
+		bool remove = json_prune_ignored(node->children[i]);
+		if (remove) {
+			json_free_tree(node->children[i]);
+			for (int j = i; j < node->child_count-1; j++) {
+				node->children[j] = node->children[j+1];
+			}
+			node->child_count--;
+			i--;
+		}
+	}
+	return false;
 }
 
 void json_tree_print_aux(json_node* node, size_t level){

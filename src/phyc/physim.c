@@ -66,7 +66,7 @@ Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataT
             accum += sm->get_proportion(sm,i);
         }
         if( accum < 0.000001 ){
-            printf(stderr, "Proportions in SiteModel must add up to 1\n");
+            fprintf(stderr, "Proportions in SiteModel must add up to 1\n");
             for ( int i = 0; i < sm->cat_count; i++ ) {
                 fprintf(stderr, "%d %e\n",i, sm->get_proportion(sm,i));
             }

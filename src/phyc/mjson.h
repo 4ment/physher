@@ -49,6 +49,7 @@ double get_json_node_value_double(json_node* node, const char* key, double defau
 int get_json_node_value_int(json_node* node, const char* key, int defaultv);
 size_t get_json_node_value_size_t(json_node* node, const char* key, size_t defaultv);
 void json_tree_to_string(json_node* node);
+bool json_prune_ignored(json_node* node);
 void json_tree_print(json_node* node);
 void json_free_tree(json_node* node);
 
