@@ -11,6 +11,7 @@
 
 #include "model.h"
 #include "parameters.h"
+#include "simplex.h"
 #include "mjson.h"
 
 struct _CompoundModel;
@@ -19,6 +20,7 @@ typedef struct _CompoundModel CompoundModel;
 struct _CompoundModel{
 	Model** models;
 	int count;
+	Model* weights;
 	double (*logP)(CompoundModel*);
 	double (*dlogP)(CompoundModel*, const Parameter*);
 	double (*d2logP)(CompoundModel*, const Parameter*);

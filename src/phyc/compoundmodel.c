@@ -20,30 +20,59 @@
 
 double _compoundModel_logP(CompoundModel* cm){
 	double logP = 0;
-	for(int i = 0; i < cm->count; i++){
-		logP += cm->models[i]->logP(cm->models[i]);
+	if (cm->weights != NULL) {
+		Simplex* s = cm->weights->obj;
+		logP = -DBL_MAX;
+		for(int i = 0; i < cm->count; i++){
+			logP = logaddexp(logP, log(s->get_value(s, i)) + cm->models[i]->logP(cm->models[i]));
+		}
+	}
+	else{
+		for(int i = 0; i < cm->count; i++){
+			logP += cm->models[i]->logP(cm->models[i]);
+		}
 	}
 	return logP;
 }
 
 double _compoundModel_dlogP(CompoundModel* cm, const Parameter* p){
 	double dlogP = 0;
-	for(int i = 0; i < cm->count; i++){
-		dlogP += cm->models[i]->dlogP(cm->models[i], p);
+	if (cm->weights != NULL) {
+		Simplex* s = cm->weights->obj;
+		for(int i = 0; i < cm->count; i++){
+			dlogP += log(s->get_value(s, i)) + cm->models[i]->dlogP(cm->models[i], p);
+		}
+	}
+	else{
+		for(int i = 0; i < cm->count; i++){
+			dlogP += cm->models[i]->dlogP(cm->models[i], p);
+		}
 	}
 	return dlogP;
 }
 
 double _compoundModel_d2logP(CompoundModel* cm, const Parameter* p){
 	double d2logP = 0;
-	for(int i = 0; i < cm->count; i++){
-		d2logP += cm->models[i]->d2logP(cm->models[i], p);
+	if (cm->weights != NULL) {
+		Simplex* s = cm->weights->obj;
+		for(int i = 0; i < cm->count; i++){
+			d2logP += log(s->get_value(s, i)) + cm->models[i]->d2logP(cm->models[i], p);
+		}
+	}
+	else{
+		for(int i = 0; i < cm->count; i++){
+			d2logP += cm->models[i]->d2logP(cm->models[i], p);
+		}
 	}
 	return d2logP;
 }
 
 double _compoundModel_ddlogP(CompoundModel* cm, const Parameter* p1, const Parameter* p2){
 	double ddlogP = 0;
+	if(cm->weights!=NULL){
+		fprintf(stderr, "Mixture _compoundModel_ddlogP not yet implemented\n");
+		exit(11);
+	}
 	for(int i = 0; i < cm->count; i++){
 		ddlogP += cm->models[i]->ddlogP(cm->models[i], p1, p2);
 	}
@@ -94,6 +123,7 @@ static void _free_compound_model(CompoundModel* cm){
 	for (int i = 0; i < cm->count; i++) {
 		cm->models[i]->free(cm->models[i]);
 	}
+	if(cm->weights!=NULL) cm->weights->free(cm->weights);
 	free(cm->models);
 	free(cm);
 }
@@ -134,6 +164,18 @@ static Model* _compound_model_clone( Model *self, Hashtable* hash ){
 		}
 		cmclone->add(cmclone, mclone);
 		mclone->free(mclone);
+	}
+	if(cm->weights != NULL){
+		Model* msimplex_rates_clone = NULL;
+		if (Hashtable_exists(hash, cm->weights->name)) {
+			msimplex_rates_clone = Hashtable_get(hash, cm->weights->name);
+			msimplex_rates_clone->ref_count++;
+		}
+		else{
+			msimplex_rates_clone = cm->weights->clone(cm->weights, hash);
+			Hashtable_add(hash, msimplex_rates_clone->name, msimplex_rates_clone);
+		}
+		cmclone->weights = msimplex_rates_clone;
 	}
 	Model* clone = new_CompoundModel2(self->name, cmclone);
 	
@@ -195,6 +237,9 @@ static void _compoundModel_store(Model* self){
 	for (int i = 0; i < cm->count; i++) {
 		cm->models[i]->store(cm->models[i]);
 	}
+	if (cm->weights != NULL) {
+		cm->weights->store(cm->weights);
+	}
 }
 
 static void _compoundModel_restore(Model* self){
@@ -202,6 +247,9 @@ static void _compoundModel_restore(Model* self){
 	CompoundModel* cm = (CompoundModel*)self->obj;
 	for (int i = 0; i < cm->count; i++) {
 		cm->models[i]->restore(cm->models[i]);
+	}
+	if (cm->weights != NULL) {
+		cm->weights->restore(cm->weights);
 	}
 }
 
@@ -261,6 +309,12 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 			break;
 		}
 	}
+//	for(int i = 0; i < cm->count; i++){
+//		cm->models[i]->listeners->add(cm->models[i]->listeners, model),
+//	}
+//	if (cm->weights != NULL) {
+//		cm->weights->listeners->add( cm->weights->listeners, model );
+//	}
 	model->sample = _compound_model_sample;
 	model->sample_evaluate = _compound_model_sample_evaluate;
 	return model;
@@ -268,12 +322,14 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 
 Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 	char* allowed[] = {
-		"distributions"
+		"distributions",
+		"weights"
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
 	CompoundModel* cm = new_CompoundModel();
 	json_node* distributions_node = get_json_node(node, "distributions");
+	json_node* simplex_node = get_json_node(node, "weights");
 	char* id = get_json_node_value_string(node, "id");
 	assert(distributions_node);
 
@@ -365,6 +421,23 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 		else{
 			printf("json CompoundModel unknown: (%s)\n", type);
 			exit(1);
+		}
+	}
+	
+	cm->weights = NULL;
+	
+	// it's a mixture
+	if (simplex_node != NULL) {
+		if (simplex_node->node_type == MJSON_OBJECT) {
+			cm->weights = new_SimplexModel_from_json(simplex_node, hash);
+			char* id = get_json_node_value_string(simplex_node, "id");
+			Hashtable_add(hash, id, simplex_node);
+		}
+		else if(simplex_node->node_type == MJSON_STRING){
+			char* ref = (char*)simplex_node->value;
+			// check it starts with a &
+			cm->weights = Hashtable_get(hash, ref+1);
+			cm->weights->ref_count++;
 		}
 	}
 	Model* model = new_CompoundModel2(id, cm);
