@@ -658,8 +658,10 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 	Parameters_set_name2(clonetree->distances, Parameters_name2(tree->distances));
 	Hashtable_add(hash, Parameters_name2(clonetree->distances), clonetree->distances);
 	
-	Parameters_set_name2(clonetree->heights, Parameters_name2(tree->heights));
-	Hashtable_add(hash, Parameters_name2(clonetree->heights), clonetree->heights);
+	if(Parameters_name2(tree->heights) != NULL){
+		Parameters_set_name2(clonetree->heights, Parameters_name2(tree->heights));
+		Hashtable_add(hash, Parameters_name2(clonetree->heights), clonetree->heights);
+	}
 	
 	for (int i = 0; i < Tree_node_count(clonetree); i++) {
 		Node* node = Tree_node(clonetree, i);

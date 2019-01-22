@@ -361,7 +361,7 @@ json_node* create_json_tree(const char* json){
 			if(current->parent != NULL)
 				current = current->parent;
 		}
-		else if((json[i] >=48 && json[i] <= 57) || json[i] == '.'){
+		else if((json[i] >=48 && json[i] <= 57) || json[i] == '.' || json[i] == '+' || json[i] == '-'){
 			StringBuffer_empty(buffer);
 			while (json[i] != ',' && json[i] != ']' && json[i] != '}') {
 				StringBuffer_append_char(buffer, json[i]);
@@ -503,6 +503,11 @@ void json_check_allowed(json_node* node, char** allowed, int length){
 		else if (strcasecmp(node->children[i]->key, "type") == 0) {
 			type = i;
 		}
+	}
+	if (node->node_type == MJSON_OBJECT && (id == -1 || type == -1)) {
+		fprintf(stderr, "Missing id or type in:\n");
+		json_tree_print(node);
+		exit(12);
 	}
 	
 	for (int i = 0; i < node->child_count; i++) {
