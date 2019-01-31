@@ -25,7 +25,7 @@ typedef struct MCMC{
 	size_t log_count;
 	size_t tuning_frequency;
 	int verbose;
-	bool gss;
+	bool generalized;
 	bool bf;
 } MCMC;
 

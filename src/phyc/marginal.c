@@ -149,7 +149,32 @@ double log_bf_stepping_stone(const Vector** values, const Vector** values1, size
 		lrssk[i-1] = tempdiff*logmaxll + log(temp/size);
 		lrss += lrssk[i-1];
 	}
+	free(diffll);
 	return lrss;
+}
+
+// temperatures should be sorted in increasing order
+double log_bf_path_sampling(const Vector** values, const Vector** values1, size_t temp_count, const double* temperatures, double* lrpsk){
+	double lrps = 0;
+	double* means = dvector(temp_count);
+	for(int i = 0; i < temp_count; i++){
+		size_t size = Vector_length(values[i]);
+		double* v = Vector_data(values[i]);
+		double* v1 = Vector_data(values1[i]);
+		double mean = 0;
+		for (int j = 0; j < size; j++) {
+			mean += v1[j] - v[j];
+		}
+		means[i] = mean/size;
+	}
+	
+	for(int i = 1; i < temp_count; i++){
+		double weight = temperatures[i]-temperatures[i-1];
+		lrpsk[i-1] = weight * (means[i]+means[i-1])/2.0;
+		lrps += lrpsk[i-1];
+	}
+	free(means);
+	return lrps;
 }
 
 // code from BEAST
@@ -314,6 +339,13 @@ static void _bayes_factor_run(MarginaLikelihood* margl){
 			printf("%f: %f\n", temperatures[i], lrssk[i]);
 		}
 	}
+	if (margl->ps) {
+		double lrps = log_bf_path_sampling(lls, lls1, margl->temperature_count, temperatures, lrssk);
+		printf("Path sampling Bayes factor: %f\n", lrps);
+		for (int i = 0; i < margl->temperature_count-1; i++) {
+			printf("%f: %f\n", temperatures[i], lrssk[i]);
+		}
+	}
 	
 	free(lrssk);
 	
@@ -347,8 +379,7 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 			if (margl->file[start_file] == '/') break;
 		}
 		
-		// we ignore temperature 1
-		for (int i = 1; i < margl->temperature_count; i++) {
+		for (int i = 0; i < margl->temperature_count; i++) {
 			// saved in increasing order
 			StringBuffer_empty(buffer);
 			if (start_file >= 0) {
@@ -359,6 +390,12 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 			else{
 				StringBuffer_append_format(buffer, "%d%s",i, margl->file);
 			}
+			// posterior (beta==1) is ignored for GSS but not for GPS
+			if (!file_exists(margl->file)) {
+				temperatures[margl->temperature_count-1] = margl->temperatures[0];
+				lls[margl->temperature_count-1] = NULL;
+			}
+			
 			printf("Temperature: %f - %s\n", margl->temperatures[i], buffer->c);
 			Vector** all = read_log_column_with_ids(buffer->c, margl->burnin, ids, 2);
 			size_t size = Vector_length(all[0]);
@@ -378,6 +415,14 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 		printf("Generalized stepping stone marginal likelihood: %f\n", lrss);
 		for (int i = 0; i < margl->temperature_count-1; i++) {
 			printf("%f: %f\n", temperatures[i], lrssk[i]);
+		}
+		
+		if (lls[margl->temperature_count-1] != NULL) {
+			double lrps = log_marginal_path_sampling(lls, margl->temperature_count, temperatures, lrssk);
+			printf("Generalized path sampling marginal likelihood: %f\n", lrps);
+			for (int i = 0; i < margl->temperature_count-1; i++) {
+				printf("%f: %f\n", temperatures[i], lrssk[i]);
+			}
 		}
 		free(lrssk);
 	}
@@ -502,13 +547,14 @@ MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* h
 	char* ref_dist_tag = get_json_node_value_string(node, "reference"); // reference distribution for GSS
 
 	margl->refdist_tag = NULL;
+	margl->bf = false;
 	
 	if(ref_dist_tag != NULL){
 		margl->refdist_tag = String_clone(ref_dist_tag);
 	}
 	
 	// BF
-	if (likelihood_node->node_type == MJSON_ARRAY) {
+	if (likelihood_node != NULL && likelihood_node->node_type == MJSON_ARRAY) {
 		margl->bf = true;
 		margl->likelihood_tag = malloc(likelihood_node->child_count*sizeof(char*));
 		for (int i = 0; i < likelihood_node->child_count; i++) {
@@ -558,7 +604,7 @@ MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* h
 		else if(strcasecmp(dist_string, "uniform") == 0){
 			double incr = 1.0/(margl->temperature_count-1);
 			for (size_t i = 1; i < margl->temperature_count-1; i++) {
-				margl->temperatures[i] = margl->temperatures[i+1] - incr;
+				margl->temperatures[i] = margl->temperatures[i-1] - incr;
 			}
 		}
 		else{

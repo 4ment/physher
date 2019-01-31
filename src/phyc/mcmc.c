@@ -16,6 +16,35 @@
 #include "compoundmodel.h"
 #include "treelikelihood.h"
 
+static double  _calculate_logP(MCMC* mcmc){
+	Model* model = mcmc->model;
+	double logP = 0;
+	if(mcmc->chain_temperature < 0){
+		logP = model->logP(model);
+	}
+	// bayes factor or generalized marginal with geometric tempering
+	else if(mcmc->generalized || mcmc->bf){
+		model->logP(model);
+		CompoundModel* cm = (CompoundModel*)model->obj;
+		logP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature; // Un-normalized posterior in marginal GSS
+		logP += cm->models[1]->logP(cm->models[1]) * (1.0 - mcmc->chain_temperature); // Reference distribution in marginal GSS
+		
+		// allows some terms not to be heated
+		for (int i = 2; i < cm->count; i++) {
+			logP += cm->models[i]->logP(cm->models[i]);
+		}
+	}
+	// standard marginal with geometric tempering
+	else{
+		model->logP(model);
+		CompoundModel* cm = (CompoundModel*)model->obj;
+		logP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
+		for (int i = 1; i < cm->count; i++) {
+			logP += cm->models[i]->logP(cm->models[i]);
+		}
+	}
+	return logP;
+}
 
 void run(MCMC* mcmc){
 	Model* model = mcmc->model;
@@ -45,36 +74,7 @@ void run(MCMC* mcmc){
 		mcmc->operators[i]->failure_count = 0;
 	}
 	
-	// loggers log headers
-	if(mcmc->chain_temperature < 0){
-		logP = model->logP(model);
-	}
-	else if(mcmc->gss){
-		model->logP(model);
-		CompoundModel* cm = (CompoundModel*)model->obj;
-		// Un-normalized posterior
-		double posteriorLogP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
-		
-		// Reference distribution
-		double referenceLogP = cm->models[1]->logP(cm->models[1]) * (1.0 - mcmc->chain_temperature);
-		
-		logP = posteriorLogP + referenceLogP;
-	}
-	// bayes factor
-	else if(mcmc->bf){
-		model->logP(model);
-		CompoundModel* cm = (CompoundModel*)model->obj;
-		logP = cm->models[0]->logP(cm->models[0]) * (1.0 - mcmc->chain_temperature);
-		logP += cm->models[1]->logP(cm->models[1]) * mcmc->chain_temperature;
-	}
-	else{
-		model->logP(model);
-		CompoundModel* cm = (CompoundModel*)model->obj;
-		logP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
-		for (int i = 1; i < cm->count; i++) {
-			logP += cm->models[i]->logP(cm->models[i]);
-		}
-	}
+	logP = _calculate_logP(mcmc);
 	
 	for (int i = 0; i < mcmc->log_count; i++) {
 		mcmc->logs[i]->write(mcmc->logs[i], iter);
@@ -94,34 +94,7 @@ void run(MCMC* mcmc){
 		bool success = op->propose(op, &logHR);
 		
 		if (success) {
-			double proposed_logP;
-			if(mcmc->chain_temperature < 0){
-				proposed_logP = model->logP(model);
-			}
-			else if(mcmc->gss){
-				model->logP(model);
-				CompoundModel* cm = (CompoundModel*)model->obj;
-				double posteriorLogP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
-				
-				double referenceLogP = cm->models[1]->logP(cm->models[1]) * (1.0 - mcmc->chain_temperature);
-				
-				proposed_logP = posteriorLogP + referenceLogP;
-			}
-			// bayes factor
-			else if(mcmc->bf){
-				model->logP(model);
-				CompoundModel* cm = (CompoundModel*)model->obj;
-				proposed_logP = cm->models[0]->logP(cm->models[0]) * (1.0 - mcmc->chain_temperature);
-				proposed_logP += cm->models[1]->logP(cm->models[1]) * mcmc->chain_temperature;
-			}
-			else{
-				model->logP(model);
-				CompoundModel* cm = (CompoundModel*)model->obj;
-				proposed_logP = cm->models[0]->logP(cm->models[0]) * mcmc->chain_temperature;
-				for (int i = 1; i < cm->count; i++) {
-					proposed_logP += cm->models[i]->logP(cm->models[i]);
-				}
-			}
+			double proposed_logP = _calculate_logP(mcmc);
 			
 			double alpha = proposed_logP - logP + logHR;
 			
@@ -184,9 +157,9 @@ void _free_MCMC(MCMC* mcmc){
 MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
 		"bf",
-		"gss",
-		"log",
+		"generalized",
 		"length",
+		"log",
 		"model",
 		"operators",
 		"temperature",
@@ -260,7 +233,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
         }
     }
 	mcmc->chain_temperature = get_json_node_value_double(node, "temperature", -1);
-	mcmc->gss = get_json_node_value_bool(node, "gss", false);
+	mcmc->generalized = get_json_node_value_bool(node, "generalized", false);
 	mcmc->bf = get_json_node_value_bool(node, "bf", false);
 	mcmc->free = _free_MCMC;
 	return mcmc;

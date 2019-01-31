@@ -29,8 +29,10 @@ void mmcmc_run(MMCMC* mmcmc){
 	int i = 0;
 	size_t temperature_count = mmcmc->temperature_count;
 	if (mmcmc->gss) {
-		mcmc->gss = true;
-		i = 1;
+		mcmc->generalized = true;
+		// we need to sample from the posterior for generalized PS (start from 0)
+		// for GSS only need to start from index 1
+		i = mmcmc->start;
 	}
 	else if (mmcmc->bf) {
 		mcmc->bf = true;
@@ -93,7 +95,7 @@ void mmcmc_run(MMCMC* mmcmc){
 			free(filenames[j]);
 		}
 	}
-	mcmc->gss = false;
+	mcmc->generalized = false;
 	mcmc->bf = false;
 	
 	free(filenames);
@@ -114,6 +116,7 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 		"gss",
 		"mcmc",
 		"samples",
+		"start",
 		"steps",
 		"temperatures"
 	};
@@ -126,6 +129,9 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	mmcmc->gss = get_json_node_value_bool(node, "gss", false);
 	mmcmc->bf = get_json_node_value_bool(node, "bf", false);
 	mmcmc->prior_samples = get_json_node_value_size_t(node, "samples", 0);
+	// By default the posterior with beta==1 is not sampled since GSS does not need it
+	// For GPS we need start==0
+	mmcmc->start = get_json_node_value_int(node, "start", 1);
 	
 	if (temp_node != NULL) {
 		if (temp_node->node_type != MJSON_ARRAY) {
@@ -159,7 +165,7 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 		else if(strcasecmp(dist_string, "uniform") == 0){
 			double incr = 1.0/(mmcmc->temperature_count-1);
 			for (size_t i = 1; i < mmcmc->temperature_count-1; i++) {
-				mmcmc->temperatures[i] = mmcmc->temperatures[i+1] - incr;
+				mmcmc->temperatures[i] = mmcmc->temperatures[i-1] - incr;
 			}
 		}
 		else{
