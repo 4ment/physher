@@ -278,6 +278,23 @@ static void DistributionModel_gamma_sample(DistributionModel* dm, double* sample
 	}
 }
 
+static double DistributionModel_gamma_sample_evaluate(DistributionModel* dm){
+	if(Parameters_count(dm->parameters) > 2){
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double sample = gsl_ran_gamma(dm->rng, Parameters_value(dm->parameters, i*2), 1.0/Parameters_value(dm->parameters, i*2+1));
+			Parameters_set_value(dm->x, i, sample);
+		}
+	}
+	else{
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double sample = gsl_ran_gamma(dm->rng, Parameters_value(dm->parameters, 0), 1.0/Parameters_value(dm->parameters, 1));
+			Parameters_set_value(dm->x, i, sample);
+		}
+	}
+	return DistributionModel_log_gamma(dm);
+}
+
+
 double DistributionModel_lognormal_logP(DistributionModel* dm){
 	double logP = 0;
 	if(Parameters_count(dm->parameters) > 2){
@@ -297,22 +314,6 @@ double DistributionModel_lognormal_logP(DistributionModel* dm){
 		}
 	}
 	return logP;
-}
-
-static double DistributionModel_gamma_sample_evaluate(DistributionModel* dm){
-	if(Parameters_count(dm->parameters) > 2){
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double sample = gsl_ran_gamma(dm->rng, Parameters_value(dm->parameters, i*2), 1.0/Parameters_value(dm->parameters, i*2+1));
-			Parameters_set_value(dm->x, i, sample);
-		}
-	}
-	else{
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double sample = gsl_ran_gamma(dm->rng, Parameters_value(dm->parameters, 0), 1.0/Parameters_value(dm->parameters, 1));
-			Parameters_set_value(dm->x, i, sample);
-		}
-	}
-	return DistributionModel_log_gamma(dm);
 }
 
 double DistributionModel_lognormal_logP_with_values(DistributionModel* dm, const double* values){
@@ -389,6 +390,137 @@ static double DistributionModel_lognormal_sample_evaluate(DistributionModel* dm)
 	else{
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
 			double sample = gsl_ran_lognormal(dm->rng, Parameters_value(dm->parameters, 0), Parameters_value(dm->parameters, 1));
+			Parameters_set_value(dm->x, i, sample);
+		}
+	}
+	return DistributionModel_lognormal_logP(dm);
+}
+
+double DistributionModel_normal_logP(DistributionModel* dm){
+	double logP = 0;
+	if(Parameters_count(dm->parameters) > 2){
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double mu = Parameters_value(dm->parameters, i*2);
+			double sigma = Parameters_value(dm->parameters, i*2+1);
+			if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+				sigma = sqrt(1.0/sigma);
+			}
+			double x = Parameters_value(dm->x, i);
+			logP += log(gsl_ran_gaussian_pdf(x - mu, sigma));
+		}
+	}
+	else{
+		double mu = Parameters_value(dm->parameters, 0);
+		double sigma = Parameters_value(dm->parameters, 1);
+		if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+			sigma = sqrt(1.0/sigma);
+		}
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double x = Parameters_value(dm->x, i);
+			logP += log(gsl_ran_gaussian_pdf(x - mu, sigma));
+		}
+	}
+	return logP;
+}
+
+double DistributionModel_normal_logP_with_values(DistributionModel* dm, const double* values){
+	double logP = 0;
+	if(Parameters_count(dm->parameters) > 2){
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double mu = Parameters_value(dm->parameters, i*2);
+			double sigma = Parameters_value(dm->parameters, i*2+1);
+			if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+				sigma = sqrt(1.0/sigma);
+			}
+			logP += log(gsl_ran_gaussian_pdf(values[i] - mu, sigma));
+		}
+	}
+	else{
+		double mu = Parameters_value(dm->parameters, 0);
+		double sigma = Parameters_value(dm->parameters, 1);
+		if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+			sigma = sqrt(1.0/sigma);
+		}
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			logP += log(gsl_ran_gaussian_pdf(values[i] - mu, sigma));
+		}
+	}
+	return logP;
+}
+
+double DistributionModel_normal_dlogP(DistributionModel* dm, const Parameter* p){
+	for (int i = 0; i < Parameters_count(dm->x); i++) {
+		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
+			double mu = Parameters_value(dm->parameters, 0);
+			double sigma = Parameters_value(dm->parameters, 1);
+			if(Parameters_count(dm->parameters) > 2){
+				mu = Parameters_value(dm->parameters, i*2);
+				sigma = Parameters_value(dm->parameters, i*2+1);
+			}
+			error("DistributionModel_normal_dlogP not yet implemented");
+			return INFINITY;
+			
+		}
+	}
+	return 0;
+}
+
+double DistributionModel_normal_d2logP(DistributionModel* dm, const Parameter* p){
+	error("DistributionModel_normal_d2logP not yet implemented");
+	for (int i = 0; i < Parameters_count(dm->x); i++) {
+		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
+			double alpha = Parameters_value(dm->parameters, 0);
+			if(Parameters_count(dm->parameters) > 2){
+				alpha = Parameters_value(dm->parameters, i*2);
+			}
+			return -(alpha-1.0)/Parameter_value(p)/Parameter_value(p);
+		}
+	}
+	return 0;
+}
+
+static void DistributionModel_normal_sample(DistributionModel* dm, double* samples){
+	if(Parameters_count(dm->parameters) > 2){
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double sigma = Parameters_value(dm->parameters, i*2+1);
+			if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+				sigma = sqrt(1.0/sigma);
+			}
+			samples[i] = gsl_ran_gaussian(dm->rng, sigma) + Parameters_value(dm->parameters, i*2);
+		}
+	}
+	else{
+		double mean = Parameters_value(dm->parameters, 0);
+		double sigma = Parameters_value(dm->parameters, 1);
+		if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+			sigma = sqrt(1.0/sigma);
+		}
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			samples[i] = gsl_ran_gaussian(dm->rng, sigma) + mean;
+		}
+	}
+}
+
+
+static double DistributionModel_normal_sample_evaluate(DistributionModel* dm){
+	if(Parameters_count(dm->parameters) > 2){
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double sigma = Parameters_value(dm->parameters, i*2+1);
+			if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+				sigma = sqrt(1.0/sigma);
+			}
+			double sample = gsl_ran_gaussian(dm->rng, sigma) + Parameters_value(dm->parameters, i*2);
+			Parameters_set_value(dm->x, i, sample);
+		}
+	}
+	else{
+		for (int i = 0; i < Parameters_count(dm->x); i++) {
+			double mean = Parameters_value(dm->parameters, 0);
+			double sigma = Parameters_value(dm->parameters, 1);
+			if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+				sigma = sqrt(1.0/sigma);
+			}
+			double sample = gsl_ran_gaussian(dm->rng, sigma) + mean;
 			Parameters_set_value(dm->x, i, sample);
 		}
 	}
@@ -574,6 +706,36 @@ DistributionModel* new_IndependantGammaDistributionModel_with_parameters(Paramet
 	return dm;
 }
 
+
+DistributionModel* new_IndependantNormalDistributionModel(const double mean, const double sigma, const Parameters* x){
+	Parameters* ps = new_Parameters(2);
+	Parameters_move(ps, new_Parameter("normal.mean", mean, NULL));
+	Parameters_move(ps, new_Parameter("normal.sigma", sigma, NULL));
+	DistributionModel* dm = new_DistributionModel(ps, x);
+	dm->logP = DistributionModel_normal_logP;
+	dm->logP_with_values = DistributionModel_normal_logP_with_values;
+	dm->dlogP = DistributionModel_normal_dlogP;
+	dm->d2logP = DistributionModel_normal_d2logP;
+	dm->ddlogP = _DistributionModel_ddlog_0;
+	dm->clone = _clone_dist;
+	dm->sample = DistributionModel_normal_sample;
+	dm->sample_evaluate = DistributionModel_normal_sample_evaluate;
+	free_Parameters(ps);
+	return dm;
+}
+
+DistributionModel* new_IndependantNormalDistributionModel_with_parameters(Parameters* parameters, const Parameters* x){
+	DistributionModel* dm = new_DistributionModel(parameters, x);
+	dm->logP = DistributionModel_normal_logP;
+	dm->logP_with_values = DistributionModel_normal_logP_with_values;
+	dm->dlogP = DistributionModel_normal_dlogP;
+	dm->d2logP = DistributionModel_normal_d2logP;
+	dm->ddlogP = _DistributionModel_ddlog_0;
+	dm->clone = _clone_dist;
+	dm->sample = DistributionModel_normal_sample;
+	dm->sample_evaluate = DistributionModel_normal_sample_evaluate;
+	return dm;
+}
 
 DistributionModel* new_IndependantLognormalDistributionModel(const double shape, const double rate, const Parameters* x){
 	Parameters* ps = new_Parameters(2);
@@ -1302,6 +1464,7 @@ double ks(double* x, size_t length, double(*cdf)(void*, double), void* data){
 
 Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
+		"burnin",
 		"distribution",
 		"file",
 		"from",
@@ -1347,6 +1510,22 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		}
 		else{
 			get_parameters_references2(node, hash, x, "x");
+		}
+		
+		// empirical
+		if (samples != NULL) {
+			size_t paramCount = Parameters_count(x);
+			
+			for (int i = 0; i < paramCount; i++) {
+				double* vec = Vector_data(samples[i]);
+				double m = mean(vec, Vector_length(samples[i]));
+				Parameters_move(parameters, new_Parameter("lambda", 1.0/m, NULL));
+			}
+		}
+		else{
+			for (int i = 0; i < Parameters_count(parameters); i++) {
+				Hashtable_add(hash, Parameters_name(parameters, i), Parameters_at(parameters, i));
+			}
 		}
 		dm = new_IndependantExpDistributionModel_with_parameters(parameters, x);
 		model = new_DistributionModel2(id, dm);
@@ -1441,6 +1620,12 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		else{
 			get_parameters_references2(node, hash, x, "x");
 			get_parameters_references(node, hash, parameters);
+			if (strcasecmp(Parameters_name(parameters, 0), "alpha") != 0) {
+				Parameters_swap_index(parameters, 0, 1);
+			}
+			for (int i = 0; i < Parameters_count(parameters); i++) {
+				Hashtable_add(hash, Parameters_name(parameters, i), Parameters_at(parameters, i));
+			}
 		}
 		
         dm = new_IndependantGammaDistributionModel_with_parameters(parameters, x);
@@ -1473,9 +1658,66 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		else{
 			get_parameters_references2(node, hash, x, "x");
 			get_parameters_references(node, hash, parameters);
+			if (strcasecmp(Parameters_name(parameters, 0), "mu") != 0) {
+				Parameters_swap_index(parameters, 0, 1);
+			}
+			for (int i = 0; i < Parameters_count(parameters); i++) {
+				Hashtable_add(hash, Parameters_name(parameters, i), Parameters_at(parameters, i));
+			}
 		}
 		
 		dm = new_IndependantLognormalDistributionModel_with_parameters(parameters, x);
+		model = new_DistributionModel2(id, dm);
+		model->sample = _dist_model_sample;
+		model->sample_evaluate = _dist_model_sample_evaluate;
+		model->samplable = true;
+	}
+	else if (strcasecmp(d_string, "normal") == 0) {
+		parameters = new_Parameters(2);
+		bool tau = false;
+		// empirical
+		if (samples != NULL) {
+			size_t paramCount = Parameters_count(x);
+			
+			for (int i = 0; i < paramCount; i++) {
+				double* vec = Vector_data(samples[i]);
+				double m = mean(vec, Vector_length(samples[i]));
+				double v = variance(vec, Vector_length(samples[i]), m);
+				Parameters_move(parameters, new_Parameter("mu", m, NULL));
+				Parameters_move(parameters, new_Parameter("sigma", sqrt(v), NULL));
+			}
+		}
+		else if(get_json_node(node, "parameters") == NULL){
+			get_parameters_references2(node, hash, x, "x");
+			for (int i = 0; i < Parameters_count(x); i++) {
+				Parameters_move(parameters, new_Parameter("mu", 1, new_Constraint(-INFINITY, INFINITY)));
+				Parameters_move(parameters, new_Parameter("sigma", 1, new_Constraint(0, INFINITY)));
+			}
+		}
+		else{
+			get_parameters_references2(node, hash, x, "x");
+			json_node* x_node = get_json_node(node, "parameters");
+			for (int i = 0; i < x_node->child_count; i++) {
+				if (strcasecmp(x_node->children[i]->key, "tau") == 0) {
+					tau = true;
+				}
+				else if (strcasecmp(x_node->children[i]->key, "mean") != 0 && strcasecmp(x_node->children[i]->key, "sigma") != 0) {
+					fprintf(stderr, "Normal distribution should be parametrized with mean and (sigma ot tau)\n");
+					exit(13);
+				}
+			}
+			get_parameters_references(node, hash, parameters);
+			if (strcasecmp(Parameters_name(parameters, 0), "mean") != 0) {
+				Parameters_swap_index(parameters, 0, 1);
+			}
+			for (int i = 0; i < Parameters_count(parameters); i++) {
+				Hashtable_add(hash, Parameters_name(parameters, i), Parameters_at(parameters, i));
+			}
+		}
+		dm = new_IndependantNormalDistributionModel_with_parameters(parameters, x);
+		
+		dm->parameterization = tau ? DISTRIBUTION_NORMAL_MEAN_TAU: DISTRIBUTION_NORMAL_MEAN_SIGMA;
+		
 		model = new_DistributionModel2(id, dm);
 		model->sample = _dist_model_sample;
 		model->sample_evaluate = _dist_model_sample_evaluate;
@@ -1487,7 +1729,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
         dm = new_UniformTreeDistribution(mtree->obj);
         model = new_TreeDistributionModel(id, dm, mtree);
     }
-	else if(strcasecmp(d_string, "normal") == 0){
+	else if(strcasecmp(d_string, "multivariatenormal") == 0){
 		char* file = get_json_node_value_string(node, "file");
 		parameters = new_Parameters(1);
 		get_parameters_references2(node, hash, x, "x");
