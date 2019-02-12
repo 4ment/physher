@@ -185,6 +185,19 @@ bool operator_interval_scaler(Operator* op, double* logHR){
 	return true;
 }
 
+bool operator_bitflip(Operator* op, double* logHR){
+	op->indexes[0] = random_int(Parameters_count(op->x)-1);
+	Parameter* p = Parameters_at(op->x, op->indexes[0]);
+	if (Parameter_value(p) == 0) {
+		Parameter_set_value(p, 1.0);
+	}
+	else{
+		Parameter_set_value(p, 0.0);
+	}
+	*logHR = 0;
+	return true;
+}
+
 bool operator_scaler(Operator* op, double* logHR){
 	if(op->x != NULL){
 		op->indexes[0] = random_int(Parameters_count(op->x)-1);
@@ -256,6 +269,25 @@ bool operator_slider(Operator* op, double* logHR){
 			ok = true;
 		}
 	}while(!ok);
+	
+	*logHR = 0;
+	
+	Parameter_set_value(p, vv);
+	return true;
+}
+
+
+bool operator_random_walk_unif(Operator* op, double* logHR){
+	op->indexes[0] = random_int(Parameters_count(op->x)-1);
+	Parameter* p = Parameters_at(op->x, op->indexes[0]);
+	double v = Parameter_value(p);
+	double vv = v;
+	double w = (random_double() * 2.0 - 1.0)*op->parameters[0];
+	vv += w;
+	
+	if ( vv > Parameter_upper(p) || vv < Parameter_lower(p) ) {
+		return false;
+	}
 	
 	*logHR = 0;
 	
@@ -538,6 +570,25 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		}
 		op->indexes = ivector(1);
 	}
+	else if (strcasecmp(algorithm_string, "randomwalk") == 0) {
+		op->x = new_Parameters(1);
+		get_parameters_references2(node, hash, op->x, "x");
+		op->propose = operator_random_walk_unif;
+		op->optimize = operator_slider_optimize;
+		op->parameters = dvector(1);
+		op->parameters[0] = 0.75;
+		if(p_node != NULL){
+			if (p_node->node_type == MJSON_PRIMITIVE){
+				op->parameters[0] = get_json_node_value_double(node, "parameters", 0.75);
+			}
+			else if(p_node->node_type == MJSON_ARRAY){
+				json_node* child = p_node->children[0];
+				op->parameters[0] = get_json_node_value_double(child, "parameters", 0.75);
+				
+			}
+		}
+		op->indexes = ivector(1);
+	}
 	else if (strcasecmp(algorithm_string, "dirichlet") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
 		op->model_count = 1;
@@ -612,6 +663,12 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->propose = operator_uniform_height;
 		op->store = operator_height_store;
 		op->restore = operator_uniform_heigh_restore;
+		op->indexes = ivector(1);
+	}
+	else if (strcasecmp(algorithm_string, "bitflip") == 0) {
+		op->x = new_Parameters(1);
+		get_parameters_references2(node, hash, op->x, "x");
+		op->propose = operator_bitflip;
 		op->indexes = ivector(1);
 	}
 	

@@ -74,6 +74,19 @@ static bool _calculate_partials_noexp_integrate( SingleTreeLikelihood *tlk, Node
 
 void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 	SingleTreeLikelihood *tlk = (SingleTreeLikelihood*)self->obj;
+#ifdef SSVS_BRANCHES
+	if(model == NULL){
+		if(index >= 0){
+			tlk->update_nodes[index] = true;
+			tlk->update = true;
+			tlk->update_upper = true;
+		}
+		else{
+			SingleTreeLikelihood_update_all_nodes(tlk);
+		}
+		return;
+	}
+#endif
 	//printf("%s %d\n", model->name, index);
 	if ( model->type == MODEL_TREE ) {
 //		printf("node index %d\n", index);
@@ -408,6 +421,12 @@ static void _treeLikelihood_model_free( Model *self ){
 			list[i]->free(list[i]);
 		}
 		free_SitePattern(tlk->sp);
+#ifdef SSVS_BRANCHES
+		if (tlk->indicator_map != NULL) {
+			free(tlk->indicator_map);
+			free_Parameters(tlk->indicators);
+		}
+#endif
 		free_SingleTreeLikelihood_internals(tlk);
 		free(self->data);
 		free_Model(self);
@@ -470,6 +489,31 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	clone->restore = self->restore;
 	clone->storedLogP = self->storedLogP;
 	clone->lp = self->lp;
+	
+#ifdef SSVS_BRANCHES
+	if (tlk->indicator_map != NULL) {
+		clonetlk->indicators = new_Parameters(Tree_node_count(tlk->tree)-2);
+		clonetlk->indicator_map = clone_uivector(tlk->indicator_map, Tree_node_count(tlk->tree));
+		Parameters_set_name2(clonetlk->indicators, Parameters_name2(tlk->indicators));
+		Hashtable_add(hash, Parameters_name2(clonetlk->indicators), clonetlk->indicators);
+		StringBuffer* buffer = new_StringBuffer(10);
+		unsigned count = 0;
+		for (int i = 0; i < Tree_node_count(clonetlk->tree); i++) {
+			Node* n = Tree_node(clonetlk->tree, i);
+			if (!Node_isroot(n) && !(Node_isroot(Node_parent(n)) && Node_right(Node_parent(n)) == n)) {
+				StringBuffer_set_string(buffer, Node_name(n));
+				StringBuffer_append_string(buffer, ".indicator");
+				Parameter* p = new_Parameter(buffer->c, 1, NULL); // needs to be either 0 or 1
+				p->id = Node_id(n);
+				Parameters_move(clonetlk->indicators, p);
+				p->listeners->add(p->listeners, clone);
+				Hashtable_add(hash, buffer->c, p);
+				clonetlk->indicator_map[Node_id(n)] = count++;
+			}
+		}
+		free_StringBuffer(buffer);
+	}
+#endif
 	return clone;
 }
 
@@ -519,6 +563,9 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	char* allowed[] = {
 		"branchmodel",
+#ifdef SSVS_BRANCHES
+		"indicators",
+#endif
 		"root_frequencies",
 		"sitemodel",
 		"sitepattern",
@@ -603,6 +650,33 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 			tlk->root_frequencies[i] = 1;
 		}
 	}
+	
+#ifdef SSVS_BRANCHES
+	char* indicatorsName = get_json_node_value_string(node, "indicators");
+	if (indicatorsName != NULL) {
+		Tree* tree = mtree->obj;
+		tlk->indicators = new_Parameters(Tree_node_count(tree)-2);
+		tlk->indicator_map = uivector(Tree_node_count(tree));// free me
+		Parameters_set_name2(tlk->indicators, indicatorsName);
+		Hashtable_add(hash, indicatorsName, tlk->indicators);
+		StringBuffer* buffer = new_StringBuffer(10);
+		unsigned count = 0;
+		for (int i = 0; i < Tree_node_count(tree); i++) {
+			Node* n = Tree_node(tree, i);
+			if (!Node_isroot(n) && !(Node_isroot(Node_parent(n)) && Node_right(Node_parent(n)) == n)) {
+				StringBuffer_set_string(buffer, Node_name(n));
+				StringBuffer_append_string(buffer, ".indicator");
+				Parameter* p = new_Parameter(buffer->c, 1, NULL); // needs to be either 0 or 1
+				p->id = Node_id(n);
+				Parameters_move(tlk->indicators, p);
+				p->listeners->add(p->listeners, model);
+				Hashtable_add(hash, buffer->c, p);
+				tlk->indicator_map[Node_id(n)] = count++;
+			}
+		}
+		free_StringBuffer(buffer);
+	}
+#endif
 	return model;
 }
 
@@ -798,6 +872,11 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
     tlk->nthreads = 1;
 	tlk->root_frequencies = NULL;
 	tlk->get_root_frequencies = get_root_frequencies;
+
+#ifdef SSVS_BRANCHES
+	tlk->indicators = NULL;
+	tlk->indicator_map = NULL;
+#endif
 	return tlk;
 }
 
@@ -1069,6 +1148,10 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 		newtlk->root_frequencies = clone_dvector(tlk->root_frequencies, tlk->sm->nstate);
 	}
 	newtlk->get_root_frequencies = tlk->get_root_frequencies;
+#ifdef SSVS_BRANCHES
+	newtlk->indicator_map = NULL;
+	newtlk->indicators = NULL;
+#endif
 	return newtlk;
 }
 
@@ -1513,6 +1596,11 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
 					exit(1);
 				}
 			}
+#ifdef SSVS_BRANCHES
+			if (Parameters_value(tlk->indicators, tlk->indicator_map[Node_id(n)]) == 0) {
+				bl = 0;
+			}
+#endif
 			
 			for (int i = 0; i < tlk->sm->cat_count; i++) {
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)

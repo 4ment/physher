@@ -111,9 +111,19 @@ void get_references(json_node* node, Hashtable* hash, struct Logger* logger){
 			exit(1);
 		}
 	}
-	//TODO: could be an array with one elements
 	else if(tree_node != NULL){
-		char* ref = (char*)tree_node->value;
+		char* ref = NULL;
+		if(tree_node->node_type == MJSON_ARRAY){
+			if(tree_node->child_count != 1){
+				fprintf(stderr, "CONFIGURATION ERROR: logger with ID `%s' can only reference one tree (%d were provided)\n", get_json_node_value_string(node, "id"), tree_node->child_count);
+				exit(13);
+			}
+			json_node* child_node = tree_node->children[0];
+			ref = (char*)child_node->value;
+		}
+		else{
+			ref = (char*)tree_node->value;
+		}
 		logger->tree = Hashtable_get(hash, ref+1);
 		
 	}
