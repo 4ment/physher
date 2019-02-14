@@ -31,6 +31,7 @@ typedef struct Log{
 	bool cpo;
 	bool tree;
 	char* format;
+	bool force;// force calculation of model (i.e. do not use stored lnl)
 }Log;
 	
  Log* new_Log_from_json(json_node* node, Hashtable* hash);

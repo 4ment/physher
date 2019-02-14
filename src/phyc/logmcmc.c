@@ -79,7 +79,10 @@ void log_tree(Log* logger, size_t iter){
 void log_log(Log* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
-		fprintf(logger->file, "\t%e", logger->models[i]->lp);
+		if (logger->force) {
+			fprintf(logger->file, "\t%e", logger->models[i]->logP(logger->models[i]));
+		}
+		else fprintf(logger->file, "\t%e", logger->models[i]->lp);
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
 		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));
@@ -178,6 +181,7 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 		"cpo",
 		"every",
 		"file",
+		"force",
 		"format",
 		"header",
 		"models",
@@ -203,6 +207,7 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	logger->tree = false;
 	logger->format = NULL;
 	char* format = get_json_node_value_string(node, "format");
+	logger->force = get_json_node_value_bool(node, "force", false);
 	if(format != NULL){
 		logger->format = String_clone(format);
 	}

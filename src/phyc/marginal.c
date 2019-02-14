@@ -423,6 +423,12 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 			for (int i = 0; i < margl->temperature_count-1; i++) {
 				printf("%f: %f\n", temperatures[i], lrssk[i]);
 			}
+			
+			lrps = log_marginal_path_sampling_modified(lls, margl->temperature_count, temperatures, lrssk);
+			printf("Modified Path sampling marginal likelihood: %f\n", lrps);
+			for (int i = 0; i < margl->temperature_count-1; i++) {
+				printf("%f: %f\n", temperatures[i], lrssk[i]);
+			}
 		}
 		free(lrssk);
 	}
