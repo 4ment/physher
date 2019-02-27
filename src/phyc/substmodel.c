@@ -317,6 +317,10 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	
 	SubstitutionModel* m = SubstitutionModel_factory(model_string, datatype, freqs_simplex, rates_simplex, rates, assignment);
 	
+	if(mfreqs_simplex == NULL  && m->simplex != NULL){
+		mfreqs_simplex = new_SimplexModel("anonymousfreqs", m->simplex);
+	}
+	
 	if(init_node != NULL && datatype->type == DATA_TYPE_NUCLEOTIDE && Parameters_count(m->rates) >= 5){
 		json_node* patterns_node = get_json_node(init_node, "sitepattern");
 		char* patterns_ref = (char*)patterns_node->value;
@@ -1386,7 +1390,7 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 		else if ( strcasecmp("WAG", model_string) == 0) {
 			mod = new_WAG_with_parameters(freqSimplex);
 		}
-		else if ( strcasecmp("DAYOFF", model_string) == 0) {
+		else if ( strcasecmp("DAYHOFF", model_string) == 0) {
 			mod = new_DAYHOFF_with_parameters(freqSimplex);
 		}
 		else{
