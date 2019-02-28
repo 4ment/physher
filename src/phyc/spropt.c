@@ -95,6 +95,23 @@ static void sort_asc_spr_parsimony2( int *prunes, int *grafts, double *scores, i
 	}
 }
 
+static void sort_desc_spr_parsimony( int *prunes, int *grafts, double *scores, int *ds, int size ){
+	bool done = false;
+	while ( !done ) {
+		done = true;
+		for ( int i = 0 ; i < size-1 ; i++ ) {
+			if ( scores[i] < scores[i+1] ) {
+				done = false;
+				swap_int(&prunes[i], &prunes[i+1]);
+				swap_int(&grafts[i], &grafts[i+1]);
+				swap_int(&ds[i], &ds[i+1]);
+				dswap(&scores[i], &scores[i+1]);
+			}
+		}
+		size--;
+	}
+}
+
 
 // backup contains the two branches together
 // params should be contrained between 0 and backup
@@ -141,8 +158,8 @@ double optimize_brent_branch_length_3nodes( SingleTreeLikelihood *stlk, Optimize
         Parameters_add(param, node1->distance);
         
         opt_set_objective_function(opt, _optimize_brent_branch_length_constrained);
-        SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
-        
+//        SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
+		
         status = opt_optimize( opt, param, &lnl2);
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         
@@ -157,8 +174,8 @@ double optimize_brent_branch_length_3nodes( SingleTreeLikelihood *stlk, Optimize
         Parameters_add(param, node2->distance);
         
         opt_set_objective_function(opt, optimize_brent_branch_length);
-        SingleTreeLikelihood_set_upper_function(stlk, NULL);
-        
+//        SingleTreeLikelihood_set_upper_function(stlk, NULL);
+		
         status = opt_optimize( opt, param, &lnl2);
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         Node_set_distance(node2, Parameters_value(param, 0));
@@ -206,8 +223,8 @@ double optimize_brent_branch_length_2b( SingleTreeLikelihood *stlk, Optimizer *o
         Parameters_add(param, node1->distance);
         
         opt_set_objective_function(opt, _optimize_brent_branch_length_constrained);
-        SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
-        
+//        SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
+		
         status = opt_optimize( opt, param, &lnl2);
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         
@@ -222,8 +239,8 @@ double optimize_brent_branch_length_2b( SingleTreeLikelihood *stlk, Optimizer *o
         Parameters_add(param, node2->distance);
         
         opt_set_objective_function(opt, optimize_brent_branch_length);
-        SingleTreeLikelihood_set_upper_function(stlk, NULL);
-        
+//        SingleTreeLikelihood_set_upper_function(stlk, NULL);
+		
         status = opt_optimize( opt, param, &lnl2);
         if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
         Node_set_distance(node2, Parameters_value(param, 0));
@@ -1565,31 +1582,43 @@ double spr_optimize_bl_parsimony_only_openmp( struct TopologyOptimizer * opt ){
     return score;
 }
 
+void reorder_topology(Node* node, Node* backup){
+	if(!Node_isleaf(backup)){
+		if (strcmp(node->left->name, backup->left->name) != 0) {
+			Node_rotate(node);
+		}
+		reorder_topology(node->left, backup->left);
+		reorder_topology(node->right, backup->right);
+	}
+}
+
 double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
 
-    SingleTreeLikelihood *tlk = opt->tlk;
-    
-    //opt->threads = 1;
-    SingleTreeLikelihood **pool = malloc(opt->threads*sizeof(SingleTreeLikelihood*));
-    assert(pool);
-    pool[0] = tlk;
-    
-    
-    if(opt->threads > 1 ){
-        for ( int i = 1; i < opt->threads; i++ ) {
-            pool[i] = clone_SingleTreeLikelihood_share(tlk, true, true);
-        }
-    }
-    double lnl = pool[0]->calculate(pool[0]);
-    
-    
-    double *branches = dvector(Tree_node_count(tlk->tree));
+	double lnl = opt->model->logP(opt->model);
+	
+	unsigned nthreads = opt->threads;
+	
+	Hashtable* hash = new_Hashtable_string(10);
+	hashtable_set_key_ownership( hash, false );
+	hashtable_set_value_ownership( hash, false );
+	
+	Model** pool = malloc(sizeof(Model*)*nthreads);
+	Model** tlks = malloc(sizeof(Model*)*nthreads);
+	pool[0] = opt->model;
+	tlks[0] = opt->tlk;
+	for (size_t i = 1; i < nthreads; i++) {
+		pool[i] = opt->model->clone(opt->model, hash);
+		tlks[i] = Hashtable_get(hash, opt->tlk->name); // not ref++
+		Hashtable_empty(hash);
+	}
+	free_Hashtable(hash);
+	
+    int nNodes = Tree_node_count(((SingleTreeLikelihood*)(opt->tlk->obj))->tree);
+    double *branches = dvector(nNodes);
     
     //int total = (Tree_tip_count(tlk->tree)-3)*2*(2*Tree_tip_count(tlk->tree)-7);
     //printf("\nParsimony score: %f (%i)\n\n", lnl, total);
     
-    
-    int nNodes = Tree_node_count(tlk->tree);
     bool failed = false;
     
     double *scores = dvector(nNodes);
@@ -1598,7 +1627,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
     int *ds        = ivector(nNodes);
     
     for ( int i = 0; i < nNodes; i++ ) {
-        scores[i] = -1;
+        scores[i] = INFINITY;
     }
     
     
@@ -1609,15 +1638,18 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
     int rounds = 0;
     
     int max_distance = 5;
-    
+	Tree* btree = NULL;// backup tree
     //int nthreads = opt->threads;
     
     while ( !failed && rounds < 5 ) {
+		if (btree != NULL) {
+			free_Tree(btree);
+		}
+		btree = clone_Tree(opt->tree);
         
-        
-        
+		int potential = 0;
         count = 0;
-        scores[count] = -1;
+        scores[count] = INFINITY;
         int tot = 0;
         
 #pragma omp parallel for num_threads(nthreads)
@@ -1627,12 +1659,12 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
 #if defined (_OPENMP)
             tid = omp_get_thread_num();
 #endif
-            SingleTreeLikelihood *tlk = pool[tid];
+            SingleTreeLikelihood *tlk = tlks[tid]->obj;
             Tree *tree = tlk->tree;
             Node *root = Tree_root(tree);
             Tree_init_depth(tree);
             
-            int local_score = -1;
+            double local_score = INFINITY;
             int local_prune;
             int local_graft;
             int local_d;
@@ -1708,7 +1740,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                     // Skip when prune is the grand child of graft (seprated by one edge)
                     // NNI #1: prune with its uncle graft
                     // NNI #2: sibling of prune with its uncle graft
-                    if( Node_parent( Node_parent(prune) ) == graft ) continue;
+                    if( Node_sibling( Node_parent(prune) ) == graft || Node_parent( Node_parent(prune) ) == graft ) continue;
                     
                     // NNI case II
                     // Skip when prune is the grand father of graft (seprated by one edge)
@@ -1727,7 +1759,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                         if( i > j || prune->parent->left == prune )continue;
                     }
                 }
-                
+				Tree_init_depth(tree);
                 int d = Node_graph_distance(prune, graft);
                 
                 if( d > max_distance ) continue;
@@ -1735,7 +1767,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                 
                 Node *regraft = Node_sibling(prune);
                 bool rerooted = false;
-                Node *n = prune;
+                Node *n = graft;
                 
                 
                 if( Node_isancestor(graft, prune) ){
@@ -1745,75 +1777,103 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                     rerooted = true;
                     
                     // Get the location of the root (sister lineage at the root)
-                    while (!Node_isroot(Node_parent(n)) ) n = Node_parent(n);
+                    //while (!Node_isroot(Node_parent(n)) ) n = Node_parent(n);
+					while (Node_parent(n) != prune ) n = Node_parent(n);
                     n = Node_sibling(n);
                 }
-                
-                
+#ifdef DEBUG_TOPOLOGY_SPR
+				printf("%s [%d] %s [%d] ",graft->name, Node_depth(graft), prune->name, Node_depth(prune));
+				Tree_print_newick(stdout, tree, true);
+				printf("\n");
+#endif
+				Tree_branch_length_to_vector(tlk->tree, branches);
+				
                 // SPR
                 bool simple = SPR_move(tree, prune, graft);
-                
+				
                 if( rerooted ){
                     SingleTreeLikelihood_update_one_node(tlk, n);
+#ifdef DEBUG_TOPOLOGY_SPR
+					printf("rerooted\n");
+#endif
                 }
                 else if( !simple ){
                     SingleTreeLikelihood_update_all_nodes(tlk);
+#ifdef DEBUG_TOPOLOGY_SPR
+					printf("not simple\n");
+#endif
                 }
                 else {
                     SingleTreeLikelihood_update_one_node(tlk, prune);
                     SingleTreeLikelihood_update_one_node(tlk, regraft);
                 }
                 
-               
-                Optimizer *opt_bl = new_Optimizer(OPT_BRENT);
-                BrentData *data_brent = new_BrentData( tlk );
-                data_brent->backup = dvector(1);
-                data_brent->f = standard_loglikelihood_brent;
-                if( tlk->use_upper ){
-                    data_brent->f = standard_loglikelihood_upper_brent;
-                }
+				Optimizer* opt_bl = new_Optimizer(OPT_SERIAL_BRENT);
+				opt_set_treelikelihood(opt_bl, tlks[tid]);
+				opt_set_data(opt_bl, pool[tid]);
+				opt_set_objective_function(opt_bl, model_negative_logP);
                 
-                opt_set_data(opt_bl, data_brent);
-                opt_set_objective_function(opt_bl, optimize_brent_branch_length);
-                opt_set_max_iteration(opt_bl, tlk->opt.bl.max_iteration);
-                opt_set_tolx( opt_bl, tlk->opt.bl.tolx);
-                
-                Parameters *oneparameter = new_Parameters(1);
-                
-                
+                double spr_score = 0;
+				
                 if( rerooted ){
                     //lnl2 = optimize_brent_branch_length_2b(tlk, opt_bl, data_brent, oneparameter, graft, parent );
+					printf("%s %s %s\n", Node_name(Node_parent(regraft)), Node_name(regraft), Node_name(graft));
                 }
                 else {
-                    //lnl2 = optimize_brent_branch_length_all(tlk, opt_bl, data_brent, oneparameter, 1);
-                    //lnl2 = optimize_brent_branch_length_2b(tlk, opt_bl, data_brent, oneparameter, graft, prune);
-                    //lnl2 = optimize_brent_branch_length_3(tlk, opt_bl, data_brent, oneparameter, parent, regraft);
+					Optimizer* opt_3bl = new_Optimizer(OPT_SERIAL_BRENT);
+					opt_set_data(opt_3bl, pool[tid]);
+					opt_set_objective_function(opt_3bl, model_negative_logP);
+					Parameters *parameters = new_Parameters(3);
+					Parameters_add(parameters, Node_parent(prune)->distance);
+					Parameters_add(parameters, prune->distance);
+					Parameters_add(parameters, graft->distance);
+					opt_set_parameters(opt_3bl, parameters);
+					tlk->tripod = true;
+					tlk->node_upper = NULL;
+					tlk->use_upper = true;
+					tlk->update_upper = true;
+					// initialize lower and upper
+					
+					//SingleTreeLikelihood_update_all_nodes(tlk);
+					SingleTreeLikelihood_update_uppers(tlk);
+					tlk->node_upper = Node_parent(prune);
+					
+					opt_result status = opt_maximize( opt_3bl, parameters, &spr_score);
+					if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+					tlk->tripod = false;
+					tlk->use_upper = false;
+					free_Parameters(parameters);
+					free_Optimizer(opt_3bl);
+					printf("%f %f %f %f\n", spr_score, Node_distance(Node_parent(prune)), Node_distance(prune), Node_distance(graft));
+					
                 }
-                Tree_branch_length_to_vector(tlk->tree, branches);
+				
                 SingleTreeLikelihood_update_all_nodes(tlk);
-                
-                double spr_score = optimize_brent_branch_length_all(tlk, opt_bl, data_brent, oneparameter, 1);
-                Tree_vector_to_branch_length(tlk->tree, branches);
+				
+				opt_result status = opt_maximize( opt_bl, NULL, &spr_score);
+				if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
                 
                 free_Optimizer(opt_bl);
-                free_BrentData(data_brent);
-                free_Parameters(oneparameter);
-                
-                
+				
 #ifdef DEBUG_TOPOLOGY_SPR
-                    printf("%s %s lnl %f (%f) %s\n\n",graft->name, prune->name, spr_score, lnl, (spr_score > lnl ? "*" : ""));
+                    printf("%s %s lnl %f (%f) %s ",graft->name, prune->name, spr_score, lnl, (spr_score > lnl ? "*" : ""));
+				Tree_print_newick(stdout, tree, true);
+				printf("\n");
 #endif
-                
-                //spr_score = tlk->calculate(tlk);
-                
-                
+				
                 if(rerooted){
-                    simple = SPR_move(tree, regraft, prune);
-                    Tree_reroot(tree, n);
+                    simple = SPR_move(tree, prune, n);
+					reorder_topology(Tree_root(tree), Tree_root(btree));
+					Tree_set_topology_changed(tree);
                 }
-                else {
-                    simple = SPR_move(tree, prune, regraft);
-                }
+				else if(!simple){
+					simple = SPR_move(tree, prune, Tree_root(tree));
+					reorder_topology(Tree_root(tree), Tree_root(btree));
+					Tree_set_topology_changed(tree);
+				}
+				else {
+					simple = SPR_move(tree, prune, regraft);
+				}
                 
                 if( rerooted ){
                     SingleTreeLikelihood_update_one_node(tlk, graft);
@@ -1826,26 +1886,29 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                     SingleTreeLikelihood_update_one_node(tlk, prune);
                     SingleTreeLikelihood_update_one_node(tlk, regraft);
                 }
-                
-                Node *root2 = Tree_root(tree);
-                
-                if( strcmp(Node_name(root->left), Node_name(root2->left) ) != 0  ){
-                    Node_rotate(root2);
-                    Tree_set_topology_changed(tree);
-                }
-                
-                if ( spr_score > lnl  ) {
+				
+				Tree_vector_to_branch_length(tlk->tree, branches);
+#ifdef DEBUG_TOPOLOGY_SPR
+                printf("%s [%d] %s [%d] ",graft->name, Node_depth(graft), prune->name, Node_depth(prune));
+				Tree_print_newick(stdout, tree, true);
+				printf("\n\n");
+#endif
+                if ( (isinf(local_score) && spr_score > lnl) || (!isinf(local_score) && spr_score > local_score)  ) {
                     local_score = spr_score;
                     local_prune = Node_id(prune);
                     local_graft = Node_id(graft);
                     local_d     = d;
                 }
+				tot++;
             }
             
             
-            if ( local_score > 0 ) {
+            if (!isinf(local_score)) {
 #pragma omp critical
                 {
+					if (isinf(scores[count])) {
+						potential++;
+					}
                     scores[count] = local_score;
                     prunes[count] = local_prune;
                     grafts[count] = local_graft;
@@ -1855,22 +1918,21 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                     //scores[count] = -1;
                 }
             }
-            tot++;
             //max_distance = ( max_distance == 5 ? 5 : max_distance-1);
         }
         //exit(1);
         
 #ifdef DEBUG_TOPOLOGY_SPR
-        fprintf(stderr, "%d potentials SPRs out of %d\n", count, tot);
+        fprintf(stderr, "%d potentials SPRs out of %d\n", potential, tot);
 #endif
         
         if( count != 0 ){
             
             if(count > 1){
-                sort_asc_spr_parsimony2(prunes, grafts, scores, ds, count);
+                sort_desc_spr_parsimony(prunes, grafts, scores, ds, count);
             }
             
-            SingleTreeLikelihood *tlk = pool[0];
+            SingleTreeLikelihood* tlk = opt->tlk->obj;
             Tree *tree = tlk->tree;
             Node *root = Tree_root(tree);
             
@@ -1917,19 +1979,29 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                     //Parsimony_update_node(parsimony, regraft);
                 }
                 
-                
+                Tree_branch_length_to_vector(tlk->tree, branches);
                 SPR_move(tree, Tree_node(tree, prunes[i]), Tree_node(tree, grafts[i]));
-                
                 double spr_score = 0;
                 
                 SingleTreeLikelihood_update_all_nodes(tlk);
                 
-                spr_score = tlk->calculate(tlk);
+				Optimizer* opt_bl = new_Optimizer(OPT_SERIAL_BRENT);
+				opt_set_treelikelihood(opt_bl, tlks[0]);
+				opt_set_data(opt_bl, pool[0]);
+				opt_set_objective_function(opt_bl, model_negative_logP);
+				
+				opt_result status = opt_maximize( opt_bl, NULL, &spr_score);
+				if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+				
+				free_Optimizer(opt_bl);
+				
 #ifdef DEBUG_TOPOLOGY_SPR
-                printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], lnl);
+                printf("Parsimony %f (%f) d(prune,graft)=%d max %f [%s -> %s]\n", spr_score, scores[i], ds[i], lnl, Node_name(prune), Node_name(graft));
+				Tree_print_newick(stdout, tree, true);
+				printf("\n");
 #endif
                 // skip moves that increase the score
-                if ( spr_score >= lnl ) {
+                if ( spr_score < lnl ) {
                     
                     if(rerooted){
                         SPR_move(tree, regraft, prune);
@@ -1945,23 +2017,25 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                         Node_rotate(root2);
                         Tree_set_topology_changed(tree);
                     }
+					Tree_vector_to_branch_length(tlk->tree, branches);
                     //break;
                 }
                 else {
 #ifdef DEBUG_TOPOLOGY_SPR
-                    printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], score);
+                    printf("Parsimony %f (%f) d(prune,graft)=%d max %f\n", spr_score, scores[i], ds[i], lnl);
 #endif
-                    SingleTreeLikelihood_update_all_nodes(pool[0]);
+                    SingleTreeLikelihood_update_all_nodes(tlks[0]->obj);
                     for( int j = 1; j < opt->threads; j++ ){
-                        SPR_move(pool[j]->tree, Tree_node(pool[j]->tree, prunes[i]), Tree_node(pool[j]->tree, grafts[i]));
-                        SingleTreeLikelihood_update_all_nodes(pool[j]);
+						SingleTreeLikelihood* tlkj = (SingleTreeLikelihood*)tlks[j]->obj;
+                        SPR_move(tlkj->tree, Tree_node(tlkj->tree, prunes[i]), Tree_node(tlkj->tree, grafts[i]));
+                        SingleTreeLikelihood_update_all_nodes(tlkj);
                     }
                     
                     lnl = spr_score;
                 }
                 
 #ifdef DEBUG_TOPOLOGY_SPR
-                printf("Parsimony %f\n", score);
+                printf("Parsimony %f\n", lnl);
 #endif
                 opt->moves++;
             }
@@ -1972,19 +2046,19 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
         }
         rounds++;
     }
-    
+	
+	free_Tree(btree);
     free(prunes);
     free(grafts);
     free(scores);
     free(ds);
-    
-    
-    if(opt->threads > 1 ){
-        for ( int i = 1; i < opt->threads; i++ ) {
-            free_SingleTreeLikelihood_share(pool[i], true,true);
-        }
-    }
-    free(pool);
+	
+	for ( int i = 1; i < opt->threads; i++ ) {
+		pool[i]->free(pool[i]);
+	}
+	
+	free(pool);
+	free(tlks);
     
     free(branches);
     opt->best_lnl = lnl;
