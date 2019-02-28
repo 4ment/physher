@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include "parameters.h"
 
+#include <gsl/gsl_rng.h>
+
 typedef struct ImportanceSampler{
 	Model* model; // distribution of interest
 	Model** distribution; // importance distribution or mixture of distribution
@@ -22,6 +24,7 @@ typedef struct ImportanceSampler{
 	bool normalize;
 	double(*calculate)(struct ImportanceSampler*);
 	void(*free)(struct ImportanceSampler*);
+	gsl_rng* rng;
 }ImportanceSampler;
 
 ImportanceSampler* new_ImportanceSampler_from_json(json_node* node, Hashtable* hash);

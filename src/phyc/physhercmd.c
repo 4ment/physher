@@ -18,7 +18,6 @@
 #include "filereader.h"
 #include "mjson.h"
 #include "args.h"
-#include "random.h"
 #include "matrix.h"
 #include "utils.h"
 
@@ -851,7 +850,6 @@ json_node* create_json_file(int argc, char* argv[]){
 	
 	long seed = atol(Hashtable_get(options, "seed"));
 	if(seed < 0) seed = time(NULL);
-	init_genrand(seed);
 	
 	add_json_node_size_t(jinit, "seed", seed);
 	

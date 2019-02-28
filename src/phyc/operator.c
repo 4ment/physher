@@ -12,7 +12,6 @@
 #include <strings.h>
 
 #include "simplex.h"
-#include "random.h"
 #include "gamma.h"
 #include "dirichlet.h"
 #include "tree.h"
@@ -154,7 +153,7 @@ bool operator_uniform_height(Operator* op, double* logHR){
 
 bool operator_interval_scaler(Operator* op, double* logHR){
 	double scaler_scaleFactor = op->parameters[0];
-	double s = (scaler_scaleFactor + (random_double() * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
+	double s = (scaler_scaleFactor + (gsl_rng_uniform(op->rng) * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
 	
 	Coalescent* coal = op->models[0]->obj;
 	Node* internal = Tree_root(coal->tree);
@@ -186,7 +185,7 @@ bool operator_interval_scaler(Operator* op, double* logHR){
 }
 
 bool operator_bitflip(Operator* op, double* logHR){
-	op->indexes[0] = random_int(Parameters_count(op->x)-1);
+	op->indexes[0] = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
 	Parameter* p = Parameters_at(op->x, op->indexes[0]);
 	if (Parameter_value(p) == 0) {
 		Parameter_set_value(p, 1.0);
@@ -200,12 +199,12 @@ bool operator_bitflip(Operator* op, double* logHR){
 
 bool operator_scaler(Operator* op, double* logHR){
 	if(op->x != NULL){
-		op->indexes[0] = random_int(Parameters_count(op->x)-1);
+		op->indexes[0] = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
 		Parameter* p = Parameters_at(op->x, op->indexes[0]);
 		double scaler_scaleFactor = op->parameters[0];
 		double v = Parameter_value(p);
 		double vv = v;
-		double s = (scaler_scaleFactor + (random_double() * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
+		double s = (scaler_scaleFactor + (gsl_rng_uniform(op->rng)  * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
 		vv *= s;
 		*logHR = -log(s);
 		
@@ -218,7 +217,7 @@ bool operator_scaler(Operator* op, double* logHR){
 	else{
 		Tree* tree = op->models[0]->obj;
 		double scaler_scaleFactor = op->parameters[0];
-		double s = (scaler_scaleFactor + (random_double() * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
+		double s = (scaler_scaleFactor + (gsl_rng_uniform(op->rng) * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
 		
 		if (op->all) {
 			Node** nodes = Tree_nodes(tree);
@@ -250,11 +249,11 @@ bool operator_scaler(Operator* op, double* logHR){
 }
 
 bool operator_slider(Operator* op, double* logHR){
-	op->indexes[0] = random_int(Parameters_count(op->x)-1);
+	op->indexes[0] = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
 	Parameter* p = Parameters_at(op->x, op->indexes[0]);
 	double v = Parameter_value(p);
 	double vv = v;
-	double w = (random_double() - 0.5)*op->parameters[0];//slider_delta;
+	double w = (gsl_rng_uniform(op->rng) - 0.5)*op->parameters[0];//slider_delta;
 	vv += w;
 	//	printf("%s %f %f ", Parameter_name(p), w, Parameter_value(p));
 	bool ok = false;
@@ -278,11 +277,11 @@ bool operator_slider(Operator* op, double* logHR){
 
 
 bool operator_random_walk_unif(Operator* op, double* logHR){
-	op->indexes[0] = random_int(Parameters_count(op->x)-1);
+	op->indexes[0] = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
 	Parameter* p = Parameters_at(op->x, op->indexes[0]);
 	double v = Parameter_value(p);
 	double vv = v;
-	double w = (random_double() * 2.0 - 1.0)*op->parameters[0];
+	double w = (gsl_rng_uniform(op->rng) * 2.0 - 1.0)*op->parameters[0];
 	vv += w;
 	
 	if ( vv > Parameter_upper(p) || vv < Parameter_lower(p) ) {
@@ -408,13 +407,13 @@ bool operator_sNNI(Operator* op, double* logHR){
 	// right is a leaf so left is not but we do not do nni around left
 	if(Node_isleaf(right_root)){
 		do {
-			index = random_int(Tree_node_count(tree)-1);
+			index = gsl_rng_uniform_int(op->rng, Tree_node_count(tree));
 			node = Tree_node(tree, index);
 		}while(node == root || node == left_root || Node_isleaf(node));
 	}
 	else{
 		do {
-			index = random_int(Tree_node_count(tree)-1);
+			index = gsl_rng_uniform_int(op->rng, Tree_node_count(tree));
 			node = Tree_node(tree, index);
 		}while(node == root || node == right_root || Node_isleaf(node));
 	}
@@ -425,7 +424,7 @@ bool operator_sNNI(Operator* op, double* logHR){
 	}
 	
 	Node* node_swap = node->left;
-	int indexSwap = random_int(1);
+	int indexSwap = gsl_rng_uniform_int(op->rng, 2);
 	
 	if(indexSwap == 1){
 		node_swap = node->right;

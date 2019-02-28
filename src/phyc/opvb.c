@@ -11,7 +11,7 @@
 #include "tree.h"
 #include "vb.h"
 #include "matrix.h"
-#include "random.h"
+#include "utilsgsl.h"
 
 #include "optimizer.h"
 
@@ -51,13 +51,13 @@ bool operator_vb(Operator* op, double* logHR){
 	Parameters* ps = new_Parameters(3);
 	if(Node_isleaf(right_root)){
 		do {
-			index = random_int(Tree_node_count(tree)-1);
+			index = gsl_rng_uniform_int(op->rng, Tree_node_count(tree));
 			node = Tree_node(tree, index);
 		}while(node == root || node == left_root || Node_isleaf(node));
 	}
 	else{
 		do {
-			index = random_int(Tree_node_count(tree)-1);
+			index = gsl_rng_uniform_int(op->rng, Tree_node_count(tree));
 			node = Tree_node(tree, index);
 		}while(node == root || node == right_root || Node_isleaf(node));
 	}
@@ -94,13 +94,13 @@ bool operator_vb_on_the_fly(Operator* op, double* logHR){
 	Parameters* ps = new_Parameters(3);
 	if(Node_isleaf(right_root)){
 		do {
-			index = random_int(Tree_node_count(tree)-1);
+			index = gsl_rng_uniform_int(op->rng, Tree_node_count(tree));
 			node = Tree_node(tree, index);
 		}while(node == root || node == left_root || Node_isleaf(node));
 	}
 	else{
 		do {
-			index = random_int(Tree_node_count(tree)-1);
+			index = gsl_rng_uniform_int(op->rng, Tree_node_count(tree));
 			node = Tree_node(tree, index);
 		}while(node == root || node == right_root || Node_isleaf(node));
 	}
@@ -219,7 +219,7 @@ bool operator_vb_1(Operator* op, double* logHR){
 	double value;
 	Parameters* ps = new_Parameters(1);
 	do {
-		index = random_int(Tree_node_count(tree)-1);
+		index = gsl_rng_uniform_int(op->rng, Tree_node_count(tree));
 		node = Tree_node(tree, index);
 	}while(node == root || node == right_root);
 		
@@ -313,5 +313,6 @@ Operator* new_VariationalOperator_from_json(json_node* node, Hashtable* hash){
 	op->rejected_count = 0;
 	op->accepted_count = 0;
 	op->failure_count = 0;
+	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return op;
 }

@@ -10,7 +10,7 @@
 
 #include "simplex.h"
 #include "matrix.h"
-#include "random.h"
+#include "utilsgsl.h"
 #include "gaussian.h"
 
 void operator_hmc_store(Operator* op){
@@ -35,7 +35,7 @@ void operator_hmc_restore(Operator* op){
 }
 
 bool operator_hmc(Operator* op, double* logHR){
-	op->indexes[0] = random_int(Parameters_count(op->x)-1);
+	op->indexes[0] = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
 	Parameter* p = Parameters_at(op->x, op->indexes[0]);
 	Model* posterior = op->models[0];
 	double p0 = rnorm();
@@ -110,5 +110,6 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	
 	op->rejected_count = 0;
 	op->accepted_count = 0;
+	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return op;
 }

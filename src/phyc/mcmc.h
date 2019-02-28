@@ -27,6 +27,7 @@ typedef struct MCMC{
 	int verbose;
 	bool generalized;
 	bool bf;
+	gsl_rng* rng;
 } MCMC;
 
 MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash);

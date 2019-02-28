@@ -9,7 +9,7 @@
 #include "nest.h"
 
 #include "matrix.h"
-#include "random.h"
+#include "utilsgsl.h"
 
 double nest_mcmc(NEST* mcmc, double minLnL){
 	Model* prior = mcmc->prior;
@@ -44,7 +44,7 @@ double nest_mcmc(NEST* mcmc, double minLnL){
 	while ( iter < mcmc->chain_length) {
 		
 		// Choose operator
-		int op_index = roulette_wheel(weights, mcmc->operator_count);
+		size_t op_index = roulette_wheel_gsl(mcmc->rng, weights, mcmc->operator_count);
 		Operator* op = mcmc->operators[op_index];
 		
 		double logHR = 0;
@@ -66,7 +66,7 @@ double nest_mcmc(NEST* mcmc, double minLnL){
 			double alpha = proposed_logPrior - logP + logHR;
 			
 			// accept
-			if ( (alpha >=  0 || alpha > log(random_double())) && proposed_logLikelihood > minLnL ) {
+			if ( (alpha >=  0 || alpha > log(gsl_rng_uniform(mcmc->rng))) && proposed_logLikelihood > minLnL ) {
 				//			printf("%zu %f %f\n", iter, logP, proposed_logP);
 				logP = proposed_logPrior;
 				logLikelihood = proposed_logLikelihood;
@@ -139,9 +139,9 @@ void nest_run(NEST* nest){
 		
 		size_t index = 0;
 		if(N > 1){
-			index = random_int(N-1);
+			index = gsl_rng_uniform_int(nest->rng, N);
 			while (index == worst) {
-				index = random_int(N-1);
+				index = gsl_rng_uniform_int(nest->rng, N);
 			}
 		}
 		Parameters_restore_value(nest->x, params[index]);
@@ -232,7 +232,7 @@ NEST* new_NEST_from_json(json_node* node, Hashtable* hash){
 		nest->operator_count++;
 	}
 	
-//	mmcmc->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
+	nest->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return nest;
 }
 

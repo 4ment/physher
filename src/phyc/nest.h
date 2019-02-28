@@ -26,7 +26,7 @@ typedef struct NEST{
 	void (*run)(struct NEST*);
 //	char* log_file;
 	Parameters* x;
-//	gsl_rng* rng;
+	gsl_rng* rng;
 } NEST;
 
 NEST* new_NEST_from_json(json_node* node, Hashtable* hash);

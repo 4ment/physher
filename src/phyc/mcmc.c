@@ -11,7 +11,7 @@
 #include <strings.h>
 #include <stdio.h>
 
-#include "random.h"
+#include "utilsgsl.h"
 #include "matrix.h"
 #include "compoundmodel.h"
 #include "treelikelihood.h"
@@ -83,7 +83,7 @@ void run(MCMC* mcmc){
 	while ( iter < mcmc->chain_length) {
 		
 		// Choose operator
-		int op_index = roulette_wheel(weights, mcmc->operator_count);
+		size_t op_index = roulette_wheel_gsl(mcmc->rng, weights, mcmc->operator_count);
 		Operator* op = mcmc->operators[op_index];
 		
 		double logHR = 0;
@@ -99,7 +99,7 @@ void run(MCMC* mcmc){
 			double alpha = proposed_logP - logP + logHR;
 			
 			// accept
-			if ( alpha >=  0 || alpha > log(random_double()) ) {
+			if ( alpha >=  0 || alpha > log(gsl_rng_uniform(mcmc->rng)) ) {
 	//			printf("%zu %f %f\n", iter, logP, proposed_logP);
 				logP = proposed_logP;
 				op->accepted_count++;
@@ -236,6 +236,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	mcmc->generalized = get_json_node_value_bool(node, "generalized", false);
 	mcmc->bf = get_json_node_value_bool(node, "bf", false);
 	mcmc->free = _free_MCMC;
+	mcmc->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return mcmc;
 }
 

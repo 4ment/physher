@@ -10,7 +10,7 @@
 
 #include "matrix.h"
 #include "compoundmodel.h"
-#include "random.h"
+#include "utilsgsl.h"
 
 double _calculate_importance_sampler( ImportanceSampler* mvb ){
 	Model* mvar = mvb->distribution[0];
@@ -27,7 +27,7 @@ double _calculate_importance_sampler( ImportanceSampler* mvb ){
 		for(size_t i = 0; i < n; i++){
 			double logQ;
 			if(mvb->distribution_count > 1){
-				int idx = roulette_wheel(mvb->weights, mvb->distribution_count);
+				size_t idx = roulette_wheel_gsl(mvb->rng, mvb->weights, mvb->distribution_count);
 				mvar = mvb->distribution[idx];
 			}
 			mvar->sample(mvar, samples, &logQ);
@@ -49,7 +49,7 @@ double _calculate_importance_sampler( ImportanceSampler* mvb ){
 		for(size_t i = 0; i < n; i++){
 			double logQ;
 			if(mvb->distribution_count > 1){
-				int idx = roulette_wheel(mvb->weights, mvb->distribution_count);
+				size_t idx = roulette_wheel_gsl(mvb->rng, mvb->weights, mvb->distribution_count);
 				mvar = mvb->distribution[idx];
 			}
 			mvar->sample(mvar, samples, &logQ);
@@ -133,6 +133,7 @@ ImportanceSampler* new_ImportanceSampler_from_json(json_node* node, Hashtable* h
 	mvb->parameters = new_Parameters(1);
 	get_parameters_references(node, hash, mvb->parameters);
 	mvb->normalize = get_json_node_value_bool(node, "normalize", true);
+	mvb->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return mvb;
 }
 
