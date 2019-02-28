@@ -48,6 +48,44 @@ static void _substitution_model_handle_change( Model *self, Model *model, int in
 	self->listeners->fire( self->listeners, self, index );
 }
 
+static void _substitution_model_store(Model* self){
+	Model** models = (Model**)self->data;
+	models[0]->store(models[0]); // simplex freqs
+	if(models[1] != NULL) models[1]->store(models[1]); // simplex rates
+	SubstitutionModel* subst = self->obj;
+	if (Parameters_count(subst->rates) > 0) {
+		Parameters_store(subst->rates);
+	}
+}
+
+static void _substitution_model_restore(Model* self){
+	Model** models = (Model**)self->data;
+	models[0]->restore(models[0]); // simplex freqs
+	if(models[1] != NULL) models[1]->restore(models[1]); // simplex rates
+	SubstitutionModel* subst = self->obj;
+	if (Parameters_count(subst->rates) > 0) {
+		bool changed = false;
+		Parameter*p = NULL;
+		for (int i = 0; i < Parameters_count(subst->rates); i++) {
+			p = Parameters_at(subst->rates, i);
+			if (Parameter_changed(p)) {
+				changed = true;
+			}
+			Parameter_restore_quietly(p);
+		}
+		if (changed) {
+			p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+		}
+	}
+}
+
+static void _substitution_model_handle_restore( Model *self, Model *model, int index ){
+	SubstitutionModel* m = (SubstitutionModel*)self->obj;
+	m->need_update = true;
+	m->dQ_need_update = true;
+	self->restore_listeners->fire_restore( self->restore_listeners, self, index );
+}
+
 static void _substitution_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free subsitution model %s\n", self->name);
@@ -179,6 +217,7 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 	if ( sm->rates != NULL ) {
 		for ( i = 0; i < Parameters_count(sm->rates); i++ ) {
 			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
+			Parameters_at(sm->rates, i)->restore_listeners->add( Parameters_at(sm->rates, i)->restore_listeners, model );
 		}
 	}
 	
@@ -186,9 +225,13 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 		simplexes[1] = rates_simplex;
 		rates_simplex->ref_count++;
 		rates_simplex->listeners->add( rates_simplex->listeners, model );
+		rates_simplex->restore_listeners->add( rates_simplex->restore_listeners, model );
 	}
 	
 	model->update = _substitution_model_handle_change;
+	model->handle_restore = _substitution_model_handle_restore;
+	model->store = _substitution_model_store;
+	model->restore = _substitution_model_restore;
 	model->free = _substitution_model_free;
 	model->clone = _substitution_model_clone;
 	model->get_free_parameters = _substitution_model_get_free_parameters;

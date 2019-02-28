@@ -164,6 +164,7 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 	p->estimate = true;
 	p->id = 0;
 	p->listeners = new_ListenerList(1);
+	p->restore_listeners = new_ListenerList(1);
 	p->refCount = 1;
 	return p;
 }
@@ -227,9 +228,11 @@ Parameter * clone_Parameter( Parameter *p ){
 }
 
 void free_Parameter( Parameter *p ){
+	if(p == NULL) return;
 	if(p->refCount == 1){
 		free(p->name);
 		p->listeners->free(p->listeners);
+		p->restore_listeners->free(p->restore_listeners);
 		if( p->cnstr != NULL ) free_Constraint(p->cnstr);
 		free(p);
 	}
@@ -273,7 +276,18 @@ void Parameter_store(Parameter *p){
 }
 
 void Parameter_restore(Parameter *p){
-	Parameter_set_value(p, p->stored_value);
+	if (p->stored_value != p->value) {
+		p->value = p->stored_value;
+		p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+	}
+}
+
+void Parameter_restore_quietly(Parameter *p){
+	p->value = p->stored_value;
+}
+
+bool Parameter_changed(Parameter *p){
+	return p->value != p->stored_value;
 }
 
 void assign_value( Parameter *p, const double value ){
@@ -529,6 +543,12 @@ void Parameters_set_all_value( Parameters *p, const double value ){
 
 double Parameters_value( const Parameters *p, const int index ){
 	return Parameter_value(p->list[index]);
+}
+
+void Parameters_store(Parameters* ps){
+	for (int i = 0; i < Parameters_count(ps); i++) {
+		Parameter_store(Parameters_at(ps, i));
+	}
 }
 
 bool Parameters_estimate( const Parameters *p, const int index ){
@@ -856,9 +876,12 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->d2logP = _d2logP;
 	model->ddlogP = _ddlogP;
 	model->update  = dummyUpdate;
+	model->handle_restore  = dummyUpdate;
 	model->free = free_Model;
 	model->data = NULL;
 	model->listeners = new_ListenerList(1);
+	model->restore_listeners = new_ListenerList(1);
+	model->need_update = true;
 	model->clone = NULL;
 	model->get_free_parameters = NULL;
 	model->ref_count = 1;
@@ -878,6 +901,7 @@ void free_Model( Model *model ){
 	if(model->ref_count == 1){
 		free(model->name);
 		model->listeners->free(model->listeners);
+		model->restore_listeners->free(model->restore_listeners);
 		free(model);
 	}
 	else{
@@ -906,6 +930,12 @@ static void _free_ListenerList( ListenerList *listeners ){
 static void _ListenerList_fire( ListenerList *listeners, Model* model, int index){
 	for ( int i = 0; i < listeners->count; i++ ) {
 		listeners->models[i]->update( listeners->models[i], model, index );
+	}
+}
+
+static void _ListenerList_fire_restore( ListenerList *listeners, Model* model, int index){
+	for ( int i = 0; i < listeners->count; i++ ) {
+		listeners->models[i]->handle_restore( listeners->models[i], model, index );
 	}
 }
 
@@ -955,6 +985,7 @@ ListenerList * new_ListenerList( const unsigned capacity ){
 	listeners->remove = _ListenerList_remove;
 	listeners->removeAll = _ListenerList_remove_all;
 	listeners->fire = _ListenerList_fire;
+	listeners->fire_restore = _ListenerList_fire_restore;
 	return listeners;
 }
 

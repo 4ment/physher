@@ -2615,8 +2615,8 @@ double optimize_brent_heights_strict_local( SingleTreeLikelihood *stlk, Optimize
         }
         
         //int previous_node = stlk->node_id;
-        if( Node_isroot(nodes[i]) ) TreeLikelihood_set_calculate(stlk, NULL);
-        else TreeLikelihood_set_calculate(stlk, nodes[i]);
+//        if( Node_isroot(nodes[i]) ) TreeLikelihood_set_calculate(stlk, NULL);
+//        else TreeLikelihood_set_calculate(stlk, nodes[i]);
         double lnl2 = data->f(data);//stlk->calculate(stlk);
         //double temp = lnl2;
         
@@ -2642,7 +2642,7 @@ double optimize_brent_heights_strict_local( SingleTreeLikelihood *stlk, Optimize
     }
     SingleTreeLikelihood_update_all_nodes(stlk);
     Tree_constraint_heights(stlk->tree);
-    TreeLikelihood_set_calculate(stlk, NULL);
+//    TreeLikelihood_set_calculate(stlk, NULL);
     return data->f(data);
 }
 

@@ -815,8 +815,8 @@ void Bootstrap_strict_openmp( const SingleTreeLikelihood *tlk, int count, const 
         BranchModel *bm = new_BranchModel(tree, CLOCK_STRICT);
         bm->set(bm, 0, rate);
         
-        SingleTreeLikelihood_set_BranchModel(tlk2, bm, false);
-        
+//        SingleTreeLikelihood_set_BranchModel(tlk2, bm, false);
+		
         double lnl2 = optimize_singletreelikelihood(tlk2);
 		
 #pragma omp critical
@@ -904,8 +904,8 @@ void SingleTreeLikelihood_bootstrap_greedy( const SingleTreeLikelihood *tlk, int
 		tlk2->opt.rates.optimize          = true;
 		
 		BranchModel *bm_strict = new_StrictClock( tlk->tree );
-		SingleTreeLikelihood_set_BranchModel(tlk2, bm_strict, false);
-		bm_strict->set( bm_strict, 0, rate_strict );		
+//		SingleTreeLikelihood_set_BranchModel(tlk2, bm_strict, false);
+		bm_strict->set( bm_strict, 0, rate_strict );
 		
 		lk_strict = optimize_singletreelikelihood(tlk2);
 		
@@ -915,8 +915,8 @@ void SingleTreeLikelihood_bootstrap_greedy( const SingleTreeLikelihood *tlk, int
 		LocalClock_set_number_of_clocks(bm, 1);
 		Parameters_set_all_value(bm->rates, rate_strict);
 		
-		SingleTreeLikelihood_set_BranchModel(tlk2, bm, false);
-		OptConfig_copy(&tlk->opt, &tlk2->opt);	
+//		SingleTreeLikelihood_set_BranchModel(tlk2, bm, false);
+		OptConfig_copy(&tlk->opt, &tlk2->opt);
 		
 		//fprintf(stderr, "Not optimized LnL = %f (strict rate %f)\n", tlk2->calculate(tlk2), rate_strict );
 		

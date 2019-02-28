@@ -89,8 +89,6 @@ void run(MCMC* mcmc){
 		double logHR = 0;
 		
 		model->store(model);
-		
-		op->store(op);
 		bool success = op->propose(op, &logHR);
 		
 		if (success) {
@@ -108,7 +106,6 @@ void run(MCMC* mcmc){
 			else {
 	//			printf("%zu %f %f *\n", iter, logP, proposed_logP);
 				model->restore(model);
-				op->restore(op);
 				op->rejected_count++;
 			}
 			

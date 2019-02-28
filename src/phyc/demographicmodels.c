@@ -32,10 +32,28 @@
 #pragma mark Coalescent
 
 static void _coalescent_model_store(Model* self){
+	Coalescent* coalescent = (Coalescent*)self->obj;
+	for (int i = 0; i < Parameters_count(coalescent->p); i++) {
+		Parameter_store(Parameters_at(coalescent->p, i));
+	}
 	self->storedLogP = self->lp;
 }
 
 static void _coalescent_model_restore(Model* self){
+	bool changed = false;
+	Parameter*p = NULL;
+	Coalescent* coalescent = (Coalescent*)self->obj;
+	for (int i = 0; i < Parameters_count(coalescent->p); i++) {
+		p = Parameters_at(coalescent->p, i);
+		if (Parameter_changed(p)) {
+			changed = true;
+		}
+		Parameter_restore_quietly(p);
+	}
+	// fire only once
+	if (changed) {
+		p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+	}
 	self->lp = self->storedLogP;
 }
 
@@ -116,12 +134,20 @@ static void _coalescent_model_handle_change( Model *self, Model *model, int inde
 	self->listeners->fire( self->listeners, self, index );
 }
 
+static void _coalescent_model_handle_restore( Model *self, Model *model, int index ){
+	Coalescent *c = (Coalescent*)self->obj;
+	c->need_update = true;
+	self->restore_listeners->fire( self->restore_listeners, self, index );
+}
+
 Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree){
 	Model* model = new_Model(MODEL_DISTRIBUTION, name, coalescent);
 	for ( int i = 0; i < Parameters_count(coalescent->p); i++ ) {
 		Parameters_at(coalescent->p, i)->listeners->add( Parameters_at(coalescent->p, i)->listeners, model );
+		Parameters_at(coalescent->p, i)->restore_listeners->add( Parameters_at(coalescent->p, i)->restore_listeners, model );
 	}
 	tree->listeners->add( tree->listeners, model );
+	tree->restore_listeners->add( tree->restore_listeners, model );
 	
 	model->logP = _coalescent_model_logP;
 	model->dlogP = _coalescent_model_dlogP;
@@ -132,8 +158,11 @@ Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree
 	model->get_free_parameters = _coalescent_model_get_free_parameters;
 	model->store = _coalescent_model_store;
 	model->restore = _coalescent_model_restore;
+	model->sample = _coalescent_model_sample;
+	model->sample_evaluate = _coalescent_model_sample_evaluate;
 	
 	model->update = _coalescent_model_handle_change;
+	model->handle_restore = _coalescent_model_handle_restore;
 	
 	model->data = tree;
 	tree->ref_count++;

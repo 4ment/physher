@@ -38,17 +38,13 @@ void partials_undefined_and_undefined_20_SSE( const SingleTreeLikelihood *tlk, c
 #pragma mark -
 #pragma mark Upper Likelihood
 
-void update_partials_upper_20( SingleTreeLikelihood *tlk, Node *node );
-
-void node_log_likelihoods_upper_20( const SingleTreeLikelihood *tlk, Node *node );
+void calculate_branch_likelihood_20(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 
 #pragma mark -
 #pragma mark Upper Likelihood SSE
 
 #ifdef SSE3_ENABLED
-void update_partials_upper_sse_20( SingleTreeLikelihood *tlk, Node *node );
-
-void node_log_likelihoods_upper_sse_20( const SingleTreeLikelihood *tlk, Node *node );
+void calculate_branch_likelihood_20_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 #endif
 
 #endif

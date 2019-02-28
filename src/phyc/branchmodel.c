@@ -125,6 +125,35 @@ static void _branchmodel_handle_change( Model *self, Model *model, int index ){
 	}
 }
 
+static void _branch_model_handle_restore( Model *self, Model *model, int index ){
+	BranchModel* bm = (BranchModel*)self->obj;
+	bm->need_update = true;
+	self->restore_listeners->fire( self->restore_listeners, self, index );
+}
+
+static void _branch_model_store(Model* self){
+	BranchModel* bm = (BranchModel*)self->obj;
+	for (int i = 0; i < Parameters_count(bm->rates); i++) {
+		Parameter_store(Parameters_at(bm->rates, i));
+	}
+}
+
+static void _branch_model_restore(Model* self){
+	BranchModel* bm = (BranchModel*)self->obj;
+	bool changed = false;
+	Parameter*p = NULL;
+	for (int i = 0; i < Parameters_count(bm->rates); i++) {
+		p = Parameters_at(bm->rates, i);
+		if (Parameter_changed(p)) {
+			changed = true;
+		}
+		Parameter_restore_quietly(p);
+	}
+	if (changed) {
+		p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+	}
+}
+
 static void _branch_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free branch model %s\n", self->name);
@@ -186,11 +215,15 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
 	Model *model = new_Model(MODEL_BRANCHMODEL, name, bm);
 	for ( int i = 0; i < Parameters_count(bm->rates); i++ ) {
 		Parameters_at(bm->rates, i)->listeners->add( Parameters_at(bm->rates, i)->listeners, model );
+		Parameters_at(bm->rates, i)->restore_listeners->add( Parameters_at(bm->rates, i)->restore_listeners, model );
 	}
 	if(bm->map != NULL){
 		bm->map->listeners->add(bm->map->listeners, model);
 	}
 	model->update = _branchmodel_handle_change;
+	model->handle_restore = _branch_model_handle_restore;
+	model->store = _branch_model_store;
+	model->restore = _branch_model_restore;
 	model->free = _branch_model_free;
 	model->clone = _branch_model_clone;
 	model->get_free_parameters = _branch_model_get_free_parameters;

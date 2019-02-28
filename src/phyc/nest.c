@@ -36,6 +36,7 @@ double nest_mcmc(NEST* mcmc, double minLnL){
 //	}
 	
 	logP = prior->logP(prior);
+	mcmc->likelihood->logP(mcmc->likelihood);
 //	for (int i = 0; i < mcmc->log_count; i++) {
 //		_mcmc_write_header(mcmc->logs[i], false);
 //		mcmc->logs[i]->write(mcmc->logs[i], iter);
@@ -50,7 +51,7 @@ double nest_mcmc(NEST* mcmc, double minLnL){
 		double logHR = 0;
 		
 		prior->store(prior);
-		op->store(op);
+		mcmc->likelihood->store(mcmc->likelihood);
 		bool success = op->propose(op, &logHR);
 		
 		if (success) {
@@ -76,7 +77,7 @@ double nest_mcmc(NEST* mcmc, double minLnL){
 			else {
 				//			printf("%zu %f %f *\n", iter, logP, proposed_logP);
 				prior->restore(prior);
-				op->restore(op);
+				mcmc->likelihood->restore(mcmc->likelihood);
 				op->rejected_count++;
 			}
 			

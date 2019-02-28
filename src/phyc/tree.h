@@ -53,6 +53,8 @@ Tree * clone_Tree( const Tree *tree );
 
 Tree * clone_SubTree( const Tree *tree, Node *node );
 
+Node * clone_Tree_aux( Tree *tree, const Node *node, Node *parent );
+
 int Tree_node_count( const Tree *tree );
 
 int Tree_tip_count( const Tree *tree );

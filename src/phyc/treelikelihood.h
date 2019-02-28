@@ -86,20 +86,25 @@ struct _SingleTreeLikelihood{
 	int cat_count;
 	int pattern_count;
 	
-	int id;
 	int *mapping; // index of node to index of sequence (-1 if no sequence)
 	
 	int partials_dim; // first dimension of partials
 	int partials_size; // second dimension of partials
-	double **partials;
+	double ***partials;
+	unsigned *current_partials_indexes;
+	unsigned *stored_partials_indexes;
 	
-	double **scaling_factors;
+	double ***scaling_factors;
+
 	bool scale;
 	double scaling_threshold;
 	
 	int matrix_dim;
 	int matrix_size;
-	double **matrices;
+	double ***matrices;
+	unsigned *current_matrices_indexes;
+	unsigned *stored_matrices_indexes;
+
 	
 	
 	bool *update_nodes;
@@ -133,15 +138,14 @@ struct _SingleTreeLikelihood{
     // Calculation using lower and upper
     bool use_upper;
     Node *node_upper;
-    
-	void   (*update_partials_upper)( SingleTreeLikelihood *, Node * );
+	bool tripod;
+	
     calculate_upper_t calculate_upper;
-	void   (*node_log_likelihoods_upper)( const SingleTreeLikelihood *, Node * );
 	
 	void (*calculate_branch_likelihood)(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 	
 	int* upper_partial_indexes;
-	bool update_upper;
+	bool update_upper; // for derivatives
 	
 	const double* (*get_root_frequencies)(SingleTreeLikelihood*);
 	double* root_frequencies;
@@ -192,16 +196,6 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 
 
 
-
-void SingleTreeLikelihood_set_BranchModel( SingleTreeLikelihood *stlk, BranchModel *bm, bool removeTree );
-
-void SingleTreeLikelihood_remove_BranchModel( SingleTreeLikelihood *tlk, bool removeTree );
-
-void SingleTreeLikelihood_set_Tree( SingleTreeLikelihood *stlk, Tree *tree );
-
-void SingleTreeLikelihood_remove_Tree( SingleTreeLikelihood *stlk );
-
-
 double SingleTreeLikelihood_calculate_at_node( SingleTreeLikelihood *tlk, const Node *node );
 
 
@@ -210,28 +204,13 @@ void SingleTreeLikelihood_copy_partials( SingleTreeLikelihood *src, SingleTreeLi
 void SingleTreeLikelihood_rearrange_partials( SingleTreeLikelihood *tlk );
 void SingleTreeLikelihood_rearrange( SingleTreeLikelihood *tlk, Node *node1, Node *node2 );
 
-// using upper partial likelihood
-// should notbe called at the root
-double SingleTreeLikelilhood_calculate_uppper( SingleTreeLikelihood *tlk, int node_index );
-//void calculate_uppper_partials( SingleTreeLikelihood *tlk );
-double SingleTreeLikelilhood_calculate_uppper2( SingleTreeLikelihood *tlk, Node *node );
-
-
-void TreeLikelihood_set_calculate( SingleTreeLikelihood *tlk, Node *node );
-
-void update_branch_length( SingleTreeLikelihood *tlk, Parameters *ps, int index );
-
-void update_branches( SingleTreeLikelihood *tlk, Parameters *ps );
 
 void SingleTreeLikelihood_update_all_nodes( SingleTreeLikelihood *tlk );
 
-//void SingleTreeLikelihood_update_one_node( SingleTreeLikelihood *tlk, const int index );
 void SingleTreeLikelihood_update_one_node( SingleTreeLikelihood *tlk, const Node *node );
 
 void SingleTreeLikelihood_update_three_nodes( SingleTreeLikelihood *tlk, const Node *node );
 
-
-void compare_singlelikelihood( const SingleTreeLikelihood *tlk1, const SingleTreeLikelihood *tlk2 );
 
 void SingleTreeLikelihood_use_rescaling( SingleTreeLikelihood *tlk, bool use );
 
@@ -240,8 +219,6 @@ int SingleTreeLikelihood_df_count( const SingleTreeLikelihood *stlk );
 double getLogScalingFactor( const SingleTreeLikelihood *tlk, int pattern );
 
 void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeIndex );
-
-double ** SingleTreeLikelihood_posterior_sites( SingleTreeLikelihood *tlk );
 
 void SingleTreeLikelihood_enable_SSE( SingleTreeLikelihood *tlk, bool value );
 bool SingleTreeLikelihood_SSE( SingleTreeLikelihood *tlk );
@@ -257,44 +234,20 @@ void SingleTreeLikelihood_scale_root( SingleTreeLikelihood *tlk, const double sc
 
 void SingleTreeLikelihood_set_nthreads( SingleTreeLikelihood *tlk, int nthreads );
 
-void calculate_all_dlnl_dt( SingleTreeLikelihood *tlk, double *dlnl );
-
-void calculate_all_d2lnl_d2t( SingleTreeLikelihood *tlk, double *d2lnl );
-
-void calculate_hessian_branches( SingleTreeLikelihood *tlk, double *d2lnl );
-
 double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pattern_likelihoods );
-
-#pragma mark -
-#pragma mark Second order Taylor series approximation
-
-void SingleTreeLikelihood_fisher_information( SingleTreeLikelihood *tlk, double *hessian );
-
-void SingleTreeLikelihood_covariance( SingleTreeLikelihood *tlk, double *hessian );
-
-bool SingleTreeLikelihood_Hessian( SingleTreeLikelihood *tlk, double *hessian, double *gradient );
-
-bool SingleTreeLikelihood_Hessian_diag( SingleTreeLikelihood *tlk, double *hessian, int *len );
 
 
 #pragma mark -
 #pragma mark Upper Likelihood
 
-void calculate_upper(SingleTreeLikelihood *tlk, Node* node);
+void update_upper_partials(SingleTreeLikelihood *tlk, Node* node);
 
 void calculate_dldt_uppper( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods );
 
 double dlnldt_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pattern_likelihoods, const double* pattern_dlikelihoods );
 
-//double dlnldt_uppper( SingleTreeLikelihood *tlk, Node *node );
-
 double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pattern_likelihoods, const double* pattern_dlikelihoods);
 
-void SingleTreeLikelihood_set_upper_function( SingleTreeLikelihood *tlk, calculate_upper_t function );
-
-void SingleTreeLikelihood_use_upper( SingleTreeLikelihood *tlk, bool use_upper );
-
-double calculate_uppper_2nodes( SingleTreeLikelihood *tlk, Node *node );
 
 double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 

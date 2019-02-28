@@ -116,6 +116,6 @@ SiteModel * clone_SiteModel( const SiteModel *sm );
 
 SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m );
 
-SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, const Parameters* params );
+SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, const Parameters* params, Parameter* mu );
 
 #endif

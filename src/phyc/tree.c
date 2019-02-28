@@ -620,6 +620,47 @@ void _tree_handle_change( Model *self, Model *model, int index ){
 	self->listeners->fire( self->listeners, self, index );
 }
 
+static void _tree_model_store(Model* self){
+	Tree* tree = self->obj;
+	for (int i = 0; i < Tree_node_count(tree); i++) {
+		Parameter_store(Tree_node(tree, i)->distance);
+		Parameter_store(Tree_node(tree, i)->height);
+	}
+}
+
+static void _tree_model_restore(Model* self){
+	Tree* tree = self->obj;
+	bool distance_changed = false;
+	bool height_changed = false;
+	Parameter* d = NULL;
+	Parameter* h = NULL;
+	for (int i = 0; i < Tree_node_count(tree); i++) {
+		Node* n = Tree_node(tree, i);
+		d = n->distance;
+		h = n->height;
+		if (Parameter_changed(d)) {
+			distance_changed = true;
+		}
+		if (Parameter_changed(h)) {
+			height_changed = true;
+		}
+		
+		Parameter_restore_quietly(d);
+		Parameter_restore_quietly(h);
+	}
+	if (distance_changed) {
+		//printf("_tree_model_restore\n");
+		d->restore_listeners->fire_restore(d->restore_listeners, NULL, d->id);
+	}
+	if (height_changed) {
+		h->restore_listeners->fire_restore(h->restore_listeners, NULL, h->id);
+	}
+}
+
+void _tree_handle_restore( Model *self, Model *model, int index ){
+	self->restore_listeners->fire_restore( self->restore_listeners, self, index );
+}
+
 static void _tree_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free tree model %s\n", self->name);
@@ -702,9 +743,14 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 		Parameter_set_name(tree->nodes[i]->height, buffer->c);
 		tree->nodes[i]->distance->listeners->add(tree->nodes[i]->distance->listeners, model);
 		tree->nodes[i]->height->listeners->add(tree->nodes[i]->height->listeners, model);
+		tree->nodes[i]->distance->restore_listeners->add(tree->nodes[i]->distance->restore_listeners, model);
+		tree->nodes[i]->height->restore_listeners->add(tree->nodes[i]->height->restore_listeners, model);
 	}
 	free_StringBuffer(buffer);
 	model->update = _tree_handle_change;
+	model->handle_restore = _tree_handle_restore;
+	model->store = _tree_model_store;
+	model->restore = _tree_model_restore;
 	model->free = _tree_model_free;
 	model->clone = _tree_model_clone;
 	model->get_free_parameters = _tree_model_get_free_parameters;

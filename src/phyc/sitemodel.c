@@ -69,6 +69,47 @@ static void _site_model_handle_change( Model *self, Model *model, int index ){
 	self->listeners->fire( self->listeners, self, index );
 }
 
+static void _site_model_store(Model* self){
+	Model* msubst = (Model*)self->data;
+	msubst->store(msubst); // substitution model
+	SiteModel* sm = self->obj;
+	if (Parameters_count(sm->rates) > 0) {
+		Parameters_store(sm->rates);
+	}
+	if (sm->mu != NULL) {
+		Parameter_store(sm->mu);
+	}
+}
+
+static void _site_model_restore(Model* self){
+	Model* msubst = (Model*)self->data;
+	msubst->restore(msubst); // substitution model
+	SiteModel* sm = self->obj;
+	if (Parameters_count(sm->rates) > 0) {
+		bool changed = false;
+		Parameter*p = NULL;
+		for (int i = 0; i < Parameters_count(sm->rates); i++) {
+			p = Parameters_at(sm->rates, i);
+			if (Parameter_changed(p)) {
+				changed = true;
+			}
+			Parameter_restore_quietly(p);
+		}
+		if (changed) {
+			p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+		}
+	}
+	if (sm->mu != NULL) {
+		Parameter_restore(sm->mu);
+	}
+}
+
+static void _site_model_handle_restore( Model *self, Model *model, int index ){
+	SiteModel *sm = (SiteModel*)self->obj;
+	sm->need_update = true;// one of the sitemodel parameters
+	self->restore_listeners->fire_restore( self->restore_listeners, self, index );
+}
+
 static void _site_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free site model %s\n", self->name);
@@ -120,8 +161,21 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 			Hashtable_add(hash, name, p);
 		}
 	}
-	SiteModel* smclone = clone_SiteModel_with_parameters(sm, (SubstitutionModel*)mmclone->obj, ps);
+	Parameter* mu = NULL;
+	if (sm->mu != NULL) {
+		char* name = Parameter_name(sm->mu);
+		if (Hashtable_exists(hash, name)) {
+			mu = Hashtable_get(hash, name);
+			mu->refCount++;
+		}
+		else{
+			mu = clone_Parameter(sm->mu);
+			Hashtable_add(hash, name, mu);
+		}
+	}
+	SiteModel* smclone = clone_SiteModel_with_parameters(sm, (SubstitutionModel*)mmclone->obj, ps, mu);
 	free_Parameters(ps);
+	free_Parameter(mu);
 	Model* clone = new_SiteModel2(self->name, smclone, mmclone);
 	Hashtable_add(hash, clone->name, clone);
 	mmclone->free(mmclone);
@@ -144,12 +198,22 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	if ( sm->rates != NULL ) {
 		for ( int i = 0; i < Parameters_count(sm->rates); i++ ) {
 			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
+			Parameters_at(sm->rates, i)->restore_listeners->add( Parameters_at(sm->rates, i)->restore_listeners, model );
 		}
 	}
+	if ( sm->mu != NULL ) {
+		sm->mu->listeners->add( sm->mu->listeners, model );
+		sm->mu->restore_listeners->add(sm->mu->restore_listeners, model );
+	}
+	
 	// Listen to substitution model
 	substmodel->listeners->add( substmodel->listeners, model );
+	substmodel->restore_listeners->add( substmodel->restore_listeners, model );
 	
 	model->update = _site_model_handle_change;
+	model->handle_restore = _site_model_handle_restore;
+	model->store = _site_model_store;
+	model->restore = _site_model_restore;
 	model->free = _site_model_free;
 	model->clone = _site_model_clone;
 	model->get_free_parameters = _site_model_get_free_parameters;
@@ -270,7 +334,6 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		sm->mu = new_Parameter_from_json(mu_node, hash);
 		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
-		sm->mu->listeners->add( sm->mu->listeners, msm );
 	}
 	
 	mm->free(mm);
@@ -914,7 +977,7 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
 	return newsm;
 }
 
-SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, const Parameters* params ){
+SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, const Parameters* params, Parameter* mu ){
 	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(newsm);
 	newsm->m = m;
@@ -933,8 +996,9 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionMo
 	}
 	
 	newsm->mu = NULL;
-	if ( sm->mu != NULL ){
-		newsm->mu = clone_Parameter(sm->mu);
+	if ( mu != NULL ){
+		newsm->mu = mu;
+		mu->refCount++;
 	}
 	
 	newsm->cat_assignment_length = sm->cat_assignment_length;

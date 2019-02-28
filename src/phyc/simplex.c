@@ -154,6 +154,39 @@ static void _simplex_model_handle_change( Model *self, Model *model, int index )
 	self->listeners->fire( self->listeners, self, index );
 }
 
+static void _simplex_model_handle_restore( Model *self, Model *model, int index ){
+	Simplex* simplex = (Simplex*)self->obj;
+	simplex->need_update = true;
+	self->restore_listeners->fire( self->restore_listeners, self, index );
+}
+
+static void _simplex_model_store(Model* self){
+	Simplex* simplex = self->obj;
+	if ( simplex->parameters != NULL ) {
+		for (int i = 0; i < Parameters_count(simplex->parameters); i++) {
+			Parameter_store(Parameters_at(simplex->parameters, i));
+		}
+	}
+}
+
+static void _simplex_model_restore(Model* self){
+	Simplex* simplex = self->obj;
+	if ( simplex->parameters != NULL ) {
+		bool changed = false;
+		Parameter*p = NULL;
+		for (int i = 0; i < Parameters_count(simplex->parameters); i++) {
+			p = Parameters_at(simplex->parameters, i);
+			if (Parameter_changed(p)) {
+				changed = true;
+			}
+			Parameter_restore_quietly(p);
+		}
+		if (changed) {
+			p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+		}
+	}
+}
+
 static void _simplex_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free simplex model %s\n", self->name);
@@ -195,10 +228,14 @@ Model * new_SimplexModel( const char* name, Simplex *simplex ){
 	if ( simplex->parameters != NULL ) {
 		for ( i = 0; i < Parameters_count(simplex->parameters); i++ ) {
 			Parameters_at(simplex->parameters, i)->listeners->add( Parameters_at(simplex->parameters, i)->listeners, model );
+			Parameters_at(simplex->parameters, i)->restore_listeners->add( Parameters_at(simplex->parameters, i)->restore_listeners, model );
 		}
 	}
 	
 	model->update = _simplex_model_handle_change;
+	model->handle_restore = _simplex_model_handle_restore;
+	model->store = _simplex_model_store;
+	model->restore = _simplex_model_restore;
 	model->free = _simplex_model_free;
 	model->clone = _simplex_model_clone;
 	model->get_free_parameters = _simplex_get_free_parameters;

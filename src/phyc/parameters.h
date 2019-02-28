@@ -68,6 +68,7 @@ struct _Parameter{
 	Constraint *cnstr;
 	bool estimate;
 	ListenerList *listeners;
+	ListenerList *restore_listeners;
 	int refCount;
 };
 
@@ -151,6 +152,10 @@ void Parameter_store(Parameter *p);
 
 void Parameter_restore(Parameter *p);
 
+void Parameter_restore_quietly(Parameter *p);
+
+bool Parameter_changed(Parameter *p);
+
 double check_value( Constraint *cnstr, double value );
 
 
@@ -226,6 +231,8 @@ void Parameters_fire( Parameters *p );
 
 double Parameters_value( const Parameters *p, const int index );
 
+void Parameters_store(Parameters* ps);
+
 bool Parameters_estimate( const Parameters *p, const int index );
 
 void Parameters_set_estimate( Parameters *p, const bool estimate, const int index );
@@ -293,6 +300,7 @@ struct _ListenerList {
 	int capacity;
 	void (*free)( ListenerList*);
 	void (*fire)( ListenerList*, Model*, int );
+	void (*fire_restore)( ListenerList*, Model*, int );
 	void (*add)( ListenerList*, Model* );
 	void (*remove)( ListenerList*, Model* );
 	void (*removeAll)( ListenerList*);
@@ -341,12 +349,15 @@ struct _Model {
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, int );
+	void (*handle_restore)( Model *, Model *, int );
 	void (*get_free_parameters)(Model*, Parameters*);
 	void (*reset)(Model*);
 	void (*sample)(Model*, double*, double* logP);
 	double (*sample_evaluate)(Model*);
 	
 	ListenerList *listeners;
+	ListenerList *restore_listeners;
+	bool need_update;
 	int ref_count;
 	
 	void(*store)(Model*);

@@ -85,4 +85,9 @@ void update_partials_general_ancestral_relb( SingleTreeLikelihood *tlk, int node
 
 void update_partials_general_rel( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
 
+#pragma mark -
+#pragma mark Upper Likelihood SSE
+
+void calculate_branch_likelihood_even_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
+
 #endif

@@ -45,45 +45,45 @@
 
 void update_partials_20_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
 	
-	if( tlk->partials[partialsIndex1] != NULL ){
-		if(  tlk->partials[partialsIndex2] != NULL ){
+	if( tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1] != NULL ){
+		if(  tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2] != NULL ){
 			partials_undefined_and_undefined_20_SSE(tlk,
-												   tlk->partials[partialsIndex1],
-												   tlk->matrices[matrixIndex1],
-												   tlk->partials[partialsIndex2],
-												   tlk->matrices[matrixIndex2],
-												   tlk->partials[partialsIndex]);
+												   tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+												   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+												   tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+												   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+												   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
 		else {
 			partials_states_and_undefined_20_SSE(tlk,
 										  tlk->mapping[partialsIndex2],
-										  tlk->matrices[matrixIndex2],
-										  tlk->partials[partialsIndex1],
-										  tlk->matrices[matrixIndex1],
-										  tlk->partials[partialsIndex]);
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
 		
 	}
 	else{
-		if(  tlk->partials[partialsIndex2] != NULL ){
+		if(  tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2] != NULL ){
 			partials_states_and_undefined_20_SSE(tlk,
 										  tlk->mapping[partialsIndex1],
-										  tlk->matrices[matrixIndex1],
-										  tlk->partials[partialsIndex2],
-										  tlk->matrices[matrixIndex2],
-										  tlk->partials[partialsIndex]);
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 			
 		}
 		else{
 			partials_states_and_states_20_SSE(tlk,
 									   tlk->mapping[partialsIndex1],
-									   tlk->matrices[matrixIndex1],
+									   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
 									   tlk->mapping[partialsIndex2],
-									   tlk->matrices[matrixIndex2],
-									   tlk->partials[partialsIndex]);
+									   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+									   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
 	}
-	
+
 	if ( tlk->scale ) {
 		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
 	}
@@ -506,1465 +506,1019 @@ void partials_undefined_and_undefined_20_SSE( const SingleTreeLikelihood *tlk, c
 #pragma mark -
 #pragma mark Upper Likelihood
 
-// Called by a node whose parent is NOT the root and the node's sibling is a leaf
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-static void _update_upper_partials_state( SingleTreeLikelihood *tlk, const double * restrict amatrix_upper, const double * restrict apartials_upper, const double * restrict amatrix_lower, int sibling_index, double *partials ){
-#else
-static void _update_upper_partials_state( SingleTreeLikelihood *tlk, const double *matrix_upper, const double *partials_upper, const double *matrix_lower, int sibling_index, double *partials ){
-#endif
-    int w,w2,k;
-    int v = 0;
-    int state;
-    double *pPartials = partials;
-    
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-    const double *matrix_upper   = __builtin_assume_aligned(amatrix_upper,   16);
-    const double *partials_upper = __builtin_assume_aligned(apartials_upper, 16);
-    const double *matrix_lower   = __builtin_assume_aligned(amatrix_lower,   16);
-#endif
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            state = tlk->sp->patterns[k][ sibling_index ];
-            
-            w = l * 400;
-            
-            for ( int j = 0; j < 5; j++ ) {
-            
-                w2 = l * 400 + j*4;
-                
-                *pPartials  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 19];
-                
-                
-                if( state < 20){
-                    *pPartials *= matrix_lower[w+state];
-                }
-                pPartials++;
-                w += 20;
-                
-                
-                w2 = l * 400 + j*4 + 1;
-                
-                *pPartials  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 19];
-                
-                
-                if( state < 20){
-                    *pPartials *= matrix_lower[w+state];
-                }
-                pPartials++;
-                w += 20;
-                
-                
-                w2 = l * 400 + j*4 + 2;
-                
-                *pPartials  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 19];
-                
-                
-                if( state < 20){
-                    *pPartials *= matrix_lower[w+state];
-                }
-                pPartials++;
-                w += 20;
-                
-                
-                w2 = l * 400 + j*4 + 3;
-                
-                *pPartials  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 19];
-                
-                
-                if( state < 20){
-                    *pPartials *= matrix_lower[w+state];
-                }
-                pPartials++;
-                w += 20;
-            }
-            
-            v += 20;
-        }
-    }
+static void _calculate_branch_likelihood_undefined(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, const double* partials, const double* matrices){
+	memset(rootPartials, 0, sizeof(double)*20*tlk->pattern_count);
+	int v = 0;
+	for(int l = 0; l < tlk->cat_count; l++) {
+		int u = 0;
+		const double weight = tlk->sm->get_proportion(tlk->sm, l);
+		for(int k = 0; k < tlk->pattern_count; k++) {
+			const double* partialsChildPtr = partials+v;
+			const double* transMatrixPtr = &matrices[l*400];
+			
+			double sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+			sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[2]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[3]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[4]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[5]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[6]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[7]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[8]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[9]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[10]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[11]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[12]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[13]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[14]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[15]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[16]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[17]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[18]; transMatrixPtr++;
+			sum += *transMatrixPtr * partialsChildPtr[19]; transMatrixPtr++;
+			rootPartials[u] += sum * upperPartials[v] * weight;u++;v++;
+			
+		}
+	}
 }
 
-    // Called by a node whose parent is NOT the root and the node's sibling is NOT a leaf
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-static void _update_upper_partials_undefined( SingleTreeLikelihood *tlk, const double * restrict amatrix_upper, const double * restrict apartials_upper, const double * restrict amatrix_lower, const double * restrict apartials_lower, double *partials ){
-#else
-static void _update_upper_partials_undefined( SingleTreeLikelihood *tlk, const double *matrix_upper, const double *partials_upper, const double *matrix_lower, const double *partials_lower, double *partials ){
-#endif
-    int w,w2,k;
-    int v = 0;
-    double sum1,sum2;
-    double *pPartials = partials;
-    
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-    const double *matrix_upper   = __builtin_assume_aligned(amatrix_upper,   16);
-    const double *partials_upper = __builtin_assume_aligned(apartials_upper, 16);
-    const double *matrix_lower   = __builtin_assume_aligned(amatrix_lower,   16);
-    const double *partials_lower = __builtin_assume_aligned(apartials_lower, 16);
-#endif
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            w = l*400;
-            
-            for( int j = 0; j < 5; j++ ){
-                
-                w2 = l*400 + j*4;
-                
-                sum1  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 19];
-                
-                sum2  = matrix_lower[w] * partials_lower[v];      w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 1];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 2];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 3];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 4];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 5];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 6];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 7];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 8];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 9];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 10]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 11]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 12]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 13]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 14]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 15]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 16]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 17]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 18]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 19]; w++;
-                
-                *pPartials++ = sum1 * sum2 ;
-                
-                
-                w2 = l*400 + j*4 + 1;
-                
-                sum1  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 19];
-                
-                sum2  = matrix_lower[w] * partials_lower[v];      w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 1];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 2];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 3];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 4];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 5];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 6];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 7];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 8];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 9];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 10]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 11]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 12]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 13]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 14]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 15]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 16]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 17]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 18]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 19]; w++;
-                
-                
-                *pPartials++ = sum1 * sum2 ;
-                
-                
-                w2 = l*400 + j*4 + 2;
-                
-                sum1  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 19];
-                
-                sum2  = matrix_lower[w] * partials_lower[v];      w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 1];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 2];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 3];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 4];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 5];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 6];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 7];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 8];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 9];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 10]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 11]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 12]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 13]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 14]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 15]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 16]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 17]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 18]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 19]; w++;
-                
-                *pPartials++ = sum1 * sum2 ;
-                
-                
-                w2 = l*400 + j*4 + 3;
-                
-                sum1  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 19];
-                
-                sum2  = matrix_lower[w] * partials_lower[v];      w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 1];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 2];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 3];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 4];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 5];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 6];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 7];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 8];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 9];  w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 10]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 11]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 12]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 13]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 14]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 15]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 16]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 17]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 18]; w++;
-                sum2 += matrix_lower[w] * partials_lower[v + 19]; w++;
-                
-                *pPartials++ = sum1 * sum2;
-                
-            }
-            v += 20;
-        }
-    }
-}
-        
-        // Called by a child of the root but not if the child's sibling is NOT leaf
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-static void _update_upper_partials_root_and_undefined( const SingleTreeLikelihood *tlk, const double * restrict apartials1, const double * restrict amatrices1, const double * restrict frequencies, double *partials_upper ){
-#else
-static void _update_upper_partials_root_and_undefined( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *frequencies, double *partials_upper ){
-#endif
-    int w,k,j;
-    int v = 0;
-    double *pPartials = partials_upper;
-    
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-    const double *partials1 = __builtin_assume_aligned(apartials1, 16);
-    const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
-#endif
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            w = l * 400;
-            
-            for( j = 0; j < 5; j++ ){
-                
-                *pPartials  = matrices1[w] * partials1[v];      w++;
-                *pPartials += matrices1[w] * partials1[v + 1];  w++;
-                *pPartials += matrices1[w] * partials1[v + 2];  w++;
-                *pPartials += matrices1[w] * partials1[v + 3];  w++;
-                *pPartials += matrices1[w] * partials1[v + 4];  w++;
-                *pPartials += matrices1[w] * partials1[v + 5];  w++;
-                *pPartials += matrices1[w] * partials1[v + 6];  w++;
-                *pPartials += matrices1[w] * partials1[v + 7];  w++;
-                *pPartials += matrices1[w] * partials1[v + 8];  w++;
-                *pPartials += matrices1[w] * partials1[v + 9];  w++;
-                *pPartials += matrices1[w] * partials1[v + 10]; w++;
-                *pPartials += matrices1[w] * partials1[v + 11]; w++;
-                *pPartials += matrices1[w] * partials1[v + 12]; w++;
-                *pPartials += matrices1[w] * partials1[v + 13]; w++;
-                *pPartials += matrices1[w] * partials1[v + 14]; w++;
-                *pPartials += matrices1[w] * partials1[v + 15]; w++;
-                *pPartials += matrices1[w] * partials1[v + 16]; w++;
-                *pPartials += matrices1[w] * partials1[v + 17]; w++;
-                *pPartials += matrices1[w] * partials1[v + 18]; w++;
-                *pPartials += matrices1[w] * partials1[v + 19]; w++;
-                
-                *pPartials++ *= frequencies[j*4];
-                
-                
-                *pPartials  = matrices1[w] * partials1[v];      w++;
-                *pPartials += matrices1[w] * partials1[v + 1];  w++;
-                *pPartials += matrices1[w] * partials1[v + 2];  w++;
-                *pPartials += matrices1[w] * partials1[v + 3];  w++;
-                *pPartials += matrices1[w] * partials1[v + 4];  w++;
-                *pPartials += matrices1[w] * partials1[v + 5];  w++;
-                *pPartials += matrices1[w] * partials1[v + 6];  w++;
-                *pPartials += matrices1[w] * partials1[v + 7];  w++;
-                *pPartials += matrices1[w] * partials1[v + 8];  w++;
-                *pPartials += matrices1[w] * partials1[v + 9];  w++;
-                *pPartials += matrices1[w] * partials1[v + 10]; w++;
-                *pPartials += matrices1[w] * partials1[v + 11]; w++;
-                *pPartials += matrices1[w] * partials1[v + 12]; w++;
-                *pPartials += matrices1[w] * partials1[v + 13]; w++;
-                *pPartials += matrices1[w] * partials1[v + 14]; w++;
-                *pPartials += matrices1[w] * partials1[v + 15]; w++;
-                *pPartials += matrices1[w] * partials1[v + 16]; w++;
-                *pPartials += matrices1[w] * partials1[v + 17]; w++;
-                *pPartials += matrices1[w] * partials1[v + 18]; w++;
-                *pPartials += matrices1[w] * partials1[v + 19]; w++;
-                
-                *pPartials++ *= frequencies[j*4+1];
-                
-                
-                *pPartials  = matrices1[w] * partials1[v];      w++;
-                *pPartials += matrices1[w] * partials1[v + 1];  w++;
-                *pPartials += matrices1[w] * partials1[v + 2];  w++;
-                *pPartials += matrices1[w] * partials1[v + 3];  w++;
-                *pPartials += matrices1[w] * partials1[v + 4];  w++;
-                *pPartials += matrices1[w] * partials1[v + 5];  w++;
-                *pPartials += matrices1[w] * partials1[v + 6];  w++;
-                *pPartials += matrices1[w] * partials1[v + 7];  w++;
-                *pPartials += matrices1[w] * partials1[v + 8];  w++;
-                *pPartials += matrices1[w] * partials1[v + 9];  w++;
-                *pPartials += matrices1[w] * partials1[v + 10]; w++;
-                *pPartials += matrices1[w] * partials1[v + 11]; w++;
-                *pPartials += matrices1[w] * partials1[v + 12]; w++;
-                *pPartials += matrices1[w] * partials1[v + 13]; w++;
-                *pPartials += matrices1[w] * partials1[v + 14]; w++;
-                *pPartials += matrices1[w] * partials1[v + 15]; w++;
-                *pPartials += matrices1[w] * partials1[v + 16]; w++;
-                *pPartials += matrices1[w] * partials1[v + 17]; w++;
-                *pPartials += matrices1[w] * partials1[v + 18]; w++;
-                *pPartials += matrices1[w] * partials1[v + 19]; w++;
-                
-                *pPartials++ *= frequencies[j*4+2];
-                
-                
-                *pPartials  = matrices1[w] * partials1[v];      w++;
-                *pPartials += matrices1[w] * partials1[v + 1];  w++;
-                *pPartials += matrices1[w] * partials1[v + 2];  w++;
-                *pPartials += matrices1[w] * partials1[v + 3];  w++;
-                *pPartials += matrices1[w] * partials1[v + 4];  w++;
-                *pPartials += matrices1[w] * partials1[v + 5];  w++;
-                *pPartials += matrices1[w] * partials1[v + 6];  w++;
-                *pPartials += matrices1[w] * partials1[v + 7];  w++;
-                *pPartials += matrices1[w] * partials1[v + 8];  w++;
-                *pPartials += matrices1[w] * partials1[v + 9];  w++;
-                *pPartials += matrices1[w] * partials1[v + 10]; w++;
-                *pPartials += matrices1[w] * partials1[v + 11]; w++;
-                *pPartials += matrices1[w] * partials1[v + 12]; w++;
-                *pPartials += matrices1[w] * partials1[v + 13]; w++;
-                *pPartials += matrices1[w] * partials1[v + 14]; w++;
-                *pPartials += matrices1[w] * partials1[v + 15]; w++;
-                *pPartials += matrices1[w] * partials1[v + 16]; w++;
-                *pPartials += matrices1[w] * partials1[v + 17]; w++;
-                *pPartials += matrices1[w] * partials1[v + 18]; w++;
-                *pPartials += matrices1[w] * partials1[v + 19]; w++;
-                
-                *pPartials++ *= frequencies[j*4+3];
-                
-            }
-            v += 20;
-        }
-    }
-}
-    
-            
-            // Called by a child of the root and the child's sibling is a leaf
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-static void _update_upper_partials_root_and_state( const SingleTreeLikelihood *tlk, const double * restrict amatrices1, int idx1, const double * restrict frequencies, double *partials_upper ){
-#else
-static void _update_upper_partials_root_and_state( const SingleTreeLikelihood *tlk, const double *matrices1, int idx1, const double *frequencies, double *partials_upper ){
-#endif
-    int w;
-    double *pPartials = partials_upper;
-    int state1;
-    
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-    const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
-#endif
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( int k = 0; k < tlk->pattern_count; k++ ) {
-            
-            state1 = tlk->sp->patterns[k][idx1];
-            
-            w = l * 400;
-            
-            if( state1 < 20 ){
-                *pPartials++ = matrices1[w+state1] * frequencies[0];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[1];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[2];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[3];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[4];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[5];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[6];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[7];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[8];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[9];  w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[10]; w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[11]; w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[12]; w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[13]; w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[14]; w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[15]; w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[16]; w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[17]; w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[18]; w+=20;
-                *pPartials++ = matrices1[w+state1] * frequencies[19];
-            }
-            else {
-                memcpy(pPartials, frequencies, sizeof(double)*20);
-                pPartials += 20;
-                
-            }
-            
-        }
-    }
-    
-}
-    
-void update_partials_upper_20( SingleTreeLikelihood *tlk, Node *node ){
-    Node *parent = Node_parent(node);
-    Node *sibling = Node_sibling(node);
-	const double* freqs = tlk->get_root_frequencies(tlk);
-    if( Node_isroot(parent) ){
-        if( Node_isleaf(sibling) ){
-            _update_upper_partials_root_and_state(tlk, tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
-        }
-        else {
-            _update_upper_partials_root_and_undefined(tlk, tlk->partials[ Node_id(sibling) ],  tlk->matrices[ Node_id(sibling) ], freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
-        }
-    }
-    else if( Node_isleaf(sibling) ){
-        _update_upper_partials_state(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
-    }
-    else {
-        _update_upper_partials_undefined(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
-    }
-}
-                
-                
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-static void _partial_lower_upper( const SingleTreeLikelihood *tlk, const double * restrict apartials_upper, const double * restrict apartials_lower, const double * restrict amatrix_lower, const double * restrict proportions, double *pattern_lk ){
-#else
-static void _partial_lower_upper( const SingleTreeLikelihood *tlk, const double *partials_upper, const double *partials_lower, const double *matrix_lower, const double *proportions, double *pattern_lk ){
-#endif
-    int w,k,j,l;
-    int v = 0;
-    double p,sum;
-    
-    memset(pattern_lk, 0, tlk->pattern_count*sizeof(double));
-    
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-    const double *partials_upper = __builtin_assume_aligned(apartials_upper, 16);
-    const double *partials_lower = __builtin_assume_aligned(apartials_lower, 16);
-    const double *matrix_lower   = __builtin_assume_aligned(amatrix_lower, 16);
-#endif
-    
-    for ( l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            w = l * 400;
-            p = 0;
-            
-            for( j = 0; j < 5; j++ ){
-                
-                sum  = matrix_lower[w] * partials_lower[v];      w++;
-                sum += matrix_lower[w] * partials_lower[v + 1];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 2];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 3];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 4];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 5];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 6];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 7];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 8];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 9];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 10]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 11]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 12]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 13]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 14]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 15]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 16]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 17]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 18]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 19]; w++;
-                
-                p += sum * partials_upper[v + j*4];
-                
-                
-                sum  = matrix_lower[w] * partials_lower[v];      w++;
-                sum += matrix_lower[w] * partials_lower[v + 1];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 2];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 3];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 4];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 5];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 6];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 7];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 8];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 9];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 10]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 11]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 12]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 13]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 14]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 15]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 16]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 17]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 18]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 19]; w++;
-                
-                p += sum * partials_upper[v + j*4 + 1];
-                
-                
-                sum  = matrix_lower[w] * partials_lower[v];      w++;
-                sum += matrix_lower[w] * partials_lower[v + 1];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 2];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 3];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 4];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 5];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 6];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 7];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 8];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 9];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 10]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 11]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 12]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 13]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 14]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 15]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 16]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 17]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 18]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 19]; w++;
-                
-                p += sum * partials_upper[v + j*4 + 2];
-                
-                
-                sum  = matrix_lower[w] * partials_lower[v];      w++;
-                sum += matrix_lower[w] * partials_lower[v + 1];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 2];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 3];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 4];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 5];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 6];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 7];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 8];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 9];  w++;
-                sum += matrix_lower[w] * partials_lower[v + 10]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 11]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 12]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 13]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 14]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 15]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 16]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 17]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 18]; w++;
-                sum += matrix_lower[w] * partials_lower[v + 19]; w++;
-                
-                p += sum * partials_upper[v + j*4 + 3];
-            }
-            
-            v += 20;
-            
-            pattern_lk[k] += p * proportions[l];
-        }
-    }
-}
-    
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-static void _partial_lower_upper_leaf( const SingleTreeLikelihood *tlk, const double * restrict apartials_upper, int idx, const double * restrict amatrix_lower, const double * restrict proportions, double * restrict pattern_lk ){
-#else
-static void _partial_lower_upper_leaf( const SingleTreeLikelihood *tlk, const double *partials_upper, int idx, const double *matrix_lower, const double *proportions, double *pattern_lk ){
-#endif
-    int w,k;
-    int v = 0;
-    double p = 0;
-    int state;
-    
-    memset(pattern_lk, 0, tlk->pattern_count*sizeof(double));
-    
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
-    const double *partials_upper = __builtin_assume_aligned(apartials_upper, 16);
-    const double *matrix_lower   = __builtin_assume_aligned(amatrix_lower,   16);
-#endif
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            state = tlk->sp->patterns[k][idx];
-            
-            w = l * 400;
-            if( state < 20 ){
-                p  = matrix_lower[w+state] * partials_upper[v];      w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 1];  w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 2];  w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 3];  w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 4];  w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 5];  w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 6];  w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 7];  w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 8];  w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 9];  w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 10]; w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 11]; w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 12]; w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 13]; w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 14]; w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 15]; w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 16]; w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 17]; w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 18]; w += 20;
-                p += matrix_lower[w+state] * partials_upper[v + 19];
-            }
-            else {
-                p  = partials_upper[v];
-                p += partials_upper[v + 1];
-                p += partials_upper[v + 2];
-                p += partials_upper[v + 3];
-                p += partials_upper[v + 4];
-                p += partials_upper[v + 5];
-                p += partials_upper[v + 6];
-                p += partials_upper[v + 7];
-                p += partials_upper[v + 8];
-                p += partials_upper[v + 9];
-                p += partials_upper[v + 10];
-                p += partials_upper[v + 11];
-                p += partials_upper[v + 12];
-                p += partials_upper[v + 13];
-                p += partials_upper[v + 14];
-                p += partials_upper[v + 15];
-                p += partials_upper[v + 16];
-                p += partials_upper[v + 17];
-                p += partials_upper[v + 18];
-                p += partials_upper[v + 19];
-            }
-            pattern_lk[k] += p * proportions[l];
-            v += 20;
-        }
-    }
+static void _calculate_branch_likelihood_state(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, int partialsIndex, const double* matrices){
+	memset(rootPartials, 0, sizeof(double)*tlk->sm->nstate*tlk->pattern_count);
+	int v = 0;
+	for(int l = 0; l < tlk->cat_count; l++) {
+		int u = 0;
+		const double weight = tlk->sm->get_proportion(tlk->sm, l);
+		for(int k = 0; k < tlk->pattern_count; k++) {
+			int state = tlk->sp->patterns[k][partialsIndex];
+			if(state < 20){
+				int w =  l * 400 + state;
+				
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight; w += 20;u++;v++;
+				rootPartials[u] += matrices[w] * upperPartials[v] * weight;u++;v++;
+			}
+			else{
+				const double* transMatrixPtr = &matrices[l*400];
+				for(int i = 0; i < 20; i++){
+					double sum = 0;
+					for(int j = 0; j < 20; j++){
+						sum += transMatrixPtr[i*20+j];
+					}
+					rootPartials[u++] += sum * weight * upperPartials[v++];
+				}
+			}
+		}
+	}
+	
 }
 
-void node_log_likelihoods_upper_20( const SingleTreeLikelihood *tlk, Node *node ){
-    int node_index = Node_id(node);
-    
-    if ( !Node_isleaf(node) ) {
-        _partial_lower_upper(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->partials[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
-    }
-    else {
-        _partial_lower_upper_leaf(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->mapping[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
-    }
+static void _calculate_branch_likelihood_state2(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, const double* partials, const double* matrices){
+	memset(rootPartials, 0, sizeof(double)*tlk->sm->nstate*tlk->pattern_count);
+	int v = 0;
+	for(int l = 0; l < tlk->cat_count; l++) {
+		int u = 0;
+		const double weight = tlk->sm->get_proportion(tlk->sm, l);
+		for(int k = 0; k < tlk->pattern_count; k++) {
+			const double* partialsChildPtr = partials+v;
+			int state = tlk->sp->patterns[k][upperPartialsIndex];
+			const double* transMatrixPtr = NULL;
+			double sum;
+			
+			if(state < 20){
+				transMatrixPtr = &matrices[l * 400 + state*20];
+				
+				sum = transMatrixPtr[0] * partialsChildPtr[0];
+				sum += transMatrixPtr[1] * partialsChildPtr[1];
+				sum += transMatrixPtr[2] * partialsChildPtr[2];
+				sum += transMatrixPtr[3] * partialsChildPtr[3];
+				sum += transMatrixPtr[4] * partialsChildPtr[4];
+				sum += transMatrixPtr[5] * partialsChildPtr[5];
+				sum += transMatrixPtr[6] * partialsChildPtr[6];
+				sum += transMatrixPtr[7] * partialsChildPtr[7];
+				sum += transMatrixPtr[8] * partialsChildPtr[8];
+				sum += transMatrixPtr[9] * partialsChildPtr[9];
+				sum += transMatrixPtr[10] * partialsChildPtr[10];
+				sum += transMatrixPtr[11] * partialsChildPtr[11];
+				sum += transMatrixPtr[12] * partialsChildPtr[12];
+				sum += transMatrixPtr[13] * partialsChildPtr[13];
+				sum += transMatrixPtr[14] * partialsChildPtr[14];
+				sum += transMatrixPtr[15] * partialsChildPtr[15];
+				sum += transMatrixPtr[16] * partialsChildPtr[16];
+				sum += transMatrixPtr[17] * partialsChildPtr[17];
+				sum += transMatrixPtr[18] * partialsChildPtr[18];
+				sum += transMatrixPtr[19] * partialsChildPtr[19];
+				rootPartials[u+state] += sum * weight;
+				u+=20;
+			}
+			else{
+				transMatrixPtr = &matrices[l*400];
+				for(int i = 0; i < 20; i++){
+					double sum = 0;
+					for(int j = 0; j < 20; j++){
+						sum += transMatrixPtr[i*20+j] * partialsChildPtr[j];
+					}
+					rootPartials[u] += sum * weight; u++;
+				}
+			}
+			v+=20;
+		}
+	}
+	
 }
-                    
+
+void calculate_branch_likelihood_20(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex){
+	// Sibling is a leaf
+	if( tlk->partials[0][partialsIndex] == NULL ){
+		_calculate_branch_likelihood_state(tlk, rootPartials,
+										   tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]][upperPartialsIndex],
+										   tlk->mapping[partialsIndex],
+										   tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
+	}
+	// upper is coming from the other side of the tree (right node) and right node is a leaf
+	// right node should not be a leaf
+	else if(upperPartialsIndex < tlk->sp->size){
+		exit(1);
+	}
+	// upper is coming from the other side of the tree (right node) and right node is an internal node
+	/*else if(upperPartialsIndex < Tree_node_count(tlk->tree)){
+	 _calculate_branch_likelihood_undefined(tlk, rootPartials, tlk->partials[upperPartialsIndex], tlk->partials[partialsIndex], tlk->matrices[matrixIndex]);
+	 }*/
+	else if( tlk->partials[0][upperPartialsIndex] == NULL ){
+		_calculate_branch_likelihood_state2(tlk, rootPartials,
+											tlk->mapping[upperPartialsIndex],
+											tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
+											tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
+	}
+	else{
+		_calculate_branch_likelihood_undefined(tlk, rootPartials,
+											   tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]][upperPartialsIndex],
+											   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
+											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
+	}
+}
+	
 
 
 #pragma mark -
 #pragma mark Upper Likelihood SSE
 
-//#define SSE3_ENABLED 1
-
 #ifdef SSE3_ENABLED
-                                                                    
-// Called by a node whose parent is NOT the root and the node's sibling is a leaf
-// matrix_lower is transposed
-static void _update_upper_partials_state_sse( SingleTreeLikelihood *tlk, const double *matrix_upper, const double *partials_upper, const double *matrix_lower, int sibling_index, double *partials ){
-    int w,w2,k;
-    int v = 0;
-    int state;
-    double *pPartials = partials;
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            state = tlk->sp->patterns[k][ sibling_index ];
-            
-            w = l * 400;
-            for( int j = 0; j < 5; j++ ){
-                
-                w2 = l * 400 + j*4;
-                
-                *pPartials  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 19];
-                
-                
-                if( state < 20){
-                    *pPartials *= matrix_lower[w+20*state];
-                }
-                pPartials++;
-                w++;
-                
-                
-                w2 = l * 400 + j*4 + 1;
-                
-                *pPartials  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 19];
-                
-                
-                if( state < 20){
-                    *pPartials *= matrix_lower[w+20*state];
-                }
-                pPartials++;
-                w++;
-                
-                
-                w2 = l * 400 + j*4 + 2;
-                
-                *pPartials  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 19];
-                
-                
-                if( state < 20){
-                    *pPartials *= matrix_lower[w+20*state];
-                }
-                pPartials++;
-                w++;
-                
-                
-                w2 = l * 400 + j*4 + 3;
-                
-                *pPartials  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                *pPartials += matrix_upper[w2] * partials_upper[v + 19];
-                
-                
-                if( state < 20){
-                    *pPartials *= matrix_lower[w+20*state];
-                }
-                pPartials++;
-                w++;
-             
-            }
-            v += 20;
-        }
-    }
+static void _calculate_branch_likelihood_undefined_20_SSE(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, const double* partials, const double* matrices){
+	memset(rootPartials, 0, sizeof(double)*20*tlk->pattern_count);
+	int v = 0;
+	__m128d* m, *p;
+	__m128d temp;
+
+	double t[2] __attribute__ ((aligned (16)));
+
+	for(int l = 0; l < tlk->cat_count; l++) {
+		int u = 0;
+		const double weight = tlk->sm->get_proportion(tlk->sm, l);
+		for(int k = 0; k < tlk->pattern_count; k++) {
+			m = (__m128d*)&matrices[l*400];
+			for(int j = 0; j < 20; j++){
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * upperPartials[v+j] * weight;
+			}
+			v += 20;
+
+		}
+	}
 }
 
-    
-// Called by a node whose parent is NOT the root and the node's sibling is NOT a leaf
-// All matrices are NOT transposed
-static void _update_upper_partials_undefined_sse( SingleTreeLikelihood *tlk, const double *matrix_upper, const double *partials_upper, const double *matrix_lower, const double *partials_lower, double *partials ){
-    int w,w2,k;
-    int v = 0;
-    double sum1;
-    double *pPartials = partials;
-    
-    __m128d *pl;
-    __m128d *ml;
-    __m128d temp;
-    double t[2] __attribute__ ((aligned (16)));
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            w = l*400;
-            
-            ml = (__m128d*)&matrix_lower[w];
-            
-            for( int j = 0; j < 5; j++ ){
-                
-                w2 = l*400 + j*4;
-                
-                
-                sum1  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 19];
-                
-                pl = (__m128d*)&partials_lower[v];
-                temp = _mm_mul_pd(*ml,*pl); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++;
-                _mm_store_pd(t,temp);
-                
-                *pPartials++ = sum1 * (t[0]+t[1]) ;
-                
-                
-                w2 = l*400 + j*4 + 1;
-                
-                sum1  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 19];
-                
-                pl = (__m128d*)&partials_lower[v];
-                temp = _mm_mul_pd(*ml,*pl); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++;
-                _mm_store_pd(t,temp);
-                
-                *pPartials++ = sum1 * (t[0]+t[1]) ;
-                
-                
-                w2 = l*400 + j*4 + 2;
-                
-                sum1  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 19];
-                
-                pl = (__m128d*)&partials_lower[v];
-                temp = _mm_mul_pd(*ml,*pl); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++;
-                
-                _mm_store_pd(t,temp);
-                
-                *pPartials++ = sum1 * (t[0]+t[1]) ;
-                
-                
-                w2 = l*400 + j*4 + 3;
-                
-                sum1  = matrix_upper[w2] * partials_upper[v];      w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 1];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 2];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 3];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 4];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 5];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 6];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 7];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 8];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 9];  w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 10]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 11]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 12]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 13]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 14]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 15]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 16]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 17]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 18]; w2 += 20;
-                sum1 += matrix_upper[w2] * partials_upper[v + 19];
-                
-                pl = (__m128d*)&partials_lower[v];
-                temp = _mm_mul_pd(*ml,*pl); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++; pl++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*ml,*pl)); ml++;
-
-                _mm_store_pd(t,temp);
-                
-                *pPartials++ = sum1 * (t[0]+t[1]) ;
-                
-            }
-            v += 20;
-        }
-    }
-}
-    
-// Called by a child of the root but not if the child's sibling is NOT leaf
-// All matrices are NOT transposed
-static void _update_upper_partials_root_and_undefined_sse( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *frequencies, double *partials_upper ){
-    int w,k;
-    int v = 0;
-    double *pPartials = partials_upper;
-    
-    __m128d *m, *p, temp;
-    double t[2] __attribute__ ((aligned (16)));
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            w = l * 400;
-            
-            m = (__m128d*)&matrices1[w];
-            
-            for( int j = 0; j < 5; j++ ){
-                
-                p = (__m128d*)&partials1[v];
-                
-                temp = _mm_mul_pd(*p, *m); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); m++;
-                
-                _mm_store_pd(t, temp);
-                
-                *pPartials++ = frequencies[j*4] * (t[0]+t[1]);
-                
-                
-                p = (__m128d*)&partials1[v];
-                
-                temp = _mm_mul_pd(*p, *m); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); m++;
-                
-                _mm_store_pd(t, temp);
-                
-                *pPartials++ = frequencies[j*4+1] * (t[0]+t[1]);
-                
-                
-                p = (__m128d*)&partials1[v];
-                
-                temp = _mm_mul_pd(*p, *m); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); m++;
-                
-                _mm_store_pd(t, temp);
-                
-                *pPartials++ = frequencies[j*4+2] * (t[0]+t[1]);
-                
-                
-                p = (__m128d*)&partials1[v];
-                
-                temp = _mm_mul_pd(*p, *m); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); p++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*p, *m)); m++;
-                
-                _mm_store_pd(t, temp);
-                
-                *pPartials++ = frequencies[j*4+3] * (t[0]+t[1]);
-                
-            }
-            v += 20;
-        }
-    }
-}
-
-// Called by a child of the root and the child's sibling is a leaf
-// matrices1 is transposed
-static void _update_upper_partials_root_and_state_sse( const SingleTreeLikelihood *tlk, const double *matrices1, int idx1, const double *frequencies, double *partials_upper ){
-    int l,k,w;
-    double *pPartials = partials_upper;
-    int state1;
-    __m128d *m;
-    __m128d *f;
-    
-    for ( l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            state1 = tlk->sp->patterns[k][idx1];
-            
-            w = l * 400;
-            
-            if( state1 < 20 ){
-                m = (__m128d*)&matrices1[w+20*state1];
-                f = (__m128d*)frequencies;
-                
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2; m++; f++;
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2; m++; f++;
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2; m++; f++;
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2; m++; f++;
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2; m++; f++;
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2; m++; f++;
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2; m++; f++;
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2; m++; f++;
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2; m++; f++;
-                _mm_store_pd(pPartials, _mm_mul_pd(*m,*f)); pPartials += 2;
-            }
-            else {
-                memcpy(pPartials, frequencies, sizeof(double)*20);
-                pPartials += 20;
-            }
-            
-        }
-    }
-}
-
-void update_partials_upper_sse_20( SingleTreeLikelihood *tlk, Node *node ){
-    Node *parent = Node_parent(node);
-    Node *sibling = Node_sibling(node);
-	const double* freqs = tlk->get_root_frequencies(tlk);
+static void _calculate_branch_likelihood_upper_undefined_20_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, const double* partials, const double* matrices){
+	memset(rootPartials, 0, sizeof(double)*tlk->sm->nstate*tlk->pattern_count);
 	
-    if( Node_isroot(parent) ){
-        // The matrix of the sibling is transposed
-        if( Node_isleaf(sibling) ){
-            _update_upper_partials_root_and_state_sse(tlk, tlk->matrices[Node_id(sibling) ], tlk->mapping[Node_id(sibling) ], freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
-        }
-        else {
-            _update_upper_partials_root_and_undefined_sse(tlk, tlk->partials[Node_id(sibling) ],  tlk->matrices[Node_id(sibling) ],  freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
-        }
-    }
-    // The matrix of the sibling is transposed
-    // The pparent node cannot be leaf
-    else if( Node_isleaf(sibling) ){
-        _update_upper_partials_state_sse(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
-    }
-    else {
-        _update_upper_partials_undefined_sse(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
-    }
+	double t[2] __attribute__ ((aligned (16)));
+	__m128d temp;
+	int v = 0;
+	for(int l = 0; l < tlk->cat_count; l++) {
+		int u = 0;
+		const double weight = tlk->sm->get_proportion(tlk->sm, l);
+		for(int k = 0; k < tlk->pattern_count; k++) {
+			__m128d* p = (__m128d*)(partials+v);
+			int state = tlk->sp->patterns[k][upperPartialsIndex];
+			
+			if(state < 20){
+				__m128d* m = (__m128d*)&matrices[l * 400 + state*20];
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p));
+				
+				_mm_store_pd(t,temp);
+				rootPartials[u+state] += (t[0]+t[1]) * weight;
+				u+=20;
+			}
+			else{
+				__m128d* m = (__m128d*)&matrices[l*400];
+				
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+				p = (__m128d*)(partials+v);
+				temp = _mm_mul_pd(*m, *p); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++; p++;
+				temp = _mm_add_pd(temp, _mm_mul_pd(*m,*p)); m++;
+				_mm_store_pd(t,temp);
+				rootPartials[u++] += (t[0]+t[1]) * weight;
+				
+			}
+			v+=20;
+		}
+	}
 }
 
-static void _partial_lower_upper_sse( const SingleTreeLikelihood *tlk, const double *partials_upper, const double *partials_lower, const double *matrix_lower, const double *proportions, double *pattern_lk ){
-    int j,k;
-    int v = 0;
-    double p;
-    int cat_count = tlk->cat_count;
-    int sp_count = tlk->pattern_count;
-    
-    __m128d *m, *pl, temp;
-    
-    double t[2] __attribute__ ((aligned (16)));
-    
-    memset(pattern_lk, 0, sp_count*sizeof(double));
-    
-    for ( int l = 0; l < cat_count; l++ ) {
-        
-        for ( k = 0; k < sp_count; k++ ) {
-            
-            
-            p = 0;
-            
-            m = (__m128d*)&matrix_lower[l*400];
-            
-            for( j = 0; j < 5; j++ ){
-                
-                pl = (__m128d*)&partials_lower[v];
-                
-                temp = _mm_mul_pd(*pl, *m); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); m++;
-                
-                _mm_store_pd(t, temp);
-                p += (t[0]+t[1]) * partials_upper[v + j*4];
-                
-                pl = (__m128d*)&partials_lower[v];
-                
-                temp = _mm_mul_pd(*pl, *m); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); m++;
-                
-                _mm_store_pd(t, temp);
-                p += (t[0]+t[1]) * partials_upper[v + j*4 + 1];
-                
-                pl = (__m128d*)&partials_lower[v];
-                
-                temp = _mm_mul_pd(*pl, *m); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); m++;
-                
-                _mm_store_pd(t, temp);
-                p += (t[0]+t[1]) * partials_upper[v + j*4 + 2];
-                
-                pl = (__m128d*)&partials_lower[v];
-                
-                temp = _mm_mul_pd(*pl, *m); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); pl++; m++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*pl, *m)); m++;
-                
-                _mm_store_pd(t, temp);
-                p += (t[0]+t[1]) * partials_upper[v + j*4 + 3];
-                
-            }
-            v += 20;
-            
-            pattern_lk[k] += p * proportions[l];
-        }
-    }
+// matrices are transposed
+static void _calculate_branch_likelihood_state_20_SSE(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, int partialsIndex, const double* matrices){
+	memset(rootPartials, 0, sizeof(double)*20*tlk->pattern_count);
+	int v = 0;
+	__m128d* up = (__m128d*)upperPartials;
+	__m128d weight;
+	__m128d* rp, *m1;
+	for(int l = 0; l < tlk->cat_count; l++) {
+		rp = (__m128d*)rootPartials;
+		double ww = tlk->sm->get_proportion(tlk->sm, l);
+		weight = _mm_set1_pd(ww);
+		const double* mat = &matrices[l*400];
+		int u = 0;
+		for(int k = 0; k < tlk->pattern_count; k++) {
+			const int state = tlk->sp->patterns[k][partialsIndex];
+			if(state < 20){
+				m1 = (__m128d*)&mat[state*20];
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
+				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; up++;
+				u+=20;v+=20;
+			}
+			else{
+				const double* transMatrixPtr = &matrices[l*400];
+				for(int i = 0; i < 20; i++){
+					double sum = 0;
+					for(int j = 0; j < 20; j++){
+						sum += transMatrixPtr[i+j*20];
+					}
+					rootPartials[u++] += sum * ww * upperPartials[v];
+					v++;
+				}
+				rp += 10;
+				up += 10;
+			}
+		}
+	}
+	
 }
-
-    
-// matrix_lower is transposed
-static void _partial_lower_upper_leaf_sse( const SingleTreeLikelihood *tlk, const double *partials_upper, int idx, const double *matrix_lower, const double *proportions, double *pattern_lk ){
-    int w,k;
-    int state;
-    double p;
-    
-    int cat_count = tlk->cat_count;
-    int sp_count = tlk->pattern_count;
-    
-    __m128d *m;
-    __m128d temp;
-    __m128d *pu = (__m128d*)partials_upper;
-    
-    double t[2] __attribute__ ((aligned (16)));
-    
-    memset(pattern_lk, 0, sp_count*sizeof(double));
-    
-    for ( int l = 0; l < cat_count; l++ ) {
-        p = proportions[l];
-        
-        for ( k = 0; k < sp_count; k++ ) {
-            state = tlk->sp->patterns[k][idx];
-            
-            w = l * 400;
-            
-            if( state < 20 ){
-                m = (__m128d*)&matrix_lower[w+20*state];
-                
-                temp = _mm_mul_pd(*m,*pu); m++; pu++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*m,*pu)); m++; pu++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*m,*pu)); m++; pu++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*m,*pu)); m++; pu++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*m,*pu)); m++; pu++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*m,*pu)); m++; pu++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*m,*pu)); m++; pu++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*m,*pu)); m++; pu++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*m,*pu)); m++; pu++;
-                temp = _mm_add_pd(temp, _mm_mul_pd(*m,*pu)); pu++;
-            }
-            else {
-                temp = *pu; pu++;
-                temp = _mm_add_pd(temp, *pu); pu++;
-                temp = _mm_add_pd(temp, *pu); pu++;
-                temp = _mm_add_pd(temp, *pu); pu++;
-                temp = _mm_add_pd(temp, *pu); pu++;
-                temp = _mm_add_pd(temp, *pu); pu++;
-                temp = _mm_add_pd(temp, *pu); pu++;
-                temp = _mm_add_pd(temp, *pu); pu++;
-                temp = _mm_add_pd(temp, *pu); pu++;
-                temp = _mm_add_pd(temp, *pu); pu++;
-            }
-            
-            _mm_store_pd(t, temp);
-            
-            pattern_lk[k] += (t[0]+t[1]) * p;
-        }
-    }
-}
-
-void node_log_likelihoods_upper_sse_20( const SingleTreeLikelihood *tlk, Node *node ){
-    int node_index = Node_id(node);
-    
-    if ( !Node_isleaf(node) ) {
-        _partial_lower_upper_sse(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->partials[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
-    }
-    else {
-        _partial_lower_upper_leaf_sse(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->mapping[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
-    }
+	
+void calculate_branch_likelihood_20_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex){
+	// partialIndex is a taxon so upperPartialsIndex has to be internal
+	// matrices are transposed
+	if( tlk->partials[0][partialsIndex] == NULL ){
+		_calculate_branch_likelihood_state_20_SSE(tlk, rootPartials,
+											   tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]][upperPartialsIndex],
+											   tlk->mapping[partialsIndex],
+											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
+	}
+	// upperPartialsIndex is a taxon
+	// possible for the child of the root with a leaf sibling
+	else if( tlk->partials[0][upperPartialsIndex] == NULL ){
+		_calculate_branch_likelihood_upper_undefined_20_SSE(tlk, rootPartials,
+														 tlk->mapping[upperPartialsIndex],
+														 tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
+														 tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
+	}
+	else{
+		_calculate_branch_likelihood_undefined_20_SSE(tlk, rootPartials,
+												   tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]][upperPartialsIndex],
+												   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
+												   tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
+	}
 }
 #endif
