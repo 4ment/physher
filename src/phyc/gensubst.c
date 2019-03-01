@@ -158,7 +158,6 @@ SubstitutionModel * new_GeneralModel_with_parameters( DiscreteParameter* model, 
 	m->relativeTo = relativeTo;
     
 	m->model = model;
-	model->refCount++;
 	
 	m->rates = new_Parameters(Parameters_count(rates));
 	Parameters_add_parameters(m->rates, rates);

@@ -36,6 +36,7 @@
 #include "exponential.h"
 #include "lognormal.h"
 #include "parameters.h"
+#include "discreteparameter.h"
 #include "node.h"
 
 
@@ -47,6 +48,8 @@
 #define RELAXED_POSTFIX  "relaxedclock"
 
 
+double _get_no_clock_ssvs( BranchModel *bm , Node *node );
+
 static void _free_BranchModel( BranchModel *bm, bool remove_tree  ){
 	if( bm->indicators != NULL ) free(bm->indicators);
 	if( bm->map != NULL ) bm->map->free(bm->map);
@@ -54,6 +57,10 @@ static void _free_BranchModel( BranchModel *bm, bool remove_tree  ){
 	if( bm->rates != NULL ) free_Parameters(bm->rates);
 	if ( remove_tree && bm->tree != NULL ) {
 		free_Tree(bm->tree);
+	}
+	if(bm->ssvs_map != NULL){
+		free(bm->ssvs_map);
+		free(bm->ssvs_map2);
 	}
 	free(bm);
 }
@@ -89,6 +96,9 @@ BranchModel * BranchModel_init( Tree *tree, branchmodel name ){
 	// local and discrete
 	bm->map = NULL;
 	
+	bm->ssvs = NULL;
+	bm->ssvs_map = NULL;
+	bm->ssvs_map2 = NULL;
 	return bm;
 }
 
@@ -114,7 +124,16 @@ BranchModel * new_BranchModel( Tree *tree, branchmodel type ){
 static void _branchmodel_handle_change( Model *self, Model *model, int index ){
 	// from the index we can try to tell treelikelihood to update the right part of the tree
 	BranchModel *bm = (BranchModel*)self->obj;
-	if(bm->name == CLOCK_STRICT){
+	// SSVS
+	if(model != NULL && model->type == MODEL_DISCRETE_PARAMETER){
+		if(index >= 0 ){
+			self->listeners->fire(self->listeners, self, bm->ssvs_map[index] );
+		}
+		else{
+			self->listeners->fire(self->listeners, self, index );
+		}
+	}
+	else if(bm->name == CLOCK_STRICT){
 		self->listeners->fire(self->listeners, self, -1 );
 	}
 	else if(bm->name == CLOCK_LOCAL){
@@ -123,6 +142,7 @@ static void _branchmodel_handle_change( Model *self, Model *model, int index ){
 	else{
 		self->listeners->fire(self->listeners, self, -1 );
 	}
+	bm->need_update = true;
 }
 
 static void _branch_model_handle_restore( Model *self, Model *model, int index ){
@@ -135,6 +155,10 @@ static void _branch_model_store(Model* self){
 	BranchModel* bm = (BranchModel*)self->obj;
 	for (int i = 0; i < Parameters_count(bm->rates); i++) {
 		Parameter_store(Parameters_at(bm->rates, i));
+	}
+	if(bm->ssvs != NULL){
+		Model* mdp = ((Model**)self->data)[1];
+		mdp->store(mdp);
 	}
 }
 
@@ -152,20 +176,30 @@ static void _branch_model_restore(Model* self){
 	if (changed) {
 		p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
 	}
+	if(bm->ssvs != NULL){
+		Model* mdp = ((Model**)self->data)[1];
+		mdp->restore(mdp);
+	}
 }
 
 static void _branch_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free branch model %s\n", self->name);
 		BranchModel *bm = (BranchModel*)self->obj;
-		Model* mm = (Model*)self->data;
-		mm->free(mm); // tree model
+		Model** models = (Model**)self->data;
+		models[0]->free(models[0]); // tree model
+		if(models[1] != NULL) models[1]->free(models[1]); // discreteparameter
+        free(self->data);
 		
 		//bm->free(bm, false);
 		if( bm->indicators != NULL ) free(bm->indicators);
 		if(bm->map != NULL) bm->map->free(bm->map);
 		if( bm->unscaled_rates != NULL ) free(bm->unscaled_rates);
 		free_Parameters(bm->rates);
+		if( bm->ssvs_map != NULL ){
+			free(bm->ssvs_map);
+			free(bm->ssvs_map2);
+		}
 		free(bm);
 		free_Model(self);
 	}
@@ -178,7 +212,9 @@ static Model* _branch_model_clone( Model* self, Hashtable *hash ){
 	if (Hashtable_exists(hash, self->name)) {
 		return Hashtable_get(hash, self->name);
 	}
-	Model* mtree = (Model*)self->data;
+	Model** models = (Model**)self->data;
+	
+	Model* mtree = models[0];
 	Model* mtreeclone = NULL;
 	// Tree may have been parsed already
 	if (Hashtable_exists(hash, mtree->name)) {
@@ -188,14 +224,28 @@ static Model* _branch_model_clone( Model* self, Hashtable *hash ){
 		mtreeclone = mtree->clone(mtree, hash);
 		Hashtable_add(hash, mtree->name, mtreeclone);
 	}
-	BranchModel*bmclone = clone_BranchModel((BranchModel*)self->obj, (Tree*)mtreeclone->obj);
+	
+	// SSVS
+	Model* mdpclone = NULL;
+	DiscreteParameter* dpclone = NULL;
+	if(models[1] != NULL){
+		Model* mdp = models[1];
+		if (Hashtable_exists(hash, mdp->name)) {
+			mdpclone = Hashtable_get(hash, mdp->name);
+		}
+		else{
+			mdpclone = mdp->clone(mdp, hash);
+			Hashtable_add(hash, mtree->name, mdpclone);
+		}
+		dpclone = mdpclone->obj;
+	}
+	
+	BranchModel*bmclone = clone_BranchModel((BranchModel*)self->obj, (Tree*)mtreeclone->obj, dpclone);
 	for (int i = 0; i < Parameters_count(bmclone->rates); i++) {
 		Hashtable_add(hash, Parameters_name(bmclone->rates, i), Parameters_at(bmclone->rates, i));
 	}
-	if(bmclone->map != NULL){
-		Hashtable_add(hash, bmclone->map->name, bmclone->map);
-	}
-	Model* clone = new_BranchModel2(self->name, bmclone, mtreeclone);
+	
+	Model* clone = new_BranchModel2(self->name, bmclone, mtreeclone, mdpclone);
 	Hashtable_add(hash, clone->name, clone);
 	return clone;
 }
@@ -206,12 +256,12 @@ static void _branch_model_get_free_parameters(Model* model, Parameters* paramete
 	if (m->rates != NULL) {
 		Parameters_add_free_parameters(parameters, m->rates);
 	}
-	Model* mtree = (Model*)model->data;
+	Model* mtree = ((Model**)model->data)[0];
 	mtree->get_free_parameters(mtree, parameters);
 }
 
 // BranchModel2 listen to the rate parameters
-Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
+Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model* ssvs){
 	Model *model = new_Model(MODEL_BRANCHMODEL, name, bm);
 	for ( int i = 0; i < Parameters_count(bm->rates); i++ ) {
 		Parameters_at(bm->rates, i)->listeners->add( Parameters_at(bm->rates, i)->listeners, model );
@@ -220,6 +270,9 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
 	if(bm->map != NULL){
 		bm->map->listeners->add(bm->map->listeners, model);
 	}
+	if(ssvs != NULL){
+		bm->ssvs->listeners->add(bm->ssvs->listeners, model);
+	}
 	model->update = _branchmodel_handle_change;
 	model->handle_restore = _branch_model_handle_restore;
 	model->store = _branch_model_store;
@@ -227,13 +280,20 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree){
 	model->free = _branch_model_free;
 	model->clone = _branch_model_clone;
 	model->get_free_parameters = _branch_model_get_free_parameters;
-	model->data = tree;
+	Model** models = malloc(sizeof(Model*)*2);
+	models[0] = tree;
+	models[1] = ssvs;
+	model->data = models;
 	tree->ref_count++;
+	if(ssvs != NULL){
+		ssvs->ref_count++;
+	}
 	return model;
 }
 
 Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 	char* allowed[] = {
+		"indicators",
 		"model",
 		"rate",
 		"tree",
@@ -258,24 +318,62 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 		mtree->ref_count++;
 	}
 	
-	if(strcasecmp(model, "strict") == 0){
+	if(model == NULL || strcasecmp(model, "noclock") == 0){
+		bm = new_NoClock((Tree*)mtree->obj);
+	}
+	else if(strcasecmp(model, "strict") == 0){
 		json_node* p_node = get_json_node(node, "rate");
 		Parameter* p = new_Parameter_from_json(p_node, hash);
 		bm = new_StrictClock_with_parameter(mtree->obj, p);
 		free_Parameter(p);
+		Hashtable_add(hash, p->name, p);
 	}
 	else{
 		fprintf(stderr, "BranchModel type unknown %s\n", model);
 		exit(1);
 	}
-
+	
+	// SSVS
+	Model* mdp = NULL;
+	json_node* indicators_node = get_json_node(node, "indicators");
+	if (indicators_node != NULL) {
+		if (indicators_node->node_type == MJSON_OBJECT) {
+			mdp = new_DiscreteParameterModel_from_json(indicators_node, hash);
+			json_node* id_node = get_json_node(indicators_node, "id");
+			Hashtable_add(hash, (char*)id_node->value, mdp);
+		}
+		else if(indicators_node->node_type == MJSON_STRING){
+			char* ref = (char*)indicators_node->value;
+			// check it starts with a &
+			mdp = Hashtable_get(hash, ref+1);
+			mdp->ref_count++;
+		}
+        bm->ssvs = mdp->obj;
+        
+		if(model == NULL || strcasecmp(model, "noclock") == 0){
+			Tree* tree = mtree->obj;
+			bm->get = _get_no_clock_ssvs;
+			bm->ssvs_map = uivector(Tree_node_count(tree));
+			bm->ssvs_map2 = uivector(Tree_node_count(tree));
+			unsigned count = 0;
+			for (int i = 0; i < Tree_node_count(tree); i++) {
+				Node* n = Tree_node(tree, i);
+				if (!Node_isroot(n) && !(Node_isroot(Node_parent(n)) && Node_right(Node_parent(n)) == n)) {
+					bm->ssvs_map2[count] = Node_id(n);
+					bm->ssvs_map2[Node_id(n)] = count++;
+				}
+			}
+		}
+	}
+	
 	char* id = get_json_node_value_string(node, "id");
-	Model* mbm = new_BranchModel2(id, bm, mtree);
+	Model* mbm = new_BranchModel2(id, bm, mtree, mdp);
 	mtree->free(mtree);
+	mdp->free(mdp);
 	return mbm;
 }
 
-BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree ){
+BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree, DiscreteParameter* dp ){
 	BranchModel *newbm = (BranchModel *)malloc(sizeof(BranchModel));
 	assert(newbm);
 	
@@ -293,8 +391,12 @@ BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree ){
 	newbm->rates = NULL;
 	
 	newbm->tree = tree;
-	
-	
+	newbm->ssvs	= dp;
+	newbm->ssvs_map = NULL;
+	if(bm->ssvs_map != NULL){
+		newbm->ssvs_map = clone_uivector(bm->ssvs_map, Tree_node_count(tree));
+		newbm->ssvs_map2 = clone_uivector(bm->ssvs_map2, Tree_node_count(tree));
+	}
 	newbm->need_update = bm->need_update;
 	
 	newbm->rates = clone_Parameters(bm->rates);
@@ -355,6 +457,34 @@ void BranchModel_value_to_rates( const double rate, BranchModel *bm ){
 
 int BranchModel_n_rate( BranchModel *bm ){
     return Parameters_count(bm->rates);
+}
+
+#pragma mark -
+// MARK: No clock
+
+/**************************** NO CLOCK ****************************/
+
+
+void _set_no_clock( BranchModel *bm, const int index, const double value ){
+	fprintf(stderr, "_set_no_clock should not be used\n");
+	exit(2);
+}
+
+double _get_no_clock( BranchModel *bm , Node *node ){
+	return 1.0;
+}
+
+double _get_no_clock_ssvs( BranchModel *bm , Node *node ){
+	return bm->ssvs->values[bm->ssvs_map2[Node_id(node)]];
+}
+
+BranchModel * new_NoClock( Tree *tree ){
+	BranchModel *bm = BranchModel_init(tree, NO_CLOCK);
+	
+	bm->get = _get_no_clock;
+	bm->set = _set_no_clock;
+	bm->need_update = false; // nothing to do
+	return bm;
 }
 
 #pragma mark -
@@ -460,7 +590,7 @@ BranchModel * new_LocalClock_with_parameters( Tree *tree, const Parameters *rate
 	
 	localclock_set_random_clock_indicators( bm, Parameters_count(rates)-1);
 	
-	bm->map = new_DiscreteParameter_with_postfix("map", LOCAL_POSTFIX, Tree_node_count(tree) );
+	bm->map = new_DiscreteParameter_with_postfix(LOCAL_POSTFIX, Tree_node_count(tree) );
 	localclock_rebuild_map( bm );
 	
 	bm->need_update = false;
@@ -711,7 +841,7 @@ BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *r
 	bm->rates = new_Parameters(Parameters_count(rates));
 	Parameters_add_parameters(bm->rates, rates);
 	
-	bm->map = new_DiscreteParameter_with_postfix("map", DISCRETE_POSTFIX, Tree_node_count(tree) );
+	bm->map = new_DiscreteParameter_with_postfix(DISCRETE_POSTFIX, Tree_node_count(tree) );
 	
 	DiscreteClock_set_random_branch_assigment( bm );
 	
@@ -992,7 +1122,7 @@ BranchModel * new_RelaxedClock_with_parameters( Tree *tree, const Parameters *pa
 	bm->rates = new_Parameters(Parameters_count(params));
 	Parameters_add_parameters(bm->rates, params);
 	
-	bm->map = new_DiscreteParameter_with_postfix("map", RELAXED_POSTFIX, Tree_node_count(tree) );
+	bm->map = new_DiscreteParameter_with_postfix(RELAXED_POSTFIX, Tree_node_count(tree) );
 	bm->unscaled_rates = dvector(Tree_node_count(bm->tree));
 	
 	

@@ -19,6 +19,7 @@
 #include "treesearch.h"
 #include "opvb.h"
 #include "ophmc.h"
+#include "discreteoperator.h"
 #include "demographicmodels.h"
 
 #include <gsl/gsl_randist.h>
@@ -181,19 +182,6 @@ bool operator_interval_scaler(Operator* op, double* logHR){
 	}
 
 	*logHR = -log(s);
-	return true;
-}
-
-bool operator_bitflip(Operator* op, double* logHR){
-	op->indexes[0] = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
-	Parameter* p = Parameters_at(op->x, op->indexes[0]);
-	if (Parameter_value(p) == 0) {
-		Parameter_set_value(p, 1.0);
-	}
-	else{
-		Parameter_set_value(p, 0.0);
-	}
-	*logHR = 0;
 	return true;
 }
 
@@ -665,10 +653,12 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->indexes = ivector(1);
 	}
 	else if (strcasecmp(algorithm_string, "bitflip") == 0) {
-		op->x = new_Parameters(1);
-		get_parameters_references2(node, hash, op->x, "x");
-		op->propose = operator_bitflip;
-		op->indexes = ivector(1);
+		char* ref = get_json_node_value_string(node, "x");
+		op->model_count = 1;
+		op->models = malloc(op->model_count*sizeof(Model*));
+		op->models[0] = Hashtable_get(hash, ref+1);
+		op->models[0]->ref_count++;
+		op->propose = operator_discrete_bitflip;
 	}
 	
 	op->rejected_count = 0;

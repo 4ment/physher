@@ -149,11 +149,6 @@ struct _SingleTreeLikelihood{
 	
 	const double* (*get_root_frequencies)(SingleTreeLikelihood*);
 	double* root_frequencies;
-	
-#ifdef SSVS_BRANCHES
-	Parameters* indicators;
-	unsigned* indicator_map;
-#endif
 };
 
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm );

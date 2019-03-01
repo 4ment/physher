@@ -23,11 +23,12 @@
 #include "utils.h"
 #include "tree.h"
 #include "node.h"
+#include "discreteparameter.h"
 
 #define BRANCHMODEL_RATE_MIN 1e-15
 #define BRANCHMODEL_RATE_MAX 0.1
 
-typedef enum branchmodel { CLOCK_STRICT, CLOCK_LOCAL, CLOCK_DISCRETE, CLOCK_RELAXED } branchmodel;
+typedef enum branchmodel { NO_CLOCK, CLOCK_STRICT, CLOCK_LOCAL, CLOCK_DISCRETE, CLOCK_RELAXED } branchmodel;
 
 typedef enum relaxed_clock{RELAXED_LOGNORMAL, RELAXED_EXPONENTIAL, RELAXED_DISCRETE} relaxed_clock;
 
@@ -59,6 +60,11 @@ typedef struct BranchModel{
 	// Each value contains the index of the corresponding rate
 	// These indexes are set in PREORDER from indicators. This map is not necessarily ordered (e.g. 1203 instead of 0123)
 	DiscreteParameter *map;
+	
+	// SSVS
+	DiscreteParameter* ssvs;
+	unsigned* ssvs_map; // discrete index to node index
+	unsigned* ssvs_map2; // node index to discrete index
 } BranchModel;
 
 #pragma mark -
@@ -66,11 +72,11 @@ typedef struct BranchModel{
 
 Model* new_BranchModel_from_json(json_node*node, Hashtable*hash);
 
-Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree);
+Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model* ssvs);
 
 BranchModel * new_BranchModel( Tree *tree, branchmodel type );
 
-BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree );
+BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree, DiscreteParameter* dp );
 
 Parameters * BranchModel_save_rates( BranchModel *bm );
 
@@ -83,6 +89,11 @@ void BranchModel_vector_to_rates( BranchModel *bm, const double *rates );
 void BranchModel_value_to_rates( const double rate, BranchModel *bm );
 
 int BranchModel_n_rate( BranchModel *bm );
+
+#pragma mark -
+#pragma mark NoClock
+
+BranchModel * new_NoClock( Tree *tree );
 
 #pragma mark -
 #pragma mark StrickClock

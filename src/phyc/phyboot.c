@@ -99,7 +99,14 @@ static void * _resampling_thread_worker( void *threadpool  ){
         
         SiteModel *sm = clone_SiteModel(pool->tlk->sm);
         Tree *tree = clone_Tree(pool->tlk->tree);
-        BranchModel *bm = ( pool->tlk->bm == NULL ? NULL : clone_BranchModel(pool->tlk->bm, tree) );
+		BranchModel* bm = NULL;
+		if(tlk->bm != NULL){
+			DiscreteParameter* dp = NULL;
+			if (tlk->bm->ssvs != NULL) {
+				dp = tlk->bm->ssvs->clone(tlk->bm->ssvs);
+			}
+			bm = clone_BranchModel(tlk->bm, tree, dp);
+		}
         
         SingleTreeLikelihood *tlk2 = new_SingleTreeLikelihood(tree, sm, sp, bm);
         OptConfig_copy(&pool->tlk->opt, &tlk2->opt);
@@ -399,7 +406,14 @@ void SingleTreeLikelihood_resampling_openmp( const SingleTreeLikelihood *tlk, re
         
         SiteModel *sm = clone_SiteModel(tlk->sm);
         Tree *tree = clone_Tree(tlk->tree);
-        BranchModel *bm = ( tlk->bm == NULL ? NULL : clone_BranchModel(tlk->bm, tree) );
+		BranchModel* bm = NULL;
+		if(tlk->bm != NULL){
+			DiscreteParameter* dp = NULL;
+			if (tlk->bm->ssvs != NULL) {
+				dp = tlk->bm->ssvs->clone(tlk->bm->ssvs);
+			}
+			bm = clone_BranchModel(tlk->bm, tree, dp);
+		}
         
         SingleTreeLikelihood *tlk2 = new_SingleTreeLikelihood(tree, sm, sp, bm);
 		OptConfig_copy(&tlk->opt, &tlk2->opt);
@@ -571,9 +585,11 @@ void SingleTreeLikelihood_bootstrap_strict_local_openmp( const SingleTreeLikelih
 	SiteModel **models = (SiteModel**)malloc(nthreads * sizeof(SiteModel*));
     assert(models);
 	Tree **trees = (Tree**)malloc(nthreads * sizeof(Tree*));
-    assert(trees);
-    BranchModel **branchmodels = (BranchModel**)malloc(nthreads * sizeof(BranchModel*));
-    assert(branchmodels);
+	assert(trees);
+	DiscreteParameter **dps = (DiscreteParameter**)malloc(nthreads * sizeof(DiscreteParameter*));
+	assert(dps);
+	BranchModel **branchmodels = calloc(nthreads, sizeof(BranchModel*));
+	assert(branchmodels);
 	
     BranchModel *old_bm = tlk->bm;
     
@@ -582,13 +598,16 @@ void SingleTreeLikelihood_bootstrap_strict_local_openmp( const SingleTreeLikelih
 	for ( int i = 0; i < nthreads; i++ ) {
 		models[i] = clone_SiteModel(tlk->sm);
 		trees[i]  = clone_Tree(tlk->tree);
-        
+		if(tlk->bm->ssvs != NULL){
+			dps[i] = tlk->bm->ssvs->clone(tlk->bm->ssvs);
+		}
+		
         if(old_bm->name != CLOCK_STRICT){
             branchmodels[i] = new_StrictClock(trees[i]);
             Parameters_set_value(branchmodels[i]->rates, 0, rate);
         }
         else {
-            branchmodels[i] = clone_BranchModel(old_bm, trees[i]);
+            branchmodels[i] = clone_BranchModel(old_bm, trees[i], dps[i]);
         }
 	}
     
@@ -719,6 +738,7 @@ void SingleTreeLikelihood_bootstrap_strict_local_openmp( const SingleTreeLikelih
 	}
 	free(models);
 	free(trees);
+	free(dps);
 	free(branchmodels);
 	free_StringBuffer(buffer);
     free(heights);

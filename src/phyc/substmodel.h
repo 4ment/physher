@@ -22,6 +22,7 @@
 #include "eigen.h"
 #include "parameters.h"
 #include "simplex.h"
+#include "discreteparameter.h"
 
 #include "substmodels.h"
 

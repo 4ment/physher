@@ -179,7 +179,8 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 	}
 
 	if (mclone->model != NULL) {
-		Hashtable_add(hash, mclone->model->name, mclone->model);
+		//TODO: use discreteparameter
+//		Hashtable_add(hash, mclone->model->name, mclone->model);
 	}
 	Model *clone = new_SubstitutionModel2(self->name, mclone, msimplex_freq_clone, msimplex_rates_clone);
 	Hashtable_add(hash, clone->name, clone);
@@ -342,7 +343,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	// General model
 	//TODO: use rate simplex
 	if (structure_node != NULL) {
-		DiscreteParameter* dp = new_DiscreteParameter_from_json(model_node, hash);
+		DiscreteParameter* dp = new_DiscreteParameterModel_from_json(model_node, hash);
 		check_constraints(rates, 0, INFINITY, 0.001, 1000);
 		SubstitutionModel* m = new_GeneralModel_with_parameters(dp, rates, freqs_simplex, -1, normalize);
 		Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex, mrates_simplex);

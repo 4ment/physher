@@ -21,6 +21,7 @@
 #include <stdio.h>
 
 #include "substmodel.h"
+#include "discreteparameter.h"
 
 struct SubstitutionModel * new_GeneralModel_with_parameters( DiscreteParameter* model, const Parameters* rates, Simplex* freqs, int relativeTo, bool normalize );
 

@@ -69,7 +69,7 @@ void TopologyOptimizer_set_algorithm( TopologyOptimizer *opt, tree_search_algori
         case TREE_SEARCH_NNI:{
             opt->K = 0.75;
 			SingleTreeLikelihood* tlk = opt->tlk->obj;
-            if ( tlk->bm == NULL ){
+            if ( tlk->bm == NULL || !Tree_is_time_mode(tlk->tree)){
                 opt->optimize = nni_optimize_bl;
             }
             else {
@@ -80,7 +80,7 @@ void TopologyOptimizer_set_algorithm( TopologyOptimizer *opt, tree_search_algori
         case TREE_SEARCH_NNNI:{
             opt->K = 0.75;
 			SingleTreeLikelihood* tlk = opt->tlk->obj;
-            if ( tlk->bm == NULL ){
+            if ( tlk->bm == NULL || !Tree_is_time_mode(tlk->tree)){
                 opt->optimize = nnni_optimize_bl;
             }
             break;

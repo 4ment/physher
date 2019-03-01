@@ -46,10 +46,6 @@ typedef struct _Parameter Parameter;
 struct _Parameters;
 typedef struct _Parameters Parameters;
 
-struct _DiscreteParameter;
-typedef struct _DiscreteParameter DiscreteParameter;
-
-
 struct _ListenerList;
 typedef struct _ListenerList ListenerList;
 
@@ -72,20 +68,6 @@ struct _Parameter{
 	int refCount;
 };
 
-struct _DiscreteParameter{
-	char *name;
-	int id;
-	unsigned* values;
-	unsigned length;
-	
-	DiscreteParameter* (*clone)(DiscreteParameter*);
-	void (*free)(DiscreteParameter*);
-	
-	void (*set_value)( DiscreteParameter*, int, unsigned );
-	void (*set_values)( DiscreteParameter*, const unsigned* );
-	ListenerList *listeners;
-	int refCount;
-};
 
 #pragma mark -
 #pragma mark Constraint
@@ -282,17 +264,6 @@ void check_constraint(Parameter* rate, double lower, double upper, double flower
 void check_constraints(Parameters* rates, double lower, double upper, double flower, double fupper);
 
 #pragma mark -
-#pragma mark DiscreteParameter
-
-DiscreteParameter * new_DiscreteParameter( const char *name, size_t dim );
-
-DiscreteParameter * new_DiscreteParameter_with_postfix( const char *name, const char *postfix, size_t dim );
-
-DiscreteParameter * new_DiscreteParameter_with_values( const char *name, const unsigned* values, size_t dim );
-
-DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *name, const char *postfix, const unsigned* values, size_t dim );
-
-DiscreteParameter* new_DiscreteParameter_from_json(json_node* node, Hashtable* hash);
 
 struct _ListenerList {
 	Model** models;
@@ -310,6 +281,7 @@ typedef enum model_t{
 	MODEL_BRANCHMODEL=0,
 	MODEL_COALESCENT,
 	MODEL_COMPOUND,
+	MODEL_DISCRETE_PARAMETER,
 	MODEL_DISTRIBUTION,
 	MODEL_PARSIMONY,
 	MODEL_SIMPLEX,
@@ -324,6 +296,7 @@ static const char* model_type_strings[] = {
 	"branchmodel",
 	"coalescent",
 	"compound",
+    "discreteparameter",
 	"distribution",
 	"parsimony",
 	"simplex",

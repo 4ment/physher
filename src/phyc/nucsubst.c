@@ -32,7 +32,7 @@ SubstitutionModel * new_ReversibleNucleotideModel_with_parameters( const char* m
 	m->rates = new_Parameters(5);
     
     int max = 0;
-	m->model = new_DiscreteParameter("nucleotide.model", 5);
+	m->model = new_DiscreteParameter(5);
 	int index = 0;
     for ( int i = 0; i < strlen(model); i++ ) {
         int code = model[i];
