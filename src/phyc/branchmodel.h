@@ -177,10 +177,6 @@ void infer_distance_from_rate_height( BranchModel *bm );
 
 void print_rate_map( BranchModel *bm );
 
-void print_compare_bms( const BranchModel *bm1, const BranchModel *bm2);
-
-void compare_branchmodel( const BranchModel *bm1, const BranchModel *bm2 );
-
 double BranchModel_mean_rate_scaled( BranchModel *bm );
 
 double BranchModel_mean_rate_tips_scaled( BranchModel *bm );

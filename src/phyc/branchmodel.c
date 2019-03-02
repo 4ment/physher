@@ -369,7 +369,7 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 	char* id = get_json_node_value_string(node, "id");
 	Model* mbm = new_BranchModel2(id, bm, mtree, mdp);
 	mtree->free(mtree);
-	mdp->free(mdp);
+	if(mdp != NULL)mdp->free(mdp);
 	return mbm;
 }
 
@@ -1284,34 +1284,6 @@ void print_rate_map( BranchModel *bm ){
 	}
 	//fprintf(stderr, "%s map:%d indicator:%d value:- (param:%f; unscaled:%f)\n", nodes[bm->tree->nNodes-1]->name, bm->map[bm->tree->nNodes-1], bm->indicators[bm->tree->nNodes-1], bm->rates->list[bm->map[nodes[bm->tree->nNodes-1]->postorder_idx]]->value, bm->unscaled_rates[bm->tree->nNodes-1]);
 	fprintf(stderr, "\n==========================\n");
-}
-
-
-
-void print_compare_bms( const BranchModel *bm1, const BranchModel *bm2){
-	printf(" ID %d %d\nNAME %d %d\nNEED UPDATE %d %d\nSCALEFACTOR %f %f\n",bm1->id, bm2->id,bm1->name, bm2->name,bm1->need_update,bm2->need_update,bm1->scalefactor,bm2->scalefactor);
-	Parameters_print(bm1->rates);
-	Parameters_print(bm2->rates);
-	
-	print_ivector( (int*)bm1->indicators, Tree_node_count(bm1->tree));
-	print_ivector( (int*)bm2->indicators, Tree_node_count(bm2->tree));
-	
-	print_uivector( bm1->map->values, Tree_node_count(bm1->tree));
-	print_uivector( bm2->map->values, Tree_node_count(bm2->tree));
-	
-	print_dvector( bm1->unscaled_rates, Tree_node_count(bm1->tree));
-	print_dvector( bm2->unscaled_rates, Tree_node_count(bm2->tree));
-}
-
-void compare_branchmodel( const BranchModel *bm1, const BranchModel *bm2 ){
-	assert( bm1->name == bm2->name );
-	assert( bm1->id == bm2->id );
-	compare_tree( bm1->tree, bm2->tree );
-	assert( bm1->need_update == bm2->need_update );
-	assert( bm1->scalefactor == bm2->scalefactor );
-	assert( memcmp( bm1->indicators, bm2->indicators, Tree_node_count(bm1->tree) * sizeof(bool) ) == 0 );
-	assert( memcmp( bm1->map, bm2->map, Tree_node_count(bm1->tree) * sizeof(int) ) == 0 );
-	assert( memcmp( bm1->unscaled_rates, bm2->unscaled_rates, Tree_node_count(bm1->tree) * sizeof(double) ) == 0 );
 }
 
 double BranchModel_mean_rate_scaled( BranchModel *bm ){

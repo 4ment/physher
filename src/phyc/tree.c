@@ -35,7 +35,6 @@
 #include "treeio.h"
 
 struct _Tree{
-	int id;
 	Node *root;
 	int nTips;
 	int nNodes;
@@ -48,6 +47,8 @@ struct _Tree{
 	bool time_mode;
 	Parameters* distances;
 	Parameters* heights;
+	Parameters* reparam;
+	unsigned* map;
 };
 
 static void tree_init_distance_parameters( Tree *t, Parameters *ps );
@@ -174,6 +175,75 @@ void _parse_description( Node *node, const char *newick, int *i,  bool containBL
 	free_StringBuffer(buffer);
 }
 
+void init_parameter_arrays(Tree* atree, bool containBL){
+	Node **nodes = Tree_get_nodes(atree, POSTORDER);
+	atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
+	assert(atree->nodes);
+	
+	int nTips = 0;
+	int nInternals = 0;
+	for ( int i = 0; i < Tree_node_count(atree); i++ ) {
+		nodes[i]->id = i;
+		nodes[i]->distance->id = i;
+		nodes[i]->height->id = i;
+		if( Node_isleaf(nodes[i]) ){
+			nodes[i]->class_id = nTips++;
+		}
+		else {
+			nodes[i]->class_id = nInternals++;
+		}
+		atree->nodes[ nodes[i]->id ] = nodes[i];
+	}
+	
+	check_tree(atree);
+	
+	// is going to fail for homochronous trees
+	if ( !containBL ) {
+		Tree_init_heights(atree);
+	}
+	
+	atree->distances = new_Parameters(Tree_node_count(atree)-2);
+	Node* root = Tree_root(atree);
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		Node* node = Tree_node(atree, i);
+		if ( node != root && root->right != node) {
+			Parameters_add(atree->distances, node->distance);
+		}
+	}
+	
+	atree->heights = new_Parameters(Tree_node_count(atree));
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		Node* node = Tree_node(atree, i);
+		if(!Node_isleaf(node)){
+			Parameters_add(atree->heights, node->height);
+		}
+	}
+	
+	atree->reparam = new_Parameters(Tree_node_count(atree));
+	atree->map = uivector(Tree_node_count(atree));
+	Node** nodes2 = Tree_get_nodes(atree, PREORDER);
+	int count = 0;
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		Node* node = nodes2[i];
+		Parameter* p = NULL;
+		if(Node_isroot(node)){
+//			printf("%f\n", Node_height(node));
+			p = new_Parameter(node->name, Node_height(node), new_Constraint(0, INFINITY));
+			Constraint_set_fupper(p->cnstr,10);
+			Parameters_move(atree->reparam, p);
+            p->id = -Node_id(node)-1;
+			atree->map[Node_id(node)] = count++;
+		}
+		else if(!Node_isleaf(node)){
+			p = new_Parameter(node->name, Node_height(node)/Node_height(Node_parent(nodes2[i])), new_Constraint(0, 1));
+			Parameters_move(atree->reparam, p);
+			p->id = -Node_id(node)-1;
+			atree->map[Node_id(node)] = count++;
+//			printf("%f\n", Parameter_value(p));
+        }
+	}
+}
+
 Tree * new_Tree( const char *nexus, bool containBL ){
 	Tree *atree = (Tree *)malloc(sizeof(Tree));
 	assert(atree);
@@ -181,7 +251,6 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	atree->postorder = NULL;
 	atree->preorder = NULL;
 	atree->nodes = NULL;
-	atree->id = 0;
 	atree->nTips = 0;
 	atree->nNodes = 0;
 	atree->rooted = false;
@@ -369,46 +438,7 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	
 	Tree_update_topology(atree);
     
-    Node **nodes = Tree_get_nodes(atree, POSTORDER);
-    atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
-    assert(atree->nodes);
-    
-    int nTips = 0;
-    int nInternals = 0;
-    for ( int i = 0; i < Tree_node_count(atree); i++ ) {
-        nodes[i]->id = i;
-		nodes[i]->distance->id = i;
-		nodes[i]->height->id = i;
-        if( Node_isleaf(nodes[i]) ){
-            nodes[i]->class_id = nTips++;
-        }
-        else {
-            nodes[i]->class_id = nInternals++;
-        }
-        atree->nodes[ nodes[i]->id ] = nodes[i];
-    }
-	
-	check_tree(atree);
-	
-	// is going to fail for homochronous trees
-	if ( !containBL ) {
-		Tree_init_heights(atree);
-	}
-	
-	atree->distances = new_Parameters(Tree_node_count(atree)-2);
-	Node* root = Tree_root(atree);
-	for (int i = 0; i < Tree_node_count(atree); i++) {
-		Node* node = Tree_node(atree, i);
-		if ( node != root && root->right != node) {
-			Parameters_add(atree->distances, node->distance);
-		}
-	}
-	
-	atree->heights = new_Parameters(Tree_node_count(atree));
-	for (int i = 0; i < Tree_node_count(atree); i++) {
-		Node* node = Tree_node(atree, i);
-		Parameters_add(atree->heights, node->height);
-	}
+	init_parameter_arrays(atree, containBL);
 	
 	free_StringBuffer(buffer);
 	
@@ -422,7 +452,6 @@ Tree * new_Tree2( Node *root, bool containBL ){
 	atree->postorder = NULL;
 	atree->preorder = NULL;
     atree->nodes = NULL;
-	atree->id = 0;
 	atree->nTips = 0;
 	atree->nNodes = 0;
 	atree->rooted = false;
@@ -437,45 +466,8 @@ Tree * new_Tree2( Node *root, bool containBL ){
 	
 	Tree_update_topology(atree);
     
-    Node **nodes = Tree_get_nodes(atree, POSTORDER);
-    atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
-    assert(atree->nodes);
-    int nTips = 0;
-    int nInternals = 0;
-    for ( int i = 0; i < Tree_node_count(atree); i++ ) {
-		nodes[i]->id = i;
-		nodes[i]->distance->id = i;
-		nodes[i]->height->id = i;
-        if( Node_isleaf(nodes[i]) ){
-            nodes[i]->class_id = nTips++;
-        }
-        else {
-            nodes[i]->class_id = nInternals++;
-        }
-        atree->nodes[ nodes[i]->id ] = nodes[i];
-    }
+    init_parameter_arrays(atree, containBL);
 	
-	check_tree(atree);
-	
-	// is going to fail for homochronous trees
-	if ( !containBL ) {
-		Tree_init_heights(atree);
-	}
-	
-	atree->distances = new_Parameters(Tree_node_count(atree)-2);
-	for (int i = 0; i < Tree_node_count(atree); i++) {
-		Node* node = Tree_node(atree, i);
-		if ( node != root && root->right != node) {
-			Parameters_add(atree->distances, node->distance);
-		}
-	}
-	
-	
-	atree->heights = new_Parameters(Tree_node_count(atree));
-	for (int i = 0; i < Tree_node_count(atree); i++) {
-		Node* node = Tree_node(atree, i);
-		Parameters_add(atree->heights, node->height);
-	}
 	return atree;
 }
 
@@ -599,9 +591,35 @@ void Tree_init_heights ( Tree *atree ) {
 	free_StringBuffer(buffer);
 }
 
+// do not call on root
+void set_times(Tree* tree, Node* node){
+	if(!Node_isleaf(node)){
+		double h = Node_height(Node_parent(node));
+		double s = Parameters_value(tree->reparam, tree->map[Node_id(node)]);
+		Node_set_height(node, h*s);
+		set_times(tree, node->left);
+		set_times(tree, node->right);
+	}
+}
+
 void _tree_handle_change( Model *self, Model *model, int index ){
 	Tree *tree = (Tree*)self->obj;
 	if ( tree->time_mode ) {
+		// using reparametrization
+		if(index < 0){
+			int realIndex = -index-1;
+			Node* node = Tree_node(tree, realIndex);
+			if (Node_isroot(node)) {
+				Node_set_height(node, Parameters_value(tree->reparam, tree->map[Node_id(node)]));
+				set_times(tree, node->left);
+				set_times(tree, node->right);
+			}
+			else{
+				set_times(tree, node);
+			}
+			// do not fire since heights are going to do it
+			return;
+		}
 		Node *node = Tree_node(tree, index);
 		// constrain lower bound of parent
 		if( !Node_isroot(node) ) {
@@ -626,6 +644,10 @@ static void _tree_model_store(Model* self){
 		Parameter_store(Tree_node(tree, i)->distance);
 		Parameter_store(Tree_node(tree, i)->height);
 	}
+	
+	for (int i = 0; i < Parameters_count(tree->reparam); i++) {
+		Parameter_store(Parameters_at(tree->reparam, i));
+	}
 }
 
 static void _tree_model_restore(Model* self){
@@ -640,16 +662,22 @@ static void _tree_model_restore(Model* self){
 		h = n->height;
 		if (Parameter_changed(d)) {
 			distance_changed = true;
+			Parameter_restore_quietly(d);
 		}
 		if (Parameter_changed(h)) {
 			height_changed = true;
+			Parameter_restore_quietly(h);
 		}
-		
-		Parameter_restore_quietly(d);
-		Parameter_restore_quietly(h);
 	}
+	
+	for (int i = 0; i < Parameters_count(tree->reparam); i++) {
+		Parameter* r = Parameters_at(tree->reparam, i);
+		if (Parameter_changed(r)) {
+			Parameter_restore_quietly(r);
+		}
+	}
+	
 	if (distance_changed) {
-		//printf("_tree_model_restore\n");
 		d->restore_listeners->fire_restore(d->restore_listeners, NULL, d->id);
 	}
 	if (height_changed) {
@@ -746,6 +774,14 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 		tree->nodes[i]->distance->restore_listeners->add(tree->nodes[i]->distance->restore_listeners, model);
 		tree->nodes[i]->height->restore_listeners->add(tree->nodes[i]->height->restore_listeners, model);
 	}
+	for (int i = 0; i < Parameters_count(tree->reparam); i++) {
+		StringBuffer_set_string(buffer, name);
+		StringBuffer_append_strings(buffer, 2, ".", Parameters_name(tree->reparam, i));
+		Parameter_set_name(Parameters_at(tree->reparam, i), buffer->c);
+		Parameters_at(tree->reparam,i)->restore_listeners->add(Parameters_at(tree->reparam, i)->restore_listeners, model);
+		Parameters_at(tree->reparam,i)->listeners->add(Parameters_at(tree->reparam, i)->listeners, model);
+	}
+	
 	free_StringBuffer(buffer);
 	model->update = _tree_handle_change;
 	model->handle_restore = _tree_handle_restore;
@@ -764,6 +800,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		"heights", // height parameters
 		"parameters", // distance parameters
 		"newick",
+		"reparam", // reparametrization
 		"time"
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
@@ -836,6 +873,15 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			}
 		}
 		
+		p = get_json_node_value_string(node, "reparam");
+		if (p != NULL) {
+			Parameters_set_name2(tree->reparam, p);
+			Hashtable_add(hash, Parameters_name2(tree->reparam), tree->reparam);
+			for (int i = 0; i < Parameters_count(tree->reparam); i++) {
+				Hashtable_add(hash, Parameters_name(tree->reparam, i), Parameters_at(tree->reparam, i));
+			}
+		}
+		
 	}
 	if (!Tree_rooted(mtree->obj) && Node_distance(Tree_root(mtree->obj)->right) != 0) {
 		Tree* tree = mtree->obj;
@@ -863,6 +909,8 @@ void free_Tree( Tree *t){
 	free(t->nodes);
 	free_Parameters(t->distances);
 	free_Parameters(t->heights);
+	free_Parameters(t->reparam);
+	free(t->map);
 	free(t);
 	t = NULL;
 }
@@ -912,8 +960,6 @@ Node * clone_Tree_aux( Tree *tree, const Node *node, Node *parent ){
 Tree * clone_Tree( const Tree *tree ){
 	Tree *newTree = (Tree *)malloc(sizeof(Tree));
 	assert(newTree);
-	
-	newTree->id = tree->id+1;
 	
 	newTree->root      = NULL;
 	newTree->postorder = NULL;
@@ -967,8 +1013,6 @@ void _Tree_count_nodes( Node *node, int *tips, int *nodes){
 Tree * clone_SubTree( const Tree *tree, Node *node ){
 	Tree *newTree = (Tree *)malloc(sizeof(Tree));
 	assert(newTree);
-	
-	newTree->id = tree->id+1;
 	
 	newTree->postorder = NULL;
 	newTree->preorder  = NULL;
@@ -1035,20 +1079,12 @@ void Tree_set_root( Tree *tree, Node *root ){
     tree->root = root;
 }
 
-int Tree_id( const Tree *tree ){
-	return tree->id;
-}
-
 void Tree_set_dated( Tree *tree, bool dated ){
 	tree->dated = dated;
 }
 
 bool Tree_dated( const Tree *tree ){
 	return tree->dated;
-}
-
-void Tree_set_id( Tree *tree, int id ){
-	tree->id = id;
 }
 
 void Tree_post_to_preorder( Tree *tree, double *v ){
@@ -2256,71 +2292,3 @@ void Tree_reroot( Tree *tree, Node *node ){
 	
     Tree_set_topology_changed(tree);
 }
-
-
-
-
-
-void compare_tree_aux( const Node *n1, const Node *n2){
-	
-	if( n1 == NULL && n2 == NULL){
-		return;
-	}
-	else if ( n1 != NULL && n2 != NULL){}
-	else {
-		error("n1 and n2 !=");
-	}
-	assert(n1 != n2 );
-	assert( strcmp(n1->name, n2->name) == 0 );
-	
-	if( n1->parent != NULL && n2->parent != NULL ) assert( strcmp(n1->name, n2->name) == 0 );
-	else assert( n1->parent == NULL && n2->parent == NULL );
-	
-	assert( n1->id == n2->id );
-	assert( n1->depth == n2->depth);
-	assert( n1->time == n2->time);
-	assert( n1->postorder_idx == n2->postorder_idx);
-	assert( n1->preorder_idx == n2->preorder_idx);
-	
-	compare_tree_aux( n1->left, n2->left );
-	compare_tree_aux( n1->right, n2->right );
-}
-
-void compare_tree( const Tree *t1, const Tree *t2 ){
-	assert( t1->id == t2->id );
-	assert( t1->nTips == t2->nTips );
-	assert( t1->nNodes == t2->nNodes );
-	assert( t1->rooted == t2->rooted );
-	assert( t1->topology_changed == t2->topology_changed );
-	assert( strcmp(t1->root->name, t2->root->name) == 0 );
-	compare_tree_aux( t1->root, t2->root );
-}
-
-void print_compare_tree(  Tree *t1, Tree *t2){
-	printf("ID %d %d\nnTips %d %d\nnNodes %d %d\nrooted %d %d\ntopology_changed %d %d\n",t1->id, t2->id, t1->nTips, t2->nTips, t1->nNodes, t2->nNodes, t1->rooted, t2->rooted,t1->topology_changed, t2->topology_changed);
-	printf("root %s %s\n",t1->root->name, t2->root->name);
-	Node **n1 = Tree_get_nodes( t1, POSTORDER);
-	Node **n2 = Tree_get_nodes( t2, POSTORDER);
-	for (int i = 0; i < t1->nNodes; i++) {
-		printf("%s %s %d %d depth %d %d time %f %f post %d %d pre %d %d\n",
-			   n1[i]->name,n2[i]->name,
-			   n1[i]->id,n2[i]->id,
-			   n1[i]->depth, n2[i]->depth,
-			   n1[i]->time, n2[i]->time,
-			   n1[i]->postorder_idx, n2[i]->postorder_idx,
-			   n1[i]->preorder_idx, n2[i]->preorder_idx);
-		
-		Parameter_print( n1[i]->distance );
-		Parameter_print( n2[i]->distance );
-		
-		Parameter_print( n1[i]->height );
-		Parameter_print( n2[i]->height );
-	}
-}
-
-
-
-
-
-
-

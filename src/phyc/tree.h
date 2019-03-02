@@ -63,10 +63,6 @@ Node * Tree_root( Tree *tree );
 
 void Tree_set_root( Tree *tree, Node *root );
 
-int Tree_id( const Tree *tree );
-
-void Tree_set_id( Tree *tree, int id );
-
 void Tree_set_dated( Tree *tree, bool dated );
 
 bool Tree_dated( const Tree *tree );
@@ -146,10 +142,6 @@ void Tree_vector_to_branch_length( Tree *tree, const double *distances );
 void Tree_copy_heights( Tree *src, Tree *dist );
 
 // Print
-
-void print_compare_tree(  Tree *t1,  Tree *t2);
-
-void compare_tree( const Tree *t1, const Tree *t2 );
 
 void Tree_print_parameters( Tree *tree );
 

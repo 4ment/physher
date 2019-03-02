@@ -151,6 +151,18 @@ double _singleTreeLikelihood_logP(Model *self){
 	return self->lp;
 }
 
+double _singleTreeLikelihood_reparametrized_logP(Model *self){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+	self->lp = tlk->calculate(tlk);
+	for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+		Node* node = Tree_node(tlk->tree, i);
+		if(!Node_isroot(node) && !Node_isleaf(node)){
+			self->lp += log(Node_height(node));
+		}
+	}
+	return self->lp;
+}
+
 double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 	
