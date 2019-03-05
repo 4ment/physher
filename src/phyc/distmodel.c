@@ -196,6 +196,28 @@ DistributionModel* new_DistributionModelSimplex(Parameters* p, Simplex* simplex)
 	return dm;
 }
 
+double DistributionModel_log_one_on_x(DistributionModel* dm){
+	return -log(Parameters_value(dm->x, 0));
+}
+
+double DistributionModel_log_one_on_x_with_values(DistributionModel* dm, const double* values){
+	return -log(values[0]);
+}
+
+double DistributionModel_dlog_one_on_x(DistributionModel* dm, const Parameter* p){
+	if (strcmp(Parameter_name(p), Parameters_name(dm->x, 0)) == 0) {
+		return -1.0/Parameters_value(dm->x, 0);
+	}
+	return 0;
+}
+
+double DistributionModel_d2log_one_on_x(DistributionModel* dm, const Parameter* p){
+	if (strcmp(Parameter_name(p), Parameters_name(dm->x, 0)) == 0) {
+		return 1.0/Parameters_value(dm->x, 0)/Parameters_value(dm->x, 0);
+	}
+	return 0;
+}
+
 double DistributionModel_log_gamma(DistributionModel* dm){
 	double logP = 0;
 	if(Parameters_count(dm->parameters) > 2){
@@ -674,6 +696,17 @@ double DistributionModel_d2log_dirichlet(DistributionModel* dm, const Parameter*
 	// return -(alpha-1.0)/(Parameter_value(p)*Parameter_value(p));
 	exit(1);
 	return 0;
+}
+
+DistributionModel* new_OneOnXDistributionModel(const Parameters* x){
+	DistributionModel* dm = new_DistributionModel(NULL, x);
+	dm->logP = DistributionModel_log_one_on_x;
+	dm->logP_with_values = DistributionModel_log_one_on_x_with_values;
+	dm->dlogP = DistributionModel_dlog_one_on_x;
+	dm->d2logP = DistributionModel_d2log_one_on_x;
+	dm->ddlogP = _DistributionModel_ddlog_0;
+	dm->clone = _clone_dist;
+	return dm;
 }
 
 DistributionModel* new_IndependantGammaDistributionModel(const double shape, const double rate, const Parameters* x){
@@ -1511,6 +1544,10 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		else{
 			get_parameters_references2(node, hash, x, "x");
 		}
+		json_node* p_node = get_json_node(node, "parameters");
+		if (strcasecmp(p_node->children[0]->key, "mean") == 0) {
+			Parameters_set_value(parameters, 0, 1.0/Parameters_value(parameters, 0));
+		}
 		
 		// empirical
 		if (samples != NULL) {
@@ -1961,6 +1998,11 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		model->sample = _dist_model_sample;
 		model->sample_evaluate = _dist_model_sample_evaluate;
 		model->samplable = true;
+	}
+	else if(strcasecmp(d_string, "oneonx") == 0){
+		get_parameters_references2(node, hash, x, "x");
+		dm = new_OneOnXDistributionModel(x);
+		model = new_DistributionModel2(id, dm);
 	}
 	else{
 		printf("%s\n", d_string);

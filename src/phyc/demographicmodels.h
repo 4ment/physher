@@ -30,9 +30,12 @@ typedef struct Coalescent{
     Parameters *p;
 	double logP;
     int *lineages;
-    double *times;
+	int *stored_lineages;
+	double *times;
+	double *stored_times;
 	int* nodes; // indexes of nodes corresponding to interval
     bool *iscoalescent;
+	bool *stored_iscoalescent;
     int n;
     double (*calculate)( struct Coalescent* );
     bool need_update;

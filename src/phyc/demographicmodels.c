@@ -36,6 +36,9 @@ static void _coalescent_model_store(Model* self){
 	for (int i = 0; i < Parameters_count(coalescent->p); i++) {
 		Parameter_store(Parameters_at(coalescent->p, i));
 	}
+	memcpy(coalescent->stored_iscoalescent, coalescent->iscoalescent, coalescent->n*sizeof(bool));
+	memcpy(coalescent->stored_times, coalescent->times, coalescent->n*sizeof(double));
+	memcpy(coalescent->stored_lineages, coalescent->lineages, coalescent->n*sizeof(int));
 	self->storedLogP = self->lp;
 }
 
@@ -47,13 +50,16 @@ static void _coalescent_model_restore(Model* self){
 		p = Parameters_at(coalescent->p, i);
 		if (Parameter_changed(p)) {
 			changed = true;
+			Parameter_restore_quietly(p);
 		}
-		Parameter_restore_quietly(p);
 	}
 	// fire only once
 	if (changed) {
 		p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
 	}
+	memcpy(coalescent->iscoalescent, coalescent->stored_iscoalescent, coalescent->n*sizeof(bool));
+	memcpy(coalescent->times, coalescent->stored_times, coalescent->n*sizeof(double));
+	memcpy(coalescent->lineages, coalescent->stored_lineages, coalescent->n*sizeof(int));
 	self->lp = self->storedLogP;
 }
 
@@ -135,9 +141,7 @@ static void _coalescent_model_handle_change( Model *self, Model *model, int inde
 }
 
 static void _coalescent_model_handle_restore( Model *self, Model *model, int index ){
-	Coalescent *c = (Coalescent*)self->obj;
-	c->need_update = true;
-	self->restore_listeners->fire( self->restore_listeners, self, index );
+	self->restore_listeners->fire_restore( self->restore_listeners, self, index );
 }
 
 Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree){
@@ -172,6 +176,7 @@ Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree
 Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
 		"model",
+		"parameters",
 		"tree"
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
@@ -186,11 +191,11 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 	mtree->ref_count++;
 	
 	if(strcasecmp(model, "constant") == 0){
-		json_node* p_node = get_json_node(node, "theta");
-		Parameter* p = new_Parameter_from_json(p_node, hash);
-		c = new_ConstantCoalescent_with_parameter(mtree->obj, p);
-		Hashtable_add(hash, Parameter_name(p), p);
-		free_Parameter(p);
+		Parameters* ps = new_Parameters(1);
+		get_parameters_references(node, hash, ps);
+		c = new_ConstantCoalescent_with_parameter(mtree->obj, Parameters_at(ps, 0));
+		Hashtable_add(hash, Parameters_name(ps, 0), Parameters_at(ps, 0));
+		free_Parameters(ps);
 	}
 	else{
 		fprintf(stderr, "BranchModel type unknown %s\n", model);
@@ -232,7 +237,10 @@ Coalescent * new_ConstantCoalescent_with_parameter( Tree *tree, Parameter* theta
 	coal->lineages = ivector(Tree_node_count(tree));
 	coal->times = dvector(Tree_node_count(tree));
 	coal->nodes = ivector(Tree_node_count(tree));
+	coal->stored_lineages = ivector(Tree_node_count(tree));
+	coal->stored_times = dvector(Tree_node_count(tree));
 	coal->iscoalescent = bvector(Tree_node_count(tree));
+	coal->stored_iscoalescent = bvector(Tree_node_count(tree));
 	coal->n = Tree_node_count(tree);
 	coal->need_update_intervals = true;
 	coal->need_update = true;
@@ -245,6 +253,9 @@ void free_ConstantCoalescent( Coalescent *coal ){
 	free(coal->nodes);
 	free(coal->times);
     free(coal->iscoalescent);
+	free(coal->stored_lineages);
+	free(coal->stored_times);
+	free(coal->stored_iscoalescent);
 	free(coal);
 }
 
@@ -376,7 +387,12 @@ void _update_intervals2( Coalescent* coal ){
 
 double _constant_calculate( Coalescent* coal ){
     if ( coal->need_update_intervals ) {
-        _update_intervals(coal);
+		if(Tree_homochronous(coal->tree)){
+			_update_intervals(coal);
+		}
+		else{
+			_update_intervals2(coal);
+		}
     }
 	if ( coal->need_update ) {
 		coal->logP = 0;
