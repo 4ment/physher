@@ -81,7 +81,7 @@ static void _discrete_parameter_model_handle_change( Model *self, Model *model, 
 }
 
 static void _discrete_parameter_model_handle_restore( Model *self, Model *model, int index ){
-	self->restore_listeners->fire( self->restore_listeners, self, index );
+	self->listeners->fire_restore( self->listeners, self, index );
 }
 
 static void _discrete_parameter_model_store(Model* self){
@@ -93,7 +93,7 @@ static void _discrete_parameter_model_restore(Model* self){
 	DiscreteParameter* dp = (DiscreteParameter*)self->obj;
 	if (memcmp(dp->values, dp->stored_values, dp->length*sizeof(unsigned)) != 0) {
 		memcpy(dp->values, dp->stored_values, dp->length*sizeof(unsigned));
-		self->restore_listeners->fire_restore(self->restore_listeners, self, 0);
+		self->listeners->fire_restore(self->listeners, self, 0);
 	}
 }
 

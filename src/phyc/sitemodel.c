@@ -92,11 +92,11 @@ static void _site_model_restore(Model* self){
 			p = Parameters_at(sm->rates, i);
 			if (Parameter_changed(p)) {
 				changed = true;
+				Parameter_restore_quietly(p);
 			}
-			Parameter_restore_quietly(p);
 		}
 		if (changed) {
-			p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+			p->listeners->fire_restore(p->listeners, NULL, p->id);
 		}
 	}
 	if (sm->mu != NULL) {
@@ -107,7 +107,7 @@ static void _site_model_restore(Model* self){
 static void _site_model_handle_restore( Model *self, Model *model, int index ){
 	SiteModel *sm = (SiteModel*)self->obj;
 	sm->need_update = true;// one of the sitemodel parameters
-	self->restore_listeners->fire_restore( self->restore_listeners, self, index );
+	self->listeners->fire_restore( self->listeners, self, index );
 }
 
 static void _site_model_free( Model *self ){
@@ -198,17 +198,14 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	if ( sm->rates != NULL ) {
 		for ( int i = 0; i < Parameters_count(sm->rates); i++ ) {
 			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
-			Parameters_at(sm->rates, i)->restore_listeners->add( Parameters_at(sm->rates, i)->restore_listeners, model );
 		}
 	}
 	if ( sm->mu != NULL ) {
 		sm->mu->listeners->add( sm->mu->listeners, model );
-		sm->mu->restore_listeners->add(sm->mu->restore_listeners, model );
 	}
 	
 	// Listen to substitution model
 	substmodel->listeners->add( substmodel->listeners, model );
-	substmodel->restore_listeners->add( substmodel->restore_listeners, model );
 	
 	model->update = _site_model_handle_change;
 	model->handle_restore = _site_model_handle_restore;

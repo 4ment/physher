@@ -73,19 +73,7 @@ static bool _calculate_partials_noexp_integrate( SingleTreeLikelihood *tlk, Node
 
 void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 	SingleTreeLikelihood *tlk = (SingleTreeLikelihood*)self->obj;
-#ifdef SSVS_BRANCHES
-	if(model == NULL){
-		if(index >= 0){
-			tlk->update_nodes[index] = true;
-			tlk->update = true;
-			tlk->update_upper = true;
-		}
-		else{
-			SingleTreeLikelihood_update_all_nodes(tlk);
-		}
-		return;
-	}
-#endif
+
 	//printf("%s %d\n", model->name, index);
 	if ( model->type == MODEL_TREE ) {
 //		printf("node index %d\n", index);
@@ -116,7 +104,7 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 void _treelikelihood_handle_restore( Model *self, Model *model, int index ){
 // parameters are restored of evry model is restored but models can be dirty
 //	self->need_update = false;
-	self->restore_listeners->fire_restore( self->restore_listeners, self, index );
+	self->listeners->fire_restore( self->listeners, self, index );
 }
 
 static void _singleTreeLikelihood_store(Model* self){
@@ -151,14 +139,34 @@ double _singleTreeLikelihood_logP(Model *self){
 	return self->lp;
 }
 
+double calculate_log_jacobian(Node* node, double* logP){
+	if(!Node_isleaf(node)){
+		double l = calculate_log_jacobian(node->left, logP);
+		double r = calculate_log_jacobian(node->right, logP);
+		double max = dmax(l, r);
+		if(!Node_isroot(node)){
+			*logP += log(Node_height(Node_parent(node)) - max);
+		}
+		return max;
+	}
+	else{
+		return Node_height(node);
+	}
+}
+
 double _singleTreeLikelihood_reparametrized_logP(Model *self){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 	self->lp = tlk->calculate(tlk);
-	for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
-		Node* node = Tree_node(tlk->tree, i);
-		if(!Node_isroot(node) && !Node_isleaf(node)){
-			self->lp += log(Node_height(node));
+	if(Tree_homochronous(tlk->tree)){
+		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+			Node* node = Tree_node(tlk->tree, i);
+			if(!Node_isroot(node) && !Node_isleaf(node)){
+				self->lp += log(Node_height(node));
+			}
 		}
+	}
+	else{
+		calculate_log_jacobian(Tree_root(tlk->tree), &self->lp);
 	}
 	return self->lp;
 }
@@ -518,7 +526,6 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	clone->restore = self->restore;
 	clone->storedLogP = self->storedLogP;
 	clone->lp = self->lp;
-	
 	return clone;
 }
 
@@ -543,9 +550,6 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	tree->listeners->add( tree->listeners, model );
 	if(bm != NULL)bm->listeners->add( bm->listeners, model );
 	sm->listeners->add( sm->listeners, model );
-	tree->restore_listeners->add( tree->restore_listeners, model );
-	if(bm != NULL)bm->restore_listeners->add( bm->restore_listeners, model );
-	sm->restore_listeners->add( sm->restore_listeners, model );
 	model->handle_restore = _treelikelihood_handle_restore;
 
 	model->logP = _singleTreeLikelihood_logP;
@@ -572,9 +576,7 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	char* allowed[] = {
 		"branchmodel",
-#ifdef SSVS_BRANCHES
-		"indicators",
-#endif
+		"reparameterized",
 		"root_frequencies",
 		"sitemodel",
 		"sitepattern",
@@ -587,6 +589,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	json_node* tree_node = get_json_node(node, "tree");
 	json_node* sm_node = get_json_node(node, "sitemodel");
 	json_node* bm_node = get_json_node(node, "branchmodel");
+	bool reparameterized = get_json_node_value_bool(node, "reparameterized", false);
 	
 	Model* mtree = NULL;
 	Model* msm = NULL;
@@ -664,6 +667,10 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	bool use_sse = get_json_node_value_bool(node, "sse", true);
 	if (!use_sse) {
 		SingleTreeLikelihood_enable_SSE(tlk, false);
+	}
+	
+	if(reparameterized){
+		model->logP = _singleTreeLikelihood_reparametrized_logP;
 	}
 	return model;
 }
@@ -1185,6 +1192,8 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	}
 	newtlk->get_root_frequencies = tlk->get_root_frequencies;
 
+	newtlk->reparametrized = tlk->reparametrized;
+	
 	return newtlk;
 }
 

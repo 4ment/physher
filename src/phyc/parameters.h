@@ -64,7 +64,6 @@ struct _Parameter{
 	Constraint *cnstr;
 	bool estimate;
 	ListenerList *listeners;
-	ListenerList *restore_listeners;
 	int refCount;
 };
 
@@ -329,7 +328,6 @@ struct _Model {
 	double (*sample_evaluate)(Model*);
 	
 	ListenerList *listeners;
-	ListenerList *restore_listeners;
 	bool need_update;
 	int ref_count;
 	

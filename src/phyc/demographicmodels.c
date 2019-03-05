@@ -55,7 +55,7 @@ static void _coalescent_model_restore(Model* self){
 	}
 	// fire only once
 	if (changed) {
-		p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+		p->listeners->fire_restore(p->listeners, NULL, p->id);
 	}
 	memcpy(coalescent->iscoalescent, coalescent->stored_iscoalescent, coalescent->n*sizeof(bool));
 	memcpy(coalescent->times, coalescent->stored_times, coalescent->n*sizeof(double));
@@ -141,17 +141,17 @@ static void _coalescent_model_handle_change( Model *self, Model *model, int inde
 }
 
 static void _coalescent_model_handle_restore( Model *self, Model *model, int index ){
-	self->restore_listeners->fire_restore( self->restore_listeners, self, index );
+	Coalescent *c = (Coalescent*)self->obj;
+	c->need_update = true;
+	self->listeners->fire_restore( self->listeners, self, index );
 }
 
 Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree){
 	Model* model = new_Model(MODEL_DISTRIBUTION, name, coalescent);
 	for ( int i = 0; i < Parameters_count(coalescent->p); i++ ) {
 		Parameters_at(coalescent->p, i)->listeners->add( Parameters_at(coalescent->p, i)->listeners, model );
-		Parameters_at(coalescent->p, i)->restore_listeners->add( Parameters_at(coalescent->p, i)->restore_listeners, model );
 	}
 	tree->listeners->add( tree->listeners, model );
-	tree->restore_listeners->add( tree->restore_listeners, model );
 	
 	model->logP = _coalescent_model_logP;
 	model->dlogP = _coalescent_model_dlogP;
@@ -393,6 +393,7 @@ double _constant_calculate( Coalescent* coal ){
 		else{
 			_update_intervals2(coal);
 		}
+		coal->need_update = true;
     }
 	if ( coal->need_update ) {
 		coal->logP = 0;

@@ -149,6 +149,7 @@ struct _SingleTreeLikelihood{
 	
 	const double* (*get_root_frequencies)(SingleTreeLikelihood*);
 	double* root_frequencies;
+	bool reparametrized;
 };
 
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm );

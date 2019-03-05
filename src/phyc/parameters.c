@@ -164,7 +164,6 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 	p->estimate = true;
 	p->id = 0;
 	p->listeners = new_ListenerList(1);
-	p->restore_listeners = new_ListenerList(1);
 	p->refCount = 1;
 	return p;
 }
@@ -209,6 +208,7 @@ Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash){
 	for (int i = 0; i < node->child_count; i++) {
 		json_node* child = node->children[i];
 		Parameter* p = new_Parameter_from_json(child, hash);
+		Parameters_move(parameters, p);
 	}
 	return parameters;
 }
@@ -232,7 +232,6 @@ void free_Parameter( Parameter *p ){
 	if(p->refCount == 1){
 		free(p->name);
 		p->listeners->free(p->listeners);
-		p->restore_listeners->free(p->restore_listeners);
 		if( p->cnstr != NULL ) free_Constraint(p->cnstr);
 		free(p);
 	}
@@ -278,7 +277,7 @@ void Parameter_store(Parameter *p){
 void Parameter_restore(Parameter *p){
 	if (p->stored_value != p->value) {
 		p->value = p->stored_value;
-		p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+		p->listeners->fire_restore(p->listeners, NULL, p->id);
 	}
 }
 
@@ -789,7 +788,6 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->free = free_Model;
 	model->data = NULL;
 	model->listeners = new_ListenerList(1);
-	model->restore_listeners = new_ListenerList(1);
 	model->need_update = true;
 	model->clone = NULL;
 	model->get_free_parameters = NULL;
@@ -810,7 +808,6 @@ void free_Model( Model *model ){
 	if(model->ref_count == 1){
 		free(model->name);
 		model->listeners->free(model->listeners);
-		model->restore_listeners->free(model->restore_listeners);
 		free(model);
 	}
 	else{

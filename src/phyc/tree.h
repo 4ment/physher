@@ -99,6 +99,8 @@ void Tree_set_rooted(Tree* tree, bool rooted);
 
 bool Tree_rooted(Tree* tree);
 
+bool Tree_homochronous(Tree* tree);
+
 #pragma mark -
 #pragma mark Height
 void calculate_heights( Tree *tree );

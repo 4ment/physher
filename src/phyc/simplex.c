@@ -157,7 +157,7 @@ static void _simplex_model_handle_change( Model *self, Model *model, int index )
 static void _simplex_model_handle_restore( Model *self, Model *model, int index ){
 	Simplex* simplex = (Simplex*)self->obj;
 	simplex->need_update = true;
-	self->restore_listeners->fire( self->restore_listeners, self, index );
+	self->listeners->fire_restore( self->listeners, self, index );
 }
 
 static void _simplex_model_store(Model* self){
@@ -178,11 +178,11 @@ static void _simplex_model_restore(Model* self){
 			p = Parameters_at(simplex->parameters, i);
 			if (Parameter_changed(p)) {
 				changed = true;
+				Parameter_restore_quietly(p);
 			}
-			Parameter_restore_quietly(p);
 		}
 		if (changed) {
-			p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+			p->listeners->fire_restore(p->listeners, NULL, p->id);
 		}
 	}
 }
@@ -228,7 +228,6 @@ Model * new_SimplexModel( const char* name, Simplex *simplex ){
 	if ( simplex->parameters != NULL ) {
 		for ( i = 0; i < Parameters_count(simplex->parameters); i++ ) {
 			Parameters_at(simplex->parameters, i)->listeners->add( Parameters_at(simplex->parameters, i)->listeners, model );
-			Parameters_at(simplex->parameters, i)->restore_listeners->add( Parameters_at(simplex->parameters, i)->restore_listeners, model );
 		}
 	}
 	

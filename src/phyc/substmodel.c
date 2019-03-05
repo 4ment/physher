@@ -74,7 +74,7 @@ static void _substitution_model_restore(Model* self){
 			Parameter_restore_quietly(p);
 		}
 		if (changed) {
-			p->restore_listeners->fire_restore(p->restore_listeners, NULL, p->id);
+			p->listeners->fire_restore(p->listeners, NULL, p->id);
 		}
 	}
 }
@@ -83,7 +83,7 @@ static void _substitution_model_handle_restore( Model *self, Model *model, int i
 	SubstitutionModel* m = (SubstitutionModel*)self->obj;
 	m->need_update = true;
 	m->dQ_need_update = true;
-	self->restore_listeners->fire_restore( self->restore_listeners, self, index );
+	self->listeners->fire_restore( self->listeners, self, index );
 }
 
 static void _substitution_model_free( Model *self ){
@@ -218,7 +218,6 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 	if ( sm->rates != NULL ) {
 		for ( i = 0; i < Parameters_count(sm->rates); i++ ) {
 			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
-			Parameters_at(sm->rates, i)->restore_listeners->add( Parameters_at(sm->rates, i)->restore_listeners, model );
 		}
 	}
 	
@@ -226,7 +225,6 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 		simplexes[1] = rates_simplex;
 		rates_simplex->ref_count++;
 		rates_simplex->listeners->add( rates_simplex->listeners, model );
-		rates_simplex->restore_listeners->add( rates_simplex->restore_listeners, model );
 	}
 	
 	model->update = _substitution_model_handle_change;
