@@ -321,7 +321,6 @@ void _update_intervals( Coalescent* coal ){
 		coal->times[i] = coal->times[i] - coal->times[i-1];
 		coal->iscoalescent[i] = true;
 		coal->lineages[i] = n+1-i;
-//		printf("%f %f\n", coal->times[i],coal->times[i-1]);
 	}
 	coal->lineages[0] = n+1;
 	coal->iscoalescent[0] = true;
@@ -329,60 +328,76 @@ void _update_intervals( Coalescent* coal ){
 	coal->need_update_intervals = false;
 }
 
-void _update_intervals2( Coalescent* coal ){
-    Node **nodes = Tree_get_nodes(coal->tree, POSTORDER);
-    memset(coal->times, 0, Tree_node_count(coal->tree)*sizeof(double));
-    memset(coal->iscoalescent, 0, Tree_node_count(coal->tree)*sizeof(bool));
-    memset(coal->lineages, 0, Tree_node_count(coal->tree)*sizeof(int));
-    
-    int n = 0;
-    for ( int i = 0; i < Tree_node_count(coal->tree); i++ ) {
-        if( Node_isleaf(nodes[i]) && Node_height(nodes[i]) != 0.0 ){
-            coal->times[n] = Node_height(nodes[i]);
-            n++;
-        }
-    }
-    qsort(coal->times, n, sizeof(double), qsort_asc_dvector);
+// do not change order of nodes
+static void _sort_asc_node_height( Node** nodes, int *order, size_t size ){
 	
-    //print_dvector(coal->times, n);
-
-    int len = Tree_tip_count(coal->tree);
-    n = 1;
-    for ( int i = 1; i < Tree_node_count(coal->tree)-1; i++ ) {
-        if( Node_isleaf(nodes[i]) && Node_height(nodes[i]) != 0.0  ){
-            if( coal->times[n] == coal->times[n-1] ){
-                len--;
-                memmove( coal->times+n, coal->times+n+1, len*sizeof(double) );
-            }
-            else {
-                n++;
-            }
-        }
-    }
-   
-    //print_dvector(coal->times, n);
-
-    for ( int i = 0; i < Tree_node_count(coal->tree); i++ ) {
-        if( !Node_isleaf(nodes[i]) ){
-            coal->times[n] = Node_height(nodes[i]);
-            n++;
-        }
-    }
-    
-    qsort(coal->times, n, sizeof(double), qsort_asc_dvector);
-    //print_dvector(coal->times, n);
+	for ( int i = 0; i < size; i++ ) {
+		order[i] = i;
+	}
 	
-    _post_traversal(Tree_root(coal->tree), 0.0, coal->times[0], &coal->lineages[0], &coal->iscoalescent[0]);
-    for ( int i = 1; i < n; i++ ) {
-        _post_traversal(Tree_root(coal->tree), coal->times[i-1], coal->times[i], &coal->lineages[i], &coal->iscoalescent[i]);
-    }
-    //print_ivector(coal->lineages, n);
+	bool done = false;
+	while ( !done ) {
+		done = true;
+		for ( int i = 0 ; i < size-1 ; i++ ) {
+			if ( Node_height(nodes[order[i]]) > Node_height(nodes[order[i+1]]) ) {
+				done = false;
+				swap_int(&order[i], &order[i+1]);
+			}
+		}
+		size--;
+	}
+}
 
-    for ( int i = n-1; i > 0; i-- ) {
-        coal->times[i] = coal->times[i] - coal->times[i-1];
-    }
-    coal->n = n;
-    coal->need_update_intervals = false;
+void _update_intervals_heterochronous(Coalescent* coal){
+	Node **nodes = Tree_get_nodes(coal->tree, POSTORDER);
+	memset(coal->times, 0, Tree_node_count(coal->tree)*sizeof(double));
+	memset(coal->iscoalescent, 0, Tree_node_count(coal->tree)*sizeof(bool));
+	memset(coal->lineages, 0, Tree_node_count(coal->tree)*sizeof(int));
+	
+	size_t nodeCount = Tree_node_count(coal->tree);
+	int* indices = ivector(nodeCount);
+	
+	_sort_asc_node_height(nodes, indices, nodeCount);
+
+	Node* node = nodes[indices[0]];
+	double start = Node_height(node);
+	int lineageCount = 0;
+	int nodeIndex = 0;
+	int intervalCount = 0;
+	double finish;
+	
+	while (nodeIndex < nodeCount) {
+		node = nodes[indices[nodeIndex]];
+		
+		finish = Node_height(node);
+		nodeIndex++;
+		
+		// sampling event
+		if (Node_isleaf(node)) {
+			if (intervalCount > 0) {
+				coal->times[intervalCount] = finish - start;
+				coal->lineages[intervalCount] = lineageCount;
+				intervalCount++;
+			}
+			start = finish;
+			
+			lineageCount++;
+		}
+		// coalescent event
+		else {
+			coal->times[intervalCount] = finish - start;
+			coal->lineages[intervalCount] = lineageCount;
+			coal->iscoalescent[intervalCount] = true;
+			start = finish;
+			intervalCount++;
+			
+			lineageCount--;
+		}
+	}
+	free(indices);
+	
+	coal->n = intervalCount;
+	coal->need_update_intervals = false;
 }
 
 double _constant_calculate( Coalescent* coal ){
@@ -391,7 +406,7 @@ double _constant_calculate( Coalescent* coal ){
 			_update_intervals(coal);
 		}
 		else{
-			_update_intervals2(coal);
+			_update_intervals_heterochronous(coal);
 		}
 		coal->need_update = true;
     }
