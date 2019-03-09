@@ -70,18 +70,18 @@ static double _coalescent_model_logP(Model *self){
 }
 
 static double _coalescent_model_dlogP(Model *self, const Parameter* p){
-	error("can't do that _coalescent_model_dlogP\n");
-	return 0;
+	Coalescent* mc = (Coalescent*)self->obj;
+	return mc->dlogP(mc, p);
 }
 
 static double _coalescent_model_d2logP(Model *self, const Parameter* p){
-	error("can't do that _coalescent_model_d2logP\n");
-	return 0;
+	Coalescent* mc = (Coalescent*)self->obj;
+	return mc->d2logP(mc, p);
 }
 
 static double _coalescent_model_ddlogP(Model *self, const Parameter* p1, const Parameter* p2){
-	error("can't do that _coalescent_model_ddlogP\n");
-	return 0;
+	Coalescent* mc = (Coalescent*)self->obj;
+	return mc->ddlogP(mc, p1, p2);
 }
 
 static void _coalescent_model_free( Model *self ){
@@ -197,6 +197,17 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		Hashtable_add(hash, Parameters_name(ps, 0), Parameters_at(ps, 0));
 		free_Parameters(ps);
 	}
+	else if(strcasecmp(model, "exponential") == 0){
+		Parameters* ps = new_Parameters(2);
+		get_parameters_references(node, hash, ps);
+		if (strcasecmp(Parameters_name(ps, 0), "n0") != 0) {
+			Parameters_swap_index(ps, 0, 1);
+		}
+		c = new_ExponentialCoalescent_with_parameters(mtree->obj, ps);
+		Hashtable_add(hash, Parameters_name(ps, 0), Parameters_at(ps, 0));
+		Hashtable_add(hash, Parameters_name(ps, 1), Parameters_at(ps, 1));
+		free_Parameters(ps);
+	}
 	else{
 		fprintf(stderr, "BranchModel type unknown %s\n", model);
 		exit(1);
@@ -209,15 +220,15 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 }
 
 void free_Coalescent( Coalescent *coalescent ){
-
-    switch ( coalescent->type ) {
-        case CONSTANT_DEMOGRAPHY:{
-            free_ConstantCoalescent(coalescent);
-            break;
-        }
-        default:
-            assert(0);
-    }
+	free_Parameters(coalescent->p);
+	free(coalescent->lineages);
+	free(coalescent->nodes);
+	free(coalescent->times);
+	free(coalescent->iscoalescent);
+	free(coalescent->stored_lineages);
+	free(coalescent->stored_times);
+	free(coalescent->stored_iscoalescent);
+	free(coalescent);
 }
 
 #pragma mark -
@@ -225,6 +236,63 @@ void free_Coalescent( Coalescent *coalescent ){
 
 static double _constant_calculate( Coalescent* coal );
 static void _update_intervals( Coalescent* coal );
+static void _update_intervals_heterochronous( Coalescent* coal );
+
+double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
+	if(p != Parameters_at(coal->p, 0)) return 0;
+	if ( coal->need_update_intervals ) {
+		if(Tree_homochronous(coal->tree)){
+			_update_intervals(coal);
+		}
+		else{
+			_update_intervals_heterochronous(coal);
+		}
+		coal->need_update = true;
+	}
+	double theta = Parameters_value(coal->p, 0);
+	double theta2 = theta*theta;
+	double dlogP = 0.0;
+	for( int i = 0; i< coal->n; i++  ){
+		dlogP += choose(coal->lineages[i], 2) * coal->times[i] /theta2;
+		
+		if( coal->iscoalescent[i] ){
+			dlogP -= 1.0/theta;
+		}
+		
+	}
+	return dlogP;
+}
+
+double _constant_calculate_d2logP( Coalescent* coal, const Parameter* p ){
+	if(p != Parameters_at(coal->p, 0)) return 0;
+	if ( coal->need_update_intervals ) {
+		if(Tree_homochronous(coal->tree)){
+			_update_intervals(coal);
+		}
+		else{
+			_update_intervals_heterochronous(coal);
+		}
+		coal->need_update = true;
+	}
+	double theta = Parameters_value(coal->p, 0);
+	double theta2 = theta*theta;
+	double theta3 = theta2*theta;
+	double d2logP = 0.0;
+	for( int i = 0; i< coal->n; i++  ){
+		d2logP -= choose(coal->lineages[i], 2) * coal->times[i] *2.0/theta3;
+		
+		if( coal->iscoalescent[i] ){
+			d2logP += 1.0/theta2;
+		}
+		
+	}
+	return d2logP;
+}
+
+double _constant_calculate_ddlogP( Coalescent* coal, const Parameter* p1, const Parameter* p2 ){
+	if( p1 == p2 && p1 == Parameters_at(coal->p, 0) ) return _constant_calculate_d2logP(coal, p1);
+	return 0.0;
+}
 
 Coalescent * new_ConstantCoalescent_with_parameter( Tree *tree, Parameter* theta ){
 	Coalescent *coal = (Coalescent*)malloc(sizeof(Coalescent));
@@ -234,6 +302,9 @@ Coalescent * new_ConstantCoalescent_with_parameter( Tree *tree, Parameter* theta
 	coal->tree = tree;
 	coal->type = CONSTANT_DEMOGRAPHY;
 	coal->calculate = _constant_calculate;
+	coal->dlogP = _constant_calculate_dlogP;
+	coal->d2logP = _constant_calculate_d2logP;
+	coal->ddlogP = _constant_calculate_ddlogP;
 	coal->lineages = ivector(Tree_node_count(tree));
 	coal->times = dvector(Tree_node_count(tree));
 	coal->nodes = ivector(Tree_node_count(tree));
@@ -247,62 +318,6 @@ Coalescent * new_ConstantCoalescent_with_parameter( Tree *tree, Parameter* theta
 	return coal;
 }
 
-void free_ConstantCoalescent( Coalescent *coal ){
-	free_Parameters(coal->p);
-	free(coal->lineages);
-	free(coal->nodes);
-	free(coal->times);
-    free(coal->iscoalescent);
-	free(coal->stored_lineages);
-	free(coal->stored_times);
-	free(coal->stored_iscoalescent);
-	free(coal);
-}
-
-double get_demographic_constant( const Coalescent *coal, double time ){
-	return Parameters_value(coal->p, 0);
-}
-
-double get_intensity_constant( const Coalescent *coal, double time ){
-	return time/Parameters_value(coal->p, 0);
-}
-
-void _post_traversal( Node *node, double lower, double upper, int *lineages, bool *iscoalescent ){
-    if( node == NULL ){
-        return;
-    }
-    _post_traversal(node->left, lower, upper, lineages, iscoalescent);
-    _post_traversal(node->right, lower, upper, lineages, iscoalescent);
-    
-    if( !Node_isleaf(node) && Node_height(node) >= upper ){
-        if( Node_height( Node_left(node) ) <= lower ){
-            //fprintf(stderr, "%s %f %f\n", Node_name(Node_left(node)), Node_height( Node_left(node) ) , lower);
-            (*lineages)++;
-        }
-        if( Node_height( Node_right(node) ) <=lower ){
-            //fprintf(stderr, "%s %f %f\n", Node_name(Node_right(node)), Node_height( Node_right(node) ) , lower);
-            (*lineages)++;
-        }
-        if( Node_height(node) == upper ){
-            *iscoalescent = true;
-        }
-    }
-}
-
-static void _sort_ascending_time( double *times, int *map, int size ){
-	bool done = false;
-	while ( !done ) {
-		done = true;
-		for ( int i = 0 ; i < size-1 ; i++ ) {
-			if ( times[i] > times[i+1] ) {
-				done = false;
-				dswap(&times[i], &times[i+1]);
-				swap_int(&map[i], &map[i+1]);
-			}
-		}
-		size--;
-	}
-}
 void _update_intervals( Coalescent* coal ){
 	int nodeCount = Tree_node_count(coal->tree);
 	int internalCount = nodeCount - Tree_tip_count(coal->tree);
@@ -315,7 +330,7 @@ void _update_intervals( Coalescent* coal ){
 			n++;
 		}
 	}
-	_sort_ascending_time(coal->times, coal->nodes, n);
+	sort_asc_dvector(coal->times, coal->nodes, n);
 	
 	for ( int i = n-1; i > 0; i-- ) {
 		coal->times[i] = coal->times[i] - coal->times[i-1];
@@ -355,11 +370,10 @@ void _update_intervals_heterochronous(Coalescent* coal){
 	memset(coal->lineages, 0, Tree_node_count(coal->tree)*sizeof(int));
 	
 	size_t nodeCount = Tree_node_count(coal->tree);
-	int* indices = ivector(nodeCount);
 	
-	_sort_asc_node_height(nodes, indices, nodeCount);
+	_sort_asc_node_height(nodes, coal->nodes, nodeCount);
 
-	Node* node = nodes[indices[0]];
+	Node* node = nodes[coal->nodes[0]];
 	double start = Node_height(node);
 	int lineageCount = 0;
 	int nodeIndex = 0;
@@ -367,7 +381,7 @@ void _update_intervals_heterochronous(Coalescent* coal){
 	double finish;
 	
 	while (nodeIndex < nodeCount) {
-		node = nodes[indices[nodeIndex]];
+		node = nodes[coal->nodes[nodeIndex]];
 		
 		finish = Node_height(node);
 		nodeIndex++;
@@ -394,7 +408,6 @@ void _update_intervals_heterochronous(Coalescent* coal){
 			lineageCount--;
 		}
 	}
-	free(indices);
 	
 	coal->n = intervalCount;
 	coal->need_update_intervals = false;
@@ -413,13 +426,14 @@ double _constant_calculate( Coalescent* coal ){
 	if ( coal->need_update ) {
 		coal->logP = 0;
 		double theta = Parameters_value(coal->p, 0);
+		double logTheta = log(theta);
 	 
 		for( int i = 0; i< coal->n; i++  ){
 			double lambda = choose(coal->lineages[i], 2)/theta;
 			coal->logP -= lambda * coal->times[i];
 			
 			if( coal->iscoalescent[i] ){
-				coal->logP -= log(theta);
+				coal->logP -= logTheta;
 			}
 			
 		}
@@ -428,30 +442,215 @@ double _constant_calculate( Coalescent* coal ){
     return coal->logP;
 }
 
+#pragma mark -
+#pragma mark Exponential coalescent
 
-exponentialdemography * new_exponentialdemography( double n0, double r ){
-	exponentialdemography *cd = (exponentialdemography*)malloc(sizeof(exponentialdemography));	
-	assert(cd);
-    cd->name = String_clone("exponential.demography");	
-	cd->type = CONSTANT_DEMOGRAPHY;
-	cd->n0 = n0;
-	cd->r = r;
-	cd->lower = 0;
-	cd->upper = INFINITY;
-	return cd;
+double _coalescent_exponential_calculate( Coalescent* coal ){
+	if ( coal->need_update_intervals ) {
+		if(Tree_homochronous(coal->tree)){
+			_update_intervals(coal);
+		}
+		else{
+			_update_intervals_heterochronous(coal);
+		}
+		coal->need_update = true;
+	}
+	if ( coal->need_update ) {
+		coal->logP = 0;
+		double n0 = Parameters_value(coal->p, 0);
+		double rate = Parameters_value(coal->p, 1);
+		double start = 0;
+		double logN0 = log(n0);
+		double n0rate = n0*rate;
+		
+		for( int i = 0; i< coal->n; i++  ){
+			double finish = start + coal->times[i];
+			double integral;
+			if(rate == 0.0){
+				integral = (finish - start)/n0;
+			}
+			else{
+				integral = (exp(finish*rate) - exp(start*rate))/n0rate;
+			}
+			
+			coal->logP -= choose(coal->lineages[i], 2)*integral;
+			
+			if( coal->iscoalescent[i] ){
+				// coal->logP -= log(n0*exp( -finish * rate));
+				coal->logP -= logN0;
+				if (rate != 0.0) {
+					coal->logP += finish*rate;
+				}
+			}
+			start = finish;
+		}
+		coal->need_update = false;
+	}
+	return coal->logP;
 }
 
-void free_exponentialdemography( exponentialdemography *demo ){
-	free(demo->name);
-	free(demo);
+double _coalescent_exponential_dlogP( Coalescent* coal, const Parameter* p ){
+	if(p != Parameters_at(coal->p, 0) && p != Parameters_at(coal->p, 1)) return 0;
+	
+	if ( coal->need_update_intervals ) {
+		if(Tree_homochronous(coal->tree)){
+			_update_intervals(coal);
+		}
+		else{
+			_update_intervals_heterochronous(coal);
+		}
+		coal->need_update = true;
+	}
+	
+	double dlogP = 0;
+	double n0 = Parameters_value(coal->p, 0);
+	double rate = Parameters_value(coal->p, 1);
+	double start = 0;
+	double n02 = n0*n0;
+	double rate2 = rate*rate;
+	
+	for( int i = 0; i< coal->n; i++  ){
+		double finish = start + coal->times[i];
+		double integral;
+		if(rate == 0.0){
+			if(Parameters_at(coal->p, 0) == p){
+				integral = -(finish - start)/n02;
+				dlogP -= choose(coal->lineages[i], 2)*integral;
+			}
+		}
+		else{
+			if(Parameters_at(coal->p, 0) == p){
+				integral = -(exp(finish*rate) - exp(start*rate))/n02/rate;
+			}
+			else{
+				integral = (exp(finish*rate)*(finish*rate -1.0) + exp(start*rate)*(1.0 - start*rate))/rate2/n0;
+			}
+			dlogP -= choose(coal->lineages[i], 2)*integral;
+		}
+		
+		
+		if( coal->iscoalescent[i] ){
+			if(Parameters_at(coal->p, 0) == p){
+				dlogP -= 1.0/n0;
+			}
+			else{
+				dlogP += finish;
+			}
+		}
+		start = finish;
+	}
+	
+	return dlogP;
 }
 
-double get_demographic_exp( exponentialdemography * demo, double time ){
-	if( demo->r == 0. ) return demo->n0;
-	else return demo->n0 * exp( -time * demo->r);
+double _coalescent_exponential_d2logP( Coalescent* coal, const Parameter* p ){
+	if(p != Parameters_at(coal->p, 0) && p != Parameters_at(coal->p, 1)) return 0;
+	
+	if ( coal->need_update_intervals ) {
+		if(Tree_homochronous(coal->tree)){
+			_update_intervals(coal);
+		}
+		else{
+			_update_intervals_heterochronous(coal);
+		}
+		coal->need_update = true;
+	}
+	
+	double d2logP = 0;
+	double n0 = Parameters_value(coal->p, 0);
+	double rate = Parameters_value(coal->p, 1);
+	double start = 0;
+	double n02 = n0*n0;
+	double n03 = n02*n0;
+	double rate2 = rate*rate;
+	double rate3 = rate2*rate;
+	
+	for( int i = 0; i< coal->n; i++  ){
+		double finish = start + coal->times[i];
+		double integral;
+		if(rate == 0.0){
+			if(Parameters_at(coal->p, 0) == p){
+				integral = (finish - start)*2.0/n03;
+				d2logP -= choose(coal->lineages[i], 2)*integral;
+			}
+		}
+		else{
+			if(Parameters_at(coal->p, 0) == p){
+				integral = (exp(finish*rate) - exp(start*rate))*2.0/n03/rate;
+			}
+			else{
+				integral = (finish*finish*rate2*exp(finish*rate) - 2.0*finish*rate*exp(finish*rate) + 2.0*exp(finish*rate) - start*start*rate2*exp(start*rate) + 2.0*start*rate*exp(start*rate) - (2.0*exp(start*rate)))/rate3/n0;
+			}
+			d2logP -= choose(coal->lineages[i], 2)*integral;
+		}
+		
+		
+		if( coal->iscoalescent[i] ){
+			if(Parameters_at(coal->p, 0) == p){
+				d2logP += -2.0/n03;
+			}
+		}
+		start = finish;
+	}
+	
+	return d2logP;
 }
 
-double get_intensity_exp( exponentialdemography * demo, double time ){
-	if( demo->r == 0. ) return time/demo->n0;
-	else return exp( time * demo->r)/demo->n0/demo->r;
+double _coalescent_exponential_ddlogP( Coalescent* coal, const Parameter* p1, const Parameter* p2 ){
+	if(p1 == p2 && p1 == Parameters_at(coal->p, 0)) return _coalescent_exponential_d2logP(coal, p1);
+	if(Parameters_value(coal->p, 1) == 0.0 ||
+	   !((p1 == Parameters_at(coal->p, 0) && p2 ==Parameters_at(coal->p, 1)) ||
+		 (p1 == Parameters_at(coal->p, 1) && p2 ==Parameters_at(coal->p, 0))) ) return 0;
+	
+	if ( coal->need_update_intervals ) {
+		if(Tree_homochronous(coal->tree)){
+			_update_intervals(coal);
+		}
+		else{
+			_update_intervals_heterochronous(coal);
+		}
+		coal->need_update = true;
+	}
+	
+	double ddlogP = 0;
+	double n0 = Parameters_value(coal->p, 0);
+	double rate = Parameters_value(coal->p, 1);
+	double start = 0;
+	double n02 = n0*n0;
+	double rate2 = rate*rate;
+	
+	for( int i = 0; i< coal->n; i++  ){
+		double finish = start + coal->times[i];
+		double integral = -(exp(finish*rate)*(finish*rate - 1.0) + exp(start*rate)*(1.0 - start*rate))/rate2/n02;
+		
+		ddlogP -= choose(coal->lineages[i], 2)*integral;
+		start = finish;
+	}
+	
+	return ddlogP;
+}
+
+Coalescent * new_ExponentialCoalescent_with_parameters( Tree *tree, Parameters* parameters ){
+	Coalescent *coal = (Coalescent*)malloc(sizeof(Coalescent));
+	assert(coal);
+	coal->p = new_Parameters(2);
+	Parameters_add(coal->p, Parameters_at(parameters, 0));
+	Parameters_add(coal->p, Parameters_at(parameters, 1));
+	coal->tree = tree;
+	coal->type = EXP_DEMOGRAPHY;
+	coal->calculate = _coalescent_exponential_calculate;
+	coal->dlogP = _coalescent_exponential_dlogP;
+	coal->d2logP = _coalescent_exponential_d2logP;
+	coal->ddlogP = _coalescent_exponential_ddlogP;
+	coal->lineages = ivector(Tree_node_count(tree));
+	coal->times = dvector(Tree_node_count(tree));
+	coal->nodes = ivector(Tree_node_count(tree));
+	coal->stored_lineages = ivector(Tree_node_count(tree));
+	coal->stored_times = dvector(Tree_node_count(tree));
+	coal->iscoalescent = bvector(Tree_node_count(tree));
+	coal->stored_iscoalescent = bvector(Tree_node_count(tree));
+	coal->n = Tree_node_count(tree);
+	coal->need_update_intervals = true;
+	coal->need_update = true;
+	return coal;
 }

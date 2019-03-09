@@ -36,20 +36,15 @@ typedef struct Coalescent{
 	int* nodes; // indexes of nodes corresponding to interval
     bool *iscoalescent;
 	bool *stored_iscoalescent;
-    int n;
-    double (*calculate)( struct Coalescent* );
+	int n;
+	double (*calculate)( struct Coalescent* );
+	double (*dlogP)( struct Coalescent*, const Parameter* );
+	double (*d2logP)( struct Coalescent*, const Parameter* );
+	double (*ddlogP)( struct Coalescent*, const Parameter*, const Parameter* );
     bool need_update;
 	bool need_update_intervals;
 }Coalescent;
 
-typedef struct exponentialdemography{
-	demography type;
-	char *name;
-	double n0;
-	double lower;
-	double upper;
-	double r;
-}exponentialdemography;
 
 #pragma mark Coalescent
 
@@ -62,9 +57,13 @@ void free_Coalescent( Coalescent *coalescent );
 
 Coalescent * new_ConstantCoalescent_with_parameter( Tree *tree, Parameter* theta );
 
-void free_ConstantCoalescent( Coalescent *coal );
 
 Coalescent * clone_ConstantCoalescent( const Coalescent *coal, Tree *tree );
+
+#pragma mark -
+#pragma mark Constant coalescent
+
+Coalescent * new_ExponentialCoalescent_with_parameters( Tree *tree, Parameters* parameters );
 
 
 #endif
