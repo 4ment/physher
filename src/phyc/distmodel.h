@@ -27,7 +27,21 @@ typedef enum distribution_parametrization{
 	DISTRIBUTION_NORMAL_MEAN_TAU
 }distribution_parameterization;
 
+typedef enum distribution_t{
+	DISTRIBUTION_BETA,
+	DISTRIBUTION_BETA_PRIME,
+	DISTRIBUTION_DIRICHLET,
+	DISTRIBUTION_EXPONENTIAL,
+	DISTRIBUTION_GAMMA,
+	DISTRIBUTION_LOGNORMAL,
+	DISTRIBUTION_NORMAL,
+	DISTRIBUTION_NORMAL_MULTIVARIATE,
+	DISTRIBUTION_ONE_ON_X,
+	DISTRIBUTION_UNIFORM
+}distribution_t;
+
 struct _DistributionModel{
+	distribution_t type;
 	Parameters* parameters;
 	Parameters* x;
 	Simplex* simplex;
