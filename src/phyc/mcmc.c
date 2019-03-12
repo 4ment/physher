@@ -16,6 +16,16 @@
 #include "compoundmodel.h"
 #include "treelikelihood.h"
 
+bool mcmc_interrupted = false;
+
+void mcmc_signal_callback_handler( int signum ) {
+	printf("Caught signal %d\n",signum);
+	if ( mcmc_interrupted == true ) {
+		exit(SIGINT);
+	}
+	mcmc_interrupted = true;
+}
+
 static double  _calculate_logP(MCMC* mcmc){
 	Model* model = mcmc->model;
 	double logP = 0;
@@ -47,6 +57,11 @@ static double  _calculate_logP(MCMC* mcmc){
 }
 
 void run(MCMC* mcmc){
+	if (mcmc->interruptible) {
+		signal(SIGINT, mcmc_signal_callback_handler);
+		mcmc_interrupted = false;
+	}
+	
 	Model* model = mcmc->model;
 	
 	size_t iter = 0;
@@ -120,6 +135,9 @@ void run(MCMC* mcmc){
 				mcmc->logs[i]->write(mcmc->logs[i], iter);
 			}
 		}
+		if(mcmc->interruptible && mcmc_interrupted){
+			break;
+		}
 	}
 	
 	for (int i = 0; i < mcmc->log_count; i++) {
@@ -136,6 +154,9 @@ void run(MCMC* mcmc){
 	}
 	free(weights);
 	free_StringBuffer(buffer);
+	if (mcmc->interruptible) {
+		signal(SIGINT, SIG_DFL);// restore the default handler
+	}
 }
 
 void _free_MCMC(MCMC* mcmc){
@@ -154,6 +175,7 @@ void _free_MCMC(MCMC* mcmc){
 MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
 		"bf",
+		"interruptible",
 		"generalized",
 		"length",
 		"log",
@@ -173,6 +195,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	mcmc->chain_length = get_json_node_value_size_t(node, "length", 100000);
 	mcmc->tuning_frequency = get_json_node_value_size_t(node, "tuningfrequency", 1);
 	mcmc->verbose = get_json_node_value_int(node, "verbose", 1);
+	mcmc->interruptible = get_json_node_value_bool(node, "interruptible", true);
 	mcmc->run = run;
 	
 	if (ops->child_count == 0) {
