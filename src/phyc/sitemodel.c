@@ -271,8 +271,10 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			if(strcasecmp(p_node->key, "invariant") == 0){
 				invariant = true;
 			}
+			else{
+				check_constraint(p, 0, INFINITY, 0.001, 100);
+			}
 		}
-		check_constraints(rates, 0, INFINITY, 0.001, 100);
 	}
 	
 	for (int i = 0; i < Parameters_count(rates); i++) {
@@ -633,11 +635,11 @@ void _invariant( SiteModel *sm ) {
     
     double propVariable = 1.0;
     int cat = 0;
-    
+	
     // there is also invariant sites
     if ( Parameters_count(sm->rates) > 0 ){
-        sm->cat_rates[0] = 0.0;
-        sm->cat_proportions[0] = Parameters_value(sm->rates, 1);
+		sm->cat_rates[0] = 0.0;
+        sm->cat_proportions[0] = Parameters_value(sm->rates, 0);
         
         propVariable = 1.0 - sm->cat_proportions[0];
         cat = 1;
