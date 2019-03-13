@@ -23,6 +23,8 @@ struct _DistributionModel;
 typedef struct _DistributionModel DistributionModel;
 
 typedef enum distribution_parametrization{
+	DISTRIBUTION_GAMMA_SHAPE_RATE,
+	DISTRIBUTION_GAMMA_SHAPE_SCALE,
 	DISTRIBUTION_NORMAL_MEAN_SIGMA,
 	DISTRIBUTION_NORMAL_MEAN_TAU
 }distribution_parameterization;
@@ -62,6 +64,7 @@ struct _DistributionModel{
 	bool need_update;
 	distribution_parameterization parameterization;
 	gsl_rng* rng;
+	double shift;
 };
 
 

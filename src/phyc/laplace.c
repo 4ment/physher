@@ -16,6 +16,7 @@
 #include "matrix.h"
 #include "utils.h"
 #include "optimize.h"
+#include "compoundmodel.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_sf_gamma.h>
@@ -122,6 +123,60 @@ double calculate_laplace_beta(Laplace* laplace){
 			Parameters_set_value(dm->parameters, i*2+1, beta);
 		}
 	}
+	return logP;
+}
+
+double calculate_laplace_beta2(Laplace* laplace, DistributionModel* dm){
+	/*
+	 a = m*m/(1-m)/(1-m)
+	 b = 1 - m*m*f''(m)
+	 c = 1 - m
+	 d = 2*m - 1
+	 x = (b*c + d)/m
+	 beta = (a*c - x*m)/(a*c - m)
+	 alpha = (beta - 1)*a + b
+	 */
+	
+	Model* posterior = laplace->model;
+	double logP = 0;//posterior->logP(posterior);
+	Parameters* parameters = dm->x;
+	
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameter* parameter = Parameters_at(parameters, i);
+		printf("beta %s\n",parameter->name);
+		double map = Parameter_value(parameter);
+		double dlogP;// = posterior->dlogP(laplace->model, parameter);
+		double d2logP = Model_second_derivative(posterior, parameter, &dlogP, 1e-5);// posterior->d2logP(laplace->model, parameter);
+		double a = map*map/(1.0 - map)/(1.0 - map);
+		double b = 1.0 - map*map*d2logP;
+		double c = 1.0 - map;
+		double d = 2.0*map - 1.0;
+		double x = (b*c + d)/map;
+		double beta = (a*c - x*map)/(a*c - map);
+		double alpha = (beta - 1.0)*a + b;
+		
+		// should handle small values B(alpha, 1) (exponential shape)
+		// should handle large values B(1, Beta) (mirror-image exponential shape)
+		// check that we don't get alpha <= 1 or beta <= 1
+		
+		if (map < 1.e-6) {
+			
+		}
+		else if (1.0-map < 1.e-6) {
+			
+		}
+		if (alpha <= 1 || beta <=1 ) {
+			
+		}
+		
+		logP -= log(gsl_ran_beta_pdf(map, alpha, beta));
+		
+		Parameters_set_value(dm->parameters, i*2, alpha);
+		Parameters_set_value(dm->parameters, i*2+1, beta);
+//		printf("map: %f dlogP: %f d2logP: %f [%f,%f]\n",map, dlogP, d2logP, alpha, beta);
+	}
+	
+	printf("Beta Laplace: %f\n", logP);
 	return logP;
 }
 
@@ -247,9 +302,151 @@ double calculate_laplace_gamma(Laplace* laplace){
 		logP -= log(gsl_ran_gamma_pdf(map, shape, 1.0/rate));
 		
 		if(dm != NULL){
+			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_SCALE) {
+				rate = 1.0/rate;
+			}
 			Parameters_set_value(dm->parameters, i*2, shape);
 			Parameters_set_value(dm->parameters, i*2+1, rate);
 		}
+	}
+	
+	free(x);
+	free(y);
+	free(yy);
+	
+	printf("Gamma Laplace: %f\n", logP);
+	return logP;
+}
+
+double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
+	// beta = rate = -f''(m) * m
+	// alpha = shape = rate * m + 1
+	Model* posterior = laplace->model;
+	Parameters* parameters = dm->x;
+	
+	int N = 10;
+	double* x = calloc(N, sizeof(double));
+	double* y = calloc(N, sizeof(double));
+	double* yy = calloc(N, sizeof(double));
+	
+	double logP = 0;
+	posterior->logP(posterior);// initialize
+	
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameter* parameter = Parameters_at(parameters, i);
+		printf("gamma %s\n",parameter->name);
+		double map_orig = Parameter_value(parameter);
+		double map = map_orig - dm->shift;
+		double dlogP;
+		double d2logP = posterior->d2logP(posterior, parameter);
+//		double d2logP = Model_second_derivative(posterior, parameter, &dlogP, 1e-5);
+		double rate = map * -d2logP;
+		double shape = rate*map + 1;
+		
+		// Very small branch -> exponential shape
+		if (map < 1.e-6 || d2logP >= 0) {
+			double dlogP = posterior->dlogP(posterior, parameter);
+			shape = 1;
+			rate = fabs(dlogP);
+			
+			log_spaced_spaced_vector2(x, map, 0.5, N);
+			
+			for (size_t j = 1; j < N; j++) {
+				Parameter_set_value(parameter, x[j] + dm->shift);
+				y[j] = posterior->logP(posterior);
+			}
+			Parameter_set_value(parameter, map_orig);
+			y[0] = posterior->logP(posterior);
+			
+			double maxY = y[0];
+			for (int j = 0; j < N; j++) {
+				y[j] -= maxY;
+			}
+			double lower = 0.001;
+			double upper = 1;
+			double guess = 1.0 - 0.001;
+			Parameters* ps = new_Parameters(1);
+			Parameters_move(ps, new_Parameter("", guess, new_Constraint(lower, upper)));
+			
+			struct laplace_data_t data = {rate, x, y, yy, N};
+			double fx = _func_gamma_fixed_shape(ps, NULL, &data);
+			
+			Parameters_set_value(ps, 0, lower);
+			double fa = _func_gamma_fixed_shape(ps, NULL, &data);
+			Parameters_set_value(ps, 0, upper);
+			double fb = _func_gamma_fixed_shape(ps, NULL, &data);
+			Parameters_set_value(ps, 0, guess);
+			
+			if(fa > fx && fx < fb){
+				Optimizer* opt = new_Optimizer(OPT_BRENT);
+				opt_set_data(opt, &data);
+				opt_set_objective_function(opt, _func_gamma_fixed_shape);
+				opt_set_parameters(opt, ps);
+				double min;
+				opt_optimize(opt, ps, &min);
+				
+				shape = Parameters_value(ps, 0);
+				
+				free_Optimizer(opt);
+			}
+			free_Parameters(ps);
+		}
+		// Small branch with a maximum and spurious large variance
+		else if(shape/(rate*rate) > 0.1 && map < 0.0001){
+			dlogP = posterior->dlogP(posterior, parameter);
+			shape = 1;
+			rate = fabs(dlogP);
+			
+			log_spaced_spaced_vector2(x, map, 0.5, N);
+			
+			for (size_t j = 1; j < N; j++) {
+				Parameter_set_value(parameter, x[j] + dm->shift);
+				y[j] = posterior->logP(posterior);
+			}
+			Parameter_set_value(parameter, map_orig);
+			y[0] = posterior->logP(posterior);
+			
+			double maxY = y[0];
+			for (int j = 0; j < N; j++) {
+				y[j] -= maxY;
+			}
+			
+			double guess = 1.0 + 0.001;
+			Parameters* ps = new_Parameters(1);
+			Parameters_move(ps, new_Parameter("", guess, new_Constraint(1, 100)));
+			
+			struct laplace_data_t data = {map, x, y, yy, N};
+			double fx = _func_gamma_fixed_mode(ps, NULL, &data);
+			
+			Parameters_set_value(ps, 0, 1);
+			double fa = _func_gamma_fixed_mode(ps, NULL, &data);
+			Parameters_set_value(ps, 0, 100);
+			double fb = _func_gamma_fixed_mode(ps, NULL, &data);
+			Parameters_set_value(ps, 0, guess);
+			
+			if(fa > fx && fx < fb){
+				Optimizer* opt = new_Optimizer(OPT_BRENT);
+				opt_set_data(opt, &data);
+				opt_set_objective_function(opt, _func_gamma_fixed_mode);
+				opt_set_parameters(opt, ps);
+				double min;
+				opt_optimize(opt, ps, &min);
+				
+				shape = Parameters_value(ps, 0);
+				rate = (shape - 1)/map;
+				
+				free_Optimizer(opt);
+			}
+			free_Parameters(ps);
+		}
+		printf("map: %f dlogP: %e d2logP: %f [%f,%f]\n",map, dlogP, d2logP, shape, rate);
+
+		Parameters_set_value(dm->parameters, i*2, shape);
+		if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_SCALE) {
+			rate = 1.0/rate;
+		}
+		Parameters_set_value(dm->parameters, i*2+1, rate);
+		logP -= log(gsl_ran_gamma_pdf(map, shape, rate));
 	}
 	
 	free(x);
@@ -458,6 +655,142 @@ double calculate_laplace_lognormal(Laplace* laplace){
 	return logP;
 }
 
+
+double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
+	//	sigma = sqrt(-1/(f''(m)*m^2))
+	//	mu    = log(m)+sigma^2
+	Model* posterior = laplace->model;
+	Parameters* parameters = dm->parameters;
+	double logP = 0;
+	posterior->logP(posterior);
+	int N = 10;
+	double* x = calloc(N, sizeof(double));
+	double* y = calloc(N, sizeof(double));
+	double* yy = calloc(N, sizeof(double));
+	
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameter* parameter = Parameters_at(parameters, i);
+		double map = Parameter_value(parameter);
+		double d2logP = posterior->d2logP(posterior, parameter);
+		
+		double sigma = sqrt(-1.0/(d2logP*map*map));
+		double mu = log(map) + sigma*sigma;
+		if (map < 1.e-6 || d2logP >= 0 || mu > 5) {
+			double rate = map * -d2logP;
+			double shape = rate*map + 1;
+			// Very small branch -> exponential shape
+			if (map < 1.e-6 || d2logP >= 0) {
+				double dlogP = posterior->dlogP(posterior, parameter);
+				shape = 1;
+				rate = fabs(dlogP);
+				
+				log_spaced_spaced_vector2(x, map, 0.5, N);
+				
+				for (size_t j = 1; j < N; j++) {
+					Parameter_set_value(parameter, x[j]);
+					y[j] = posterior->logP(posterior);
+				}
+				Parameter_set_value(parameter, map);
+				y[0] = posterior->logP(posterior);
+				
+				double maxY = y[0];
+				for (int j = 0; j < N; j++) {
+					y[j] -= maxY;
+				}
+				double lower = 0.001;
+				double upper = 1;
+				double guess = 1.0 - 0.001;
+				Parameters* ps = new_Parameters(1);
+				Parameters_move(ps, new_Parameter("", guess, new_Constraint(lower, upper)));
+				
+				struct laplace_data_t data = {rate, x, y, yy, N};
+				double fx = _func_gamma_fixed_shape(ps, NULL, &data);
+				
+				Parameters_set_value(ps, 0, lower);
+				double fa = _func_gamma_fixed_shape(ps, NULL, &data);
+				Parameters_set_value(ps, 0, upper);
+				double fb = _func_gamma_fixed_shape(ps, NULL, &data);
+				Parameters_set_value(ps, 0, guess);
+				
+				if(fa > fx && fx < fb){
+					Optimizer* opt = new_Optimizer(OPT_BRENT);
+					opt_set_data(opt, &data);
+					opt_set_objective_function(opt, _func_gamma_fixed_shape);
+					opt_set_parameters(opt, ps);
+					double min;
+					opt_optimize(opt, ps, &min);
+					
+					shape = Parameters_value(ps, 0);
+					
+					free_Optimizer(opt);
+				}
+				free_Parameters(ps);
+			}
+			// Small branch with a maximum and spurious large variance
+			else if(shape/(rate*rate) > 0.1 && map < 0.0001){
+				double dlogP = posterior->dlogP(posterior, parameter);
+				shape = 1;
+				rate = fabs(dlogP);
+				
+				log_spaced_spaced_vector2(x, map, 0.5, N);
+				
+				for (size_t j = 1; j < N; j++) {
+					Parameter_set_value(parameter, x[j]);
+					y[j] = posterior->logP(posterior);
+				}
+				Parameter_set_value(parameter, map);
+				y[0] = posterior->logP(posterior);
+				
+				double maxY = y[0];
+				for (int j = 0; j < N; j++) {
+					y[j] -= maxY;
+				}
+				
+				double guess = 1.0 + 0.001;
+				Parameters* ps = new_Parameters(1);
+				Parameters_move(ps, new_Parameter("", guess, new_Constraint(1, 100)));
+				
+				struct laplace_data_t data = {map, x, y, yy, N};
+				double fx = _func_gamma_fixed_mode(ps, NULL, &data);
+				
+				Parameters_set_value(ps, 0, 1);
+				double fa = _func_gamma_fixed_mode(ps, NULL, &data);
+				Parameters_set_value(ps, 0, 100);
+				double fb = _func_gamma_fixed_mode(ps, NULL, &data);
+				Parameters_set_value(ps, 0, guess);
+				
+				if(fa > fx && fx < fb){
+					Optimizer* opt = new_Optimizer(OPT_BRENT);
+					opt_set_data(opt, &data);
+					opt_set_objective_function(opt, _func_gamma_fixed_mode);
+					opt_set_parameters(opt, ps);
+					double min;
+					opt_optimize(opt, ps, &min);
+					
+					shape = Parameters_value(ps, 0);
+					rate = (shape - 1)/map;
+					
+					free_Optimizer(opt);
+				}
+				free_Parameters(ps);
+			}
+			logP -= log(gsl_ran_gamma_pdf(map, shape, 1.0/rate));
+			continue;
+		}
+		logP -= log(gsl_ran_lognormal_pdf(map, mu, sigma));
+		
+		Parameters_set_value(dm->parameters, i*2, mu);
+		Parameters_set_value(dm->parameters, i*2+1, sigma);
+	}
+	
+	free(x);
+	free(y);
+	free(yy);
+	
+	printf("Lognormal Laplace: %f\n", logP);
+	return logP;
+}
+
 double _func_betaprime( Parameters *params, double *grad, void *data ){
 	struct laplace_data_t* d = (struct laplace_data_t*)data;
 	double beta = Parameters_value(params, 0);
@@ -577,6 +910,29 @@ double calculate_laplace_lognormal_from_mcmc(Laplace* laplace){
 	return logLaplace;
 }
 
+double calculate_laplace(Laplace* laplace){
+	CompoundModel* cm = laplace->refdist->obj;
+	double logP = 0;
+	for (int i = 0; i < cm->count; i++) {
+		DistributionModel* dm = cm->models[i]->obj;
+		if (dm->type == DISTRIBUTION_GAMMA) {
+			logP += calculate_laplace_gamma2(laplace, dm);
+		}
+		else if (dm->type == DISTRIBUTION_BETA) {
+			logP += calculate_laplace_beta2(laplace, dm);
+		}
+		else if (dm->type == DISTRIBUTION_LOGNORMAL) {
+			logP += calculate_laplace_lognormal2(laplace, dm);
+		}
+		else{
+			fprintf(stderr, "Distribution not supported by laplace\n");
+			exit(2);
+		}
+	}
+	printf("Laplace: %f\n", logP);
+	return logP;
+}
+
 void _free_Laplace(Laplace* laplace){
 	free_Parameters(laplace->parameters);
 	laplace->model->free(laplace->model);
@@ -604,13 +960,22 @@ Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
 	laplace->parameters = new_Parameters(1);
 	laplace->refdist = NULL;
 	laplace->empirical = NULL;
+	laplace->free = _free_Laplace;
 	json_node* empirical = get_json_node(node, "empirical");
-	get_parameters_references(node, hash, laplace->parameters);
 	if (ref != NULL) {
 		char* r = get_json_node_value_string(node, "ref");
 		laplace->refdist = Hashtable_get(hash, r+1);
 		laplace->refdist->ref_count++;
 	}
+	// distribution is inferred from the reference distribution
+	// it can be a mixture of distributions
+	if (dist_string == NULL) {
+		laplace->calculate = calculate_laplace;
+		return laplace;
+	}
+	
+	get_parameters_references(node, hash, laplace->parameters);
+	
 	if(strcasecmp(dist_string, "gamma") == 0){
 		if(empirical != NULL){
 			Model* empiricalDist = NULL;
@@ -670,6 +1035,6 @@ Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
 		fprintf(stderr, "Laplace distribution not available %s\n", dist_string);
 		exit(13);
 	}
-	laplace->free = _free_Laplace;
+	
 	return laplace;
 }

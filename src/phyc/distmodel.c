@@ -148,6 +148,10 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	if(dm->tempx != NULL) clone->tempx = clone_dvector(dm->tempx, Parameters_count(dm->x));
 	clone->lp = dm->lp;
 	clone->need_update = dm->need_update;
+	clone->shift = dm->shift;
+	clone->type = dm->type;
+	clone->parameterization = dm->parameterization;
+	clone->rng = dm->rng;
 	return clone;
 }
 
@@ -310,16 +314,22 @@ double DistributionModel_log_gamma(DistributionModel* dm){
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
 			double alpha = Parameters_value(dm->parameters, i*2);
 			double beta = Parameters_value(dm->parameters, i*2+1);
-			double x = Parameters_value(dm->x, i);
-			logP += log(gsl_ran_gamma_pdf(x, alpha, 1.0/beta));
+			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
+				beta = 1.0/beta;
+			}
+			double x = Parameters_value(dm->x, i) - dm->shift;
+			logP += log(gsl_ran_gamma_pdf(x, alpha, beta));
 		}
 	}
 	else{
 		double alpha = Parameters_value(dm->parameters, 0);
 		double beta = Parameters_value(dm->parameters, 1);
+		if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
+			beta = 1.0/beta;
+		}
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double x = Parameters_value(dm->x, i);
-			logP += log(gsl_ran_gamma_pdf(x, alpha, 1.0/beta));
+			double x = Parameters_value(dm->x, i) - dm->shift;
+			logP += log(gsl_ran_gamma_pdf(x, alpha, beta));
 		}
 	}
 	return logP;
@@ -331,14 +341,20 @@ double DistributionModel_log_gamma_with_values(DistributionModel* dm, const doub
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
 			double alpha = Parameters_value(dm->parameters, i*2);
 			double beta = Parameters_value(dm->parameters, i*2+1);
-			logP += log(gsl_ran_gamma_pdf(values[i], alpha, 1.0/beta));
+			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
+				beta = 1.0/beta;
+			}
+			logP += log(gsl_ran_gamma_pdf(values[i] - dm->shift, alpha, beta));
 		}
 	}
 	else{
 		double alpha = Parameters_value(dm->parameters, 0);
 		double beta = Parameters_value(dm->parameters, 1);
+		if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
+			beta = 1.0/beta;
+		}
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			logP += log(gsl_ran_gamma_pdf(values[i], alpha, 1.0/beta));
+			logP += log(gsl_ran_gamma_pdf(values[i] - dm->shift, alpha, beta));
 		}
 	}
 	return logP;
@@ -353,7 +369,11 @@ double DistributionModel_dlog_gamma(DistributionModel* dm, const Parameter* p){
 				alpha = Parameters_value(dm->parameters, i*2);
 				beta = Parameters_value(dm->parameters, i*2+1);
 			}
-			return (alpha-1.0)/Parameter_value(p) - beta;
+			double x = Parameter_value(p) - dm->shift;
+			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_SCALE) {
+				beta = 1.0/beta;
+			}
+			return (alpha-1.0)/x - beta;
 			
 		}
 	}
@@ -367,7 +387,8 @@ double DistributionModel_d2log_gamma(DistributionModel* dm, const Parameter* p){
 			if(Parameters_count(dm->parameters) > 2){
 				alpha = Parameters_value(dm->parameters, i*2);
 			}
-			return -(alpha-1.0)/Parameter_value(p)/Parameter_value(p);
+			double x = Parameter_value(p) - dm->shift;
+			return -(alpha-1.0)/x/x;
 		}
 	}
 	return 0;
@@ -376,30 +397,55 @@ double DistributionModel_d2log_gamma(DistributionModel* dm, const Parameter* p){
 static void DistributionModel_gamma_sample(DistributionModel* dm, double* samples){
 	if(Parameters_count(dm->parameters) > 2){
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			samples[i] = gsl_ran_gamma(dm->rng, Parameters_value(dm->parameters, i*2), 1.0/Parameters_value(dm->parameters, i*2+1));
+			double alpha = Parameters_value(dm->parameters, i*2);
+			double beta = Parameters_value(dm->parameters, i*2+1);
+			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
+				beta = 1.0/beta;
+			}
+			samples[i] = gsl_ran_gamma(dm->rng, alpha, beta);
+			samples[i] += dm->shift;
 		}
 	}
 	else{
+		double alpha = Parameters_value(dm->parameters, 0);
+		double beta = Parameters_value(dm->parameters, 1);
+		if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
+			beta = 1.0/beta;
+		}
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			samples[i] = gsl_ran_gamma(dm->rng, Parameters_value(dm->parameters, 0), 1.0/Parameters_value(dm->parameters, 1));
+			samples[i] = gsl_ran_gamma(dm->rng, alpha, beta);
+			samples[i] += dm->shift;
 		}
 	}
 }
 
 static double DistributionModel_gamma_sample_evaluate(DistributionModel* dm){
+	double logP = 0;
 	if(Parameters_count(dm->parameters) > 2){
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double sample = gsl_ran_gamma(dm->rng, Parameters_value(dm->parameters, i*2), 1.0/Parameters_value(dm->parameters, i*2+1));
-			Parameters_set_value(dm->x, i, sample);
+			double alpha = Parameters_value(dm->parameters, i*2);
+			double beta = Parameters_value(dm->parameters, i*2+1);
+			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
+				beta = 1.0/beta;
+			}
+			double sample = gsl_ran_gamma(dm->rng, alpha, beta);
+			Parameters_set_value(dm->x, i, sample + dm->shift);
+			logP += log(gsl_ran_gamma_pdf(sample, alpha, beta));
 		}
 	}
 	else{
+		double alpha = Parameters_value(dm->parameters, 0);
+		double beta = Parameters_value(dm->parameters, 1);
+		if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
+			beta = 1.0/beta;
+		}
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double sample = gsl_ran_gamma(dm->rng, Parameters_value(dm->parameters, 0), 1.0/Parameters_value(dm->parameters, 1));
-			Parameters_set_value(dm->x, i, sample);
+			double sample = gsl_ran_gamma(dm->rng, alpha, beta);
+			Parameters_set_value(dm->x, i, sample + dm->shift);
+			logP += log(gsl_ran_gamma_pdf(sample, alpha, beta));
 		}
 	}
-	return DistributionModel_log_gamma(dm);
+	return logP;
 }
 
 
@@ -1698,6 +1744,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 			}
 		}
 		dm = new_IndependantExpDistributionModel_with_parameters(parameters, x);
+		dm->shift = get_json_node_value_double(node, "shift", 0);
 		model = new_DistributionModel2(id, dm);
 		model->sample = _dist_model_sample;
 		model->sample_evaluate = _dist_model_sample_evaluate;
@@ -1809,6 +1856,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	}
     else if (strcasecmp(d_string, "gamma") == 0) {
         parameters = new_Parameters(1);
+		bool scale = false;
 		// empirical
 		if (samples != NULL) {
 			size_t paramCount = Parameters_count(x);
@@ -1817,22 +1865,31 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 				double* vec = Vector_data(samples[i]);
 				double m = mean(vec, Vector_length(samples[i]));
 				double v = variance(vec, Vector_length(samples[i]), m);
-				Parameters_move(parameters, new_Parameter("alpha", m*m/v, NULL));
-				Parameters_move(parameters, new_Parameter("beta", m/v, NULL));
+				Parameters_move(parameters, new_Parameter("shape", m*m/v, NULL));
+				Parameters_move(parameters, new_Parameter("rate", m/v, NULL));
 			}
 		}
 		else if(get_json_node(node, "parameters") == NULL){
 			get_parameters_references2(node, hash, x, "x");
 			for (int i = 0; i < Parameters_count(x); i++) {
-				Parameters_move(parameters, new_Parameter("alpha", 1, new_Constraint(0, INFINITY)));
-				Parameters_move(parameters, new_Parameter("beta", 1, new_Constraint(0, INFINITY)));
+				Parameters_move(parameters, new_Parameter("shape", 1, new_Constraint(0, INFINITY)));
+				Parameters_move(parameters, new_Parameter("rate", 1, new_Constraint(0, INFINITY)));
 			}
 		}
 		else{
 			json_node* x_node = get_json_node(node, "parameters");
+			for (int i = 0; i < x_node->child_count; i++) {
+				if (strcasecmp(x_node->children[i]->key, "scale") == 0) {
+					scale = true;
+				}
+				else if (strcasecmp(x_node->children[i]->key, "rate") != 0 && strcasecmp(x_node->children[i]->key, "shape") != 0) {
+					fprintf(stderr, "Gamma distribution should be parametrized with rate and (shape or scale)\n");
+					exit(13);
+				}
+			}
 			get_parameters_references2(node, hash, x, "x");
 			get_parameters_references(node, hash, parameters);
-			if (strcasecmp(x_node->children[0]->key, "alpha") != 0) {
+			if (strcasecmp(x_node->children[0]->key, "shape") != 0) {
 				Parameters_swap_index(parameters, 0, 1);
 			}
 			for (int i = 0; i < Parameters_count(parameters); i++) {
@@ -1841,6 +1898,8 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		}
 		
         dm = new_IndependantGammaDistributionModel_with_parameters(parameters, x);
+		dm->parameterization = scale ? DISTRIBUTION_GAMMA_SHAPE_SCALE: DISTRIBUTION_GAMMA_SHAPE_RATE;
+		dm->shift = get_json_node_value_double(node, "shift", 0);
         model = new_DistributionModel2(id, dm);
 		model->sample = _dist_model_sample;
 		model->sample_evaluate = _dist_model_sample_evaluate;
@@ -1880,6 +1939,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		}
 		
 		dm = new_IndependantLognormalDistributionModel_with_parameters(parameters, x);
+		dm->shift = get_json_node_value_double(node, "shift", 0);
 		model = new_DistributionModel2(id, dm);
 		model->sample = _dist_model_sample;
 		model->sample_evaluate = _dist_model_sample_evaluate;
@@ -1930,6 +1990,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		dm = new_IndependantNormalDistributionModel_with_parameters(parameters, x);
 		
 		dm->parameterization = tau ? DISTRIBUTION_NORMAL_MEAN_TAU: DISTRIBUTION_NORMAL_MEAN_SIGMA;
+		dm->shift = get_json_node_value_double(node, "shift", -INFINITY);
 		
 		model = new_DistributionModel2(id, dm);
 		model->sample = _dist_model_sample;
