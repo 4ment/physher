@@ -170,6 +170,8 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 
 Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
+		"flower",
+		"fupper",
 		"lower",
 		"upper",
 		"value"
@@ -199,6 +201,15 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 		upper = atof((char*)upper_node->value);
 	}
 	Constraint* cnstr = new_Constraint(lower, upper);
+	lower_node = get_json_node(node, "flower");
+	if(lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0){
+		cnstr->flower = atof((char*)lower_node->value);
+		
+	}
+	upper_node = get_json_node(node, "fupper");
+	if(upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0){
+		cnstr->fupper = atof((char*)upper_node->value);
+	}
 	json_node* id_node = get_json_node(node, "id");
 	return new_Parameter((char*)id_node->value, value, cnstr);
 }
@@ -755,6 +766,7 @@ void check_constraints(Parameters* rates, double lower, double upper, double flo
 
 static void dummyUpdate( Model *self, Model *model, int index ){}
 static double _logP(Model *model){return 0;}
+static double _fulllogP(Model *model){return model->logP(model);}
 static double _dlogP(Model *model, const Parameter* p){return 0;}
 static double _d2logP(Model *model, const Parameter* p){return 0;}
 static double _ddlogP(Model *self, const Parameter* p1, const Parameter* p2){return 0;}
@@ -780,6 +792,7 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->type = type;
 	model->obj = obj;
 	model->logP = _logP;
+	model->full_logP = _fulllogP;
 	model->dlogP = _dlogP;
 	model->d2logP = _d2logP;
 	model->ddlogP = _ddlogP;
@@ -973,6 +986,56 @@ double Model_first_derivative( Model *model, Parameter* parameter, double eps ) 
 
 #pragma mark -
 
+void get_parameters_slice(char* ref, Parameters* parameters, Hashtable* hash){
+	char* copy = String_clone(ref);
+	char* start = copy;
+	while (*start != '['){
+		start++;
+	}
+	*start = '\0';
+	Parameters* ps = Hashtable_get(hash, copy);
+	start++;
+	int colonIndex = String_index_of_str(start, ":");
+	start[strlen(start)-1] = '\0';
+	
+	// simple indexing
+	if(colonIndex == -1){
+		int index = atoi(start);
+		if (index < 0) {
+			index = Parameters_count(ps) + index;
+		}
+		Parameters_add(parameters, Parameters_at(ps, index));
+	}
+	else{
+		if(start[0] == ':'){
+			start++;
+			int index = atoi(start);
+			if (index < 0) {
+				index = Parameters_count(ps) + index;
+			}
+			for(int i = 0; i < index; i++){
+				Parameters_add(parameters, Parameters_at(ps, i));
+			}
+		}
+		else if(start[strlen(start)-1] == ':'){
+			int index = atoi(start);
+			if (index < 0) {
+				index = Parameters_count(ps) + index;
+				fprintf(stderr, "index should be positive %s\n", ref);
+				exit(1);
+			}
+			for(int i = index; i < Parameters_count(ps); i++){
+				Parameters_add(parameters, Parameters_at(ps, i));
+			}
+		}
+		else{
+			fprintf(stderr, "Do not understand slicing in get_parameters_references2: %s\n", ref);
+			exit(2);
+		}
+	}
+	free(copy);
+}
+
 void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters){
 	get_parameters_references2(node, hash, parameters, "parameters");
 }
@@ -992,9 +1055,14 @@ void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* pa
                     
                 }
                 // tree
-                else if (ref[0] == '%') {
-                    Parameters* ps = Hashtable_get(hash, ref+1);
-                    Parameters_add_parameters(parameters, ps);
+				else if (ref[0] == '%') {
+					// slicing
+					if (ref[strlen(ref)-1] == ']') {
+						get_parameters_slice(ref+1, parameters, hash);					}
+					else{
+						Parameters* ps = Hashtable_get(hash, ref+1);
+						Parameters_add_parameters(parameters, ps);
+					}
 					Parameters_set_name2(parameters, ref+1);
                 }
                 // simplex
@@ -1022,8 +1090,14 @@ void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* pa
             Parameters_add(parameters, p);
         }
         else if (ref[0] == '%') {
-            Parameters* ps = Hashtable_get(hash, ref+1);
-            Parameters_add_parameters(parameters, ps);
+			// slicing
+			if (ref[strlen(ref)-1] == ']') {
+				get_parameters_slice(ref+1, parameters, hash);
+			}
+			else{
+				Parameters* ps = Hashtable_get(hash, ref+1);
+				Parameters_add_parameters(parameters, ps);
+			}
 			Parameters_set_name2(parameters, ref+1);
         }
         // simplex

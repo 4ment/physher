@@ -35,6 +35,23 @@ double _compoundModel_logP(CompoundModel* cm){
 	return logP;
 }
 
+double _compoundModel_full_logP(CompoundModel* cm){
+	double logP = 0;
+	if (cm->weights != NULL) {
+		Simplex* s = cm->weights->obj;
+		logP = -DBL_MAX;
+		for(int i = 0; i < cm->count; i++){
+			logP = logaddexp(logP, log(s->get_value(s, i)) + cm->models[i]->full_logP(cm->models[i]));
+		}
+	}
+	else{
+		for(int i = 0; i < cm->count; i++){
+			logP += cm->models[i]->full_logP(cm->models[i]);
+		}
+	}
+	return logP;
+}
+
 double _compoundModel_dlogP(CompoundModel* cm, const Parameter* p){
 	double dlogP = 0;
 	if (cm->weights != NULL) {
@@ -186,6 +203,7 @@ static Model* _compound_model_clone( Model *self, Hashtable* hash ){
 	clone->lp = self->lp;
 	clone->samplable = self->samplable;
 	clone->sample = self->sample;
+	clone->full_logP = self->full_logP;
 	return clone;
 }
 
@@ -211,6 +229,7 @@ CompoundModel* new_CompoundModel(){
 	cm->remove = _compoundModel_remove;
 	cm->removeAll = _compoundModel_remove_all;
 	cm->logP = _compoundModel_logP;
+	cm->full_logP = _compoundModel_full_logP;
 	cm->dlogP = _compoundModel_dlogP;
 	cm->d2logP = _compoundModel_d2logP;
 	cm->ddlogP = _compoundModel_ddlogP;
@@ -259,6 +278,12 @@ double _compoundModel_logP2(Model *self){
 	return self->lp;
 }
 
+double _compoundModel_full_logP2(Model *self){
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	self->lp = cm->full_logP(cm);
+	return self->lp;
+}
+
 double _compoundModel_dlogP2(Model *self, const Parameter* p){
 	CompoundModel* cm = (CompoundModel*)self->obj;
 	return cm->dlogP(cm, p);
@@ -294,6 +319,7 @@ double _compound_model_sample_evaluate(Model *self){
 Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	Model *model = new_Model(MODEL_COMPOUND, name, cm);
 	model->logP = _compoundModel_logP2;
+	model->full_logP = _compoundModel_full_logP2;
 	model->dlogP = _compoundModel_dlogP2;
 	model->d2logP = _compoundModel_d2logP2;
 	model->ddlogP = _compoundModel_ddlogP2;

@@ -224,7 +224,6 @@ void init_parameter_arrays(Tree* atree){
 		Parameter* p = NULL;
 		if(Node_isroot(node)){
 			p = new_Parameter(node->name, Node_height(node), new_Constraint(0, INFINITY));
-			Constraint_set_fupper(p->cnstr,10);
 			Parameters_move(atree->reparam, p);
             p->id = -Node_id(node)-1;
 			atree->map[Node_id(node)] = count++;
@@ -272,10 +271,10 @@ void init_dates(Tree* atree, json_node* dates_node){
 			}
 		}
 	}
-
+	
 	if (!atree->homochronous){
 		Constraint_set_lower(atree->root->height->cnstr, offset);
-//		Constraint_set_upper(atree->root->height->cnstr, 100);
+		Constraint_set_flower(atree->root->height->cnstr, offset);
 	}
 }
 
@@ -338,7 +337,9 @@ void init_heights_from_distances(Tree* atree){
 			if(Node_isroot(node)){
 				Parameter* p = Parameters_at(atree->reparam, atree->map[Node_id(node)]);
 				Constraint_set_lower(p->cnstr, Constraint_lower(node->height->cnstr));
-//				Constraint_set_upper(p->cnstr, Constraint_upper(node->height->cnstr));
+				Constraint_set_flower(p->cnstr, Constraint_lower(node->height->cnstr));
+				Constraint_set_upper(p->cnstr, Constraint_upper(node->height->cnstr));
+				Constraint_set_fupper(p->cnstr, Constraint_upper(node->height->cnstr));
 				Parameter_set_value_quietly(p, Node_height(node));
 			}
 			else if(!Node_isleaf(node)){

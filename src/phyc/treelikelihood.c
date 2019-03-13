@@ -103,6 +103,7 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 
 void _treelikelihood_handle_restore( Model *self, Model *model, int index ){
 // parameters are restored of evry model is restored but models can be dirty
+	((SingleTreeLikelihood*)self->obj)->update = true;
 //	self->need_update = false;
 	self->listeners->fire_restore( self->listeners, self, index );
 }
@@ -139,6 +140,13 @@ double _singleTreeLikelihood_logP(Model *self){
 	return self->lp;
 }
 
+double _singleTreeLikelihood_full_logP(Model *self){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+	SingleTreeLikelihood_update_all_nodes(tlk);
+	self->lp = tlk->calculate(tlk);
+	return self->lp;
+}
+
 double calculate_log_jacobian(Node* node, double* logP){
 	if(!Node_isleaf(node)){
 		double l = calculate_log_jacobian(node->left, logP);
@@ -156,6 +164,24 @@ double calculate_log_jacobian(Node* node, double* logP){
 
 double _singleTreeLikelihood_reparametrized_logP(Model *self){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+	self->lp = tlk->calculate(tlk);
+	if(Tree_homochronous(tlk->tree)){
+		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+			Node* node = Tree_node(tlk->tree, i);
+			if(!Node_isroot(node) && !Node_isleaf(node)){
+				self->lp += log(Node_height(node));
+			}
+		}
+	}
+	else{
+		calculate_log_jacobian(Tree_root(tlk->tree), &self->lp);
+	}
+	return self->lp;
+}
+
+double _singleTreeLikelihood_reparametrized_full_logP(Model *self){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+		SingleTreeLikelihood_update_all_nodes(tlk);
 	self->lp = tlk->calculate(tlk);
 	if(Tree_homochronous(tlk->tree)){
 		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
@@ -526,6 +552,7 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	clone->restore = self->restore;
 	clone->storedLogP = self->storedLogP;
 	clone->lp = self->lp;
+	clone->full_logP = self->full_logP;
 	return clone;
 }
 
@@ -551,8 +578,9 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	if(bm != NULL)bm->listeners->add( bm->listeners, model );
 	sm->listeners->add( sm->listeners, model );
 	model->handle_restore = _treelikelihood_handle_restore;
-
+	
 	model->logP = _singleTreeLikelihood_logP;
+	model->full_logP = _singleTreeLikelihood_full_logP;
 	model->dlogP = _singleTreeLikelihood_dlogP;
 	model->d2logP = _singleTreeLikelihood_d2logP;
 	model->ddlogP = _singleTreeLikelihood_ddlogP;
@@ -671,6 +699,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	
 	if(reparameterized){
 		model->logP = _singleTreeLikelihood_reparametrized_logP;
+		model->full_logP = _singleTreeLikelihood_reparametrized_full_logP;
 	}
 	return model;
 }

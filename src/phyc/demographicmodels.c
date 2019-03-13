@@ -69,6 +69,14 @@ static double _coalescent_model_logP(Model *self){
 	return self->lp;
 }
 
+static double _coalescent_model_full_logP(Model *self){
+	Coalescent* mc = (Coalescent*)self->obj;
+	mc->need_update = true;
+	mc->need_update_intervals = true;
+	self->lp = mc->calculate(mc);
+	return self->lp;
+}
+
 static double _coalescent_model_dlogP(Model *self, const Parameter* p){
 	Coalescent* mc = (Coalescent*)self->obj;
 	return mc->dlogP(mc, p);
@@ -143,17 +151,19 @@ static void _coalescent_model_handle_change( Model *self, Model *model, int inde
 static void _coalescent_model_handle_restore( Model *self, Model *model, int index ){
 	Coalescent *c = (Coalescent*)self->obj;
 	c->need_update = true;
+	c->need_update_intervals = true;
 	self->listeners->fire_restore( self->listeners, self, index );
 }
 
 Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree){
-	Model* model = new_Model(MODEL_DISTRIBUTION, name, coalescent);
+	Model* model = new_Model(MODEL_COALESCENT, name, coalescent);
 	for ( int i = 0; i < Parameters_count(coalescent->p); i++ ) {
 		Parameters_at(coalescent->p, i)->listeners->add( Parameters_at(coalescent->p, i)->listeners, model );
 	}
 	tree->listeners->add( tree->listeners, model );
 	
 	model->logP = _coalescent_model_logP;
+	model->full_logP = _coalescent_model_full_logP;
 	model->dlogP = _coalescent_model_dlogP;
 	model->d2logP = _coalescent_model_d2logP;
 	model->ddlogP = _coalescent_model_ddlogP;
@@ -318,6 +328,21 @@ Coalescent * new_ConstantCoalescent_with_parameter( Tree *tree, Parameter* theta
 	return coal;
 }
 
+static void _sort_ascending_time( double *times, int *map, int size ){
+	bool done = false;
+	while ( !done ) {
+		done = true;
+		for ( int i = 0 ; i < size-1 ; i++ ) {
+			if ( times[i] > times[i+1] ) {
+				done = false;
+				dswap(&times[i], &times[i+1]);
+				swap_int(&map[i], &map[i+1]);
+			}
+		}
+		size--;
+	}
+}
+
 void _update_intervals( Coalescent* coal ){
 	int nodeCount = Tree_node_count(coal->tree);
 	int internalCount = nodeCount - Tree_tip_count(coal->tree);
@@ -330,7 +355,7 @@ void _update_intervals( Coalescent* coal ){
 			n++;
 		}
 	}
-	sort_asc_dvector(coal->times, coal->nodes, n);
+	_sort_ascending_time(coal->times, coal->nodes, n);
 	
 	for ( int i = n-1; i > 0; i-- ) {
 		coal->times[i] = coal->times[i] - coal->times[i-1];

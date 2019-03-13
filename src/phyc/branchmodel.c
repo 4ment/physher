@@ -152,6 +152,8 @@ static void _branch_model_handle_restore( Model *self, Model *model, int index )
 }
 
 static void _branch_model_store(Model* self){
+	Model* mtree = ((Model**)self->data)[0];
+	mtree->store(mtree);
 	BranchModel* bm = (BranchModel*)self->obj;
 	for (int i = 0; i < Parameters_count(bm->rates); i++) {
 		Parameter_store(Parameters_at(bm->rates, i));
@@ -163,6 +165,8 @@ static void _branch_model_store(Model* self){
 }
 
 static void _branch_model_restore(Model* self){
+	Model* mtree = ((Model**)self->data)[0];
+	mtree->restore(mtree);
 	BranchModel* bm = (BranchModel*)self->obj;
 	bool changed = false;
 	Parameter*p = NULL;

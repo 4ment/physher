@@ -22,6 +22,7 @@ struct _CompoundModel{
 	int count;
 	Model* weights;
 	double (*logP)(CompoundModel*);
+	double (*full_logP)(CompoundModel*);
 	double (*dlogP)(CompoundModel*, const Parameter*);
 	double (*d2logP)(CompoundModel*, const Parameter*);
 	double (*ddlogP)(CompoundModel*, const Parameter*, const Parameter*);

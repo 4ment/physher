@@ -53,7 +53,7 @@ Node * new_Node( Node *parent, const char *nodename, const int counter ){
 	n->distance = new_Parameter_with_postfix(n->name, POSTFIX_DISTANCE, BL_DEFAULT, new_Constraint(0, INFINITY));
 	Constraint_set_flower(n->distance->cnstr, BL_MIN);
 	Constraint_set_fupper(n->distance->cnstr, BL_MAX);
-	n->height   = new_Parameter_with_postfix(n->name, POSTFIX_HEIGHT, 0, new_Constraint(0,0));
+	n->height   = new_Parameter_with_postfix(n->name, POSTFIX_HEIGHT, 0, new_Constraint(0,INFINITY));
 	
 	n->postorder_idx = 0;
 	n->preorder_idx  = 0;

@@ -314,6 +314,7 @@ struct _Model {
 	model_t type;
 	void* data;
 	double (*logP)( Model * );
+	double (*full_logP)( Model * );
 	double (*dlogP)( Model *, const Parameter* );
 	double (*d2logP)( Model *, const Parameter* );
 	double (*ddlogP)(Model*, const Parameter*, const Parameter*);
