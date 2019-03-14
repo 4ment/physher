@@ -149,20 +149,21 @@ Model* new_DiscreteParameterModel_from_json(json_node* node, Hashtable* hash){
 		dim = K;
 	}
 	if(dim < K){
-		fprintf(stderr, "dimension attribute (%d) cannot be larger than the number of values (%zu)\n", dim, K);
+		fprintf(stderr, "dimension attribute (%d) cannot be smaller than the number of values (%zu)\n", dim, K);
 		exit(2);
 	}
-	unsigned* x = uivector(K);
-	for (int i = 0; i < K; i++) {
+	unsigned* x = uivector(dim);
+	int i = 0;
+	while(i != dim) {
 		for(int j = 0; j < values->child_count; j++){
-			if(i == K) break;
-			json_node* child = values->children[i];
-			x[i] = atoi((char*)child->value);
+			if(i == dim) break;
+			json_node* child = values->children[j];
+			x[j] = atoi((char*)child->value);
 			i++;
 		}
 	}
 	
-	DiscreteParameter* dp = new_DiscreteParameter_with_values(x, K);
+	DiscreteParameter* dp = new_DiscreteParameter_with_values(x, dim);
 	free(x);
 	
 	json_node* id_node = get_json_node(node, "id");

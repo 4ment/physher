@@ -216,11 +216,7 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 
 Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash){
 	Parameters* parameters = new_Parameters(node->child_count);
-	for (int i = 0; i < node->child_count; i++) {
-		json_node* child = node->children[i];
-		Parameter* p = new_Parameter_from_json(child, hash);
-		Parameters_move(parameters, p);
-	}
+	get_parameters_references(node, hash, parameters);
 	return parameters;
 }
 
@@ -1037,6 +1033,53 @@ void get_parameters_slice(char* ref, Parameters* parameters, Hashtable* hash){
 }
 
 void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters){
+	// node can be like: "parameters":{"dimension": 4, "values": [2], "lower": 0, "upper": 100}
+	for (int i = 0; i < node->child_count; i++) {
+		json_node* child = node->children[i];
+		if(strcasecmp(child->key, "dimension") == 0 && child->node_type == MJSON_PRIMITIVE){
+			size_t dim = get_json_node_value_size_t(node, "dimension", 0);
+			json_node* lower_node = get_json_node(node, "lower");
+			json_node* upper_node = get_json_node(node, "upper");
+			char* id = get_json_node_value_string(node, "id");
+			double lower = -INFINITY;
+			double upper = INFINITY;
+			if(lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0){
+				lower = atof((char*)lower_node->value);
+				
+			}
+			if(upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0){
+				upper = atof((char*)upper_node->value);
+				
+			}
+			json_node* values = get_json_node(node, "values");
+			size_t K = values->child_count;
+			if (dim == 0) {
+				dim = K;
+			}
+			if(dim < K){
+				fprintf(stderr, "%s - dimension attribute (%zu) cannot be smaller than the number of values (%zu)\n", id, dim, K);
+				exit(2);
+			}
+			
+			StringBuffer* buffer = new_StringBuffer(10);
+			int i = 0;
+			while (i != dim) {
+				for(int j = 0; j < values->child_count; j++){
+					if(i == dim) break;
+					Constraint* cnstr = new_Constraint(lower, upper);
+					json_node* child = values->children[j];
+					double value = atoi((char*)child->value);
+					StringBuffer_empty(buffer);
+					StringBuffer_append_format(buffer, "%s.%d", id, i+1);
+					Parameters_move(parameters, new_Parameter(buffer->c, value, cnstr));
+					i++;
+				}
+			}
+			free_StringBuffer(buffer);
+			return;
+		}
+	}
+	
 	get_parameters_references2(node, hash, parameters, "parameters");
 }
 
