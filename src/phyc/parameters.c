@@ -991,44 +991,40 @@ void get_parameters_slice(char* ref, Parameters* parameters, Hashtable* hash){
 	*start = '\0';
 	Parameters* ps = Hashtable_get(hash, copy);
 	start++;
-	int colonIndex = String_index_of_str(start, ":");
 	start[strlen(start)-1] = '\0';
-	
-	// simple indexing
-	if(colonIndex == -1){
+	int begin = 0;
+	int end = Parameters_count(ps);
+	int inc = 1;
+	int c = 0;
+	char** chars = String_split_char(start, ':', &c);
+	if(c > 1){
+		if(strlen(chars[0]) > 0) begin = atoi(chars[0]);
+		if(strlen(chars[1]) > 0) end = atoi(chars[1]);
+		if(c == 3){
+			inc = atoi(chars[2]);
+		}
+		// [:] [1:] [:3] [1:2] [1::1] [:4:2] [::2]
+		if(inc > 0){
+			for (int i = begin; i < end; i+=inc) {
+				Parameters_add(parameters, Parameters_at(ps, i));
+			}
+		}
+		// [:4:-1] [::-1] [::-2]
+		else{
+			for (int i = end-1; i >= begin; i+=inc) {
+				Parameters_add(parameters, Parameters_at(ps, i));
+			}
+		}
+	}
+	else{
+		// simple indexing
 		int index = atoi(start);
 		if (index < 0) {
 			index = Parameters_count(ps) + index;
 		}
 		Parameters_add(parameters, Parameters_at(ps, index));
 	}
-	else{
-		if(start[0] == ':'){
-			start++;
-			int index = atoi(start);
-			if (index < 0) {
-				index = Parameters_count(ps) + index;
-			}
-			for(int i = 0; i < index; i++){
-				Parameters_add(parameters, Parameters_at(ps, i));
-			}
-		}
-		else if(start[strlen(start)-1] == ':'){
-			int index = atoi(start);
-			if (index < 0) {
-				index = Parameters_count(ps) + index;
-				fprintf(stderr, "index should be positive %s\n", ref);
-				exit(1);
-			}
-			for(int i = index; i < Parameters_count(ps); i++){
-				Parameters_add(parameters, Parameters_at(ps, i));
-			}
-		}
-		else{
-			fprintf(stderr, "Do not understand slicing in get_parameters_references2: %s\n", ref);
-			exit(2);
-		}
-	}
+	free_cmatrix(chars, c);
 	free(copy);
 }
 

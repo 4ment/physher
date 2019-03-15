@@ -583,7 +583,12 @@ char ** String_split_char( const char *str, const char pattern, int *count ){
 	
 	pch = str;
 	while ( *pch != '\0' ) {
-		if ( *pch != pattern ) {
+		if(*pch == pattern && buffer->length == 0){
+			substrs[*count] = (char*)calloc(1, sizeof(char));
+			substrs[*count][0] = '\0';
+			(*count)++;
+		}
+		else if ( *pch != pattern ) {
 			StringBuffer_append_char(buffer, *pch);
 		}
 		else {
@@ -598,7 +603,12 @@ char ** String_split_char( const char *str, const char pattern, int *count ){
 		substrs[*count] = String_clone(buffer->c);
 		(*count)++;
 	}
-    
+	else if(str[strlen(str)-1] == pattern){
+		substrs[*count] = (char*)calloc(1, sizeof(char));
+		substrs[*count][0] = '\0';
+		(*count)++;
+	}
+	
 	free_StringBuffer(buffer);
 	
 	return substrs;
