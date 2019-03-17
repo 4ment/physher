@@ -12,20 +12,16 @@
 #include <stdio.h>
 
 #include "parameters.h"
-#include "simplex.h"
 
 struct Logger{
 	Parameters* parameters;
-	Model** simplexes;
-	Model* tree;
 	Model** models;
 	size_t model_count;
-	size_t simplexCount;
 	void (*log)(struct Logger*);
 	FILE* file;
 	char* filename;
 	char* format;
-	bool time; // if true then tree heights are printed
+	bool tree;
 };
 
 
