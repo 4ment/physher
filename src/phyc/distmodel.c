@@ -1652,6 +1652,9 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	if (strcasecmp(d_string, "exponential") == 0) {
 		return new_ExponentialDistributionModel_from_json(node, hash);
 	}
+	else if (strcasecmp(d_string, "gmrf") == 0) {
+		return new_GMRFModel_from_json(node, hash);
+	}
 	
 	char* id = get_json_node_value_string(node, "id");
 	json_node* tree_node = get_json_node(node, "tree");
