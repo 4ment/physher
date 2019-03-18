@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <tgmath.h>
 
 #include "matrix.h"
 #include "tree.h"
@@ -24,6 +25,9 @@
 #include "statistics.h"
 #include "parametersio.h"
 #include "utilsio.h"
+
+#include "distexp.h"
+#include "gmrf.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
@@ -681,87 +685,6 @@ static double DistributionModel_normal_sample_evaluate(DistributionModel* dm){
 	return DistributionModel_lognormal_logP(dm);
 }
 
-double DistributionModel_log_exp(DistributionModel* dm){
-	double logP = 0;
-	if(Parameters_count(dm->parameters) > 1){
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double lambda = Parameters_value(dm->parameters, i);
-			logP += lambda - lambda * Parameters_value(dm->x, i);
-		}
-	}
-	else{
-		double lambda = Parameters_value(dm->parameters, 0);
-		logP = log(lambda) * Parameters_count(dm->x);
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			//logP += log(dexp(Parameters_value(dm->x, i), Parameters_value(dm->parameters, 0)));
-			logP -= lambda * Parameters_value(dm->x, i);
-		}
-	}
-	return logP;
-}
-
-double DistributionModel_log_exp_with_values(DistributionModel* dm, const double* values){
-	double logP = 0;
-	if(Parameters_count(dm->parameters) > 1){
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double lambda = Parameters_value(dm->parameters, i);
-			logP += lambda - lambda * values[i];
-		}
-	}
-	else{
-		double lambda = Parameters_value(dm->parameters, 0);
-		logP = log(lambda) * Parameters_count(dm->x);
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			//logP += log(dexp(Parameters_value(dm->x, i), Parameters_value(dm->parameters, 0)));
-			logP -= lambda * values[i];
-		}
-	}
-	return logP;
-}
-
-double DistributionModel_dlog_exp(DistributionModel* dm, const Parameter* p){
-	for (int i = 0; i < Parameters_count(dm->x); i++) {
-		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
-			return -Parameters_value(dm->parameters, 0);
-		}
-	}
-	return 0;
-}
-
-double DistributionModel_d2log_exp(DistributionModel* dm, const Parameter* p){
-	return 0;
-}
-
-static void DistributionModel_exp_sample(DistributionModel* dm, double* samples){
-	if(Parameters_count(dm->parameters) > 1){
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			samples[i] = rexp(Parameters_value(dm->parameters, i));
-		}
-	}
-	else{
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			samples[i] = rexp(Parameters_value(dm->parameters, 0));
-		}
-	}
-}
-
-
-static double DistributionModel_exp_sample_evaluate(DistributionModel* dm){
-	if(Parameters_count(dm->parameters) > 1){
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double sample = rexp(Parameters_value(dm->parameters, i));
-			Parameters_set_value(dm->x, i, sample);
-		}
-	}
-	else{
-		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double sample = rexp(Parameters_value(dm->parameters, 0));
-			Parameters_set_value(dm->x, i, sample);
-		}
-	}
-	return DistributionModel_log_exp(dm);
-}
-
 // Flat dirichlet
 double DistributionModel_log_flat_dirichlet(DistributionModel* dm){
 	return log(ddirchlet_flat(dm->simplex->K));
@@ -969,37 +892,6 @@ DistributionModel* new_IndependantLognormalDistributionModel_with_parameters(Par
 	dm->clone = _clone_dist;
 	dm->sample = DistributionModel_lognormal_sample;
 	dm->sample_evaluate = DistributionModel_lognormal_sample_evaluate;
-	return dm;
-}
-
-DistributionModel* new_IndependantExpDistributionModel(const double lambda, const Parameters* x){
-	Parameters* ps = new_Parameters(1);
-	Parameters_move(ps, new_Parameter("exp.lambda", lambda, NULL));
-	DistributionModel* dm = new_DistributionModel(ps, x);
-	dm->type = DISTRIBUTION_EXPONENTIAL;
-	dm->logP = DistributionModel_log_exp;
-	dm->logP_with_values = DistributionModel_log_exp_with_values;
-	dm->dlogP = DistributionModel_dlog_exp;
-	dm->d2logP = DistributionModel_d2log_exp;
-	dm->ddlogP = _DistributionModel_ddlog_0;
-	dm->clone = _clone_dist;
-	dm->sample = DistributionModel_exp_sample;
-	dm->sample_evaluate = DistributionModel_exp_sample_evaluate;
-	free_Parameters(ps);
-	return dm;
-}
-
-DistributionModel* new_IndependantExpDistributionModel_with_parameters(Parameters* parameters, const Parameters* x){
-	DistributionModel* dm = new_DistributionModel(parameters, x);
-	dm->type = DISTRIBUTION_EXPONENTIAL;
-	dm->logP = DistributionModel_log_exp;
-	dm->logP_with_values = DistributionModel_log_exp_with_values;
-	dm->dlogP = DistributionModel_dlog_exp;
-	dm->d2logP = DistributionModel_d2log_exp;
-	dm->ddlogP = _DistributionModel_ddlog_0;
-	dm->clone = _clone_dist;
-	dm->sample = DistributionModel_exp_sample;
-	dm->sample_evaluate = DistributionModel_exp_sample_evaluate;
 	return dm;
 }
 
@@ -1427,12 +1319,50 @@ DistributionModel* new_UniformTreeDistribution(Tree* tree){
     return dm;
 }
 
+void _dist_model_handle_change( Model *self, Model *model, int index ){
+	DistributionModel* dm = self->obj;
+	dm->need_update = true;
+	self->listeners->fire( self->listeners, self, index );
+}
+
+void _dist_model_handle_restore( Model *self, Model *model, int index ){
+	self->listeners->fire_restore( self->listeners, self, index );
+}
+
 static void _dist_model_store(Model* self){
 	self->storedLogP = self->lp;
+	Parameters_store(((DistributionModel*)self->obj)->parameters);
 }
 
 static void _dist_model_restore(Model* self){
 	self->lp = self->storedLogP;
+	DistributionModel* dm = self->obj;
+	bool changed = false;
+	Parameter*p = NULL;
+	// restore the parameters of the model
+	for (int i = 0; i < Parameters_count(dm->parameters); i++) {
+		p = Parameters_at(dm->parameters, i);
+		if (Parameter_changed(p)) {
+			changed = true;
+			Parameter_restore_quietly(p);
+		}
+	}
+	if (changed) {
+		p->listeners->fire_restore(p->listeners, NULL, p->id);
+	}
+	
+	// restore the domain
+	changed = false;
+	for (int i = 0; i < Parameters_count(dm->x); i++) {
+		p = Parameters_at(dm->x, i);
+		if (Parameter_changed(p)) {
+			changed = true;
+			Parameter_restore_quietly(p);
+		}
+	}
+	if (changed) {
+		p->listeners->fire_restore(p->listeners, NULL, p->id);
+	}
 }
 
 static double _dist_model_logP(Model *self){
@@ -1448,6 +1378,11 @@ static double _dist_model_dlogP(Model *self, const Parameter* p){
 			return cm->dlogP(cm, p);
 		}
 	}
+	for (int i = 0; i < Parameters_count(cm->parameters); i++) {
+		if(Parameters_at(cm->parameters, i) == p){
+			return cm->dlogP(cm, p);
+		}
+	}
 	return 0;
 }
 
@@ -1455,6 +1390,11 @@ static double _dist_model_d2logP(Model *self, const Parameter* p){
 	DistributionModel* cm = (DistributionModel*)self->obj;
 	for (int i = 0; i < Parameters_count(cm->x); i++) {
 		if(Parameters_at(cm->x, i) == p){
+			return cm->d2logP(cm, p);
+		}
+	}
+	for (int i = 0; i < Parameters_count(cm->parameters); i++) {
+		if(Parameters_at(cm->parameters, i) == p){
 			return cm->d2logP(cm, p);
 		}
 	}
@@ -1470,6 +1410,18 @@ static double _dist_model_ddlogP(Model *self, const Parameter* p1, const Paramet
 			found1 = true;
 		}
 		else if(Parameters_at(cm->x, i) == p2){
+			found2 = true;
+		}
+	}
+	if(found1 && found2) return cm->ddlogP(cm, p1, p2);
+	
+	found1 = false;
+	found2 = false;
+	for (int i = 0; i < Parameters_count(cm->parameters); i++) {
+		if(Parameters_at(cm->parameters, i) == p1){
+			found1 = true;
+		}
+		else if(Parameters_at(cm->parameters, i) == p2){
 			found2 = true;
 		}
 	}
@@ -1599,6 +1551,18 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 	model->get_free_parameters = _dist_model_get_free_parameters;
 	model->store = _dist_model_store;
 	model->restore = _dist_model_restore;
+	model->update = _dist_model_handle_change;
+	model->handle_restore = _dist_model_handle_restore;
+	model->sample = _dist_model_sample;
+	model->sample_evaluate = _dist_model_sample_evaluate;
+	model->samplable = false;
+	
+	for ( int i = 0; i < Parameters_count(dm->parameters); i++ ) {
+		Parameters_at(dm->parameters, i)->listeners->add( Parameters_at(dm->parameters, i)->listeners, model );
+	}
+	for ( int i = 0; i < Parameters_count(dm->x); i++ ) {
+		Parameters_at(dm->x, i)->listeners->add( Parameters_at(dm->x, i)->listeners, model );
+	}
 	return model;
 }
 
@@ -1615,23 +1579,17 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* si
 	model->get_free_parameters = _dist_model_get_free_parameters;
 	model->store = _dist_model_store;
 	model->restore = _dist_model_restore;
+	model->update = _dist_model_handle_change;
+	model->handle_restore = _dist_model_handle_restore;
+	model->sample = _dist_model_sample;
+	model->sample_evaluate = _dist_model_sample_evaluate;
+	model->samplable = false;
+	
+	for ( int i = 0; i < Parameters_count(dm->parameters); i++ ) {
+		Parameters_at(dm->parameters, i)->listeners->add( Parameters_at(dm->parameters, i)->listeners, model );
+	}
+	simplex->listeners->add(simplex->listeners, model);
 	return model;
-}
-
-Model* new_TreeDistributionModel(const char* name, DistributionModel* dm, Model* tree){
-    Model *model = new_Model(MODEL_DISTRIBUTION,name, dm);
-    model->data = tree;
-    tree->ref_count++;
-    model->logP = _dist_model_logP;
-	model->dlogP = _dist_model_dlogP;
-	model->d2logP = _dist_model_d2logP;
-	model->ddlogP = _dist_model_ddlogP;
-    model->free = _dist_model_free;
-    model->clone = _dist_model_clone;
-    model->get_free_parameters = _dist_model_get_free_parameters;
-	model->store = _dist_model_store;
-	model->restore = _dist_model_restore;
-    return model;
 }
 
 Model* get_simplex(json_node* node, Hashtable* hash){
@@ -1682,6 +1640,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		"from",
 		"margin",
 		"parameters",
+		"parameterization",
 		"posterior",
 		"tree",
 		"x"
@@ -1689,6 +1648,11 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
 	char* d_string = get_json_node_value_string(node, "distribution");
+	
+	if (strcasecmp(d_string, "exponential") == 0) {
+		return new_ExponentialDistributionModel_from_json(node, hash);
+	}
+	
 	char* id = get_json_node_value_string(node, "id");
 	json_node* tree_node = get_json_node(node, "tree");
 	
@@ -1705,52 +1669,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 		samples = read_log_for_parameters_t(file, burnin, x);
 	}
 	
-	if (strcasecmp(d_string, "exponential") == 0) {
-		parameters = new_Parameters(1);
-		get_parameters_references(node, hash, parameters);
-		
-		if (tree_node != NULL) {
-			char* ref = (char*)tree_node->value;
-			Model* mtree = Hashtable_get(hash, ref+1);
-			Tree* tree = mtree->obj;
-			for (int i = 0; i < Tree_node_count(tree); i++) {
-				Node* n = Tree_node(tree, i);
-				if (!Node_isroot(n) && !(Node_isroot(Node_parent(n)) && Node_right(Node_parent(n)) == n)) {
-					Parameters_add(x, n->distance);
-				}
-			}
-		}
-		else{
-			get_parameters_references2(node, hash, x, "x");
-		}
-		json_node* p_node = get_json_node(node, "parameters");
-		if (strcasecmp(p_node->children[0]->key, "mean") == 0) {
-			Parameters_set_value(parameters, 0, 1.0/Parameters_value(parameters, 0));
-		}
-		
-		// empirical
-		if (samples != NULL) {
-			size_t paramCount = Parameters_count(x);
-			
-			for (int i = 0; i < paramCount; i++) {
-				double* vec = Vector_data(samples[i]);
-				double m = mean(vec, Vector_length(samples[i]));
-				Parameters_move(parameters, new_Parameter("lambda", 1.0/m, NULL));
-			}
-		}
-		else{
-			for (int i = 0; i < Parameters_count(parameters); i++) {
-				Hashtable_add(hash, Parameters_name(parameters, i), Parameters_at(parameters, i));
-			}
-		}
-		dm = new_IndependantExpDistributionModel_with_parameters(parameters, x);
-		dm->shift = get_json_node_value_double(node, "shift", 0);
-		model = new_DistributionModel2(id, dm);
-		model->sample = _dist_model_sample;
-		model->sample_evaluate = _dist_model_sample_evaluate;
-		model->samplable = true;
-	}
-	else if (strcasecmp(d_string, "dirichlet") == 0) {
+	if (strcasecmp(d_string, "dirichlet") == 0) {
 		parameters = new_Parameters(1);
 		Model* msimplex = get_simplex(node, hash);
 		Simplex* simplex = msimplex->obj;
@@ -2001,7 +1920,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
         char* ref = get_json_node_value_string(node, "tree");
         Model* mtree = Hashtable_get(hash, ref+1);
         dm = new_UniformTreeDistribution(mtree->obj);
-        model = new_TreeDistributionModel(id, dm, mtree);
+        model = new_DistributionModel3(id, dm, mtree);
     }
 	else if(strcasecmp(d_string, "multivariatenormal") == 0){
 		char* file = get_json_node_value_string(node, "file");

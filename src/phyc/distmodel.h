@@ -22,7 +22,9 @@
 struct _DistributionModel;
 typedef struct _DistributionModel DistributionModel;
 
-typedef enum distribution_parametrization{
+typedef enum distribution_parameterization{
+	DISTRIBUTION_EXPONENTIAL_MEAN,
+	DISTRIBUTION_EXPONENTIAL_RATE,
 	DISTRIBUTION_GAMMA_SHAPE_RATE,
 	DISTRIBUTION_GAMMA_SHAPE_SCALE,
 	DISTRIBUTION_NORMAL_MEAN_SIGMA,
@@ -70,18 +72,16 @@ struct _DistributionModel{
 
 DistributionModel* new_IndependantGammaDistributionModel(const double shape, const double rate, const Parameters* x);
 
-DistributionModel* new_IndependantExpDistributionModel(const double lambda, const Parameters* x);
 
 DistributionModel* new_FlatDirichletDistributionModel(Simplex* simplex);
 
 DistributionModel* new_UniformTreeDistribution(Tree* tree);
 
+DistributionModel* new_DistributionModel(const Parameters* p, const Parameters* x);
 
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex);
-
-Model* new_TreeDistributionModel(const char* name, DistributionModel* dm, Model* tree);
 
 Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash);
 
