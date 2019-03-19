@@ -778,7 +778,8 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		"datatype",
 		"every",
 		"length",
-		"start"
+		"start",
+		"verbose"
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
@@ -835,6 +836,17 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 	else{
 		fprintf(stderr, "No `alignment' provided in sitepattern object\n");
 		exit(1);
+	}
+	
+	bool verbose = get_json_node_value_bool(node, "verbose", true);
+	if(verbose){
+		double unc_lk = unconstrained_lk(patterns, patterns->nsites);
+		int polymorphisms = SitePattern_polymorphic_count(patterns);
+		fprintf(stdout, "Number of sequences: %d\n", patterns->size );
+		fprintf(stdout, "Alignment length: %d\n", patterns->nsites );
+		fprintf(stdout, "Number of polymorphic sites: %d/%d (%f)\n", polymorphisms, patterns->nsites,((double)polymorphisms/patterns->nsites) );
+		fprintf(stdout, "Number of patterns: %d\n", patterns->count );
+		fprintf(stdout, "Unconstrained likelihood: %f\n\n", unc_lk );
 	}
 	return patterns;
 }

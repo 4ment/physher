@@ -10,6 +10,7 @@
 
 #include <strings.h>
 #include <stdio.h>
+#include <signal.h>
 
 #include "utilsgsl.h"
 #include "matrix.h"

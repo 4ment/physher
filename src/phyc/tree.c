@@ -284,10 +284,14 @@ void init_heights_from_distances(Tree* atree){
 		for ( int i = 0; i < Tree_node_count(atree); i++) {
 			Node* node = nodes[i];
 			if( !Node_isleaf(node) ){
-				double max_children = dmax( Node_height(Node_left(node)), Node_height(Node_right(node)));
-				double max_children_d = dmax( Node_distance(Node_left(node)), Node_distance(Node_right(node)));
-				
-				Node_set_height(node, max_children+ max_children_d);
+				double left = Node_height(Node_left(node)) + Node_distance(Node_left(node));
+				double right = Node_height(Node_right(node)) + Node_distance(Node_right(node));
+				if(left > right){
+					Node_set_height(node, left);
+				}
+				else{
+					Node_set_height(node, right);
+				}
 			}
 			else{
 				Node_set_height(nodes[i], 0);
