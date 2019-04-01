@@ -72,11 +72,11 @@ struct _DistributionModel{
 };
 
 
-DistributionModel* new_FlatDirichletDistributionModel(Simplex* simplex);
-
 DistributionModel* new_UniformTreeDistribution(Tree* tree);
 
 DistributionModel* new_DistributionModel(const Parameters* p, const Parameters* x);
+
+DistributionModel* new_DistributionModelSimplex(Parameters* p, Simplex* simplex);
 
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 

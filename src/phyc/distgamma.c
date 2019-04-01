@@ -47,9 +47,7 @@ double DistributionModel_log_gamma(DistributionModel* dm){
 }
 
 double DistributionModel_log_gamma_with_values(DistributionModel* dm, const double* values){
-	if(!dm->need_update) return dm->lp;
-	
-	dm->lp = 0;
+	double logP = 0;
 	if(Parameters_count(dm->parameters) > 2){
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
 			double alpha = Parameters_value(dm->parameters, i*2);
@@ -57,7 +55,7 @@ double DistributionModel_log_gamma_with_values(DistributionModel* dm, const doub
 			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
 				beta = 1.0/beta;
 			}
-			dm->lp += log(gsl_ran_gamma_pdf(values[i] - dm->shift, alpha, beta));
+			logP += log(gsl_ran_gamma_pdf(values[i] - dm->shift, alpha, beta));
 		}
 	}
 	else{
@@ -67,11 +65,10 @@ double DistributionModel_log_gamma_with_values(DistributionModel* dm, const doub
 			beta = 1.0/beta;
 		}
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			dm->lp += log(gsl_ran_gamma_pdf(values[i] - dm->shift, alpha, beta));
+			logP += log(gsl_ran_gamma_pdf(values[i] - dm->shift, alpha, beta));
 		}
 	}
-	dm->need_update = false;
-	return dm->lp;
+	return logP;
 }
 
 double DistributionModel_dlog_gamma(DistributionModel* dm, const Parameter* p){
@@ -209,7 +206,6 @@ Model* new_GammaDistributionModel_from_json(json_node* node, Hashtable* hash){
 	}
 	
 	Parameters* parameters = new_Parameters(1);
-	get_parameters_references(node, hash, parameters);
 	
 	bool scale = false;
 	// empirical
@@ -234,6 +230,7 @@ Model* new_GammaDistributionModel_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	else{
+		get_parameters_references(node, hash, parameters);
 		json_node* x_node = get_json_node(node, "parameters");
 		for (int i = 0; i < x_node->child_count; i++) {
 			if (strcasecmp(x_node->children[i]->key, "scale") == 0) {
