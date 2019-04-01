@@ -456,6 +456,19 @@ void operator_exchange_optimize(Operator* op, double alpha){
 	}
 }
 
+void operator_discrete_exchange_optimize(Operator* op, double alpha){
+	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
+	if(count >= 0){
+		double delta = getDeltaP(count+1, alpha, 0.24);
+		if (delta > DBL_MAX || delta < DBL_MIN) {
+			delta = 0;
+		}
+		delta += log(op->parameters[0]);
+		op->parameters[0] = exp(delta);
+		op->parameters[0] = fmax(0.5000000001, op->parameters[0]);
+	}
+}
+
 Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	
 	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
@@ -603,10 +616,18 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->models = malloc(op->model_count*sizeof(Model*));
 		op->models[0] = Hashtable_get(hash, ref+1);
 		op->models[0]->ref_count++;
-		op->propose = operator_simplex_exchange;
-		op->optimize = operator_exchange_optimize;
 		op->parameters = dvector(1);
-		op->parameters[0] = 0.001;
+		
+		if(op->models[0]->type == MODEL_DISCRETE_PARAMETER){
+			op->propose = operator_discrete_exchange;
+			op->optimize = operator_discrete_exchange_optimize;
+			op->parameters[0] = 1;
+		}
+		else{
+			op->propose = operator_simplex_exchange;
+			op->optimize = operator_exchange_optimize;
+			op->parameters[0] = 0.001;
+		}
 		if(p_node != NULL){
 			if (p_node->node_type == MJSON_PRIMITIVE){
 				op->parameters[0] = get_json_node_value_double(node, "parameters", 0.01);

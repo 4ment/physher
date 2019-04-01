@@ -17,4 +17,6 @@
 
 bool operator_discrete_bitflip(Operator* op, double* logHR);
 
+bool operator_discrete_exchange(Operator* op, double* logHR);
+
 #endif /* discreteoperator_h */
