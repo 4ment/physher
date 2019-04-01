@@ -42,18 +42,27 @@ static void _log_write_header(Log* logger){
 	else{
 		fprintf(logger->file, "iter");
 		for (int i = 0; i < logger->model_count; i++) {
-			fprintf(logger->file, "\t%s", logger->models[i]->name);
+			Model* model = logger->models[i];
+			if(model->type == MODEL_DISCRETE_PARAMETER){
+				DiscreteParameter* dp = model->obj;
+				for (int j = 0; j < dp->length; j++) {
+					fprintf(logger->file, "\t%s.%d", model->name, j+1);
+				}
+			}
+			else if(model->type == MODEL_SIMPLEX){
+				Simplex* simplex = model->obj;
+				for (int j = 0; j < simplex->K; j++) {
+					StringBuffer_set_string(buffer, model->name);
+					StringBuffer_append_format(buffer, ".%d", (j+1));
+					fprintf(logger->file, "\t%s", buffer->c);
+				}
+			}
+			else{
+				fprintf(logger->file, "\t%s", model->name);
+			}
 		}
 		for (int i = 0; i < Parameters_count(logger->x); i++) {
 			fprintf(logger->file, "\t%s", Parameters_name(logger->x, i));
-		}
-		for (int i = 0; i < logger->simplex_count; i++) {
-			Simplex* simplex = logger->simplexes[i]->obj;
-			for (int j = 0; j < simplex->K; j++) {
-				StringBuffer_set_string(buffer, logger->simplexes[i]->name);
-				StringBuffer_append_format(buffer, "%d", (j+1));
-				fprintf(logger->file, "\t%s", buffer->c);
-			}
 		}
 	}
 	free_StringBuffer(buffer);
@@ -79,22 +88,48 @@ void log_tree(Log* logger, size_t iter){
 void log_log(Log* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
-		if (logger->force) {
-			fprintf(logger->file, "\t%e", logger->models[i]->logP(logger->models[i]));
+		Model* model = logger->models[i];
+		if(model->type == MODEL_DISCRETE_PARAMETER){
+			DiscreteParameter* dp = model->obj;
+			for (int j = 0; j < dp->length; j++) {
+				fprintf(logger->file, "\t%d", dp->values[j]);
+			}
 		}
-		else fprintf(logger->file, "\t%e", logger->models[i]->lp);
+		else if(model->type == MODEL_SIMPLEX){
+			Simplex* simplex = model->obj;
+			for (int j = 0; j < simplex->K; j++) {
+				fprintf(logger->file, "\t%e", simplex->get_value(simplex, j));
+			}
+		}
+		else{
+			if (logger->force) {
+				fprintf(logger->file, "\t%e", model->logP(model));
+			}
+			else fprintf(logger->file, "\t%e", model->lp);
+		}
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
 		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));
 	}
-	for (int i = 0; i < logger->simplex_count; i++) {
-		Simplex* simplex = logger->simplexes[i]->obj;
-		for (int j = 0; j < simplex->K; j++) {
-			fprintf(logger->file, "\t%e", simplex->get_value(simplex, j));
+	
+	if (logger->filename == NULL) {
+		if(iter > 0){
+			gettimeofday(&logger->end, NULL);
+			double diff_time = (double)(logger->end.tv_usec - logger->start.tv_usec) / 1000000 + (double)(logger->end.tv_sec - logger->start.tv_sec);
+			double speed = diff_time/logger->every*1e6;
+			if (speed < 1) {
+				fprintf(logger->file, "  %.2f sec/million", speed);
+			}
+			else{
+				fprintf(logger->file, "  %.2f min/million", speed/60);
+			}
+			
+			logger->start = logger->end;
 		}
 	}
-	
+
 	fprintf(logger->file, "\n");
+	fflush(logger->file);
 }
 
 void log_log_cpo(Log* logger, size_t iter){
@@ -113,16 +148,19 @@ void log_log_cpo(Log* logger, size_t iter){
 void log_log_with(Log* logger, size_t iter, const char* more){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
-		fprintf(logger->file, "\t%e", logger->models[i]->lp);
+		Model* model = logger->models[i];
+		if(model->type == MODEL_SIMPLEX){
+			Simplex* simplex = model->obj;
+			for (int j = 0; j < simplex->K; j++) {
+				fprintf(logger->file, "\t%e", simplex->get_value(simplex, j));
+			}
+		}
+		else{
+			fprintf(logger->file, "\t%e", model->lp);
+		}
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
 		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));
-	}
-	for (int i = 0; i < logger->simplex_count; i++) {
-		Simplex* simplex = logger->simplexes[i]->obj;
-		for (int j = 0; j < simplex->K; j++) {
-			fprintf(logger->file, "\t%e", simplex->get_value(simplex, j));
-		}
 	}
 	
 	fprintf(logger->file, "\t%s\n", more);
@@ -169,9 +207,6 @@ void _free_Log(Log* logger){
 	if (logger->format != NULL) {
 		free(logger->format);
 	}
-	if(logger->simplexes != NULL){
-		free(logger->simplexes);
-	}
 	free(logger);
 }
 
@@ -185,7 +220,6 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 		"format",
 		"header",
 		"models",
-		"simplexes",
 		"x"
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
@@ -204,6 +238,7 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	logger->write_with = log_log_with;
 	logger->file = stdout;
 	logger->filename = NULL;
+	gettimeofday(&logger->start, NULL);
 	logger->tree = false;
 	logger->format = NULL;
 	char* format = get_json_node_value_string(node, "format");
@@ -266,28 +301,6 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	if (logger->tree) {
 		logger->write = log_tree;
 		if(format == NULL)logger->format = String_clone("newick");
-	}
-	
-	json_node* simplexes_node = get_json_node(node, "simplexes");
-	logger->simplex_count = 0;
-	logger->simplexes = NULL;
-	if (simplexes_node != NULL) {
-		if (simplexes_node->node_type == MJSON_ARRAY) {
-			logger->simplex_count = simplexes_node->child_count;
-			logger->simplexes = malloc(sizeof(Model*)*logger->simplex_count);
-			for (int i = 0; i < simplexes_node->child_count; i++) {
-				json_node* child = simplexes_node->children[i];
-				char* child_string = child->value;
-				Model* m = Hashtable_get(hash, child_string+1);
-				logger->simplexes[i] = m;
-			}
-		}
-		else if (simplexes_node->node_type == MJSON_STRING) {
-			char* ref = simplexes_node->value;
-			logger->simplexes = malloc(sizeof(Model*));
-			logger->simplexes[0] = Hashtable_get(hash, ref+1);
-			logger->simplex_count++;
-		}
 	}
 	
 	logger->initialize = log_initialize;

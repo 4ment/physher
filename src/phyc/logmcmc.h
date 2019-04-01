@@ -10,6 +10,7 @@
 #define logmcmc_h
 
 #include <stdio.h>
+#include <sys/time.h>
 
 #include "parameters.h"
 
@@ -17,8 +18,6 @@ typedef struct Log{
 	Parameters* x;
 	Model** models;
 	size_t model_count;
-	Model** simplexes;
-	size_t simplex_count;
 	FILE* file;
 	char* filename;
 	size_t every;
@@ -32,6 +31,8 @@ typedef struct Log{
 	bool tree;
 	char* format;
 	bool force;// force calculation of model (i.e. do not use stored lnl)
+	struct timeval start;
+	struct timeval end;
 }Log;
 	
  Log* new_Log_from_json(json_node* node, Hashtable* hash);
