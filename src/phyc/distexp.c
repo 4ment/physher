@@ -9,6 +9,7 @@
 #include "distexp.h"
 
 #include <string.h>
+#include <strings.h>
 
 #include <gsl/gsl_randist.h>
 
@@ -18,39 +19,45 @@
 #include "descriptivestats.h"
 
 double DistributionModel_log_exp(DistributionModel* dm){
-	double logP = 0;
+	if(!dm->need_update) return dm->lp;
+	
+	dm->lp = 0;
 	if(Parameters_count(dm->parameters) > 1){
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
 			double lambda = Parameters_value(dm->parameters, i);
-			logP += log(lambda) - lambda * Parameters_value(dm->x, i);
+			dm->lp += log(lambda) - lambda * Parameters_value(dm->x, i);
 		}
 	}
 	else{
 		double lambda = Parameters_value(dm->parameters, 0);
-		logP = log(lambda) * Parameters_count(dm->x);
+		dm->lp = log(lambda) * Parameters_count(dm->x);
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			logP -= lambda * Parameters_value(dm->x, i);
+			dm->lp -= lambda * Parameters_value(dm->x, i);
 		}
 	}
-	return logP;
+	dm->need_update = false;
+	return dm->lp;
 }
 
 double DistributionModel_log_exp_mean(DistributionModel* dm){
-	double logP = 0;
+	if(!dm->need_update) return dm->lp;
+	
+	dm->lp = 0;
 	if(Parameters_count(dm->parameters) > 1){
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double lambda = 1.0/Parameters_value(dm->parameters, i);
-			logP += log(lambda) - lambda * Parameters_value(dm->x, i);
+			double mean = Parameters_value(dm->parameters, i);
+			dm->lp += -log(mean) - Parameters_value(dm->x, i)/mean;
 		}
 	}
 	else{
-		double lambda = 1.0/Parameters_value(dm->parameters, 0);
-		logP = log(lambda) * Parameters_count(dm->x);
+		double mean = Parameters_value(dm->parameters, 0);
+		dm->lp = -log(mean) * Parameters_count(dm->x);
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			logP -= lambda * Parameters_value(dm->x, i);
+			dm->lp -=  Parameters_value(dm->x, i)/mean;
 		}
 	}
-	return logP;
+	dm->need_update = false;
+	return dm->lp;
 }
 
 double DistributionModel_log_exp_with_values(DistributionModel* dm, const double* values){
@@ -65,7 +72,7 @@ double DistributionModel_log_exp_with_values(DistributionModel* dm, const double
 		double lambda = Parameters_value(dm->parameters, 0);
 		logP = log(lambda) * Parameters_count(dm->x);
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			logP -= log(lambda) * values[i];
+			logP -= lambda * values[i];
 		}
 	}
 	return logP;
@@ -75,15 +82,15 @@ double DistributionModel_log_exp_with_values_mean(DistributionModel* dm, const d
 	double logP = 0;
 	if(Parameters_count(dm->parameters) > 1){
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			double lambda = 1.0/Parameters_value(dm->parameters, i);
-			logP += log(lambda) - lambda * values[i];
+			double mean = Parameters_value(dm->parameters, i);
+			logP += -log(mean) - values[i]/mean;
 		}
 	}
 	else{
-		double lambda = 1.0/Parameters_value(dm->parameters, 0);
-		logP = log(lambda) * Parameters_count(dm->x);
+		double mean = Parameters_value(dm->parameters, 0);
+		logP = -log(mean) * Parameters_count(dm->x);
 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-			logP -= log(lambda) * values[i];
+			logP -= values[i]/mean;
 		}
 	}
 	return logP;
@@ -104,14 +111,6 @@ double DistributionModel_dlog_exp_mean(DistributionModel* dm, const Parameter* p
 			return -1.0/Parameters_value(dm->parameters, 0);
 		}
 	}
-	return 0;
-}
-
-double DistributionModel_ddlog_exp(DistributionModel* dm, const Parameter* p1, const Parameter* p2){
-	return 0.0;
-}
-
-double DistributionModel_d2log_exp(DistributionModel* dm, const Parameter* p){
 	return 0;
 }
 
@@ -187,8 +186,8 @@ DistributionModel* new_ExponentialDistributionModel(const double lambda, const P
 	dm->logP = DistributionModel_log_exp;
 	dm->logP_with_values = DistributionModel_log_exp_with_values;
 	dm->dlogP = DistributionModel_dlog_exp;
-	dm->d2logP = DistributionModel_d2log_exp;
-	dm->ddlogP = DistributionModel_ddlog_exp;
+	dm->d2logP = DistributionModel_d2log_0;
+	dm->ddlogP = DistributionModel_ddlog_0;
 	dm->sample = DistributionModel_exp_sample;
 	dm->sample_evaluate = DistributionModel_exp_sample_evaluate;
 	free_Parameters(ps);
@@ -213,8 +212,8 @@ DistributionModel* new_ExponentialDistributionModel_with_parameters(Parameters* 
 		dm->sample = DistributionModel_exp_sample_mean;
 		dm->sample_evaluate = DistributionModel_exp_sample_evaluate_mean;
 	}
-	dm->d2logP = DistributionModel_d2log_exp;
-	dm->ddlogP = DistributionModel_ddlog_exp;
+	dm->d2logP = DistributionModel_d2log_0;
+	dm->ddlogP = DistributionModel_ddlog_0;
 	return dm;
 }
 
@@ -274,6 +273,7 @@ Model* new_ExponentialDistributionModel_from_json(json_node* node, Hashtable* ha
 	dm->shift = get_json_node_value_double(node, "shift", 0);
 	Model* model = new_DistributionModel2(id, dm);
 	
+	model->samplable = true;
 	dm->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	
 	free_Parameters(parameters);

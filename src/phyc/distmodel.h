@@ -64,14 +64,12 @@ struct _DistributionModel{
 	DistributionModel* (*clone)(DistributionModel*);
 	void* data;
 	double lp;
+	double stored_lp;
 	bool need_update;
 	distribution_parameterization parameterization;
 	gsl_rng* rng;
 	double shift;
 };
-
-
-DistributionModel* new_IndependantGammaDistributionModel(const double shape, const double rate, const Parameters* x);
 
 
 DistributionModel* new_FlatDirichletDistributionModel(Simplex* simplex);
@@ -85,5 +83,11 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex);
 
 Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash);
+
+double DistributionModel_dlog_0(DistributionModel* dm, const Parameter* p);
+
+double DistributionModel_d2log_0(DistributionModel* dm, const Parameter* p);
+
+double DistributionModel_ddlog_0(DistributionModel* dm, const Parameter* p1, const Parameter* p2);
 
 #endif /* distmodel_h */
