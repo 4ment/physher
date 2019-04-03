@@ -19,6 +19,7 @@
 
 #include <assert.h>
 #include <strings.h>
+#include <tgmath.h>
 
 #include "substmodel.h"
 #include "parameters.h"
@@ -261,6 +262,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	}
 
 	bool invariant = false;
+	int index_invar = 0;
 	Parameters* rates = NULL;
 	if (rates_node != NULL && rates_node->node_type == MJSON_ARRAY) {
 		rates = new_Parameters_from_json(rates_node, hash);
@@ -268,7 +270,6 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	}
 	else if (rates_node != NULL && rates_node->node_type == MJSON_OBJECT) {
 		rates = new_Parameters(rates_node->child_count);
-		int index_invar = 0;
 		for(int i = 0; i < rates_node->child_count; i++){
 			json_node* p_node = rates_node->children[i];
 			Parameter* p = new_Parameter_from_json(p_node, hash);
@@ -280,9 +281,6 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			else{
 				check_constraint(p, 0, INFINITY, 0.001, 100);
 			}
-		}
-		if (index_invar != 0) {
-			Parameters_swap_index(rates, 0, index_invar);
 		}
 	}
 	
@@ -314,6 +312,10 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				fprintf(stderr, "In %s of type %s\n", get_json_node_value_string(node, "id"), get_json_node_value_string(node, "type"));
 				fprintf(stderr, "%s is not a valid value for key %s\n", distribution_str, "distribution");
 				exit(13);
+			}
+			
+			if (index_invar == 0) {
+				Parameters_swap_index(rates, 1, index_invar);
 			}
 		}
 		else{
@@ -674,7 +676,6 @@ void _weibull_approx_quantile( SiteModel *sm ) {
 	for (int i = 0; i < nCat; i++) {
 		sm->cat_rates[i + cat] /= mean;
 	}
-//	exit(2);
 	
 	sm->need_update = false;
 }
