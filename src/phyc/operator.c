@@ -24,7 +24,7 @@
 
 #include <gsl/gsl_randist.h>
 
-double tune(int accepted, int count, double target, double tuner, double min, double max, bool inverse){
+double tune(long accepted, long count, double target, double tuner, double min, double max, bool inverse){
 	double delta = 1./sqrt(count);
 	//delta = fmin(0.01, delta);
 	double logTuner = log(tuner);
@@ -45,95 +45,14 @@ double tune(int accepted, int count, double target, double tuner, double min, do
 	return t;
 }
 
-double getDeltaP(int count, double logAlpha, double target){
+double getDeltaP(long count, double logAlpha, double target){
 	return ((1.0 / count) * (exp(fmin(logAlpha, 0.)) - target));
 }
 
-double optimizeScaleFactor(double scaleFactor, int count, double logAlpha, double target ){
+double optimizeScaleFactor(double scaleFactor, long count, double logAlpha, double target ){
 	double delta = getDeltaP(count, logAlpha, target);
 	delta += log(1./scaleFactor-1.0);
 	return 1./(exp(delta)+1.0);
-}
-
-void operator_store(Operator* op){
-	Parameters* ps = op->x;
-	if(op->models!= NULL){
-		ps = ((Simplex*)op->models[0]->obj)->parameters;
-	}
-	for(int i = 0; i < Parameters_count(ps); i++){
-		Parameter_store(Parameters_at(ps, i));
-	}
-}
-
-void operator_snni_store(Operator* op){
-	
-}
-
-// we do not know in advance which node is going to move so store all of them
-void operator_height_store(Operator* op){
-	Tree* tree = op->models[0]->obj;
-	for(int i = 0; i < Tree_node_count(tree); i++){
-		Node* node = Tree_node(tree, i);
-		Parameter_store(node->height);
-	}
-}
-
-void operator_interval_store(Operator* op){
-	Coalescent* coal = op->models[0]->obj;
-	for(int i = 0; i < Tree_node_count(coal->tree); i++){
-		Node* node = Tree_node(coal->tree, i);
-		Parameter_store(node->height);
-	}
-}
-
-void operator_interval_scaler_restore(Operator* op){
-	Coalescent* coal = op->models[0]->obj;
-	for(int i = 0; i < Tree_node_count(coal->tree); i++){
-		if(op->indexes[i] == 1){
-			Node* node = Tree_node(coal->tree, op->indexes[i]);
-			Parameter_restore(node->height);
-		}
-	}
-}
-
-void operator_tree_scaler_restore(Operator* op){
-	Tree* tree = op->models[0]->obj;
-	if(op->all){
-		for(int i = 0; i < Tree_node_count(tree); i++){
-			Node* node = Tree_node(tree, i);
-			Parameter_restore(node->height);
-		}
-	}
-	else{
-		Node* node = Tree_node(tree, op->indexes[0]);
-		Parameter_restore(node->height);
-	}
-}
-
-void operator_restore(Operator* op){
-	Parameters* ps = op->x;
-	if(op->models != NULL){
-		ps = ((Simplex*)op->models[0]->obj)->parameters;
-	}
-	for(int i = 0; i < Parameters_count(ps); i++){
-		Parameter_restore(Parameters_at(ps, i));
-	}
-}
-
-void operator_snni_restore(Operator* op){
-	Tree* tree = op->models[0]->obj;
-	Node* node1 = Tree_node(tree, op->indexes[0]);
-	Node* node2 = Tree_node(tree, op->indexes[1]);
-	NNI_move(tree, node1, node2);
-	node1->distance->listeners->fire(node1->distance->listeners, NULL, Node_id(node1));
-	node2->distance->listeners->fire(node2->distance->listeners, NULL, Node_id(node2));
-}
-
-void operator_uniform_heigh_restore(Operator* op){
-	Tree* tree = op->models[0]->obj;
-	Node* node = Tree_node(tree, op->indexes[0]);
-	Parameter_restore(node->height);
-	node->height->listeners->fire(node->height->listeners, NULL, Node_id(node));
 }
 
 bool operator_uniform_height(Operator* op, double* logHR){
@@ -144,7 +63,6 @@ bool operator_uniform_height(Operator* op, double* logHR){
 		size_t idx = gsl_rng_uniform_int(op->rng, nodeCount);
 		internal = Tree_node(tree, idx);
 	}
-	op->indexes[0] = Node_id(internal);
 	double lower = Parameter_lower(internal->height);
 	double upper = Parameter_upper(internal->height);
 	double newValue = (gsl_rng_uniform(op->rng) * (upper - lower)) + lower;
@@ -165,20 +83,17 @@ bool operator_interval_scaler(Operator* op, double* logHR){
 	}
 	int endPoint = 0;
 	for( ; endPoint < coal->n; endPoint++){
-		if(coal->nodes[endPoint] == Node_id(internal)) break;
+		if(coal->nodes[endPoint]->index == Node_id(internal)) break;
 	}
 	double oldInterval = Node_height(internal);
 	if (endPoint > 0) {
-		oldInterval -= Node_height(Tree_node(coal->tree, coal->nodes[endPoint-1]));
+		oldInterval -= Node_height(Tree_node(coal->tree, coal->nodes[endPoint-1]->index));
 	}
 	double intervalIncrement = s*oldInterval - oldInterval;
-//	printf("%f %f %f\n", intervalIncrement, oldInterval, s);
-	memset(op->indexes, 0, sizeof(int)*Tree_node_count(coal->tree));
 	
 	for(int i = endPoint; i < coal->n; i++){
-		Node* node = Tree_node(coal->tree, coal->nodes[i]);
+		Node* node = Tree_node(coal->tree, coal->nodes[i]->index);
 		Node_set_height(node, Node_height(node)+intervalIncrement);
-		op->indexes[coal->nodes[i]] = 1;
 	}
 
 	*logHR = -log(s);
@@ -187,8 +102,8 @@ bool operator_interval_scaler(Operator* op, double* logHR){
 
 bool operator_scaler(Operator* op, double* logHR){
 	if(op->x != NULL){
-		op->indexes[0] = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
-		Parameter* p = Parameters_at(op->x, op->indexes[0]);
+		size_t index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
+		Parameter* p = Parameters_at(op->x, index);
 		double scaler_scaleFactor = op->parameters[0];
 		double v = Parameter_value(p);
 		double vv = v;
@@ -221,7 +136,6 @@ bool operator_scaler(Operator* op, double* logHR){
 		}
 		else{
 			Node* root = Tree_root(tree);
-			op->indexes[0] = Node_id(root);
 			double newValue = s*Node_height(root);
 			double lower = Parameter_lower(root->height);
 			double upper = Parameter_upper(root->height);
@@ -237,8 +151,8 @@ bool operator_scaler(Operator* op, double* logHR){
 }
 
 bool operator_slider(Operator* op, double* logHR){
-	op->indexes[0] = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
-	Parameter* p = Parameters_at(op->x, op->indexes[0]);
+	size_t index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
+	Parameter* p = Parameters_at(op->x, index);
 	double v = Parameter_value(p);
 	double vv = v;
 	double w = (gsl_rng_uniform(op->rng) - 0.5)*op->parameters[0];//slider_delta;
@@ -265,8 +179,8 @@ bool operator_slider(Operator* op, double* logHR){
 
 
 bool operator_random_walk_unif(Operator* op, double* logHR){
-	op->indexes[0] = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
-	Parameter* p = Parameters_at(op->x, op->indexes[0]);
+	size_t index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
+	Parameter* p = Parameters_at(op->x, index);
 	double v = Parameter_value(p);
 	double vv = v;
 	double w = (gsl_rng_uniform(op->rng) * 2.0 - 1.0)*op->parameters[0];
@@ -390,7 +304,7 @@ bool operator_sNNI(Operator* op, double* logHR){
 	Node* root = Tree_root(tree);
 	Node* left_root = Tree_root(tree)->left;
 	Node* right_root = Tree_root(tree)->right;
-	int index;
+	size_t index;
 	Node* node;
 	// right is a leaf so left is not but we do not do nni around left
 	if(Node_isleaf(right_root)){
@@ -412,7 +326,7 @@ bool operator_sNNI(Operator* op, double* logHR){
 	}
 	
 	Node* node_swap = node->left;
-	int indexSwap = gsl_rng_uniform_int(op->rng, 2);
+	size_t indexSwap = gsl_rng_uniform_int(op->rng, 2);
 	
 	if(indexSwap == 1){
 		node_swap = node->right;
@@ -420,8 +334,6 @@ bool operator_sNNI(Operator* op, double* logHR){
 	
 	NNI_move(tree, sibling, node_swap);
 	
-	op->indexes[0] = Node_id(sibling);
-	op->indexes[1] = Node_id(node_swap);
 	sibling->distance->listeners->fire(sibling->distance->listeners, NULL, Node_id(sibling));
 	node_swap->distance->listeners->fire(sibling->distance->listeners, NULL, Node_id(node_swap));
 	*logHR = 0;
@@ -498,14 +410,11 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	op->x = NULL;
 	op->weight = get_json_node_value_double(node, "weight", 1);
 	op->name = String_clone(id_string);
-	op->store = operator_store;
-	op->restore = operator_restore;
 	op->parameters = NULL;
-	op->indexes = NULL;
 	op->models = NULL;
 	op->optimize = NULL;
 	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
-	op->tuning_delay = get_json_node_value_size_t(node, "delay", 10000);
+	//op->tuning_delay = get_json_node_value_size_t(node, "delay", 10000);
 	op->all = get_json_node_value_bool(node, "all", false);
 	
 	if (strcasecmp(algorithm_string, "scaler") == 0) {
@@ -516,10 +425,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 			op->models = malloc(op->model_count*sizeof(Model*));
 			op->models[0] = Hashtable_get(hash, ref_coalescent+1);
 			op->models[0]->ref_count++;
-			op->store = operator_interval_store;
-			op->restore = operator_interval_scaler_restore;
 			op->propose = operator_interval_scaler;
-			op->indexes = ivector(Tree_node_count(((Coalescent*)op->models[0]->obj)->tree));
 		}
 		else{
 			if(ref_tree != NULL){
@@ -527,15 +433,12 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 				op->models = malloc(op->model_count*sizeof(Model*));
 				op->models[0] = Hashtable_get(hash, ref_tree+1);
 				op->models[0]->ref_count++;
-				op->store = operator_height_store;
-				op->restore = operator_tree_scaler_restore;
 			}
 			else{
 				op->x = new_Parameters(1);
 				get_parameters_references2(node, hash, op->x, "x");
 			}
 			op->propose = operator_scaler;
-			op->indexes = ivector(1);
 		}
 		op->optimize = operator_scaler_optimize;
 		op->parameters = dvector(1);
@@ -568,7 +471,6 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 				
 			}
 		}
-		op->indexes = ivector(1);
 	}
 	else if (strcasecmp(algorithm_string, "randomwalk") == 0) {
 		op->x = new_Parameters(1);
@@ -587,7 +489,6 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 				
 			}
 		}
-		op->indexes = ivector(1);
 	}
 	else if (strcasecmp(algorithm_string, "dirichlet") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
@@ -646,10 +547,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->models[0] = Hashtable_get(hash, ref+1);
 		op->models[0]->ref_count++;
 		op->propose = operator_sNNI;
-		op->store = operator_snni_store;
-		op->restore = operator_snni_restore;
 		op->parameters = dvector(1);
-		op->indexes = ivector(2);
 		op->parameters[0] = 1000;
 		if(p_node != NULL){
 			if (p_node->node_type == MJSON_PRIMITIVE){
@@ -669,9 +567,6 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->models[0] = Hashtable_get(hash, ref+1);
 		op->models[0]->ref_count++;
 		op->propose = operator_uniform_height;
-		op->store = operator_height_store;
-		op->restore = operator_uniform_heigh_restore;
-		op->indexes = ivector(1);
 	}
 	else if (strcasecmp(algorithm_string, "bitflip") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
@@ -696,7 +591,6 @@ void free_Operator(Operator* op){
 		}
 		free(op->models);
 	}
-	if(op->indexes != NULL) free(op->indexes);
 	free_Parameters(op->x);
 	free(op->name);
 	free(op);

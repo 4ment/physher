@@ -15,28 +15,6 @@
 
 #include "optimizer.h"
 
-void operator_vb_store(Operator* op){
-	Parameters* ps = op->x;
-	for(int i = 0; i < Parameters_count(ps); i++){
-		Parameter_store(Parameters_at(ps, i));
-	}
-}
-
-void operator_vb_restore(Operator* op){
-	Tree* tree = op->models[1]->obj;
-	Node* node1 = Tree_node(tree, op->indexes[0]);
-	Node* node2 = Tree_node(tree, op->indexes[1]);
-	Node* node3 = Tree_node(tree, op->indexes[2]);
-	Parameter_restore(node1->distance);
-	Parameter_restore(node2->distance);
-	Parameter_restore(node3->distance);
-}
-
-void operator_vb_restore_1(Operator* op){
-	Tree* tree = op->models[1]->obj;
-	Node* node = Tree_node(tree, op->indexes[0]);
-	Parameter_restore(node->distance);
-}
 
 bool operator_vb(Operator* op, double* logHR){
 	variational_t* var = op->models[0]->obj;
@@ -45,7 +23,7 @@ bool operator_vb(Operator* op, double* logHR){
 	Node* root = Tree_root(tree);
 	Node* left_root = Tree_root(tree)->left;
 	Node* right_root = Tree_root(tree)->right;
-	int index;
+	size_t index;
 	Node* node;
 	double* values = dvector(dim);
 	Parameters* ps = new_Parameters(3);
@@ -64,10 +42,6 @@ bool operator_vb(Operator* op, double* logHR){
 	Parameters_add(ps, node->distance);
 	Parameters_add(ps, Node_left(node)->distance);
 	Parameters_add(ps, Node_right(node)->distance);
-	
-	op->indexes[0] = Node_id(node);
-	op->indexes[1] = Node_id(Node_left(node));
-	op->indexes[2] = Node_id(Node_right(node));
 	
 	var->sample_some(var, ps, values);
 	
@@ -107,10 +81,6 @@ bool operator_vb_on_the_fly(Operator* op, double* logHR){
 	Parameters_add(ps, node->distance);
 	Parameters_add(ps, Node_left(node)->distance);
 	Parameters_add(ps, Node_right(node)->distance);
-	
-	op->indexes[0] = Node_id(node);
-	op->indexes[1] = Node_id(Node_left(node));
-	op->indexes[2] = Node_id(Node_right(node));
 	
 	Hashtable* hash = new_Hashtable_string(100);
 	hashtable_set_key_ownership( hash, false );
@@ -225,8 +195,6 @@ bool operator_vb_1(Operator* op, double* logHR){
 		
 	Parameters_add(ps, node->distance);
 	
-	op->indexes[0] = Node_id(node);
-	
 	var->sample_some(var, ps, &value);
 	
 	Parameter_set_value(node->distance, value);
@@ -277,8 +245,6 @@ Operator* new_VariationalOperator_from_json(json_node* node, Hashtable* hash){
 		op->models[1]->ref_count++;
 		
 		op->propose = operator_vb_on_the_fly;
-		op->store = operator_vb_store;
-		op->restore = operator_vb_restore;
 		
 	}
 	else{
@@ -301,14 +267,10 @@ Operator* new_VariationalOperator_from_json(json_node* node, Hashtable* hash){
 			}
 		}
 		op->propose = operator_vb_1;
-		op->store = operator_vb_store;
-		op->restore = operator_vb_restore_1;
 	}
 	op->optimize = NULL;
 	op->parameters = dvector(1);
 	op->parameters[0] = 1000;
-	op->indexes = ivector(3);
-	
 	
 	op->rejected_count = 0;
 	op->accepted_count = 0;

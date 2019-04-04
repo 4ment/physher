@@ -21,7 +21,7 @@ typedef struct Operator{
 	Model** models;
 	size_t model_count;
 	double* parameters;
-	int* indexes;
+	//int* indexes;
 	double weight;
 	bool all;
 	size_t rejected_count;
@@ -29,8 +29,6 @@ typedef struct Operator{
 	size_t failure_count;
 	size_t tuning_delay;
 	bool (*propose)(struct Operator*, double*);
-	void (*store)(struct Operator*);
-	void (*restore)(struct Operator*);
 	void (*optimize)(struct Operator*, double);
 	gsl_rng* rng;
 }Operator;
