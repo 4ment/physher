@@ -26,6 +26,11 @@
 
 #include <stdbool.h>
 
+typedef struct double_int_pair_t{
+	double value;
+	int index;
+}double_int_pair_t;
+
 #define SIGN(a,b) ((b) >= 0.0 ? fabs(a) : -fabs(a))
 
 #if defined (USE_FLOAT)
@@ -169,6 +174,8 @@ void print_pretty_time( FILE *file, double dseconds );
 
 
 void * aligned16_malloc( size_t size );
+
+int cmp_double_int_pair_asc(const void *a, const void *b);
 
 
 #endif

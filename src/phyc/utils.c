@@ -587,3 +587,14 @@ void * aligned16_malloc( size_t size ){
 #endif
 	return memptr;
 }
+
+int cmp_double_int_pair_asc(const void *a, const void *b){
+	const double_int_pair_t *const *aa = a;
+	const double_int_pair_t *const *bb = b;
+	if ((*aa)->value < (*bb)->value)
+		return -1;
+	else if ((*aa)->value > (*bb)->value)
+		return 1;
+	else
+		return 0;
+}
