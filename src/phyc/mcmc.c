@@ -95,7 +95,18 @@ void run(MCMC* mcmc){
 	for (int i = 0; i < mcmc->log_count; i++) {
 		mcmc->logs[i]->write(mcmc->logs[i], iter);
 	}
-	
+
+#ifdef DEBUG_OPERATORS
+	FILE* ofile = fopen("operators.csv", "w");
+	fprintf(ofile, "iter,operator,accepted,rejected,prob,parameter\n");
+	for (int i = 0; i < mcmc->operator_count; i++) {
+		Operator* op = mcmc->operators[i];
+		double prob = (double)op->accepted_count/(op->accepted_count+op->rejected_count);
+		fprintf(ofile, "%d,%s,%zu,%zu,%f,%f\n", 0, op->name, op->accepted_count, op->rejected_count, prob,(op->parameters != NULL ? op->parameters[0]: -1));
+	}
+	fflush(ofile);
+#endif
+
 	while ( iter < mcmc->chain_length) {
 		
 		// Choose operator
@@ -136,10 +147,22 @@ void run(MCMC* mcmc){
 				mcmc->logs[i]->write(mcmc->logs[i], iter);
 			}
 		}
+#ifdef DEBUG_OPERATORS
+		if(iter % DEBUG_OPERATORS == 0)
+		for (int i = 0; i < mcmc->operator_count; i++) {
+			Operator* op = mcmc->operators[i];
+			double prob = (double)op->accepted_count/(op->accepted_count+op->rejected_count);
+			fprintf(ofile, "%zu,%s,%zu,%zu,%f,%f\n", iter, op->name, op->accepted_count, op->rejected_count, prob,(op->parameters != NULL ? op->parameters[0]: -1));
+		}
+		fflush(ofile);
+#endif
 		if(mcmc->interruptible && mcmc_interrupted){
 			break;
 		}
 	}
+#ifdef DEBUG_OPERATORS
+	fclose(ofile);
+#endif
 	
 	for (int i = 0; i < mcmc->log_count; i++) {
 		mcmc->logs[i]->finalize(mcmc->logs[i]);
