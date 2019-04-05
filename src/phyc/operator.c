@@ -63,10 +63,22 @@ bool operator_uniform_height(Operator* op, double* logHR){
 		size_t idx = gsl_rng_uniform_int(op->rng, nodeCount);
 		internal = Tree_node(tree, idx);
 	}
-	double lower = Parameter_lower(internal->height);
-	double upper = Parameter_upper(internal->height);
+	double lower = fmax(Node_height(Node_left(internal)), Node_height(Node_right(internal)));
+	double upper = Node_height(Node_parent(internal));
 	double newValue = (gsl_rng_uniform(op->rng) * (upper - lower)) + lower;
 	Node_set_height(internal, newValue);
+	*logHR = 0;
+	return true;
+}
+
+bool operator_uniform(Operator* op, double* logHR){
+	size_t index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
+	Parameter* p = Parameters_at(op->x, index);
+	double lower = Parameter_lower(p);
+	double upper = Parameter_upper(p);
+	double newValue = (gsl_rng_uniform(op->rng) * (upper - lower)) + lower;
+	Parameter_set_value(p, newValue);
+	*logHR = 0;
 	return true;
 }
 
@@ -137,9 +149,8 @@ bool operator_scaler(Operator* op, double* logHR){
 		else{
 			Node* root = Tree_root(tree);
 			double newValue = s*Node_height(root);
-			double lower = Parameter_lower(root->height);
-			double upper = Parameter_upper(root->height);
-			if(newValue < lower || newValue > upper){
+			double lower = fmax(Node_height(Node_left(root)), Node_height(Node_right(root)));
+			if(newValue < lower){
 				op->rejected_count++;
 				return false;
 			}
@@ -232,6 +243,18 @@ bool operator_simplex_exchange(Operator* op, double* logHR){
 	}
 	simplex->set_values(simplex, newValues);
 	free(newValues);
+	return true;
+}
+
+bool operator_beta(Operator* op, double* logHR){
+	double alpha = op->parameters[0];
+	double v = Parameters_value(op->x, 0);
+	double newValue = gsl_ran_beta(op->rng, alpha*v+1.0, alpha*(1.0-v)+1.0);
+	if (newValue == 1.0 || newValue == 0.0) {
+		return false;
+	}
+	Parameters_set_value(op->x, 0, newValue);
+	*logHR = log(gsl_ran_beta_pdf(v, alpha*newValue+1.0, alpha*(1.0-newValue)+1.0)/gsl_ran_beta_pdf(newValue, alpha*v+1.0, alpha*(1.0-v))+1.0);
 	return true;
 }
 
@@ -360,6 +383,14 @@ void operator_dirichlet_optimize(Operator* op, double alpha){
 		op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.01, 10000, true);
 	}
 }
+
+
+void operator_beta_optimize(Operator* op, double alpha){
+	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
+	if(count >= 0){
+		op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.01, 10000, true);
+	}
+}
 void operator_exchange_optimize(Operator* op, double alpha){
 	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
 	if(count >= 0){
@@ -393,6 +424,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	
 	char* allowed[] = {
 		"algorithm",
+		"all",
 		"coalescent",
 		"delay",
 		"parameters",
@@ -490,6 +522,14 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 			}
 		}
 	}
+	else if (strcasecmp(algorithm_string, "beta") == 0) {
+		op->x = new_Parameters(1);
+		get_parameters_references2(node, hash, op->x, "x");
+		op->propose = operator_beta;
+		op->optimize = operator_beta_optimize;
+		op->parameters = dvector(1);
+		op->parameters[0] = get_json_node_value_double(node, "parameters", 10);
+	}
 	else if (strcasecmp(algorithm_string, "dirichlet") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
 		op->model_count = 1;
@@ -561,12 +601,19 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	else if (strcasecmp(algorithm_string, "uniform") == 0) {
-		char* ref = get_json_node_value_string(node, "x");
-		op->model_count = 1;
-		op->models = malloc(op->model_count*sizeof(Model*));
-		op->models[0] = Hashtable_get(hash, ref+1);
-		op->models[0]->ref_count++;
-		op->propose = operator_uniform_height;
+		char* ref_tree = get_json_node_value_string(node, "tree");
+		if (ref_tree == NULL) {
+			op->x = new_Parameters(1);
+			get_parameters_references2(node, hash, op->x, "x");
+			op->propose = operator_uniform;
+		}
+		else{
+			op->model_count = 1;
+			op->models = malloc(op->model_count*sizeof(Model*));
+			op->models[0] = Hashtable_get(hash, ref_tree+1);
+			op->models[0]->ref_count++;
+			op->propose = operator_uniform_height;
+		}
 	}
 	else if (strcasecmp(algorithm_string, "bitflip") == 0) {
 		char* ref = get_json_node_value_string(node, "x");
