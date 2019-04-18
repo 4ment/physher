@@ -790,7 +790,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
     else if(strcasecmp(algorithm_string, "sg") == 0){
         opt = new_Optimizer(OPT_SG);
 		opt->stop.frequency_check = get_json_node_value_size_t(node, "frequency_check", 100);
-        double tol = get_json_node_value_double(node, "tol", 0.0001);
+        opt->stop.tolfx = get_json_node_value_double(node, "tol", 0.001);
         json_node* etas = get_json_node(node, "eta");
         if (etas != NULL && etas->node_type == MJSON_ARRAY) {
 			opt->etas = dvector(etas->child_count);

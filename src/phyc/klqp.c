@@ -10,6 +10,7 @@
 
 #include <string.h>
 #include <strings.h>
+#include <tgmath.h>
 
 #include "matrix.h"
 #include "gaussian.h"
@@ -147,6 +148,7 @@ double klqp_meanfield_normal_elbo(variational_t* var){
 	Model* posterior = var->posterior;
 	
 	// Entropy: 0.5(1 + log(2 \pi s^2))
+	// 0.5(1+log(2\pi) + sum(log(sigma))
 	size_t count = 0;
 	double entropy = 0;
 	for (size_t i = 0; i < dim; i++) {
@@ -155,7 +157,7 @@ double klqp_meanfield_normal_elbo(variational_t* var){
 			count++;
 		}
 	}
-	entropy = 0.5 * count * (1.0 + LOG_TWO_PI);
+	entropy += 0.5 * count * (1.0 + LOG_TWO_PI);
 	int inf_count = 0;
 	
 	for (int i = 0; i < var->elbo_samples; i++) {
