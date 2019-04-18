@@ -225,7 +225,7 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 	double elbo = 0;
 	double elbo_prev = -INFINITY;
 	double elbo_best = -INFINITY;
-	double tol_rel_obj = 0.0001;
+	double tol_rel_obj = stop->tolfx;
 	size_t eval_elbo = stop->frequency_check;
 	int max_conv = 3;
 	int conv = 0;
