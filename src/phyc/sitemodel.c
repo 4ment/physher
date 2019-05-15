@@ -35,8 +35,6 @@
 #include <gsl/gsl_cdf.h>
 
 static void _gamma_approx_quantile( SiteModel *sm );
-static void _weibull_approx_quantile( SiteModel *sm );
-static void _invariant( SiteModel *sm );
 static void _calculate_rates_discrete( SiteModel *sm );
 
 static double _get_rate( SiteModel *sm, const int index );
@@ -47,14 +45,6 @@ static double _get_rate_gamma( SiteModel *sm, const int index );
 static double _get_proportion_gamma( SiteModel *sm, const int index );
 static double *_get_proportions_gamma( SiteModel *sm );
 
-static double _get_rate_weibull( SiteModel *sm, const int index );
-static double _get_proportion_weibull( SiteModel *sm, const int index );
-static double *_get_proportions_weibull( SiteModel *sm );
-
-static double _get_rate_invariant( SiteModel *sm, const int index );
-static double _get_proportion_invariant( SiteModel *sm, const int index );
-static double *_get_proportions_invariant( SiteModel *sm );
-
 static double _get_rate_laguerre( SiteModel *sm, const int index );
 static double _get_proportion_laguerre( SiteModel *sm, const int index );
 static double * _get_proportions_laguerre( SiteModel *sm );
@@ -63,10 +53,6 @@ static double * _get_proportions_laguerre( SiteModel *sm );
 static double _get_rate_discrete( SiteModel *sm, const int index );
 static double _get_proportion_discrete( SiteModel *sm, const int index );
 static double *_get_proportions_discrete( SiteModel *sm );
-
-static double _get_rate_cat( SiteModel *sm, const int index );
-
-static SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const size_t cat_count, sitemodel_heterogeneity type );
 
 
 static void _site_model_handle_change( Model *self, Model *model, int index ){
@@ -128,7 +114,6 @@ static void _site_model_free( Model *self ){
 		//TODO: deal with this
 		if(sm->mu!=NULL)free_Parameter(sm->mu);
 		if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
-		if ( sm->cat_assignment != NULL ) free(sm->cat_assignment);
 		free(sm->cat_rates);
 		free(sm);
 		free_Model(self);
@@ -225,230 +210,6 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	return model;
 }
 
-
-Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
-	char* allowed[] = {
-		"categories",
-		"discretization",
-		"distribution",
-		"model",
-		"mu",
-		"rates",
-		"substitutionmodel"
-	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
-	
-	json_node* categories_node = get_json_node(node, "categories");
-	json_node* rates_node = get_json_node(node, "rates");
-	char* distribution_str = get_json_node_value_string(node, "distribution");
-	json_node* discretization_node = get_json_node(node, "discretization");
-	json_node* m_node = get_json_node(node, "substitutionmodel");
-	json_node* mu_node = get_json_node(node, "mu");
-
-	Model* mm = NULL;
-	if (m_node->node_type == MJSON_STRING && ((char*)m_node->value)[0] == '&') {
-		char* ref = (char*)m_node->value;
-		mm = Hashtable_get(hash, ref+1);
-		mm->ref_count++;
-	}
-	else{
-		mm = new_SubstitutionModel_from_json(m_node, hash);
-	}
-	SubstitutionModel* m = (SubstitutionModel*)mm->obj;
-	
-	size_t cat = 1;
-	if (categories_node != NULL) {
-		cat = atoi((char*)categories_node->value);
-	}
-
-	bool invariant = false;
-	int index_invar = 0;
-	Parameters* rates = NULL;
-	if (rates_node != NULL && rates_node->node_type == MJSON_ARRAY) {
-		rates = new_Parameters_from_json(rates_node, hash);
-		check_constraints(rates, 0, INFINITY, 0.001, 100);
-	}
-	else if (rates_node != NULL && rates_node->node_type == MJSON_OBJECT) {
-		rates = new_Parameters(rates_node->child_count);
-		for(int i = 0; i < rates_node->child_count; i++){
-			json_node* p_node = rates_node->children[i];
-			Parameter* p = new_Parameter_from_json(p_node, hash);
-			Parameters_move(rates, p);
-			if(strcasecmp(p_node->key, "invariant") == 0){
-				invariant = true;
-				index_invar = i;
-			}
-			else{
-				check_constraint(p, 0, INFINITY, 0.001, 100);
-			}
-		}
-	}
-	
-	for (int i = 0; i < Parameters_count(rates); i++) {
-		Hashtable_add(hash, Parameters_name(rates, i), Parameters_at(rates, i));
-	}
-	
-	sitemodel_heterogeneity type = SITEMODEL_NONE;
-	
-	if (cat > 1) {
-		const char* average_str = get_json_node_value_string(node, "average");
-		if (average_str != NULL) {
-			const char* average_allowed[] = {"mean", "median"};
-			if(!array_of_string_contains(average_str, average_allowed, 2, false)){
-				fprintf(stderr, "In %s of type %s\n", get_json_node_value_string(node, "id"), get_json_node_value_string(node, "type"));
-				fprintf(stderr, "%s is not a valid value for key %s\n", average_str, "average");
-				exit(13);
-			}
-		}
-		
-		if (invariant) {
-			if (strcasecmp(distribution_str, "gamma") == 0){
-				type = (average_str != NULL && strcasecmp(average_str, "mean") == 0 ? SITEMODEL_GAMMAINV_MEAN : SITEMODEL_GAMMAINV);
-			}
-			else if (strcasecmp(distribution_str, "weibull") == 0){
-				type = SITEMODEL_WEIBULLINV;
-			}
-			else {
-				fprintf(stderr, "In %s of type %s\n", get_json_node_value_string(node, "id"), get_json_node_value_string(node, "type"));
-				fprintf(stderr, "%s is not a valid value for key %s\n", distribution_str, "distribution");
-				exit(13);
-			}
-			
-			if (index_invar == 0) {
-				Parameters_swap_index(rates, 1, index_invar);
-			}
-		}
-		else{
-			if (strcasecmp(distribution_str, "gamma") == 0){
-				if(discretization_node != NULL && strcasecmp("laguerre", (char*)discretization_node->value) == 0)
-					type = SITEMODEL_GAMMA_LAGUERRE;
-				else
-					type = (average_str != NULL && strcasecmp(average_str, "mean") == 0 ? SITEMODEL_GAMMA_MEAN : SITEMODEL_GAMMA);
-			}
-			else if (strcasecmp(distribution_str, "weibull") == 0){
-				type = SITEMODEL_WEIBULL;
-			}
-			else if (strcasecmp(distribution_str, "discrete") == 0){
-				type = SITEMODEL_DISCRETE;
-			}
-			else {
-				fprintf(stderr, "In %s of type %s\n", get_json_node_value_string(node, "id"), get_json_node_value_string(node, "type"));
-				fprintf(stderr, "%s is not a valid value for key %s\n", distribution_str, "distribution");
-				exit(13);	
-			}
-		}
-	}
-	else if (invariant){
-		type = SITEMODEL_INV;
-	}
-	
-	SiteModel* sm = _new_SiteModel_with_parameters(m, rates, cat, type);
-
-	char* id_string = get_json_node_value_string(node, "id");
-
-	Model* msm = new_SiteModel2(id_string, sm, mm);
-	
-	if (mu_node != NULL) {
-		sm->mu = new_Parameter_from_json(mu_node, hash);
-		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
-		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
-	}
-	
-	mm->free(mm);
-	free_Parameters(rates);
-	return msm;
-}
-
-#pragma mark -
-// MARK: Gamma SiteModel
-
-SiteModel * new_SiteModel( SubstitutionModel *m ){
-	return _new_SiteModel_with_parameters( m, NULL, 0, SITEMODEL_NONE );
-}
-
-SiteModel * new_PinvSiteModel( SubstitutionModel *m, const double pinv ){
-	assert( pinv>0 && pinv <1 );
-	Parameters *params = new_Parameters(1);
-	Parameters_move(params, new_Parameter("sitemodel.pinv", pinv, new_Constraint(0+TINY, 1-TINY) ));
-	SiteModel* sm = _new_SiteModel_with_parameters( m, params, 0, SITEMODEL_INV );
-	free_Parameters(params);
-	return sm;
-}
-
-SiteModel * new_PinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* pinv ){
-	assert( Parameters_value(pinv, 0)>0 && Parameters_value(pinv, 0) <1 );
-	return _new_SiteModel_with_parameters( m, pinv, 0, SITEMODEL_INV );
-}
-
-SiteModel * new_GammaSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count ){
-	assert( shape >= SITEMODEL_ALPHA_MIN && shape <= SITEMODEL_ALPHA_MAX );
-	Parameters *params = new_Parameters(1);
-	Parameters_move(params, new_Parameter("sitemodel.alpha", shape, new_Constraint(SITEMODEL_ALPHA_MIN, SITEMODEL_ALPHA_MAX) ));
-	SiteModel* sm = _new_SiteModel_with_parameters( m, params, cat_count, SITEMODEL_GAMMA );
-	free_Parameters(params);
-	return sm;
-}
-
-SiteModel * new_GammaSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const size_t cat_count ){
-	assert( Parameters_value(shape, 0) >= SITEMODEL_ALPHA_MIN && Parameters_value(shape, 0) <= SITEMODEL_ALPHA_MAX );
-	return _new_SiteModel_with_parameters( m, shape, cat_count, SITEMODEL_GAMMA );
-}
-
-SiteModel * new_GammaPinvSiteModel( SubstitutionModel *m, const double pinv, const double shape, const unsigned int cat_count ){
-
-    if( pinv == 0 && cat_count == 1 ){
-        return _new_SiteModel_with_parameters( m, NULL, 0, SITEMODEL_NONE );
-    }
-    
-    Parameters *params = new_Parameters(2);
-    
-    if( cat_count > 1 ){
-        Parameter *alpha = new_Parameter("sitemodel.alpha", shape, new_Constraint(SITEMODEL_ALPHA_MIN, SITEMODEL_ALPHA_MAX) );
-        Parameters_move(params, alpha);
-    }
-    if( pinv > 0 ){
-        Parameter *inv = new_Parameter("sitemodel.pinv", pinv, new_Constraint(0+TINY, 1-TINY) );
-        Parameters_move(params, inv);
-    }
-    
-    sitemodel_heterogeneity type = SITEMODEL_GAMMAINV;
-    if( pinv == 0 && cat_count > 1 ){
-        type = SITEMODEL_GAMMA;
-    }
-    else if ( pinv > 0.0 && cat_count == 1 ){
-        type = SITEMODEL_INV;
-    }
-	SiteModel* sm = _new_SiteModel_with_parameters( m, params, cat_count, type );
-	free_Parameters(params);
-	return sm;
-}
-
-SiteModel * new_GammaPinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* params, const size_t cat_count ){
-	sitemodel_heterogeneity type = SITEMODEL_GAMMAINV;
-	if( Parameters_count(params) == 1 && cat_count > 1 ){
-		type = SITEMODEL_GAMMA;
-	}
-	else if ( Parameters_count(params) == 1 && cat_count == 1 ){
-		type = SITEMODEL_INV;
-	}
-	return _new_SiteModel_with_parameters( m, params, cat_count, type );
-}
-
-SiteModel * new_GammaLaguerreSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count ){
-	assert( shape >= SITEMODEL_ALPHA_MIN && shape <= SITEMODEL_ALPHA_MAX );
-	Parameters *params = new_Parameters(1);
-	Parameter *alpha = new_Parameter("sitemodel.alpha", shape, new_Constraint(SITEMODEL_ALPHA_MIN, SITEMODEL_ALPHA_MAX) );
-	Parameters_move(params, alpha);
-	SiteModel* sm = _new_SiteModel_with_parameters( m, params, cat_count, SITEMODEL_GAMMA_LAGUERRE );
-	free_Parameters(params);
-	return sm;
-}
-
-SiteModel * new_GammaLaguerreSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const size_t cat_count ){
-	assert( Parameters_value(shape, 0) >= SITEMODEL_ALPHA_MIN && Parameters_value(shape, 0) <= SITEMODEL_ALPHA_MAX );
-	return _new_SiteModel_with_parameters( m, shape, cat_count, SITEMODEL_GAMMA_LAGUERRE );
-}
-
 void set_rate(SiteModel* sm, const int index, const double value){
     Parameters_set_value(sm->rates, index, value);
     sm->need_update = true;
@@ -456,101 +217,46 @@ void set_rate(SiteModel* sm, const int index, const double value){
 
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
-SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const size_t cat_count, sitemodel_heterogeneity type ){
+SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad){
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
 	sm->m = m;
 	sm->nstate = m->nstate;
 	
-	sm->type = type;
+	sm->distribution = distribution;
+	sm->invariant = invariant;
+	sm->quadrature = quad;
 	
-	sm->cat_count = 1;
+	sm->cat_count = cat_count;
+	if (invariant) sm->cat_count++;
 	
 	sm->cat_rates       = NULL;
 	sm->cat_proportions = NULL;
     
-	sm->rates = NULL;
+	sm->rates = new_Parameters(Parameters_count(params));
+	Parameters_add_parameters(sm->rates, params);
 	sm->mu    = NULL;
-	
-    sm->cat_assignment = NULL;
-    sm->cat_assignment_length = 0;
     
     sm->set_rate = set_rate;
-    
-	switch ( type) {
-		case SITEMODEL_NONE:			
-			sm->get_rate        = _get_rate;
-			sm->get_proportion  = _get_proportion;
-			sm->get_proportions = _get_proportions;
-            sm->cat_rates       = dvector(sm->cat_count);
-            sm->cat_proportions = dvector(sm->cat_count);
-            sm->cat_rates[0] = sm->cat_proportions[0] = 1;
-			break;
-		case SITEMODEL_GAMMA:
-            sm->rates = new_Parameters(1);
-            Parameters_add(sm->rates, Parameters_at(params, 0));
-			sm->cat_count       = cat_count;
-			sm->get_rate        = _get_rate_gamma;
-			sm->get_proportion  = _get_proportion_gamma;
-			sm->get_proportions = _get_proportions_gamma;
-            sm->cat_rates       = dvector(sm->cat_count);
-            sm->cat_proportions = dvector(sm->cat_count);
-			break;
-		case SITEMODEL_GAMMAINV:
-            sm->rates = new_Parameters(2);
-            Parameters_add(sm->rates, Parameters_at(params, 0));
-            Parameters_add(sm->rates, Parameters_at(params, 1));
-            sm->cat_count       = cat_count+1;
-			sm->get_rate        = _get_rate_gamma;
-			sm->get_proportion  = _get_proportion_gamma;
-			sm->get_proportions = _get_proportions_gamma;
-            sm->cat_rates       = dvector(sm->cat_count);
-            sm->cat_proportions = dvector(sm->cat_count);
-			break;
-		case SITEMODEL_WEIBULL:
-			sm->rates = new_Parameters(1);
-			Parameters_add(sm->rates, Parameters_at(params, 0));
-			sm->cat_count       = cat_count;
-			sm->get_rate        = _get_rate_weibull;
-			sm->get_proportion  = _get_proportion_weibull;
-			sm->get_proportions = _get_proportions_weibull;
-			sm->cat_rates       = dvector(sm->cat_count);
-			sm->cat_proportions = dvector(sm->cat_count);
-			break;
-		case SITEMODEL_WEIBULLINV:
-			sm->rates = new_Parameters(2);
-			Parameters_add(sm->rates, Parameters_at(params, 0));
-			Parameters_add(sm->rates, Parameters_at(params, 1));
-			sm->cat_count       = cat_count+1;
-			sm->get_rate        = _get_rate_weibull;
-			sm->get_proportion  = _get_proportion_weibull;
-			sm->get_proportions = _get_proportions_weibull;
-			sm->cat_rates       = dvector(sm->cat_count);
-			sm->cat_proportions = dvector(sm->cat_count);
-			break;
-        case SITEMODEL_INV:
-            sm->rates = new_Parameters(1);
-            Parameters_add(sm->rates, Parameters_at(params, 0));
-			sm->cat_count       = 2;
-			sm->get_rate        = _get_rate_invariant;
-			sm->get_proportion  = _get_proportion_invariant;
-			sm->get_proportions = _get_proportions_invariant;
-            sm->cat_rates       = dvector(sm->cat_count);
-            sm->cat_proportions = dvector(sm->cat_count);
-			break;
-        case SITEMODEL_GAMMA_LAGUERRE:
-            sm->rates = new_Parameters(1);
-            Parameters_add(sm->rates, Parameters_at(params, 0));
-			sm->cat_count       = cat_count;
-			sm->get_rate        = _get_rate_laguerre;
-			sm->get_proportion  = _get_proportion_laguerre;
-			sm->get_proportions = _get_proportions_laguerre;
-            sm->cat_rates       = dvector(sm->cat_count);
-            sm->cat_proportions = dvector(sm->cat_count);
-			break;
-		default:
-			error("SiteModel type unknown");
-			break;
+	
+	sm->cat_rates       = dvector(sm->cat_count);
+	sm->cat_proportions = dvector(sm->cat_count);
+	
+	if (distribution == DISTRIBUTION_UNIFORM) {
+		sm->get_rate        = _get_rate;
+		sm->get_proportion  = _get_proportion;
+		sm->get_proportions = _get_proportions;
+		sm->cat_rates[0] = sm->cat_proportions[0] = 1;
+	}
+	else if (quad == QUADRATURE_GAUSS_LAGUERRE){
+		sm->get_rate        = _get_rate_laguerre;
+		sm->get_proportion  = _get_proportion_laguerre;
+		sm->get_proportions = _get_proportions_laguerre;
+	}
+	else{
+		sm->get_rate        = _get_rate_gamma;
+		sm->get_proportion  = _get_proportion_gamma;
+		sm->get_proportions = _get_proportions_gamma;
 	}
     
 	sm->integrate   = true;
@@ -558,8 +264,6 @@ SiteModel * _new_SiteModel_with_parameters( SubstitutionModel *m, const Paramete
 	
 	return sm;
 }
-
-
 
 double _get_rate( SiteModel *sm, const int index ){
 	return (sm->mu == NULL ? 1.0 : Parameter_value(sm->mu));
@@ -570,34 +274,6 @@ double _get_proportion( SiteModel *sm, const int index ){
 }
 
 double *_get_proportions( SiteModel *sm ){
-	return sm->cat_proportions;
-}
-
-double _get_rate_invariant( SiteModel *sm, const int index ){
-    if ( sm->need_update ) {
-        _invariant(sm);
-    }
-    return sm->cat_rates[index] * (sm->mu == NULL ? 1.0 : Parameter_value(sm->mu));
-}
-
-double _get_rate_weibull( SiteModel *sm, const int index ){
-	if ( sm->need_update ) {
-		_weibull_approx_quantile(sm);
-	}
-	return sm->cat_rates[index] * (sm->mu == NULL ? 1.0 : Parameter_value(sm->mu));
-}
-
-double _get_proportion_weibull( SiteModel *sm, const int index ){
-	if ( sm->need_update ) {
-		_weibull_approx_quantile(sm);
-	}
-	return sm->cat_proportions[index];
-}
-
-double *_get_proportions_weibull( SiteModel *sm ){
-	if ( sm->need_update ) {
-		_weibull_approx_quantile(sm);
-	}
 	return sm->cat_proportions;
 }
 
@@ -622,20 +298,6 @@ double *_get_proportions_gamma( SiteModel *sm ){
     return sm->cat_proportions;
 }
 
-double _get_proportion_invariant( SiteModel *sm, const int index ){
-    if ( sm->need_update ) {
-        _invariant(sm);
-    }
-    return sm->cat_proportions[index];
-}
-
-double *_get_proportions_invariant( SiteModel *sm ){
-    if ( sm->need_update ) {
-        _invariant(sm);
-    }
-    return sm->cat_proportions;
-}
-
 double icdf_weibull(double p, double lambda, double k){
 	return lambda*pow(-log(1.0 - p), 1.0/k);
 }
@@ -644,55 +306,26 @@ double icdf_weibull_1(double p, double k){
 	return pow(-log(1.0 - p), 1.0/k);
 }
 
-void _weibull_approx_quantile( SiteModel *sm ) {
-	
-	double propVariable = 1.0;
-	int cat = 0;
-	
-	// there is also invariant sites
-	if ( Parameters_count(sm->rates) > 1 ) {
-		sm->cat_rates[0] = 0.0;
-		sm->cat_proportions[0] = Parameters_value(sm->rates, 1);
-		
-		propVariable = 1.0 - sm->cat_proportions[0];
-		cat = 1;
-	}
-	
-	double mean = 0.0;
-	const int nCat = sm->cat_count - cat;
-	
-	const double k = Parameters_value(sm->rates, 0);
-	
-	// median
-	for (int i = 0; i < nCat; i++) {
-		sm->cat_rates[i + cat] = icdf_weibull_1((2.0 * i + 1.0) / (2.0 * nCat), k);
-		mean += sm->cat_rates[i + cat];
-		
-		sm->cat_proportions[i + cat] = propVariable / nCat;
-	}
-	
-	mean = (propVariable * mean) / nCat;
-	
-	for (int i = 0; i < nCat; i++) {
-		sm->cat_rates[i + cat] /= mean;
-	}
-	
-	sm->need_update = false;
-}
-
 void _gamma_approx_quantile( SiteModel *sm ) {
     
     double propVariable = 1.0;
     int cat = 0;
     
     // there is also invariant sites
-    if ( Parameters_count(sm->rates) > 1 ) {
+	if ( sm->invariant ) {
         sm->cat_rates[0] = 0.0;
         sm->cat_proportions[0] = Parameters_value(sm->rates, 1);
         
         propVariable = 1.0 - sm->cat_proportions[0];
         cat = 1;
     }
+	// only proportion of invariant
+	if (sm->invariant && Parameters_count(sm->rates) == 1) {
+		sm->cat_rates[cat] = 1.0 / propVariable;
+		sm->cat_proportions[cat] = propVariable;
+		sm->need_update = false;
+		return;
+	}
     
     double mean = 0.0;
     const int nCat = sm->cat_count - cat;
@@ -700,13 +333,34 @@ void _gamma_approx_quantile( SiteModel *sm ) {
     const double alpha = Parameters_value(sm->rates, 0);
 	
 	// median
-	if(sm->type == SITEMODEL_GAMMA || sm->type == SITEMODEL_GAMMAINV){
+	if(sm->quadrature == QUADRATURE_QUANTILE_MEDIAN){
+		if(sm->distribution == DISTRIBUTION_GAMMA){
+			for (int i = 0; i < nCat; i++) {
+				sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), alpha, 1.0/alpha );
+			}
+		}
+		else if(sm->distribution == DISTRIBUTION_WEIBULL){
+			for (int i = 0; i < nCat; i++) {
+				// Unit mean Weibull
+//				sm->cat_rates[i + cat] = gsl_cdf_weibull_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), alpha, 1.0/exp(gammln(1.0 + 1.0/alpha)) );
+				// Fix lambda:=1
+				sm->cat_rates[i + cat] = icdf_weibull_1((2.0 * i + 1.0) / (2.0 * nCat), alpha);
+			}
+		}
+		else if(sm->distribution == DISTRIBUTION_LOGNORMAL){
+			for (int i = 0; i < nCat; i++) {
+				sm->cat_rates[i + cat] = gsl_cdf_lognormal_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), -alpha*alpha/2, alpha );
+			}
+		}
+		else if(sm->distribution == DISTRIBUTION_BETA){
+			for (int i = 0; i < nCat; i++) {
+				sm->cat_rates[i + cat] = gsl_cdf_beta_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), alpha, Parameters_value(sm->rates, 1) );
+			}
+		}
+		
 		for (int i = 0; i < nCat; i++) {
-			//sm->cat_rates[i + cat] = qgamma( (2.0 * i + 1.0) / (2.0 * nCat), alpha, alpha );
-			sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), alpha, 1.0/alpha );
-			mean += sm->cat_rates[i + cat];
-			
 			sm->cat_proportions[i + cat] = propVariable / nCat;
+			mean += sm->cat_rates[i + cat];
 		}
 		
 		mean = (propVariable * mean) / nCat;
@@ -732,25 +386,7 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 			sm->cat_proportions[i + cat] = propVariable/nCat;
 		}
 	}
-    
-    sm->need_update = false;
-}
-
-void _invariant( SiteModel *sm ) {
-    
-    double propVariable = 1.0;
-    int cat = 0;
 	
-    // there is also invariant sites
-    if ( Parameters_count(sm->rates) > 0 ){
-		sm->cat_rates[0] = 0.0;
-        sm->cat_proportions[0] = Parameters_value(sm->rates, 0);
-        
-        propVariable = 1.0 - sm->cat_proportions[0];
-        cat = 1;
-    }
-    sm->cat_rates[cat] = 1.0 / propVariable;
-    sm->cat_proportions[cat] = propVariable;
     sm->need_update = false;
 }
 
@@ -761,21 +397,11 @@ void _gamma_approx_laguerre( SiteModel *sm ){
 	// calculate using alpha -1
 	gaulag(sm->cat_rates, sm->cat_proportions, sm->cat_count, alpha-1);
 	
-	double sum = 0.0;
-	double gamalpha = gamm(alpha+1);
+	double gamalpha = gamm(alpha);
 	for ( int i = 0; i < sm->cat_count; i++ ) {
-		sm->cat_rates[i] /= alpha+1;
-		sm->cat_proportions[i] *= gamalpha;
-		sum += sm->cat_proportions[i];
+		sm->cat_rates[i] /= alpha;
+		sm->cat_proportions[i] /= gamalpha;
 	}
-	
-	for ( int i = 0; i < sm->cat_count; i++ ) {
-		sm->cat_proportions[i] /= sum;
-	}
-	
-//	fprintf(stderr, "+++++++++++++++++++++++++++++\n");
-//	print_dvector(sm->cat_proportions, sm->cat_count);
-//	print_dvector(sm->cat_rates, sm->cat_count);
 	sm->need_update = false;
 }
 
@@ -800,16 +426,6 @@ double *_get_proportions_laguerre( SiteModel *sm ){
 	return sm->cat_proportions;
 }
 
-void SiteModel_set_mu( SiteModel *sm, double mu ){
-    sm->mu->value = mu;
-	sm->need_update = true;
-}
-
-double SiteModel_mu( const SiteModel *sm ){
-    return sm->mu->value;
-}
-
-
 #pragma mark -
 // MARK: Discrete SiteModel
 
@@ -829,7 +445,6 @@ SiteModel * new_DiscreteSiteModel( SubstitutionModel *m, int cat_count ){
 	
 	sm->cat_rates       = dvector(sm->cat_count);
 	sm->cat_proportions = dvector(sm->cat_count);
-    sm->cat_assignment = NULL;
 	
 	sm->rates = new_Parameters( (cat_count * 2) -2 );
 	
@@ -866,7 +481,7 @@ SiteModel * new_DiscreteSiteModel( SubstitutionModel *m, int cat_count ){
 	sm->integrate   = true;
 	sm->need_update = true;
 	
-	sm->type = SITEMODEL_DISCRETE;
+	sm->distribution = DISTRIBUTION_DISCRETE;
 	return sm;
 }
 
@@ -942,94 +557,6 @@ double sitemodel_get_discrete( SiteModel *sm, const int index ){
 }
 
 #pragma mark -
-// MARK: CAT SiteModel
-
-static double _get_rate_cat( SiteModel *sm, const int index );
-
-SiteModel * new_CATSiteModel( SubstitutionModel *m, size_t cat_count, const unsigned npatterns ){
-    
-    if( cat_count == 1 ){
-        return new_SiteModel(m);
-    }
-    SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
-	assert(sm);
-	sm->m = m;
-	sm->nstate = m->nstate;
-	
-	sm->type = SITEMODEL_CAT;
-	
-	sm->cat_count = cat_count;
-	
-    sm->cat_assignment = uivector(npatterns);
-    sm->cat_assignment_length = npatterns;
-    
-	sm->cat_rates       = dvector(cat_count);
-	sm->cat_proportions = NULL;
-    
-	sm->rates = NULL;
-	sm->mu    = NULL;
-    
-    sm->get_rate = _get_rate_cat;
-    
-    sm->get_proportion  = NULL;
-    sm->get_proportions = NULL;
-    
-    return sm;
-}
-
-// index is the index of a site/pattern
-double _get_rate_cat( SiteModel *sm, const int index ){
-	return sm->cat_rates[ sm->cat_assignment[index]];
-}
-
-#pragma mark -
-// MARK: Unrestricted SiteModel
-
-static double _get_rate_unres( SiteModel *sm, const int index );
-static void _set_discrete_unres( SiteModel *sm, const int index, const double value );
-
-SiteModel * new_UnrestrictedSiteModel( SubstitutionModel *m, size_t npatterns ){
-    
-    SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
-	assert(sm);
-	sm->m = m;
-	sm->nstate = m->nstate;
-	
-	sm->type = SITEMODEL_UNRESTRICTED;
-	
-	sm->cat_count = npatterns;
-	
-    sm->cat_assignment = NULL;
-    sm->cat_assignment_length = 0;
-    
-	sm->cat_rates       = dvector(npatterns);
-	sm->cat_proportions = NULL;
-    
-	sm->rates = new_Parameters(npatterns);
-	sm->mu    = NULL;
-    
-    StringBuffer *buffer = new_StringBuffer(20);
-    for ( int i = 0; i < npatterns; i++ ) {
-		StringBuffer_set_string(buffer, "sitemodel.r");
-		StringBuffer_append_format(buffer, "%d", i);
-		Parameters_move(sm->rates, new_Parameter(buffer->c, 1., new_Constraint(0.00001, 100)) );
-	}
-	free_StringBuffer(buffer);
-    
-    sm->get_rate = _get_rate_unres;
-    
-    sm->get_proportion  = NULL;
-    sm->get_proportions = NULL;
-    
-    return sm;
-}
-
-// index is the index of a site/pattern
-double _get_rate_unres( SiteModel *sm, const int index ){
-	return Parameters_value(sm->rates, index);
-}
-
-#pragma mark -
 
 SiteModel * clone_SiteModel( const SiteModel *sm ){
 	return clone_SiteModel_with(sm, sm->m->clone(sm->m));
@@ -1054,12 +581,6 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
 		newsm->mu = clone_Parameter(sm->mu);
 	}
 	
-	newsm->cat_assignment_length = sm->cat_assignment_length;
-	newsm->cat_assignment = NULL;
-	if ( sm->cat_assignment != NULL ){
-		newsm->cat_assignment = clone_uivector((unsigned *)sm->cat_assignment, sm->cat_assignment_length);
-	}
-	
 	newsm->cat_rates = clone_dvector(sm->cat_rates, sm->cat_count);
 	
 	newsm->cat_proportions = NULL;
@@ -1076,7 +597,9 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
 	
-	newsm->type = sm->type;
+	newsm->distribution = sm->distribution;
+	newsm->invariant = sm->invariant;
+	newsm->quadrature = sm->quadrature;
 	
 	return newsm;
 }
@@ -1085,7 +608,9 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionMo
 	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(newsm);
 	newsm->m = m;
-	newsm->type = sm->type;
+	newsm->distribution = sm->distribution;
+	newsm->invariant = sm->invariant;
+	newsm->quadrature = sm->quadrature;
 	newsm->nstate = sm->nstate;
 	
 	newsm->rates = NULL;
@@ -1105,12 +630,6 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionMo
 		mu->refCount++;
 	}
 	
-	newsm->cat_assignment_length = sm->cat_assignment_length;
-	newsm->cat_assignment = NULL;
-	if ( sm->cat_assignment != NULL ){
-		newsm->cat_assignment = clone_uivector((unsigned *)sm->cat_assignment, sm->cat_assignment_length);
-	}
-	
 	newsm->cat_rates = clone_dvector(sm->cat_rates, sm->cat_count);
 	
 	newsm->cat_proportions = NULL;
@@ -1127,8 +646,6 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionMo
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
 	
-	newsm->type = sm->type;
-	
 	return newsm;
 }
 
@@ -1137,8 +654,113 @@ void free_SiteModel( SiteModel *sm ){
 	if ( sm->rates != NULL ) free_Parameters(sm->rates);
 	if ( sm->mu != NULL ) free_Parameter(sm->mu);
 	if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
-    if ( sm->cat_assignment != NULL ) free(sm->cat_assignment);
 	free(sm->cat_rates);
 	if(sm->m!=NULL)sm->m->free(sm->m);
 	free(sm);
+}
+
+Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
+	char* allowed[] = {
+		"distribution",
+		"invariant",
+		"model",
+		"mu",
+		"rates",
+		"substitutionmodel"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	
+	json_node* distribution_node = get_json_node(node, "distribution");
+	json_node* m_node = get_json_node(node, "substitutionmodel");
+	json_node* mu_node = get_json_node(node, "mu");
+	json_node* invariant_node = get_json_node(node, "invariant");
+	
+	Model* mm = NULL;
+	if (m_node->node_type == MJSON_STRING && ((char*)m_node->value)[0] == '&') {
+		char* ref = (char*)m_node->value;
+		mm = Hashtable_get(hash, ref+1);
+		mm->ref_count++;
+	}
+	else{
+		mm = new_SubstitutionModel_from_json(m_node, hash);
+	}
+	SubstitutionModel* m = (SubstitutionModel*)mm->obj;
+	
+	size_t cat = 1;
+	
+	Parameters* rates = new_Parameters(1);
+	
+	distribution_t distribution = DISTRIBUTION_UNIFORM;
+	quadrature_t quad = QUADRATURE_QUANTILE_MEDIAN;
+	
+	if (distribution_node != NULL) {
+		cat = get_json_node_value_int(distribution_node, "categories", 4);
+		char* distribution_name = get_json_node_value_string(distribution_node, "distribution");
+		if (strcasecmp(distribution_name, "gamma") == 0){
+			distribution = DISTRIBUTION_GAMMA;
+		}
+		else if (strcasecmp(distribution_name, "weibull") == 0){
+			distribution = DISTRIBUTION_WEIBULL;
+		}
+		else if (strcasecmp(distribution_name, "lognormal") == 0){
+			distribution = DISTRIBUTION_LOGNORMAL;
+		}
+		else if (strcasecmp(distribution_name, "discrete") == 0){
+			distribution = DISTRIBUTION_DISCRETE;
+		}
+		else if (strcasecmp(distribution_name, "beta") == 0){
+			distribution = DISTRIBUTION_BETA;
+		}
+		else{
+			fprintf(stderr, "Cannot not recognize distribution %s\n", distribution_name);
+			exit(13);
+		}
+		
+		json_node* discretization_node = get_json_node(distribution_node, "quadrature");
+		if(discretization_node != NULL && distribution != DISTRIBUTION_DISCRETE){
+			char* method = discretization_node->value;
+			if(strcasecmp("laguerre", method) == 0){
+				quad = QUADRATURE_GAUSS_LAGUERRE;
+			}
+			else if(strcasecmp("median", method) == 0){
+				quad = QUADRATURE_QUANTILE_MEDIAN;
+			}
+			else if(strcasecmp("mean", method) == 0){
+				quad = QUADRATURE_QUANTILE_MEAN;
+			}
+			else{
+				fprintf(stderr, "Cannot not recognize quadrature method %s\n", method);
+				exit(13);
+			}
+		}
+		get_parameters_references(distribution_node, hash, rates);
+	}
+	
+	bool invariant = false;
+	if (invariant_node != NULL) {
+		Parameter* pinv = new_Parameter_from_json(invariant_node, hash);
+		Parameters_move(rates, pinv);
+		check_constraint(pinv, 0, INFINITY, 0, 0.99);
+		invariant = true;
+	}
+	
+	for (int i = 0; i < Parameters_count(rates); i++) {
+		Hashtable_add(hash, Parameters_name(rates, i), Parameters_at(rates, i));
+	}
+	
+	SiteModel* sm = new_SiteModel_with_parameters(m, rates, cat, distribution, invariant, quad);
+	
+	char* id_string = get_json_node_value_string(node, "id");
+	
+	Model* msm = new_SiteModel2(id_string, sm, mm);
+	
+	if (mu_node != NULL) {
+		sm->mu = new_Parameter_from_json(mu_node, hash);
+		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
+		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
+	}
+	
+	mm->free(mm);
+	free_Parameters(rates);
+	return msm;
 }

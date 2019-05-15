@@ -60,7 +60,7 @@ Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataT
     sm->m->need_update = true;
     sm->need_update = true;
     
-    if( sm->type != SITEMODEL_NONE ){
+    if( sm->distribution != DISTRIBUTION_UNIFORM ){
         double accum = 0;
         for ( int i = 0; i < sm->cat_count; i++ ) {
             accum += sm->get_proportion(sm,i);

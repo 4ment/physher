@@ -21,30 +21,24 @@
 #include "substmodel.h"
 #include "parameters.h"
 #include "mstring.h"
+#include "distmodel.h"
 
 #define SITEMODEL_ALPHA_MIN 0.001
 #define SITEMODEL_ALPHA_MAX 100
 
-typedef enum sitemodel_heterogeneity {
-	SITEMODEL_NONE,
-	SITEMODEL_DISCRETE,
-	SITEMODEL_GAMMA,
-	SITEMODEL_WEIBULL,
-	SITEMODEL_WEIBULLINV,
-	SITEMODEL_GAMMA_MEAN,
-	SITEMODEL_INV,
-	SITEMODEL_GAMMAINV,
-	SITEMODEL_GAMMAINV_MEAN,
-	SITEMODEL_GAMMA_LAGUERRE,
-	SITEMODEL_CAT,
-	SITEMODEL_UNRESTRICTED
-}sitemodel_heterogeneity;
+typedef enum quadrature_t {
+	QUADRATURE_QUANTILE_MEDIAN,
+	QUADRATURE_QUANTILE_MEAN,
+	QUADRATURE_GAUSS_LAGUERRE
+}quadrature_t;
 
 typedef struct SiteModel{
 	SubstitutionModel *m;
 	int nstate;
 	
-	sitemodel_heterogeneity type;
+	distribution_t distribution; // parametric distribution
+	bool invariant;
+	quadrature_t quadrature;
 	
 	bool need_update;
     
@@ -63,52 +57,12 @@ typedef struct SiteModel{
 	// categories
 	Parameters *rates;
     
-    // CAT
-	unsigned *cat_assignment; //map pattern index to rate index
-    size_t cat_assignment_length; //map pattern index to rate index
-    
     Parameter *mu;
-	
-	// HMM?
 } SiteModel;
 
 Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel );
 
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash);
-
-#pragma mark -
-// MARK: Gamma SiteModel
-
-
-SiteModel * new_SiteModel( SubstitutionModel *m );
-
-SiteModel * new_PinvSiteModel( SubstitutionModel *m, const double pinv );
-
-SiteModel * new_PinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* pinv );
-
-SiteModel * new_GammaSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count );
-
-SiteModel * new_GammaSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const size_t cat_count );
-
-SiteModel * new_GammaPinvSiteModel( SubstitutionModel *m, const double pinv, const double shape, const unsigned int cat_count );
-
-SiteModel * new_GammaPinvSiteModel_with_parameters( SubstitutionModel *m, const Parameters* params, const size_t cat_count );
-
-SiteModel * new_GammaLaguerreSiteModel( SubstitutionModel *m, const double shape, const unsigned int cat_count );
-
-SiteModel * new_GammaLaguerreSiteModel_with_parameters( SubstitutionModel *m, const Parameters* shape, const size_t cat_count );
-
-
-void SiteModel_set_mu( SiteModel *sm, double mu );
-double SiteModel_mu( const SiteModel *sm );
-
-#pragma mark -
-// MARK: Discrete SiteModel
-
-SiteModel * new_DiscreteSiteModel( SubstitutionModel *m, int cat_count );
-
-void sitemodel_set_discrete( SiteModel *sm, const int index, const double value );
-double sitemodel_get_discrete( SiteModel *sm, const int index );
 
 #pragma mark -
 
