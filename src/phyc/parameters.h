@@ -337,6 +337,7 @@ struct _Model {
 	double lp;
 	double storedLogP;
 	bool samplable; // model is a distribution that can sampled directly
+	void (*print)(Model*, FILE*);
 };
 
 
@@ -357,6 +358,10 @@ double Model_mixed_derivative( Model *model, Parameter* p1, Parameter* p2 );
 ListenerList * new_ListenerList( const unsigned capacity );
 
 #pragma mark -
+
+void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* parameters);
+
+bool get_parameter_list_from_node(json_node* node, Parameters* parameters);
 
 void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters);
 

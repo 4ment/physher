@@ -216,7 +216,10 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 
 Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash){
 	Parameters* parameters = new_Parameters(node->child_count);
-	get_parameters_references(node, hash, parameters);
+	bool found = get_parameter_list_from_node(node, parameters);
+	if (!found) {
+		get_parameters_from_node(node, hash, parameters);
+	}
 	return parameters;
 }
 
@@ -809,6 +812,7 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->sample = _dummy_sample;
 	model->sample_evaluate = _dummy_sample_evaluate;
 	model->samplable = false;
+	model->print = NULL;
 	return model;
 }
 
@@ -999,7 +1003,10 @@ void get_parameters_slice(char* ref, Parameters* parameters, Hashtable* hash){
 	char** chars = String_split_char(start, ':', &c);
 	if(c > 1){
 		if(strlen(chars[0]) > 0) begin = atoi(chars[0]);
-		if(strlen(chars[1]) > 0) end = atoi(chars[1]);
+		if(strlen(chars[1]) > 0){
+			int temp = atoi(chars[1]);
+			if(temp < 0) end = end + temp;
+		}
 		if(c == 3){
 			inc = atoi(chars[2]);
 		}
@@ -1028,8 +1035,85 @@ void get_parameters_slice(char* ref, Parameters* parameters, Hashtable* hash){
 	free(copy);
 }
 
-void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters){
-	// node can be like: "parameters":{"dimension": 4, "values": [2], "lower": 0, "upper": 100}
+void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* parameters){
+	if(node->node_type == MJSON_ARRAY){
+		for (int i = 0; i < node->child_count; i++) {
+			json_node* child = node->children[i];
+			char* ref = (char*)child->value;
+			// it's a ref
+			if (child->node_type == MJSON_STRING) {
+				if (ref[0] == '&') {
+					Parameter* p = Hashtable_get(hash, ref+1);
+					Parameters_add(parameters, p);
+					
+				}
+				// tree
+				else if (ref[0] == '%') {
+					// slicing
+					if (ref[strlen(ref)-1] == ']') {
+						get_parameters_slice(ref+1, parameters, hash);					}
+					else{
+						Parameters* ps = Hashtable_get(hash, ref+1);
+						Parameters_add_parameters(parameters, ps);
+					}
+					Parameters_set_name2(parameters, ref+1);
+				}
+				// simplex
+				else if (ref[0] == '$') {
+					Model* msimplex = Hashtable_get(hash, ref+1);
+					Simplex* simplex = msimplex->obj;
+					Parameters_add_parameters(parameters, simplex->parameters);
+				}
+			}
+			// it's a value
+			else if(child->node_type == MJSON_PRIMITIVE){
+				double v = atof((char*)child->value);
+				Parameters_move(parameters, new_Parameter("anonymous", v, NULL));
+			}
+			else{
+				exit(1);
+			}
+		}
+	}
+	// it's a ref
+	else if(node->node_type == MJSON_STRING){
+		char* ref = (char*)node->value;
+		if (ref[0] == '&') {
+			Parameter* p = Hashtable_get(hash, ref+1);
+			Parameters_add(parameters, p);
+		}
+		else if (ref[0] == '%') {
+			// slicing
+			if (ref[strlen(ref)-1] == ']') {
+				get_parameters_slice(ref+1, parameters, hash);
+			}
+			else{
+				Parameters* ps = Hashtable_get(hash, ref+1);
+				Parameters_add_parameters(parameters, ps);
+			}
+			Parameters_set_name2(parameters, ref+1);
+		}
+		// simplex
+		else if (ref[0] == '$') {
+			Model* msimplex = Hashtable_get(hash, ref+1);
+			Simplex* simplex = msimplex->obj;
+			Parameters_add_parameters(parameters, simplex->parameters);
+		}
+	}
+	else if(node->node_type == MJSON_OBJECT){
+		for(int i = 0; i < node->child_count; i++){
+			json_node* p_node = node->children[i];
+			Parameter* p = new_Parameter_from_json(p_node, hash);
+			Parameters_move(parameters, p);
+		}
+	}
+	else{
+		exit(1);
+	}
+}
+
+bool get_parameter_list_from_node(json_node* node, Parameters* parameters){
+	// node can be multidimensional: "parameters":{"dimension": 4, "values": [2], "lower": 0, "upper": 100}
 	for (int i = 0; i < node->child_count; i++) {
 		json_node* child = node->children[i];
 		if(strcasecmp(child->key, "dimension") == 0 && child->node_type == MJSON_PRIMITIVE){
@@ -1064,7 +1148,7 @@ void get_parameters_references(json_node* node, Hashtable* hash, Parameters* par
 					if(i == dim) break;
 					Constraint* cnstr = new_Constraint(lower, upper);
 					json_node* child = values->children[j];
-					double value = atoi((char*)child->value);
+					double value = atof((char*)child->value);
 					StringBuffer_empty(buffer);
 					StringBuffer_append_format(buffer, "%s.%d", id, i+1);
 					Parameters_move(parameters, new_Parameter(buffer->c, value, cnstr));
@@ -1072,90 +1156,22 @@ void get_parameters_references(json_node* node, Hashtable* hash, Parameters* par
 				}
 			}
 			free_StringBuffer(buffer);
-			return;
+			return true;
 		}
 	}
+	return false;
+}
+
+void get_parameters_references(json_node* node, Hashtable* hash, Parameters* parameters){
+	bool found = get_parameter_list_from_node(node, parameters);
+	if (found) return;
 	
 	get_parameters_references2(node, hash, parameters, "parameters");
 }
 
 void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* parameters, const char* tag){
     json_node* x_node = get_json_node(node, tag);
-    
-    if(x_node->node_type == MJSON_ARRAY){
-        for (int i = 0; i < x_node->child_count; i++) {
-            json_node* child = x_node->children[i];
-            char* ref = (char*)child->value;
-            // it's a ref
-            if (child->node_type == MJSON_STRING) {
-                if (ref[0] == '&') {
-                    Parameter* p = Hashtable_get(hash, ref+1);
-                    Parameters_add(parameters, p);
-                    
-                }
-                // tree
-				else if (ref[0] == '%') {
-					// slicing
-					if (ref[strlen(ref)-1] == ']') {
-						get_parameters_slice(ref+1, parameters, hash);					}
-					else{
-						Parameters* ps = Hashtable_get(hash, ref+1);
-						Parameters_add_parameters(parameters, ps);
-					}
-					Parameters_set_name2(parameters, ref+1);
-                }
-                // simplex
-                else if (ref[0] == '$') {
-                    Model* msimplex = Hashtable_get(hash, ref+1);
-                    Simplex* simplex = msimplex->obj;
-                    Parameters_add_parameters(parameters, simplex->parameters);
-                }
-			}
-			// it's a value
-			else if(child->node_type == MJSON_PRIMITIVE){
-				double v = atof((char*)child->value);
-				Parameters_move(parameters, new_Parameter("anonymous", v, NULL));
-			}
-            else{
-                exit(1);
-            }
-        }
-    }
-    // it's a ref
-    else if(x_node->node_type == MJSON_STRING){
-        char* ref = (char*)x_node->value;
-        if (ref[0] == '&') {
-            Parameter* p = Hashtable_get(hash, ref+1);
-            Parameters_add(parameters, p);
-        }
-        else if (ref[0] == '%') {
-			// slicing
-			if (ref[strlen(ref)-1] == ']') {
-				get_parameters_slice(ref+1, parameters, hash);
-			}
-			else{
-				Parameters* ps = Hashtable_get(hash, ref+1);
-				Parameters_add_parameters(parameters, ps);
-			}
-			Parameters_set_name2(parameters, ref+1);
-        }
-        // simplex
-        else if (ref[0] == '$') {
-            Model* msimplex = Hashtable_get(hash, ref+1);
-            Simplex* simplex = msimplex->obj;
-            Parameters_add_parameters(parameters, simplex->parameters);
-        }
-    }
-	else if(x_node->node_type == MJSON_OBJECT){
-		for(int i = 0; i < x_node->child_count; i++){
-			json_node* p_node = x_node->children[i];
-			Parameter* p = new_Parameter_from_json(p_node, hash);
-			Parameters_move(parameters, p);
-		}
-	}
-    else{
-        exit(1);
-    }
+	get_parameters_from_node(x_node, hash, parameters);
 }
 
 
