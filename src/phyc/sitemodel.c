@@ -170,6 +170,7 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 	Model* clone = new_SiteModel2(self->name, smclone, mmclone);
 	Hashtable_add(hash, clone->name, clone);
 	mmclone->free(mmclone);
+	clone->print = self->print;
 	return clone;
 }
 
@@ -210,6 +211,23 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel ){
 	return model;
 }
 
+static void _SiteModel_print(Model* model, FILE* out){
+	SiteModel* sm = model->obj;
+	sm->get_proportions(sm); // make sure it is updated
+	if (Parameters_count(sm->rates)) {
+		for (int i = 0; i < Parameters_count(sm->rates); i++) {
+			fprintf(out, "%s %f\n", Parameters_name(sm->rates, i),Parameters_value(sm->rates, i));
+		}
+		double sum = 0;
+		fprintf(out, "proportion rate\n");
+		for (int i = 0; i < sm->cat_count; i++){
+			fprintf(out, "%f %f\n",sm->cat_proportions[i], sm->cat_rates[i]);
+			sum += sm->cat_proportions[i]*sm->cat_rates[i];
+		}
+		fprintf(out, "sum %f\n", sum);
+	}
+}
+
 void set_rate(SiteModel* sm, const int index, const double value){
     Parameters_set_value(sm->rates, index, value);
     sm->need_update = true;
@@ -235,6 +253,9 @@ SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameter
     
 	sm->rates = new_Parameters(Parameters_count(params));
 	Parameters_add_parameters(sm->rates, params);
+	if (Parameters_name2(params) != NULL) {
+		Parameters_set_name2(sm->rates, Parameters_name2(params));
+	}
 	sm->mu    = NULL;
     
     sm->set_rate = set_rate;
@@ -247,6 +268,11 @@ SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameter
 		sm->get_proportion  = _get_proportion;
 		sm->get_proportions = _get_proportions;
 		sm->cat_rates[0] = sm->cat_proportions[0] = 1;
+	}
+	else if (distribution == DISTRIBUTION_DISCRETE) {
+		sm->get_rate        = _get_rate_discrete;
+		sm->get_proportion  = _get_proportion_discrete;
+		sm->get_proportions = _get_proportions_discrete;
 	}
 	else if (quad == QUADRATURE_GAUSS_LAGUERRE){
 		sm->get_rate        = _get_rate_laguerre;
@@ -307,18 +333,18 @@ double icdf_weibull_1(double p, double k){
 }
 
 void _gamma_approx_quantile( SiteModel *sm ) {
-    
-    double propVariable = 1.0;
-    int cat = 0;
-    
-    // there is also invariant sites
+	
+	double propVariable = 1.0;
+	int cat = 0;
+	
+	// there is also invariant sites
 	if ( sm->invariant ) {
-        sm->cat_rates[0] = 0.0;
-        sm->cat_proportions[0] = Parameters_value(sm->rates, 1);
-        
-        propVariable = 1.0 - sm->cat_proportions[0];
-        cat = 1;
-    }
+		sm->cat_rates[0] = 0.0;
+		sm->cat_proportions[0] = Parameters_value(sm->rates, Parameters_count(sm->rates)-1);
+		
+		propVariable = 1.0 - sm->cat_proportions[0];
+		cat = 1;
+	}
 	// only proportion of invariant
 	if (sm->invariant && Parameters_count(sm->rates) == 1) {
 		sm->cat_rates[cat] = 1.0 / propVariable;
@@ -326,44 +352,71 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 		sm->need_update = false;
 		return;
 	}
-    
-    double mean = 0.0;
-    const int nCat = sm->cat_count - cat;
-    
-    const double alpha = Parameters_value(sm->rates, 0);
+	
+	double mean = 0.0;
+	const int nCat = sm->cat_count - cat;
+	
+	const double alpha = Parameters_value(sm->rates, 0);
 	
 	// median
 	if(sm->quadrature == QUADRATURE_QUANTILE_MEDIAN){
+		
+		// proportions are estimated from beta distribution
+		if((Parameters_count(sm->rates) > 1 && !sm->invariant) ||
+		   (Parameters_count(sm->rates) > 2 && sm->invariant)){
+			sm->cat_proportions[cat] = 1;
+			for (int i = 0; i < nCat-1; i++) {
+				sm->cat_proportions[i+1+cat] = gsl_cdf_beta_Qinv( (i+1.0)/nCat, Parameters_value(sm->rates, 1), Parameters_value(sm->rates, 2) );
+			}
+			for (int i = 0; i < nCat-1; i++) {
+				sm->cat_proportions[i+cat] -= sm->cat_proportions[i+1+cat];
+			}
+			for (int i = 0; i < nCat; i++) {
+				sm->cat_proportions[i+cat] *= propVariable;
+			}
+		}
+		else{
+			for (int i = 0; i < nCat; i++) {
+				sm->cat_proportions[i + cat] = (2.0 * i + 1.0) / (2.0 * nCat);
+			}
+		}
+		
 		if(sm->distribution == DISTRIBUTION_GAMMA){
 			for (int i = 0; i < nCat; i++) {
-				sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), alpha, 1.0/alpha );
+				sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( sm->cat_proportions[i + cat], alpha, 1.0/alpha );
 			}
 		}
 		else if(sm->distribution == DISTRIBUTION_WEIBULL){
 			for (int i = 0; i < nCat; i++) {
 				// Unit mean Weibull
-//				sm->cat_rates[i + cat] = gsl_cdf_weibull_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), alpha, 1.0/exp(gammln(1.0 + 1.0/alpha)) );
+				// sm->cat_rates[i + cat] = gsl_cdf_weibull_Qinv( sm->cat_proportions[i + cat], alpha, 1.0/exp(gammln(1.0 + 1.0/alpha)) );
 				// Fix lambda:=1
-				sm->cat_rates[i + cat] = icdf_weibull_1((2.0 * i + 1.0) / (2.0 * nCat), alpha);
+				sm->cat_rates[i + cat] = icdf_weibull_1( sm->cat_proportions[i + cat], alpha);
 			}
 		}
 		else if(sm->distribution == DISTRIBUTION_LOGNORMAL){
 			for (int i = 0; i < nCat; i++) {
-				sm->cat_rates[i + cat] = gsl_cdf_lognormal_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), -alpha*alpha/2, alpha );
+				sm->cat_rates[i + cat] = gsl_cdf_lognormal_Qinv( sm->cat_proportions[i + cat], -alpha*alpha/2, alpha );
 			}
 		}
 		else if(sm->distribution == DISTRIBUTION_BETA){
 			for (int i = 0; i < nCat; i++) {
-				sm->cat_rates[i + cat] = gsl_cdf_beta_Qinv( (2.0 * i + 1.0) / (2.0 * nCat), alpha, Parameters_value(sm->rates, 1) );
+				sm->cat_rates[i + cat] = gsl_cdf_beta_Qinv( sm->cat_proportions[i + cat], alpha, Parameters_value(sm->rates, 1) );
 			}
 		}
-		
-		for (int i = 0; i < nCat; i++) {
-			sm->cat_proportions[i + cat] = propVariable / nCat;
-			mean += sm->cat_rates[i + cat];
+		if((Parameters_count(sm->rates) > 1 && !sm->invariant) ||
+		   (Parameters_count(sm->rates) > 2 && sm->invariant)){
+			for (int i = 0; i < nCat; i++) {
+				mean += sm->cat_rates[i + cat]*sm->cat_proportions[i + cat];
+			}
 		}
-		
-		mean = (propVariable * mean) / nCat;
+		else{
+			for (int i = 0; i < nCat; i++) {
+				sm->cat_proportions[i + cat] = propVariable / nCat;
+				mean += sm->cat_rates[i + cat];
+			}
+			mean = (propVariable * mean) / nCat;
+		}
 		
 		for (int i = 0; i < nCat; i++) {
 			sm->cat_rates[i + cat] /= mean;
@@ -387,7 +440,7 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 		}
 	}
 	
-    sm->need_update = false;
+	sm->need_update = false;
 }
 
 // Gamma distribution approximated using Laguerre quadrature
@@ -429,63 +482,6 @@ double *_get_proportions_laguerre( SiteModel *sm ){
 #pragma mark -
 // MARK: Discrete SiteModel
 
-SiteModel * new_DiscreteSiteModel( SubstitutionModel *m, int cat_count ){
-	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
-	assert(sm);
-	sm->m = m;
-	sm->nstate = m->nstate;
-	
-    sm->set_rate        = set_rate;
-	sm->get_rate        = _get_rate_discrete;
-	sm->get_proportion  = _get_proportion_discrete;
-	sm->get_proportions = _get_proportions_discrete;
-	
-	sm->mu    = NULL;
-	sm->cat_count = cat_count;
-	
-	sm->cat_rates       = dvector(sm->cat_count);
-	sm->cat_proportions = dvector(sm->cat_count);
-	
-	sm->rates = new_Parameters( (cat_count * 2) -2 );
-	
-	StringBuffer *buffer = new_StringBuffer(20);
-	double prop = 1.0/cat_count;
-	for ( int i = 0; i < sm->cat_count; i++ ) {
-		sm->cat_proportions[i] = prop;
-	}
-	
-    StringBuffer_set_string(buffer, "sitemodel.p0");
-	Parameters_move(sm->rates, new_Parameter(buffer->c, prop, new_Constraint(0.00001, 0.999)) );
-    int i = 1;
-	for ( ; i < cat_count-1; i++ ) {
-		StringBuffer_set_string(buffer, "sitemodel.p");
-		StringBuffer_append_format(buffer, "%d", i);
-		double denom = 1;
-		for ( int j = 0; j < i; j++ ) {
-			denom *= 1 - Parameters_value(sm->rates, j);
-		}
-		double r = sm->cat_proportions[i] / denom;
-		Parameters_move(sm->rates, new_Parameter(buffer->c, r, new_Constraint(0.00001, 0.999)) );
-	}
-	
-    for (int j = 0 ; j < cat_count-1; j++, i++ ) {
-		StringBuffer_set_string(buffer, "sitemodel.r");
-		StringBuffer_append_format(buffer, "%d", j);
-		Parameters_move(sm->rates, new_Parameter(buffer->c, 1.0, new_Constraint(0.00001, 10)) );
-	}
-    
-	//Parameters_print(sm->rates);
-    
-	free_StringBuffer(buffer);
-	
-	sm->integrate   = true;
-	sm->need_update = true;
-	
-	sm->distribution = DISTRIBUTION_DISCRETE;
-	return sm;
-}
-
-
 double _get_rate_discrete( SiteModel *sm, const int index ){
 	if ( sm->need_update ) {
 		_calculate_rates_discrete(sm);
@@ -508,43 +504,42 @@ double *_get_proportions_discrete( SiteModel *sm ){
 }
 
 void _calculate_rates_discrete( SiteModel *sm ) {
-	// proportions
-    sm->cat_proportions[0] = Parameters_value(sm->rates, 0);
-    double p;
-	for ( int i = 1; i < sm->cat_count; i++ ) {
-		p = 1;
-		for ( int j = 0; j < i; j++ ) {
-			p *= 1 - Parameters_value(sm->rates, j);
+	int j;
+	// proportions are directly estimated
+	if(sm->cat_count == Parameters_count(sm->rates)*2-2){
+		double p = 1;
+		for ( int i = 0; i < sm->cat_count-1; i++ ) {
+			sm->cat_proportions[i] = p*Parameters_value(sm->rates, i);
+			p -= sm->cat_proportions[i];
 		}
-		if ( i != sm->cat_count-1 ) p *= Parameters_value(sm->rates, i);
-		sm->cat_proportions[i] = p;
+		sm->cat_proportions[sm->cat_count-1] = p;
+		j = sm->cat_count-1;
 	}
-    
-    // rates
-    int j = 0;
-    int i = sm->cat_count-1;
-    sm->cat_rates[0] = Parameters_value(sm->rates, i++);
-    sm->cat_rates[1] = 1;
-    
-    double scaler = sm->cat_rates[0]*sm->cat_proportions[0] +  sm->cat_proportions[1];
-    
-    for ( j = 2; i < Parameters_count(sm->rates); i++,j++ ) {
-        sm->cat_rates[j] = Parameters_value(sm->rates, i)*sm->cat_rates[j-1];
-        scaler += sm->cat_rates[j]*sm->cat_proportions[j];
-    }
-    
-    for ( i = 0; i < sm->cat_count; i++ ) {
-        sm->cat_rates[i] /= scaler;
-    }
-//    int i = 0;
-//    for ( int j = sm->cat_count-1; j < Parameters_count(sm->rates); i++,j++ ) {
-//        sm->cat_rates[i] = Parameters_value(sm->rates, j);
-//    }
+	else{
+		sm->cat_proportions[0] = 1;
+		for (int i = 0; i < sm->cat_count-1; i++) {
+			sm->cat_proportions[i+1] = gsl_cdf_beta_Qinv( (i+1.0)/(sm->cat_count), Parameters_value(sm->rates, 0), Parameters_value(sm->rates, 1) );
+		}
+		for (int i = 0; i < sm->cat_count-1; i++) {
+			sm->cat_proportions[i] -= sm->cat_proportions[i+1];
+		}
+		j = 2;
+	}
+	
+	sm->cat_rates[0] = Parameters_value(sm->rates, j++);
+	sm->cat_rates[1] = 1;
+	double sum = sm->cat_rates[0]*sm->cat_proportions[0] + sm->cat_proportions[1];
+	double prod = 1;
+	for (int i = 2; i < sm->cat_count; i++, j++ ) {
+		prod *= Parameters_value(sm->rates, j);
+		sm->cat_rates[i] = prod;
+		sum += prod*sm->cat_proportions[i];
+	}
+	
+	for (int i = 0; i < sm->cat_count; i++ ) {
+		sm->cat_rates[i] /= sum;
+	}
 	sm->need_update = false;
-//    print_dvector(sm->cat_rates, sm->cat_count);
-//    print_dvector(sm->cat_proportions, sm->cat_count);
-//    Parameters_print(sm->rates);
-//    printf("scaler %f\n", scaler);
 }
 
 void sitemodel_set_discrete( SiteModel *sm, const int index, const double value ){
@@ -733,7 +728,42 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				exit(13);
 			}
 		}
-		get_parameters_references(distribution_node, hash, rates);
+		
+		if (distribution == DISTRIBUTION_DISCRETE) {
+			json_node* parameters_node = get_json_node(distribution_node, "parameters");
+			get_parameters_references(parameters_node, hash, rates);
+			
+			// proportions are directly estimated
+			if(cat == Parameters_count(rates)*2-2){
+				for (int i = 0; i < cat-1; i++) {
+					Parameters_set_upper(rates, i, 0.99);
+					Parameters_set_lower(rates, i, 0.001);
+				}
+				Parameters_set_bounds(rates, cat-1, 1.e-8, 0.99);
+				for (int i = 1; i < cat-1; i++) {
+					Parameters_set_bounds(rates, i+cat-1, 1, 100);
+				}
+			}
+			else{
+				// parameters of the beta distribution
+				Parameters_set_bounds(rates, 0, 0.1, 10);
+				Parameters_set_bounds(rates, 1, 0.1, 10);
+				
+				// first rate r < 1
+				Parameters_set_bounds(rates, 2, 1.e-8, 0.99);
+				for (int i = 3; i < cat-1; i++) {
+					Parameters_set_bounds(rates, i, 1, 100);
+				}
+			}
+			
+			char* id_ps = get_json_node_value_string(parameters_node, "id");
+			if(id_ps != NULL){
+				Parameters_set_name2(rates, id_ps);
+			}
+		}
+		else{
+			get_parameters_references(distribution_node, hash, rates);
+		}
 	}
 	
 	bool invariant = false;
@@ -750,6 +780,9 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	
 	SiteModel* sm = new_SiteModel_with_parameters(m, rates, cat, distribution, invariant, quad);
 	
+	if (Parameters_name2(sm->rates) != NULL) {
+		Hashtable_add(hash, Parameters_name2(sm->rates), sm->rates);
+	}
 	char* id_string = get_json_node_value_string(node, "id");
 	
 	Model* msm = new_SiteModel2(id_string, sm, mm);
@@ -761,6 +794,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	}
 	
 	mm->free(mm);
+	msm->print = _SiteModel_print;
 	free_Parameters(rates);
 	return msm;
 }
