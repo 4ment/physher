@@ -21,19 +21,30 @@
 
 #include "parameters.h"
 #include "tree.h"
+#include "discreteparameter.h"
+#include "utils.h"
 
-typedef enum demography{CONSTANT_DEMOGRAPHY, EXP_DEMOGRAPHY}demography;
+typedef enum demography{
+	COALESCENT_CONSTANT,
+	COALESCENT_EXPONENTIAL,
+	COALESCENT_SKYGRID,
+	COALESCENT_SKYLINE,
+	COALESCENT_SKYLINE_CLASSIC,
+	COALESCENT_SKYRIDE
+}demography;
+
 
 typedef struct Coalescent{
     Tree *tree;
 	demography type;
-    Parameters *p;
+	Parameters *p;
 	double logP;
+	double stored_logP;
     int *lineages;
 	int *stored_lineages;
 	double *times;
 	double *stored_times;
-	int* nodes; // indexes of nodes corresponding to interval
+	double_int_pair_t** nodes; // indexes of nodes corresponding to interval
     bool *iscoalescent;
 	bool *stored_iscoalescent;
 	int n;
@@ -43,6 +54,9 @@ typedef struct Coalescent{
 	double (*ddlogP)( struct Coalescent*, const Parameter*, const Parameter* );
     bool need_update;
 	bool need_update_intervals;
+	double* grid;
+	size_t gridCount;
+	DiscreteParameter* groups;
 }Coalescent;
 
 
@@ -53,17 +67,17 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash);
 void free_Coalescent( Coalescent *coalescent );
 
 #pragma mark -
-#pragma mark Constant coalescent
 
 Coalescent * new_ConstantCoalescent_with_parameter( Tree *tree, Parameter* theta );
 
-
-Coalescent * clone_ConstantCoalescent( const Coalescent *coal, Tree *tree );
-
-#pragma mark -
-#pragma mark Constant coalescent
-
 Coalescent * new_ExponentialCoalescent_with_parameters( Tree *tree, Parameters* parameters );
 
+Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Parameters* parameters);
+
+Coalescent * new_SkylineCoalescent_with_parameters( Tree *tree, Parameters* parameters, DiscreteParameter* groups );
+
+Coalescent * new_SkyrideCoalescent_with_parameters( Tree *tree, Parameters* parameters);
+
+Coalescent * new_GridCoalescent_with_parameters( Tree *tree, Parameters* parameters, int grid, double cutoff );
 
 #endif
