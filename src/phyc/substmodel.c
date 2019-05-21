@@ -362,8 +362,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	if(mfreqs_simplex == NULL  && m->simplex != NULL){
 		mfreqs_simplex = new_SimplexModel("anonymousfreqs", m->simplex);
 	}
-	
-	if(init_node != NULL && datatype->type == DATA_TYPE_NUCLEOTIDE && Parameters_count(m->rates) >= 5){
+	if(init_node != NULL && datatype->type == DATA_TYPE_NUCLEOTIDE && (Parameters_count(m->rates) >= 5 || m->rates_simplex != NULL)){
 		json_node* patterns_node = get_json_node(init_node, "sitepattern");
 		char* patterns_ref = (char*)patterns_node->value;
 		SitePattern* patterns = Hashtable_get(hash, patterns_ref+1);
@@ -393,8 +392,12 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 				memcpy(v+m->relativeTo, v+m->relativeTo+1, moveCount*sizeof(double));
 			}
 		}
-
-		m->set_rates(m, v);
+		if(m->rates_simplex != NULL){
+			m->rates_simplex->set_values(m->rates_simplex, v);
+		}
+		else{
+			m->set_rates(m, v);
+		}
 		for (int i = 0; i < 4; i++) {
 			v[i] = mat[i][i];
 		}
