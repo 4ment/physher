@@ -27,6 +27,8 @@
 #define SITEMODEL_ALPHA_MAX 100
 
 typedef enum quadrature_t {
+	QUADRATURE_BETA,
+	QUADRATURE_DISCRETE,
 	QUADRATURE_QUANTILE_MEDIAN,
 	QUADRATURE_QUANTILE_MEAN,
 	QUADRATURE_GAUSS_LAGUERRE
@@ -56,11 +58,11 @@ typedef struct SiteModel{
 	
 	// categories
 	Parameters *rates;
-    
+	Simplex* proportions;
     Parameter *mu;
 } SiteModel;
 
-Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel );
+Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel, Model* proportions );
 
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash);
 
@@ -72,6 +74,6 @@ SiteModel * clone_SiteModel( const SiteModel *sm );
 
 SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m );
 
-SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, const Parameters* params, Parameter* mu );
+SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, Simplex* props, const Parameters* params, Parameter* mu );
 
 #endif

@@ -760,9 +760,13 @@ unsigned SitePattern_polymorphic_count(SitePattern *sp){
     unsigned polymorphisms = 0;
     for ( int i = 0; i < sp->count; i++ ) {
         uint8_t p = sp->patterns[i][0];
-        int j = 1;
+		int j = 0;
+		while (j < sp->size && sp->patterns[i][j] >= sp->nstate) {
+			p = sp->patterns[i][j];
+			j++;
+		}
         for ( ; j < sp->size; j++ ) {
-            if( p != sp->patterns[i][j] ) break;
+            if( p != sp->patterns[i][j] && sp->patterns[i][j] < sp->nstate) break;
         }
         if( j != sp->size ){
             polymorphisms += sp->weights[i];
