@@ -849,6 +849,13 @@ static double _parsimony_model_logP(Model *self){
 	return self->lp;
 }
 
+static double _parsimony_model_full_logP(Model *self){
+	Parsimony* parsimony = (Parsimony*)self->obj;
+	Parsimony_update_all_nodes(parsimony);
+	self->lp = parsimony->calculate(parsimony);
+	return self->lp;
+}
+
 static void _parsimony_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free parsimony model %s\n", self->name);
@@ -900,6 +907,7 @@ Model * new_ParsimonyModel(char* name, Parsimony* parsimony, Model* tree){
 	tree->ref_count++;
 	model->update = _parsimony_model_handle_change;
 	model->logP = _parsimony_model_logP;
+	model->logP = _parsimony_model_full_logP;
 	model->free = _parsimony_model_free;
 	model->clone = _parsimony_model_clone;
 	model->get_free_parameters = _parsimony_model_get_free_parameters;

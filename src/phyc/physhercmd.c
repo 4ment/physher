@@ -382,7 +382,11 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 		}
 		
 		if( strcasecmp("GTR", model_string) == 0 || strcasecmp("SYM", model_string) == 0){
-			rateCount = 5;
+//			rateCount = 5;
+			rateCount = 6; // simplex
+			json_node* jinit = create_json_node_object(jsubstmodel, "init");
+			add_json_node(jsubstmodel, jinit);
+			add_json_node_string(jinit, "sitepattern", "&patterns");
 		}
 		else if( strcasecmp("HKY", model_string) == 0 || strcasecmp("K80", model_string) == 0){
 			rateCount = 1;
@@ -456,6 +460,11 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 					rates[i] = 1;
 				}
 			}
+			else if( rateCount == 6 ){
+				add_json_node_string(jrates, "id", "rates");
+				add_json_node_string(jrates, "type", "Simplex");
+				add_json_node_size_t(jrates, "dimension", 6);
+			}
 			else if( rateCount == 1 ){
 				rates = dvector(rateCount);
 				names = (char**)malloc(sizeof(char*));
@@ -463,19 +472,21 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 				rates[0] = 1;
 			}
 			
-			StringBuffer* buffer = new_StringBuffer(10);
-			for (int i = 0; i < rateCount; i++) {
-				create_json_node_parameter(jrates, names[i], rates[i], 0, INFINITY);
-				if (!rates_fixed) {
-					StringBuffer_empty(buffer);
-					StringBuffer_append_format(buffer, "&%s", names[i]);
-					add_json_node_string(jparams, NULL, buffer->c);
+			if(rateCount != 6){
+				StringBuffer* buffer = new_StringBuffer(10);
+				for (int i = 0; i < rateCount; i++) {
+					create_json_node_parameter(jrates, names[i], rates[i], 0, INFINITY);
+					if (!rates_fixed) {
+						StringBuffer_empty(buffer);
+						StringBuffer_append_format(buffer, "&%s", names[i]);
+						add_json_node_string(jparams, NULL, buffer->c);
+					}
+					free(names[i]);
 				}
-				free(names[i]);
+				free_StringBuffer(buffer);
+				free(names);
+				free(rates);
 			}
-			free_StringBuffer(buffer);
-			free(names);
-			free(rates);
 		}
 	}
 	else if ( dt == DATA_TYPE_CODON) {
@@ -599,6 +610,7 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 
 void create_json_site_model(Hashtable* options, Hashtable* nodes){
 	json_node* joptmetalist = Hashtable_get(nodes, "joptmetalist");
+	json_node* joptloggers = Hashtable_get(nodes, "jloggers");
 	json_node* jtlk = Hashtable_get(nodes, "jtlk");
 	
 	json_node* jsitemodel = create_json_node_object(jtlk, "sitemodel");
@@ -607,20 +619,11 @@ void create_json_site_model(Hashtable* options, Hashtable* nodes){
 	add_json_node_string(jsitemodel, "id", "sitemodel");
 	add_json_node_string(jsitemodel, "type", "sitemodel");
 
-	json_node* dt = Hashtable_get(nodes, "jdatatype");
-	if (dt->node_type == MJSON_STRING) {
-		add_json_node_string(jsitemodel, "datatype", dt->value);
-	}
-	else{
-		StringBuffer* buffer = new_StringBuffer(10);
-		StringBuffer_append_format(buffer, "&%", get_json_node_value_string(dt, "id"));
-		add_json_node_string(jsitemodel, "datatype", buffer->c);
-		free_StringBuffer(buffer);
-	}
-	
+	StringBuffer* buffer = new_StringBuffer(10);
+
 	double pinv = atof(Hashtable_get(options, "invariant"));
 	int rate_category_count = atoi(Hashtable_get(options, "cat"));
-	int alpha = atoi(Hashtable_get(options, "alpha"));
+	double alpha = atof(Hashtable_get(options, "alpha"));
 	bool alpha_fixed = false;
 	bool pinv_fixed = false;
 	if (strlen(Hashtable_get(options, "fix")) != 0) {
@@ -630,38 +633,105 @@ void create_json_site_model(Hashtable* options, Hashtable* nodes){
 	}
 	
 	if ( pinv > 0 || rate_category_count > 1 ) {
-		json_node* jrates = create_json_node_object(jsitemodel, "rates");
-		add_json_node(jsitemodel, jrates);
-		if (pinv > 0) {
-			create_json_node_parameter(jrates, "invariant", pinv, 0, INFINITY);
-			if (!pinv_fixed) {
-				json_node* jopt_pinv = create_json_node_object(joptmetalist, NULL);
-				add_json_node(joptmetalist, jopt_pinv);
-				add_json_node_string(jopt_pinv, "id", "optpinv");
-				add_json_node_string(jopt_pinv, "type", "optimizer");
-				add_json_node_string(jopt_pinv, "algorithm", "brent");
-				add_json_node_string(jopt_pinv, "model", "&treelikelihood");
-				add_json_node_string(jopt_pinv, "parameters", "&invariant");
+		json_node* jdistribution = create_json_node_object(jsitemodel, "distribution");
+		add_json_node_string(jdistribution, "type", "distribution");
+		add_json_node(jsitemodel, jdistribution);
+		char* quad = Hashtable_get(options, "quad");
+		char* dist = Hashtable_get(options, "dist");
+		
+		json_node* jopt_sm_params = create_json_node(NULL);
+		jopt_sm_params->node_type = MJSON_ARRAY;
+		jopt_sm_params->key = String_clone("parameters");
+		
+		if (pinv > 0 && rate_category_count == 1) {
+			add_json_node_string(jdistribution, "distribution", "discrete");
+			add_json_node_size_t(jdistribution, "categories", 2);
+			double ps[2] = {pinv, 1.0-pinv};
+			json_node* p = create_json_node_simplex2(jdistribution, "proportions", 2, ps);
+			
+			
+			if(!pinv_fixed){
+				add_json_node_string(jopt_sm_params, NULL, "$proportions");
 			}
 		}
-		if(rate_category_count > 1){
-			//			add_json_node_string(jsitemodel, "distribution", "gamma");
-			add_json_node_size_t(jsitemodel, "categories", rate_category_count);
-			char* sitemodel_string = Hashtable_get(options, "het");
-			if ( strlen(sitemodel_string) != 0 && strcasecmp(sitemodel_string, "gammaquad") == 0 ) {
-				add_json_node_string(jsitemodel, "discretization", "laguerre");
+		else {
+			int cat = rate_category_count + (pinv > 0 ? 1 : 0);
+			StringBuffer_empty(buffer);
+			StringBuffer_append_format(buffer, "%d", rate_category_count);
+			add_json_node_size_t(jdistribution, "categories", rate_category_count);
+			add_json_node_string(jdistribution, "distribution", dist);
+			if(strcasecmp(dist, "discrete") != 0) add_json_node_string(jdistribution, "quadrature", quad);
+			
+			if(strcasecmp(dist, "discrete") == 0 || strcasecmp(quad, "discrete") == 0){
+				json_node* p = create_json_node_simplex(jdistribution, "proportions", cat);
+				add_json_node_string(jopt_sm_params, NULL, "$proportions");
 			}
-			create_json_node_parameter(jrates, "alpha", alpha, 0, INFINITY);
-			if(!alpha_fixed){
-				json_node* jopt_alpha = create_json_node_object(joptmetalist, NULL);
-				add_json_node(joptmetalist, jopt_alpha);
-				add_json_node_string(jopt_alpha, "id", "optalpha");
-				add_json_node_string(jopt_alpha, "type", "optimizer");
-				add_json_node_string(jopt_alpha, "algorithm", "brent");
-				add_json_node_string(jopt_alpha, "model", "&treelikelihood");
-				add_json_node_string(jopt_alpha, "parameters", "&alpha");
+			else if(pinv > 0 && strcasecmp(dist, "discrete") != 0 && strcasecmp(quad, "beta") != 0 && strcasecmp(quad, "laguerre") != 0){
+				json_node* p = create_json_node_simplex(jdistribution, "proportions", 2);
+				add_json_node_string(jopt_sm_params, NULL, "$proportions");
+			}
+			
+			json_node* jparameters = create_json_node_object(jdistribution, "parameters");
+			add_json_node(jdistribution, jparameters);
+			
+			if(strcasecmp(dist, "discrete") == 0){
+				double* values = dvector(cat-1);
+				values[0] = 0.5;
+				for (int i = 1; i < cat-1; i++) {
+					values[i] = 1.1;
+				}
+				int rates = cat-1;
+				if (pinv > 0) rates--;
+				json_node* p2 = create_json_node_parameters2(jparameters, "rates.discrete", rates, values, 0, 1);
+				free(values);
+				
+				add_json_node_string(jopt_sm_params, NULL, "&rates.discrete");
+			}
+			else {
+				json_node* p2 = create_json_node_parameter(jparameters, "alpha", alpha, 0.01, 50);
+				
+				if(!alpha_fixed){
+					add_json_node_string(jopt_sm_params, NULL, "&alpha");
+				}
+				
+				if(strcasecmp(quad, "beta") == 0){
+					json_node* p3 = create_json_node_parameter(jparameters, "alpha1", 1, 0.01, 10);
+					json_node* p4 = create_json_node_parameter(jparameters, "beta1", 1, 0.01, 10);
+					if(pinv > 0) add_json_node_bool(jdistribution, "invariant", true);
+					
+					add_json_node_string(jopt_sm_params, NULL, "&alpha1");
+					add_json_node_string(jopt_sm_params, NULL, "&beta1");
+				}
 			}
 		}
+		
+		if (jopt_sm_params->child_count == 1) {
+			json_node* jopt_pinv = create_json_tree("{'id':'optsm','type':'optimizer','algorithm':'brent','model':'&treelikelihood'}");
+			add_json_node(joptmetalist, jopt_pinv);
+			jopt_sm_params->key = String_clone("parameters");
+			add_json_node(jopt_pinv, jopt_sm_params);
+		}
+		else if (jopt_sm_params->child_count > 1){
+			json_node* jopt_sm = create_json_tree("{'id':'optsm','type':'optimizer','algorithm':'meta','model':'&treelikelihood','precision':0.01}");
+			add_json_node(joptmetalist, jopt_sm);
+			
+			json_node* jopt_sm_ps = create_json_node(jopt_sm);
+			add_json_node(jopt_sm, jopt_sm_ps);
+			jopt_sm_ps->node_type = MJSON_ARRAY;
+			jopt_sm_ps->key = String_clone("list");
+			
+			json_node* jopt_pinv = create_json_tree("{'id':'optparams','type':'optimizer','algorithm':'serial','model':'&treelikelihood'}");
+			add_json_node(jopt_sm_ps, jopt_pinv);
+			
+			jopt_sm_params->key = String_clone("parameters");
+			add_json_node(jopt_pinv, jopt_sm_params);
+			
+		}
+		else{
+			free(jopt_sm_params->key);
+			free(jopt_sm_params);
+		}
+		
 		//TODO: init
 		//		if(pinv == 0.0 && use_pinv){
 		//			pinv = fmax(0.01, 1.0 - ((double)polymorphisms/sp->nsites));
@@ -669,6 +739,7 @@ void create_json_site_model(Hashtable* options, Hashtable* nodes){
 	}
 	
 	Hashtable_add(nodes, "jsitemodel", jsitemodel);
+	free_StringBuffer(buffer);
 }
 
 void create_json_site_pattern(Hashtable* options, Hashtable* nodes){
@@ -696,7 +767,6 @@ void create_json_site_pattern(Hashtable* options, Hashtable* nodes){
 	
 	json_node* dt = Hashtable_get(nodes, "jdatatype");
 	if (dt->node_type == MJSON_STRING) {
-		add_json_node_string(jsequences, "datatype", dt->value);
 		add_json_node_string(jsitepatterns, "datatype", dt->value);
 	}
 	else{
@@ -760,10 +830,13 @@ Hashtable * extract_arguments(int argc, char* argv[]){
 		{ARGS_OPTION_STRING,  0,   "q-search",     NULL, "Find best rate matrix (ga)"},
 		
 		{ARGS_OPTION_INTEGER, 'c', "cat",          String_clone("1"), "Number of rate categories for gamma distribution"},
-		{ARGS_OPTION_STRING,  'H', "het",          NULL, "discrete or gammaquad"},
+		{ARGS_OPTION_STRING,  0,   "dist",         String_clone("gamma"), "gamma, lognormal or discrete"},
+		{ARGS_OPTION_STRING,  0,   "quad",         String_clone("median"), "median, mean, discrete, beta or laguerre"},
 		{ARGS_OPTION_DOUBLE,  'a', "alpha",        String_clone("0.5"), "Value of the alpha parameter of the gamma distribution"},
 		{ARGS_OPTION_DOUBLE,  'I', "invariant",    String_clone("0"), "Value of the proportion of invariant sites"},
 		{ARGS_OPTION_FLAG,    0,   "ps",           String_clone("0"), "Caclulate posterior estimates of rates at each site"},
+		
+		{ARGS_OPTION_STRING,  0,   "map",          String_clone("0"), "MAP"},
 		
 		{ARGS_OPTION_STRING,  'F', "fix",          NULL, "Fix d: branch length, i: invariant, a: alpha, f: frequencies, r: rates"},
 //		{ARGS_OPTION_BOOLEAN, 0,   "sse",          "treelikelihood.sse", &use_sse, "Use SSE [default true]"},
@@ -853,6 +926,8 @@ json_node* create_json_file(int argc, char* argv[]){
 	
 	add_json_node_size_t(jinit, "seed", seed);
 	
+	bool map = atoi(Hashtable_get(options, "map"));
+	
 	json_node* jtlk = create_json_node_object(jroot, "model");
 	add_json_node_string(jtlk, "id", "treelikelihood");
 	add_json_node_string(jtlk, "type", "treelikelihood");
@@ -877,6 +952,16 @@ json_node* create_json_file(int argc, char* argv[]){
 	create_json_site_model(options, nodes);
 	
 	create_json_substitution_model(options, nodes);
+	
+	json_node* jphysher = Hashtable_get(nodes, "jphysher");
+	json_node* node = create_json_tree("{'id':'log','type':'logger','models':'&sitemodel'}");
+	add_json_node(jphysher, node);
+	
+	json_node* tree_node = create_json_tree("{'id':'logtree','type':'logger','models':'&tree'}");
+	add_json_node(jphysher, tree_node);
+	
+	json_node* tlk_node = create_json_tree("{'id':'logtree','type':'logger','models':'&treelikelihood'}");
+	add_json_node(jphysher, tlk_node);
 	
 	json_node* jdatatype = Hashtable_get(nodes, "jdatatype");
 	// not included the jroot tree

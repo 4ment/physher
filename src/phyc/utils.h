@@ -177,5 +177,6 @@ void * aligned16_malloc( size_t size );
 
 int cmp_double_int_pair_asc(const void *a, const void *b);
 
+int cmp_double_int_pair_desc(const void *a, const void *b);
 
 #endif
