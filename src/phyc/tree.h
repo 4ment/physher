@@ -85,6 +85,10 @@ Node * Tree_node( Tree *tree, int index );
 void postorder_generic( Tree *tree, void *data, void (*action)( Node *node, void *data ));
 void preorder_generic( Tree *tree, void *data, void (*action)( Node *node, void *data ));
 
+void Tree_save(Tree* tree);
+
+void Tree_revert(Tree* tree);
+
 void Tree_set_topology_changed( Tree *tree );
 
 bool Tree_topology_changed( const Tree *tree );
@@ -198,6 +202,9 @@ char * Tree_to_string_nexus_with_annotation( Tree *tree );
 void Tree_StringBuffer_nexus_with_annotation( StringBuffer *treebuffer, Tree *tree );
 
 bool Tree_is_time_mode(Tree* tree);
+
+Parameters* get_reparams(Tree* tree);
+unsigned* get_reparam_map(Tree* tree);
 
 #endif
 

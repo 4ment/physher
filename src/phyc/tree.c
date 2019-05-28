@@ -42,6 +42,7 @@ struct _Tree{
 	Node **postorder;
 	Node **preorder;
     Node **nodes;
+	Node **stored_nodes;
 	bool topology_changed;
 	bool dated;
 	bool time_mode;
@@ -52,8 +53,6 @@ struct _Tree{
 	bool homochronous;
 };
 
-static void tree_init_distance_parameters( Tree *t, Parameters *ps );
-static void tree_init_height_parameters( Tree *t, Parameters *ps );
 static void _Tree_count_nodes( Node *node, int *tips, int *nodes);
 
 
@@ -66,6 +65,14 @@ void check_tree( Tree *tree ){
 
 #pragma mark -
 #pragma mark Tree
+
+Parameters* get_reparams(Tree* tree){
+	return tree->reparam;
+}
+
+unsigned* get_reparam_map(Tree* tree){
+	return tree->map;
+}
 
 // called just after a ) or a leaf name
 // can start  with bootstrap value, node name, :, [
@@ -179,6 +186,7 @@ void _parse_description( Node *node, const char *newick, int *i,  bool containBL
 void init_parameter_arrays(Tree* atree){
 	Node **nodes = Tree_get_nodes(atree, POSTORDER);
 	atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
+	atree->stored_nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
 	assert(atree->nodes);
 	
 	int nTips = 0;
@@ -234,6 +242,72 @@ void init_parameter_arrays(Tree* atree){
 			p->id = -Node_id(node)-1;
 			atree->map[Node_id(node)] = count++;
         }
+	}
+	
+	// create stored nodes
+	atree->stored_nodes = malloc(sizeof(Node*)*atree->nNodes);
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		Node* n = atree->nodes[i];
+		atree->stored_nodes[i] = new_Node(NULL, Node_name(n), 0);
+		atree->stored_nodes[i]->id = n->id;
+	}
+
+	if(atree->topology_changed) Tree_update_topology(atree);
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		Node* n = atree->nodes[i];
+		atree->stored_nodes[i]->class_id = n->class_id;
+		atree->stored_nodes[i]->depth = n->depth;
+		atree->stored_nodes[i]->distance = n->distance;
+		atree->stored_nodes[i]->height = n->height;
+		atree->stored_nodes[i]->info = n->info;
+		if(!Node_isleaf(n)){
+			atree->stored_nodes[i]->left = atree->stored_nodes[n->left->id];
+			atree->stored_nodes[i]->right = atree->stored_nodes[n->right->id];
+		}
+		if(!Node_isroot(n)){
+			atree->stored_nodes[i]->parent = atree->stored_nodes[n->parent->id];
+		}
+		atree->stored_nodes[i]->poly = n->poly;
+		atree->stored_nodes[i]->time = n->time;
+		atree->stored_nodes[i]->preorder_idx = n->preorder_idx;
+		atree->stored_nodes[i]->postorder_idx = n->postorder_idx;
+		atree->stored_nodes[i]->annotation = n->annotation;
+		free(atree->stored_nodes[i]->name);
+		atree->stored_nodes[i]->name = n->name;
+	}
+}
+
+void Tree_save(Tree* tree){
+	for (int i = 0; i < Tree_node_count(tree); i++) {
+		Node* n = tree->nodes[i];
+		if(!Node_isleaf(n)){
+			tree->stored_nodes[n->id]->left = tree->stored_nodes[n->left->id];
+			tree->stored_nodes[n->id]->right = tree->stored_nodes[n->right->id];
+		}
+		if(!Node_isroot(n))  tree->stored_nodes[n->id]->parent = tree->stored_nodes[n->parent->id];
+		Parameter_store(n->distance);
+	}
+}
+
+// Tree_restore does not trigger a restore event through fire_restore
+// This function is used by nniopt to test nnis
+void Tree_revert(Tree* tree){
+	for (int i = 0; i < Tree_node_count(tree); i++) {
+		Node* n = tree->stored_nodes[i];
+		if(n->parent != NULL && tree->nodes[i]->parent->id != n->parent->id){
+			Parameter_fire(n->distance);
+			Parameter_restore_quietly(n->distance);
+			Tree_set_topology_changed(tree);
+		}
+		else if(Parameter_changed(n->distance)){
+			Parameter_fire(n->distance);
+			Parameter_restore_quietly(n->distance);
+		}
+		if(!Node_isleaf(n)){
+			tree->nodes[n->id]->left = tree->nodes[n->left->id];
+			tree->nodes[n->id]->right = tree->nodes[n->right->id];
+		}
+		if(!Node_isroot(n)) tree->nodes[n->id]->parent = tree->nodes[n->parent->id];
 	}
 }
 
@@ -333,6 +407,7 @@ void init_heights_from_distances(Tree* atree){
 				lowers[Node_id(node)] = dmax(lowers[Node_left(node)->id], lowers[Node_right(node)->id]);
 			}
 		}
+		Tree_constraint_heights(atree);
 		
 		// initialize reparam from height parameters
 		nodes = Tree_get_nodes(atree, PREORDER);
@@ -363,6 +438,7 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	atree->postorder = NULL;
 	atree->preorder = NULL;
 	atree->nodes = NULL;
+	atree->stored_nodes = NULL;
 	atree->nTips = 0;
 	atree->nNodes = 0;
 	atree->rooted = false;
@@ -891,6 +967,7 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 			Hashtable_add(hash, node->height->name, node->height);
 		}
 	}
+	clone->print = self->print;
 	
 	return clone;
 }
@@ -906,6 +983,11 @@ static void _tree_model_get_free_parameters(Model* model, Parameters* parameters
 			Parameters_add(parameters, node->height);
 		}
 	}
+}
+
+void _TreeModel_print(Model* mtree, FILE* out){
+	Tree* tree = mtree->obj;
+	fprintf(out, "TL(%s): %f\n", mtree->name, Tree_length(tree));
 }
 
 // TreeModel listen to the height and distance parameters
@@ -937,6 +1019,7 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 	model->free = _tree_model_free;
 	model->clone = _tree_model_clone;
 	model->get_free_parameters = _tree_model_get_free_parameters;
+	model->print = _TreeModel_print;
 	return model;
 }
 
@@ -1061,6 +1144,10 @@ static void free_Tree_aux( Node *n ){
 }
 
 void free_Tree( Tree *t){
+	for (int i = 0; i < t->nNodes; i++) {
+		free(t->stored_nodes[i]);
+	}
+	free(t->stored_nodes);
 	free_Tree_aux( t->root );
 	if ( t->postorder != NULL ) free(t->postorder);
 	if ( t->preorder != NULL ) free(t->preorder);
