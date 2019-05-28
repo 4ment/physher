@@ -62,10 +62,6 @@ Node * new_Node( Node *parent, const char *nodename, const int counter ){
 	n->info = NULL;
     n->annotation = NULL;
 	n->poly = false;
-    
-#ifdef TIMETEST
-    n->timeParameter = new_Parameter_with_postfix(n->name, POSTFIX_DISTANCE, 0.1, new_Constraint(0.0001, 0.9999));
-#endif
 	
 	return n;
 }
@@ -82,9 +78,6 @@ void free_Node( Node *node ){
     if ( node->annotation != NULL ) {
         free_Hashtable(node->annotation);
     }
-#ifdef TIMETEST
-    free_Parameter(node->timeParameter);
-#endif
 	free(node);
 	node = NULL;
 }
@@ -119,11 +112,7 @@ Node * clone_Node( const Node *node){
         // TODO
     }
 	n->poly = node->poly;
-    
-    
-#ifdef TIMETEST
-    n->timeParameter = clone_Parameter( node->timeParameter, true);
-#endif
+
 	return n;
 }
 
@@ -141,34 +130,8 @@ double Node_time_elapsed( Node *node ){
 	if( Node_isroot(node) ){
 		return -1;
 	}
-//#ifdef TIMETEST
-//    return Node_t(node);
-//#endif
 	return (Node_height( Node_parent(node) ) - Node_height(node));
 }
-
-#ifdef TIMETEST
-
-void height_to_time(Node *node){
-    if( !Node_isroot(node) ){
-        node->timeParameter->value = (Node_height( Node_parent(node) ) - Node_height(node));
-    }
-    
-    if( !Node_isleaf(node) ){
-        height_to_time(Node_left(node));
-        height_to_time(Node_right(node));
-    }
-}
-
-void Node_set_t( Node *node, const double value ){
-    Parameter_set_value(node->timeParameter, value);
-}
-
-
-double Node_t( const Node *node ){
-    return Parameter_value(node->timeParameter);
-}
-#endif
 
 void Node_set_distance( Node *node, const double value ){
     Parameter_set_value(node->distance, value);

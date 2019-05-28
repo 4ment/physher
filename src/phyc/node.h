@@ -46,23 +46,13 @@ typedef struct Node{
 	
 	Parameter *distance;
 	Parameter *height; // constraint lower bound maximum of the 2 kids
-    
-#ifdef TIMETEST
-    Parameter *timeParameter;
-#endif
-	
+
 	int class_id;
 	
 	char *info;
     Hashtable *annotation;
 	bool poly;
 } Node;
-
-#ifdef TIMETEST
-void height_to_time(Node *node);
-void Node_set_t( Node *node, const double value );
-double Node_t( const Node *node );
-#endif
 
 Node * new_Node( Node *parent, const char *nodename, const int counter );
 
