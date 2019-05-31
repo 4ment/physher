@@ -38,6 +38,8 @@ void partials_states_and_undefined( const SingleTreeLikelihood *tlk, int idx1, c
 
 void partials_undefined_and_undefined( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 );
 
+void partials_undefined( const SingleTreeLikelihood *tlk, const double *partials2, const double *matrices2, double *partials3 );
+void partials_states( const SingleTreeLikelihood *tlk, int idx1, const double * matrices1, double * partials );
 
 void update_partials_general_transpose( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );
 void partials_states_and_states_transpose( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, int idx2, const double *matrices2, double *partials );
@@ -62,6 +64,8 @@ void node_likelihoods_general_even_SSE( const SingleTreeLikelihood *tlk, const d
 #pragma mark Upper Likelihood
 
 void calculate_branch_likelihood(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
+
+void calculate_branch_partials(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 
 void update_partials_upper_general( SingleTreeLikelihood *tlk, Node *node );
 
@@ -89,5 +93,7 @@ void update_partials_general_rel( SingleTreeLikelihood *tlk, int nodeIndex1, int
 #pragma mark Upper Likelihood SSE
 
 void calculate_branch_likelihood_even_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
+
+void calculate_branch_partials_even_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 
 #endif

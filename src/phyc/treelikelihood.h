@@ -30,6 +30,7 @@
 #include "treesearch.h"
 #include "mjson.h"
 
+static double TWENTY_DOUBLE_ONES[20] = {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
 //#define SCALING_THRESHOLD 1.0e-100
 
 
@@ -115,10 +116,12 @@ struct _SingleTreeLikelihood{
 	double *root_partials;
 	double *pattern_lk;
 	double lk;
+	double stored_lk;
 	
 	
 	double (*calculate)( SingleTreeLikelihood *);
 	void (*update_partials)( SingleTreeLikelihood *, int, int, int, int, int );
+	void (*update_partials_flexible)( SingleTreeLikelihood *, double*, int, double*, double*, int, double*, double* );
 	void (*integrate_partials)( const SingleTreeLikelihood *, const double *, const double *, double * );
 	void (*node_log_likelihoods)( const SingleTreeLikelihood *, const double *, const double *, double * );
 
@@ -207,7 +210,9 @@ void SingleTreeLikelihood_update_one_node( SingleTreeLikelihood *tlk, const Node
 
 void SingleTreeLikelihood_update_three_nodes( SingleTreeLikelihood *tlk, const Node *node );
 
+void SingleTreeLikelihood_update_Q(SingleTreeLikelihood* tlk, Node* n);
 
+bool SingleTreeLikelihood_rescaling( SingleTreeLikelihood *tlk );
 void SingleTreeLikelihood_use_rescaling( SingleTreeLikelihood *tlk, bool use );
 
 int SingleTreeLikelihood_df_count( const SingleTreeLikelihood *stlk );
@@ -237,8 +242,11 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 #pragma mark Upper Likelihood
 
 void update_upper_partials(SingleTreeLikelihood *tlk, Node* node);
+void update_upper_partials2(SingleTreeLikelihood *tlk, Node* node);
 
 void calculate_dldt_uppper( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods );
+
+void calculate_dldh_uppper( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods );
 
 double dlnldt_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pattern_likelihoods, const double* pattern_dlikelihoods );
 
@@ -248,5 +256,6 @@ double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pat
 double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 
 void SingleTreeLikelihood_update_uppers(SingleTreeLikelihood *tlk);
+void SingleTreeLikelihood_update_uppers2(SingleTreeLikelihood *tlk);
 
 #endif
