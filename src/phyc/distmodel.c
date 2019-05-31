@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <tgmath.h>
+#include <math.h>
 
 #include "matrix.h"
 #include "tree.h"

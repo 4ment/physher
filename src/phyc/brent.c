@@ -45,7 +45,7 @@ opt_result serial_brent_optimize( Parameters *ps, opt_func f, void *data, OptSto
 }
 
 //opt_result brent_optimize( Parameters *ps, opt_func f, void *data, const int maxeval, const double tol, double *fmin ){
-opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriterion *stop, double *fmin ){
+opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriterion *stop, double *fminp ){
 
 	double a,b,etemp,fu,fv,fw,fx,p,q,r,tol1,tol2,u,v,w,x,xm;
 	double e = 0.0;
@@ -55,64 +55,38 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
     //int *numFun = &stop.f_eval_current;
     size_t *iter = &stop->iter;
 
-	a = ( Parameters_flower(ps,0) < Parameters_fupper(ps,0) ? Parameters_flower(ps,0) : Parameters_fupper(ps,0));
-	b = ( Parameters_flower(ps,0) > Parameters_fupper(ps,0) ? Parameters_flower(ps,0) : Parameters_fupper(ps,0));
+	double xmin = ( Parameters_flower(ps,0) < Parameters_fupper(ps,0) ? Parameters_flower(ps,0) : Parameters_fupper(ps,0));
+	double xmax = ( Parameters_flower(ps,0) > Parameters_fupper(ps,0) ? Parameters_flower(ps,0) : Parameters_fupper(ps,0));
 	x = Parameters_value(ps,0);
-    
-//    // x is equal to its lower bound
-//    if ( x == a) {
-//        //ax = a;
-//        Parameters_set_value(newps,0, x*2);
-//        b = 10.0*a;
-//	}
-//    // x is close to its lower bound
-//    else if (x <= 2.0 * a) {
-//        //ax = a;
-//        //bx = Parameters_value(newps,0);
-//        b = 5.0*x;
-//	}
-//    else {
-//        a = 0.5*x;
-//        //bx = xguess;
-//        //cx = 2.0*Parameters_value(newps,0);
-//        b = x*2;
-//	}
-//
-//	/* ideally this range includes the true minimum, i.e.,
-//     fb < fa and fb < fc
-//     if not, we gradually expand the boundaries until it does,
-//     or we near the boundary of the allowed range and use that
-//     */
-//    Parameters_set_value(newps, 0, a );
-//	double fa = f(newps, NULL, data);
-//    Parameters_set_value(newps, 0, x );
-//	fx = f(newps, NULL, data);
-//    Parameters_set_value(newps, 0, b );
-//	double fb = f(newps, NULL, data);
-//    Parameters_set_value(newps, 0, x );
-//    
-//    //printf("a %e (%f) b %e (%f) c %e (%f)\n", a, fa, x, fx, b, fb);
-//    
-//	while(fa < fx && a > xmin) {
-//        a = (a+xmin)/2.0;
-//        if (a < 2.0*xmin)	/* give up on shrinking the region */
-//            a = xmin;
-//        Parameters_set_value(newps, 0, a );
-//        fa = f(newps, NULL, data);
-//        //fa = (*f)(ax,data);
-//	}
-//	while(fb < fx && b < xmax) {
-////        b = (b+xmax)/2.0;
-////        if (b > xmax * 0.95)
-////            b = xmax;
-//        b *= 2.;
-//        Parameters_set_value(newps, 0, b );
-//        fb = f(newps, NULL, data);
-//        //fc = (*f)(cx,data);
-//	}
-//    Parameters_set_value(newps, 0, x );
-    
-    //printf("a %e (%f) b %e (%f) c %e (%f)\n", a, fa, x, fx, b, fb);
+	
+	a = fmax(xmin, x/2.0);
+	b = fmin(xmax, x*2.0);
+	x = a + (b - a)/2.0;
+	
+	Parameters_set_value(ps, 0, a);
+	double fa = f(ps, NULL, data);
+    Parameters_set_value(ps, 0, b);
+	double fb = f(ps, NULL, data);
+    Parameters_set_value(ps, 0, x );
+	fx = f(ps, NULL, data);
+
+	while(fa < fx && a > xmin) {
+        a = (a+xmin)/2.0;
+		if (a < 2.0*xmin){
+            a = xmin;
+		}
+        Parameters_set_value(ps, 0, a );
+        fa = f(ps, NULL, data);
+	}
+
+	while(fb < fx && b < xmax) {
+        b = (b+xmax)/2.0;
+        if (b > xmax * 0.95)
+            b = xmax;
+        Parameters_set_value(ps, 0, b );
+        fb = f(ps, NULL, data);
+	}
+    Parameters_set_value(ps, 0, x );
 
 	x = w = v = Parameters_value(ps,0);
 	fw = fv = fx = f(ps, NULL, data);
@@ -129,7 +103,7 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 		if ( fabs(x - xm) <= (tol2 - 0.5*(b-a)) ) {
 			Parameters_set_value(ps, 0, x );
 
-			*fmin = fx;
+			*fminp = fx;
             //printf("%s xmin %e (%f)\n\n", Parameters_name(ps, 0), x, fx);
 			return OPT_SUCCESS;
 		}
@@ -194,7 +168,7 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 	}
 	fprintf(stderr,"Too many iterations in brent_one_d:%s\n",Parameters_name(ps,0));
 	Parameters_set_value(ps, 0, x );
-	*fmin = fx;
+	*fminp = fx;
 	return OPT_MAXITER;
 }
 
