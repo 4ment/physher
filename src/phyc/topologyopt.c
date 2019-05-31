@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <strings.h>
+#include <limits.h>
 
 #include "matrix.h"
 #include "tree.h"
@@ -132,6 +133,7 @@ TopologyOptimizer* new_TopologyOptimizer_from_json(json_node* node, Hashtable* h
 	char* allowed[] = {
 		"algorithm",
 		"criterion",
+		"failures",
 		"model",
 		"move",
 		"radius",
@@ -143,7 +145,6 @@ TopologyOptimizer* new_TopologyOptimizer_from_json(json_node* node, Hashtable* h
 	
 	char* algorithm_string = get_json_node_value_string(node, "move");
 	char* criterion = get_json_node_value_string(node, "criterion");
-	int nthreads = get_json_node_value_int(node, "threads", 1);
 	int verbosity = get_json_node_value_int(node, "verbosity", 1);
 	//	int maxiter = get_json_node_value_int(node, "maxiter", 100);
 	json_node* tlk_node = get_json_node(node, "treelikelihood"); // treelikelihood with the tree
@@ -208,7 +209,10 @@ TopologyOptimizer* new_TopologyOptimizer_from_json(json_node* node, Hashtable* h
 	TopologyOptimizer *opt = new_TopologyOptimizer(model);
 	opt->tlk = likelihood;
 	opt->verbosity = verbosity;
-	opt->max_distance = get_json_node_value_int(node, "radius", 20);
+	opt->threads = get_json_node_value_int(node, "threads", 1);
+	opt->max_distance = get_json_node_value_int(node, "radius", 8);
+	opt->max_failures = get_json_node_value_int(node, "failures", INT_MAX);
+	opt->failures = 0;
 	
 	if (likelihood == NULL) {
 		opt->tree = ((Parsimony*)(model->obj))->tree;

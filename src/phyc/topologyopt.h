@@ -35,6 +35,8 @@ typedef struct TopologyOptimizer{
     
     double (*optimize)( struct TopologyOptimizer * );
 	int max_distance; // for SPR
+	int max_failures;
+	int failures;
     int moves;
     double K;
     int threads;

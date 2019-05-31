@@ -150,7 +150,7 @@ opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptS
 	return OPT_SUCCESS;
 }
 
-opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double *fmin, OptimizerSchedule* schedule ){
+opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double *fmin, OptimizerSchedule* schedule, bool verbosity ){
 	double lnl = f(NULL, NULL, data);
 	double fret = lnl;
 	for (stop->iter = 0; stop->iter < stop->iter_max; stop->iter++) {
@@ -161,7 +161,7 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 			for (int k = 0; k < schedule->rounds[i]; k++){
 				local_fret = fret;
 				opt_result status;
-				if(opt->treelikelihood != NULL){
+				if(opt->treelikelihood != NULL && opt->algorithm != OPT_TOPOLOGY){
 					status = serial_brent_optimize_tree(opt->treelikelihood, opt->f, opt->data, &opt->stop, &fret);
 				}
 				else{
@@ -177,25 +177,32 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 //				SingleTreeLikelihood_update_all_nodes(opt->treelikelihood->obj);
 //				fret = _logP(NULL, NULL, data);
 				//printf("-== %f\n", _logP(NULL, NULL, data));
-				printf("branches %f %f\n", -fret, -lnl);
+				if(opt->verbosity > 0) printf("branches %f %f\n", -fret, -lnl);
 			}
 			// Optimizing any parameters
 			else if(opt->parameters != NULL){
-				printf("%s %f %f\n", Parameters_name(opt->parameters, 0), -fret, -lnl);
+				if(opt->verbosity > 0) printf("%s %f %f (%f)\n", Parameters_name(opt->parameters, 0), -fret, -lnl, Parameters_value(opt->parameters, 0));
 			}
 			// Optimizing topology
-			else{
+			else if(opt->algorithm == OPT_TOPOLOGY){
 				TopologyOptimizer* topopt = opt->data;
-				printf("topology %f %f (%d)\n", -fret, -lnl, topopt->moves);
+				if(opt->verbosity > 0) printf("topology %f %f (%d)\n", -fret, -lnl, topopt->moves);
 			}
 			lnl = fret;
 		}
 		if(  lnl_current-lnl < stop->tolfx ){
-			printf("\n%f %f\n\n", lnl, lnl_current);
+			if(verbosity) printf("\n%f %f\n\n", -lnl, -lnl_current);
 			*fmin = lnl;
 			return OPT_SUCCESS;
 		}
-		printf("\n");
+		if(schedule->optimizers[0]->treelikelihood != NULL){
+			SingleTreeLikelihood* tlk = schedule->optimizers[0]->treelikelihood->obj;
+			if (tlk->scale) {
+				SingleTreeLikelihood_use_rescaling(tlk, false);
+				SingleTreeLikelihood_update_all_nodes( tlk );
+			}
+		}
+		if(verbosity) printf("\n");
 	}
 	return OPT_MAXITER;
 }
@@ -567,7 +574,7 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 	
 	switch (opt->algorithm ) {
 		case OPT_META:{
-			result = meta_optimize( opt->f, opt->data, &opt->stop, fmin, opt->schedule );
+			result = meta_optimize( opt->f, opt->data, &opt->stop, fmin, opt->schedule, opt->verbosity );
 			break;
 		}
 		case OPT_POWELL:{

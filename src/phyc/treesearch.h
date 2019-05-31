@@ -34,7 +34,7 @@ typedef enum {
 
 
 
-bool SPR_move( Tree *tree, Node *prune, Node *graft );
+Node* SPR_move( Tree *tree, Node *prune, Node *graft );
 
 void NNI_move( Tree *tree, Node *node1, Node *node2 );
 

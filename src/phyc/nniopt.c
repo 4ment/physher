@@ -171,9 +171,10 @@ void remove_adjacent_nnis( TopologyOptimizer *opt, Node *node, int *map ){
 
 // there is 2n-6 NNIs
 double nni_optimize_bl( struct TopologyOptimizer * opt ){
-//	printf("nni_optimize_bl\n");
 	double lnl = opt->model->logP(opt->model);
-    
+	
+    if(opt->failures >= opt->max_failures) return lnl;
+	
     unsigned nthreads = opt->threads;
     assert(nthreads > 0);
 	
@@ -214,18 +215,6 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 	opt_set_objective_function(full_opt, model_negative_logP);
 	
     int nNodes = Tree_node_count(((SingleTreeLikelihood*)(opt->tlk->obj))->tree);
-	
-    Node **temp_node_list[2];
-    temp_node_list[0] = (Node**)malloc(sizeof(Node*) * nNodes );
-    assert(temp_node_list[0]);
-    temp_node_list[1] = (Node**)malloc(sizeof(Node*) * nNodes );
-    assert(temp_node_list[1]);
-    
-    for ( int i = 0; i < nNodes; i++ ) {
-        temp_node_list[0][i] = NULL;
-        temp_node_list[1][i] = NULL;
-    }
-    
     
     int *map = ivector(nNodes);
     for( int i = 0; i < nNodes; i++ ){
@@ -243,10 +232,10 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
     time_t start_time, end_time;
     double diff_time;
     
-#ifdef DEBUG_TOPOLOGY
-    printf("\nStart NNI optimization LnL: %f\n\n", lnl);
-#endif
-    
+	if (opt->verbosity > 0) {
+    	printf("\nStart NNI optimization LnL: %f\n\n", lnl);
+	}
+	
     opt->moves = 0;
     
     while ( !failed ) {
@@ -311,9 +300,6 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
                 if( Node_isroot(Node_parent(node)) ){
                     sibling = Node_left(sibling);
                 }
-#ifdef DEBUG_TOPOLOGY
-                //fprintf(stdout,"Node index %d\r",i);
-#endif
                 
 #ifdef DEBUG_TOPOLOGY2
                 printf("\nNNI around %s (%d)\n", Node_name(node), node->id);
@@ -327,32 +313,44 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 
                 
                 // NNI 1
+				Tree_save(tlk->tree);
 				NNI_move(tlk->tree, sibling, left);
-				Parameter_fire(sibling->distance);
-				Parameter_fire(left->distance);
-				SingleTreeLikelihood_update_uppers(tlk);
+				
+				tlk->use_upper = false;
+				pool[0]->logP(pool[0]);
+				
+				Node* n = node;
+				Node* root = Tree_root(tlk->tree);
+				while (n != root) {
+					tlk->update_nodes[Node_id(n)] = true;
+					n = n->parent;
+				}
+				SingleTreeLikelihood_update_uppers2(tlk);
+				
                 tlk->node_upper = node;
-                
+				
                 double nni_1 = 0;
                 
                 status = opt_maximize( opt_bl, oneparameter, &nni_1);
                 if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
                 
                 double bl_1 = Node_distance(node);
-                
-                
-				NNI_move(tlk->tree, sibling, left);
-				Parameter_fire(sibling->distance);
-				Parameter_fire(left->distance);
+                Tree_revert(tlk->tree);
 				
-                Node_set_distance(node, original_bl);
-                
-                
                 // NNI 2
+				Tree_save(tlk->tree);
                 NNI_move(tlk->tree, sibling, right);
-				Parameter_fire(sibling->distance);
-				Parameter_fire(right->distance);
-				SingleTreeLikelihood_update_uppers(tlk);
+				
+				tlk->use_upper = false;
+				pool[0]->logP(pool[0]);
+				
+				n = node;
+				while (n != root) {
+					tlk->update_nodes[Node_id(n)] = true;
+					n = n->parent;
+				}
+				SingleTreeLikelihood_update_uppers2(tlk);
+				
 				tlk->node_upper = node;
                 
                 
@@ -364,13 +362,8 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 				Parameters_pop(oneparameter);
                 
                 double bl_2 = Node_distance(node);
-                
-				NNI_move(tlk->tree, sibling, right);
-				Parameter_fire(sibling->distance);
-				Parameter_fire(right->distance);
+				Tree_revert(tlk->tree);
 				
-				Node_set_distance(node, original_bl);
-                
                 double local_lnl = lnl;
                 int local_position = 0;
                 double local_bl = original_bl;
@@ -419,17 +412,14 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
         time(&end_time);
         diff_time = difftime(end_time, start_time);
         
-#ifdef DEBUG_TOPOLOGY
-        //Tree_print_newick(stderr, pool->tlks[0]->tree, true);
-        fprintf(stderr, "\n%d potentials NNIs [%f]\n", count, diff_time);
-#endif
+		if (opt->verbosity > 0) {
+        	printf("\n%d potentials NNIs [%f]\n", count, diff_time);
+		}
 		
 		SingleTreeLikelihood* tlk = opt->tlk->obj;
 		Tree* tree = tlk->tree;
 
         if( count != 0 ){
-            Optimizer *opt_bl = opt_bls[0];
-            Parameters *oneparameter = oneparameters[0];
             
             if(count > 1){
                 remove_adjacent_nnis(opt, Tree_root(tlk->tree), map);
@@ -449,20 +439,13 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
             _sort_decreasing_lnls(/*order,*/ opt, map_index_to_post, count);
             
         
-#ifdef DEBUG_TOPOLOGY
-            fprintf(stderr, "%d potentials non adjacent NNIs\n", count);
-#endif
-            
+			if (opt->verbosity > 0) {
+            	printf("%d potentials non adjacent NNIs\n", count);
+			}
+			
             
             Node **nodes = Tree_nodes(tlk->tree);
-            
-            // used to backtrack
-            for ( int i = 0; i < nNodes; i++ ) {
-                temp_node_list[0][i] = NULL;
-                temp_node_list[1][i] = NULL;
-            }
-            
-            int count2 = count;
+			
 //            count *= opt->K;
 //            count = imax(1, count); // in case we have count == 1, we would get (count * 0.75) == 0
             double nni_lnl = lnl;
@@ -472,6 +455,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 #endif
             
             while ( count > 0 ) {
+				Tree_save(tlk->tree);
                 // apply NNIs
                 for ( int j = 0; j < count; j++ ) {
                     
@@ -497,9 +481,6 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
                     else {
                         child = Node_right(nodes[node_index]);
                     }
-                    
-                    temp_node_list[0][j] = sibling;
-                    temp_node_list[1][j] = child;
                     
                     Node_swap_parents(sibling, child);
                     
@@ -531,29 +512,23 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 				status = opt_maximize( full_opt, NULL, &nni_lnl);
 				if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
                 
-#ifdef DEBUG_TOPOLOGY
-                time(&end_time);
-                diff_time = difftime(end_time, start_time);
-    
-                printf("nni LnL: %f LnL: %f (count: %d) [%f]\n", nni_lnl, lnl,count,diff_time);
-#endif
+				if (opt->verbosity > 0) {
+					time(&end_time);
+					diff_time = difftime(end_time, start_time);
+		
+					printf("nni LnL: %f LnL: %f (count: %d) [%f]\n", nni_lnl, lnl,count,diff_time);
+				}
+
                 if( nni_lnl > lnl || count == 1 ){
                     opt->moves += count;
                     break;
                 }
                 
-#ifdef DEBUG_TOPOLOGY
-                printf("Backtrack...\n");
-#endif
-                
-                for ( int j = count-1; j >= 0; j-- ) {
-                    Node_swap_parents(temp_node_list[0][j], temp_node_list[1][j]);
-                    
-                }
-                
-                Tree_set_topology_changed(tlk->tree);
-                Tree_vector_to_branch_length(tlk->tree, branches);
-                
+				if (opt->verbosity > 0) {
+                	printf("Backtrack...\n");
+				}
+				Tree_revert(tlk->tree);
+				
                 //count *= 0.5;
                 count *= opt->K;
                 count = imax(1, count); // in case we have count == 1, we would get (count * 0.75) == 0
@@ -599,10 +574,10 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 		}
     }
 	
-#ifdef DEBUG_TOPOLOGY
-    fprintf(stderr, "NNI round LnL: %f\n", lnl);
-#endif
-    
+	if (opt->verbosity > 0) {
+    	printf("NNI round LnL: %f\n", lnl);
+	}
+	
     for ( int i = 0; i < opt->threads; i++ ) {
         free_Optimizer(opt_bls[i]);
         free_Parameters(oneparameters[i]);
@@ -614,8 +589,6 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
     
     free(map);
     free(map_index_to_post);
-    free(temp_node_list[0]);
-    free(temp_node_list[1]);
     free(branches);
     //free(order);
 	for (int i = 1; i < nthreads; i++) {
@@ -627,6 +600,12 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
     opt->best_lnl = lnl;
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)(opt->tlk->obj);
 	tlk->use_upper = false;
+	if (opt->moves == 0) {
+		opt->failures++;
+	}
+	else{
+		opt->failures = 0;
+	}
     return lnl;
 }
 
