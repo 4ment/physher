@@ -146,7 +146,7 @@ void argsparser_check(args_parser* args, char* argv[], int argc){
     hashtable_set_value_ownership( hash, false );
     char* a = "a";
     for(int i = 1; i < argc; i++){
-        if (Hashtable_exists(hash, argv[i])){
+        if (argv[i][0] == '-' && Hashtable_exists(hash, argv[i])){
             fprintf(stderr, "Duplicate option %s\n", argv[i]);
             exit(1);
         }
@@ -161,7 +161,7 @@ void argsparser2_check(args_parser2* args, char* argv[], int argc){
 	hashtable_set_value_ownership( hash, false );
 	char* a = "a";
 	for(int i = 1; i < argc; i++){
-		if (Hashtable_exists(hash, argv[i])){
+		if (argv[i][0] == '-' && Hashtable_exists(hash, argv[i])){
 			fprintf(stderr, "Duplicate option %s\n", argv[i]);
 			exit(1);
 		}
