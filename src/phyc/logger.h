@@ -22,6 +22,7 @@ struct Logger{
 	char* filename;
 	char* format;
 	bool tree;
+	bool internal; // show internal node name
 };
 
 

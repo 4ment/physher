@@ -105,6 +105,8 @@ bool Tree_rooted(Tree* tree);
 
 bool Tree_homochronous(Tree* tree);
 
+bool check_tree_topology(Tree* tree);
+
 #pragma mark -
 #pragma mark Height
 void calculate_heights( Tree *tree );

@@ -8,6 +8,8 @@
 
 #include "nest.h"
 
+#include <math.h>
+
 #include "matrix.h"
 #include "utilsgsl.h"
 
@@ -113,7 +115,7 @@ double nest_mcmc(NEST* mcmc, double minLnL){
 
 void nest_run(NEST* nest){
 	double logZ = -DBL_MAX;
-	double H = -DBL_MAX;
+	double H = 0;
 	size_t N = nest->N;
 	double NN = N;
 	size_t paramCount = Parameters_count(nest->x);

@@ -8,7 +8,7 @@
 
 #include "gmrf.h"
 
-#include <tgmath.h>
+#include <math.h>
 
 #include "distmodel.h"
 #include "mathconstant.h"

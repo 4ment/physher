@@ -237,7 +237,6 @@ Model* new_ExponentialDistributionModel_from_json(json_node* node, Hashtable* ha
 	double mean = false;
 	json_node* p_node = get_json_node(node, "parameters");
 	if (Parameters_count(parameters) == 1 && strcasecmp(p_node->children[0]->key, "mean") == 0) {
-		Parameters_set_value(parameters, 0, 1.0/Parameters_value(parameters, 0));
 		mean = true;
 	}
 	char* parameterization_string = get_json_node_value_string(node, "parameterization");

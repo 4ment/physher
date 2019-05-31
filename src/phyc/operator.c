@@ -357,8 +357,6 @@ bool operator_sNNI(Operator* op, double* logHR){
 	
 	NNI_move(tree, sibling, node_swap);
 	
-	sibling->distance->listeners->fire(sibling->distance->listeners, NULL, Node_id(sibling));
-	node_swap->distance->listeners->fire(sibling->distance->listeners, NULL, Node_id(node_swap));
 	*logHR = 0;
 	return true;
 }

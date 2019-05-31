@@ -58,6 +58,48 @@ json_node* create_json_node_parameter(json_node* parent, const char* name, doubl
 	return jnode;
 }
 
+json_node* create_json_node_parameters(json_node* parent, const char* name, size_t dimension, double lower, double upper){
+	json_node* jnode = create_json_node_object(parent, name);
+	add_json_node(parent, jnode);
+	add_json_node_string(jnode, "id", name);
+	add_json_node_string(jnode, "type", "parameter");
+	add_json_node_size_t(jnode, "dimension", dimension);
+	add_json_node_double(jnode, "lower", lower);
+	add_json_node_double(jnode, "upper", upper);
+	return jnode;
+}
+
+json_node* create_json_node_parameters2(json_node* parent, const char* name, size_t dimension, const double* values, double lower, double upper){
+	json_node* jnode = create_json_node_object(parent, NULL);
+	add_json_node(parent, jnode);
+	add_json_node_string(jnode, "id", name);
+	add_json_node_string(jnode, "type", "parameter");
+	add_json_node_size_t(jnode, "dimension", dimension);
+	add_json_node_array_double(jnode, "values", values, dimension);
+	add_json_node_double(jnode, "lower", lower);
+	add_json_node_double(jnode, "upper", upper);
+	return jnode;
+}
+
+json_node* create_json_node_simplex(json_node* parent, const char* name, size_t dimension){
+	json_node* jnode = create_json_node_object(parent, name);
+	add_json_node(parent, jnode);
+	add_json_node_string(jnode, "id", name);
+	add_json_node_string(jnode, "type", "simplex");
+	add_json_node_size_t(jnode, "dimension", dimension);
+	return jnode;
+}
+
+json_node* create_json_node_simplex2(json_node* parent, const char* name, size_t dimension, const double* values){
+	json_node* jnode = create_json_node_object(parent, name);
+	add_json_node(parent, jnode);
+	add_json_node_string(jnode, "id", name);
+	add_json_node_string(jnode, "type", "simplex");
+	add_json_node_size_t(jnode, "dimension", dimension);
+	add_json_node_array_double(jnode, "values", values, dimension);
+	return jnode;
+}
+
 json_node* add_json_node_aux(json_node* parent, char* key, char* value, json_node_t type){
 //	if(parent->node_type != MJSON_UNDEFINED && parent->node_type != MJSON_OBJECT){
 //		error("Can only add key and value to an object (add_json_node_aux)\n");
@@ -76,7 +118,7 @@ json_node* add_json_node_bool(json_node* parent, const char* key, bool value){
 	char* nvalue = NULL;
 	if(value) nvalue = String_clone("1");
 	else nvalue = String_clone("0");
-	return add_json_node_aux(parent, nkey, nvalue, MJSON_STRING);
+	return add_json_node_aux(parent, nkey, nvalue, MJSON_PRIMITIVE);
 }
 
 json_node* add_json_node_string(json_node* parent, const char* key, const char* value){
@@ -192,6 +234,7 @@ json_node* add_json_node_array_string(json_node* parent, const char* key, char**
 }
 
 void add_json_node(json_node* parent, json_node* child){
+	child->parent = parent;
 	parent->child_count++;
 	if(parent->child_count == 0){
 		parent->children = calloc(1, sizeof(json_node*));
@@ -295,12 +338,12 @@ json_node* create_json_tree(const char* json){
 			}
 		}
 		// key
-		else if(json[i] == '"' && current->node_type == MJSON_OBJECT){
+		else if((json[i] == '"' || json[i] == '\'')  && current->node_type == MJSON_OBJECT){
 			json_node* n = create_json_node(current);
 			add_json_node(current, n);
 			i++;
 			StringBuffer_empty(buffer);
-			while (json[i] != '"') {
+			while (json[i] != '"' && json[i] != '\'') {
 				StringBuffer_append_char(buffer, json[i]);
 				i++;
 			}
@@ -311,10 +354,10 @@ json_node* create_json_tree(const char* json){
 			current = n;
 		}
 		// string value
-		else if(json[i] == '"'){
+		else if(json[i] == '"' || json[i] == '\''){
 			i++;
 			StringBuffer_empty(buffer);
-			while (json[i] != '"') {
+			while (json[i] != '"' && json[i] != '\'') {
 				StringBuffer_append_char(buffer, json[i]);
 				i++;
 			}

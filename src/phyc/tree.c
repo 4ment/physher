@@ -1693,6 +1693,51 @@ bool Tree_homochronous(Tree* tree){
 	return tree->homochronous;
 }
 
+// every node should have only one parent, except root
+// every node should be referenced once, except root
+bool check_tree_topology(Tree* tree){
+	int* a = calloc(Tree_node_count(tree), sizeof(int));
+	int* b = calloc(Tree_node_count(tree), sizeof(int));
+	for (int i = 0; i < Tree_node_count(tree); i++) {
+		Node* node = Tree_node(tree, i);
+		if(node->parent) a[node->parent->id]++;
+		if (!Node_isleaf(node)) {
+			b[node->left->id]++;
+			b[node->right->id]++;
+		}
+	}
+	bool ok = true;
+	int r = 0;
+	for (int i = 0; i < Tree_node_count(tree); i++) {
+		Node* n = Tree_node(tree, i);
+		if(b[i] > 1){
+			fprintf(stderr, "%s referenced %d times\n", n->name, b[i]);
+			ok = false;
+		}
+		else if(b[i] == 0){
+			r++;
+		}
+		// a[i] == 0 should be a leaf
+		if (a[i] > 2 || a[i] == 1) {
+			fprintf(stderr, "%s referenced as parent %d times\n", n->name, a[i]);
+			ok = false;
+		}
+	}
+	
+	if (r != 1) {
+		for (int i = 0; i < Tree_node_count(tree); i++) {
+			Node* n = Tree_node(tree, i);
+			if(b[i] == 0){
+				fprintf(stderr, "%s not referenced\n", n->name);
+				ok = false;
+			}
+		}
+	}
+	free(a);
+	free(b);
+	return ok;
+}
+
 #pragma mark -
 // MARK: Distance methods
 

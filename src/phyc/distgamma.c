@@ -198,18 +198,19 @@ Model* new_GammaDistributionModel_from_json(json_node* node, Hashtable* hash){
 	get_parameters_references2(node, hash, x, "x");
 	
 	char* file = get_json_node_value_string(node, "file");
-	Vector** samples = NULL;
-	if (file != NULL){
-		get_parameters_references2(node, hash, x, "x");
-		size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
-		samples = read_log_for_parameters_t(file, burnin, x);
-	}
-	
 	Parameters* parameters = new_Parameters(1);
 	
 	bool scale = false;
+	
+	char* parameterization_string = get_json_node_value_string(node, "parameterization");
+	if(parameterization_string!= NULL && strcasecmp(parameterization_string, "scale") == 0){
+		scale = true;
+	}
+	
 	// empirical
-	if (samples != NULL) {
+	if (file != NULL) {
+		size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
+		Vector** samples = read_log_for_parameters_t(file, burnin, x);
 		size_t paramCount = Parameters_count(x);
 		
 		for (int i = 0; i < paramCount; i++) {
@@ -217,13 +218,17 @@ Model* new_GammaDistributionModel_from_json(json_node* node, Hashtable* hash){
 			double m = dmean(vec, Vector_length(samples[i]));
 			double v = variance(vec, Vector_length(samples[i]), m);
 			Parameters_move(parameters, new_Parameter("shape", m*m/v, NULL));
-			Parameters_move(parameters, new_Parameter("rate", m/v, NULL));
+			if (scale) {
+				Parameters_move(parameters, new_Parameter("scale", v/m, NULL));
+			}
+			else{
+				Parameters_move(parameters, new_Parameter("rate", m/v, NULL));
+			}
 			free_Vector(samples[i]);
 		}
 		free(samples);
 	}
 	else if(get_json_node(node, "parameters") == NULL){
-		get_parameters_references2(node, hash, x, "x");
 		for (int i = 0; i < Parameters_count(x); i++) {
 			Parameters_move(parameters, new_Parameter("shape", 1, new_Constraint(0, INFINITY)));
 			Parameters_move(parameters, new_Parameter("rate", 1, new_Constraint(0, INFINITY)));

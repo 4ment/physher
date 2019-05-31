@@ -32,6 +32,10 @@ void _log(struct Logger* logger){
 			}
 			fprintf(logger->file, "\n");
 		}
+		else if (model->print != NULL) {
+			fprintf(logger->file, "\n");
+			model->print(model, logger->file);
+		}
 		else{
 			fprintf(logger->file, " %f\n", model->logP(model));
 		}
@@ -46,7 +50,7 @@ void _log(struct Logger* logger){
 void _log_tree(struct Logger* logger){
 	Tree* tree = logger->models[0]->obj;
 	if(strcasecmp(logger->format, "newick") == 0){
-		Tree_print_newick(logger->file, tree, false);
+		Tree_print_newick(logger->file, tree, logger->internal);
 	}
 	else if(strcasecmp(logger->format, "nexus") == 0){
 		fprintf(logger->file, "#NEXUS\n\n");
@@ -113,6 +117,7 @@ struct Logger* new_logger_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
 		"file",
 		"format",
+		"internal",
 		"models",
 		"parameters",
 		"tree"
@@ -125,6 +130,8 @@ struct Logger* new_logger_from_json(json_node* node, Hashtable* hash){
 	logger->models = NULL;
 	logger->tree = get_json_node_value_bool(node, "tree", false);
 	get_references(node, hash, logger);
+	
+	logger->internal = get_json_node_value_bool(node, "internal", false);
 	
 	json_node* file_node = get_json_node(node, "file");
 	logger->file = stdout;
