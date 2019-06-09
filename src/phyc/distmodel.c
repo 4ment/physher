@@ -27,6 +27,7 @@
 
 #include "distexp.h"
 #include "distgamma.h"
+#include "distcauchy.h"
 #include "gmrf.h"
 #include "distdirichlet.h"
 
@@ -470,30 +471,29 @@ double DistributionModel_normal_logP_with_values(DistributionModel* dm, const do
 
 double DistributionModel_normal_dlogP(DistributionModel* dm, const Parameter* p){
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
-		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
+		if (p == Parameters_at(dm->x,i)) {
 			double mu = Parameters_value(dm->parameters, 0);
 			double sigma = Parameters_value(dm->parameters, 1);
 			if(Parameters_count(dm->parameters) > 2){
 				mu = Parameters_value(dm->parameters, i*2);
 				sigma = Parameters_value(dm->parameters, i*2+1);
 			}
-			error("DistributionModel_normal_dlogP not yet implemented");
-			return INFINITY;
-			
+			return (mu - Parameters_value(dm->x, 0))/sigma/sigma;
 		}
 	}
 	return 0;
 }
 
 double DistributionModel_normal_d2logP(DistributionModel* dm, const Parameter* p){
-	error("DistributionModel_normal_d2logP not yet implemented");
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
-		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
-			double alpha = Parameters_value(dm->parameters, 0);
+		if (p == Parameters_at(dm->x,i)) {
+			double mu = Parameters_value(dm->parameters, 0);
+			double sigma = Parameters_value(dm->parameters, 1);
 			if(Parameters_count(dm->parameters) > 2){
-				alpha = Parameters_value(dm->parameters, i*2);
+				mu = Parameters_value(dm->parameters, i*2);
+				sigma = Parameters_value(dm->parameters, i*2+1);
 			}
-			return -(alpha-1.0)/Parameter_value(p)/Parameter_value(p);
+			return -1.0/sigma/sigma;
 		}
 	}
 	return 0;
@@ -1368,6 +1368,9 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	}
 	else if (strcasecmp(d_string, "dirichlet") == 0){
 		return new_DirichletDistributionModel_from_json(node, hash);
+	}
+	else if (strcasecmp(d_string, "cauchy") == 0){
+		return new_CauchyDistributionModel_from_json(node, hash);
 	}
 	
 	char* id = get_json_node_value_string(node, "id");
