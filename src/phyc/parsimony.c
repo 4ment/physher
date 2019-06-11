@@ -907,7 +907,7 @@ Model * new_ParsimonyModel(char* name, Parsimony* parsimony, Model* tree){
 	tree->ref_count++;
 	model->update = _parsimony_model_handle_change;
 	model->logP = _parsimony_model_logP;
-	model->logP = _parsimony_model_full_logP;
+	model->full_logP = _parsimony_model_full_logP;
 	model->free = _parsimony_model_free;
 	model->clone = _parsimony_model_clone;
 	model->get_free_parameters = _parsimony_model_get_free_parameters;
