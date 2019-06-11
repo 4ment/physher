@@ -68,16 +68,21 @@ void free_Coalescent( Coalescent *coalescent );
 
 #pragma mark -
 
-Coalescent * new_ConstantCoalescent_with_parameter( Tree *tree, Parameter* theta );
+Coalescent * new_ConstantCoalescent( Tree* tree, Parameter* theta );
+Coalescent * new_ConstantCoalescent_with_data( Parameter* theta, double* times, bool* coalescent, int size );
 
-Coalescent * new_ExponentialCoalescent_with_parameters( Tree *tree, Parameters* parameters );
+Coalescent * new_ExponentialCoalescent( Tree *tree, Parameters* parameters );
+Coalescent * new_ExponentialCoalescent_with_data( Parameters* parameters, double* times, bool* coalescent, int size );
 
 Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Parameters* parameters);
 
-Coalescent * new_SkylineCoalescent_with_parameters( Tree *tree, Parameters* parameters, DiscreteParameter* groups );
+Coalescent * new_SkylineCoalescent( Tree *tree, Parameters* parameters, DiscreteParameter* groups);
+Coalescent * new_SkylineCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, DiscreteParameter* groups);
 
-Coalescent * new_SkyrideCoalescent_with_parameters( Tree *tree, Parameters* parameters);
+Coalescent * new_SkyrideCoalescent( Tree *tree, Parameters* parameters);
+Coalescent * new_SkyrideCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size);
 
-Coalescent * new_GridCoalescent_with_parameters( Tree *tree, Parameters* parameters, int grid, double cutoff );
+Coalescent * new_GridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff );
+Coalescent * new_GridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff);
 
 #endif
