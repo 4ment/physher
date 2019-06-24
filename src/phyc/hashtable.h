@@ -28,7 +28,7 @@ typedef enum hashtable_key_type{
 	HASHTABLE_KEY_REFERENCE
 } hashtable_key_type;
 
-typedef unsigned int (*hashtable_hashfn)( const char *, const unsigned int );
+typedef unsigned int (*hashtable_hashfn)(const void*);
 
 typedef bool (*hashtable_cmpfn) (const void*, const void*);
 
@@ -41,8 +41,6 @@ typedef struct _Hashtable Hashtable;
 Hashtable * new_Hashtable( const unsigned int size, hashtable_hashfn hashfn, hashtable_cmpfn cmpfn, hashtable_key_type type );
 
 Hashtable * new_Hashtable_string( unsigned int size );
-
-Hashtable * new_Hashtable_int( unsigned int size );
 
 void free_Hashtable( Hashtable *hash );
 

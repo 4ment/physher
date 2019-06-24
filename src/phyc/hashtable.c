@@ -152,23 +152,7 @@ Hashtable * new_Hashtable( const unsigned int size, hashtable_hashfn hashfn, has
 
 
 Hashtable * new_Hashtable_string( unsigned int size ){
-	return new_Hashtable( size, &JSHash, Hashtable_compare_strings, HASHTABLE_KEY_STRING);
-}
-
-Hashtable * new_Hashtable_reference( unsigned int size ){
-	return new_Hashtable( size, &JSHash, Hashtable_compare_references, HASHTABLE_KEY_DOUBLE);
-}
-
-Hashtable * new_Hashtable_double( unsigned int size ){
-	return new_Hashtable( size, &JSHash, Hashtable_compare_doubles, HASHTABLE_KEY_REFERENCE);
-}
-
-Hashtable * new_Hashtable_int( unsigned int size ){
-	return new_Hashtable( size, &JSHash, Hashtable_compare_ints, HASHTABLE_KEY_INT);
-}
-
-Hashtable * new_Hashtable_float( unsigned int size ){
-	return new_Hashtable( size, &JSHash, Hashtable_compare_floats, HASHTABLE_KEY_FLOAT);
+	return new_Hashtable( size, &JSHash2, Hashtable_compare_strings, HASHTABLE_KEY_STRING);
 }
 
 /*! Free a hashtable.
@@ -204,11 +188,7 @@ void free_Hashtable( Hashtable *hash ){
 static unsigned int hashfn( Hashtable *hash, const void *k){
     /* Aim to protect against poor hash functions by adding logic here
      * - logic taken from java 1.4 hashtable source */
-	unsigned len = 0;
-	if ( hash->type == HASHTABLE_KEY_STRING){
-		len = strlen( (char*)k);
-	}
-    unsigned int i = hash->hashfn(k,len);
+	unsigned int i = hash->hashfn(k);
     i += ~(i << 9);
     i ^=  ((i >> 14) | (i << 18)); /* >>> */
     i +=  (i << 4);

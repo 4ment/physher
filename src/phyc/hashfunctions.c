@@ -47,6 +47,13 @@ unsigned int JSHash( const char* str, unsigned int len)
 	
 	return hash;
 }
+
+unsigned int JSHash2(const void* data)
+{
+	const char* str = data;
+	return JSHash(str, strlen(str));
+}
+
 /* End Of JS Hash Function */
 
 

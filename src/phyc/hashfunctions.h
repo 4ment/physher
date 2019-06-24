@@ -43,8 +43,9 @@
 #include <stdio.h>
 
 
-typedef unsigned int (*hash_function)(char*, unsigned int len);
+typedef unsigned int (*hash_function)(const void* data);
 
+unsigned int JSHash2(const void* data);
 
 unsigned int RSHash  ( const char* str, unsigned int len);
 unsigned int JSHash  ( const char* str, unsigned int len);
