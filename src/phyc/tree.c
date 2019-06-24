@@ -245,10 +245,9 @@ void init_parameter_arrays(Tree* atree){
 	}
 	
 	// create stored nodes
-	atree->stored_nodes = malloc(sizeof(Node*)*atree->nNodes);
 	for (int i = 0; i < Tree_node_count(atree); i++) {
 		Node* n = atree->nodes[i];
-		atree->stored_nodes[i] = new_Node(NULL, Node_name(n), 0);
+		atree->stored_nodes[i] = new_EmptyNode();
 		atree->stored_nodes[i]->id = n->id;
 	}
 
@@ -272,7 +271,6 @@ void init_parameter_arrays(Tree* atree){
 		atree->stored_nodes[i]->preorder_idx = n->preorder_idx;
 		atree->stored_nodes[i]->postorder_idx = n->postorder_idx;
 		atree->stored_nodes[i]->annotation = n->annotation;
-		free(atree->stored_nodes[i]->name);
 		atree->stored_nodes[i]->name = n->name;
 	}
 }

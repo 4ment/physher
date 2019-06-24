@@ -54,6 +54,8 @@ typedef struct Node{
 	bool poly;
 } Node;
 
+Node * new_EmptyNode();
+
 Node * new_Node( Node *parent, const char *nodename, const int counter );
 
 void free_Node( Node *node );

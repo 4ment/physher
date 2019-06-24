@@ -28,17 +28,38 @@
 
 #pragma mark -
 
-Node * new_Node( Node *parent, const char *nodename, const int counter ){
+// no parameters
+Node * new_EmptyNode(){
 	Node *n = (Node*)malloc(sizeof(Node));
 	assert(n);
-	n->parent = parent;
+	n->parent = NULL;
 	n->right = NULL;
 	n->left = NULL;
 	
 	n->depth = -1;
-	n->id = counter;
+	n->id = -1;
 	
 	n->class_id = -1;
+	n->name = NULL;
+	
+	n->distance = NULL;
+	n->height   = NULL;
+	
+	n->postorder_idx = 0;
+	n->preorder_idx  = 0;
+	
+	n->time = 0;
+	n->info = NULL;
+	n->annotation = NULL;
+	n->poly = false;
+	
+	return n;
+}
+
+Node * new_Node( Node *parent, const char *nodename, const int counter ){
+	Node *n = new_EmptyNode();
+	n->parent = parent;
+	n->id = counter;
 	
 	char name[50];
 	if( nodename == NULL ){
@@ -54,14 +75,6 @@ Node * new_Node( Node *parent, const char *nodename, const int counter ){
 	Constraint_set_flower(n->distance->cnstr, BL_MIN);
 	Constraint_set_fupper(n->distance->cnstr, BL_MAX);
 	n->height   = new_Parameter_with_postfix(n->name, POSTFIX_HEIGHT, 0, new_Constraint(0,INFINITY));
-	
-	n->postorder_idx = 0;
-	n->preorder_idx  = 0;
-	
-	n->time = 0;
-	n->info = NULL;
-    n->annotation = NULL;
-	n->poly = false;
 	
 	return n;
 }
