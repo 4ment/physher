@@ -635,9 +635,10 @@ TreeFileIterator *new_TreeFileIterator( const char *filename ){
     
     iter->reader = reader;
     iter->translation = NULL;
+	iter->more = false;
     StringBuffer *buffer = new_StringBuffer(200);
     
-    if( reader->read_line(iter->reader) ){
+    if( (iter->more = reader->read_line(iter->reader)) ){
         if(strcasecmp(reader->line, "#nexus") == 0){
             while ( reader->read_line(iter->reader) ) {
                 // PARSE TREE BLOCK
@@ -653,6 +654,7 @@ TreeFileIterator *new_TreeFileIterator( const char *filename ){
                 }
             }
         }
+		iter->more = true;
     }
     free_StringBuffer(buffer);
     return iter;
@@ -669,9 +671,14 @@ void free_TreeFileIterator(TreeFileIterator *iter ){
 
 char * TreeFileIterator_next_tree( TreeFileIterator *iter ){
     char *t = NULL;
-    if( iter->reader->line != NULL ){
+    if( iter->more ){
         String_trim(iter->reader->line);
-        if( !String_i_start_with(iter->reader->line, "end;", true) ){
+		if(strlen(iter->reader->line) > 0 && iter->reader->line[0] == '('){
+			t = String_clone(iter->reader->line);
+			iter->more = iter->reader->read_line(iter->reader);
+			if(iter->more && strlen(iter->reader->line) == 0) iter->more = false;
+		}
+        else if( !String_i_start_with(iter->reader->line, "end;", true) ){
             char *ptr = iter->reader->line;
 
             // check comments
@@ -703,7 +710,10 @@ char * TreeFileIterator_next_tree( TreeFileIterator *iter ){
             
             // get the next tree if any
             while ( iter->reader->read_line(iter->reader) ) {
-                if ( String_i_start_with(iter->reader->line, TREE_TAG, true) ) break;
+				if ( String_i_start_with(iter->reader->line, TREE_TAG, true) ){
+					iter->more = true;
+					break;
+				}
             }
         }
     }

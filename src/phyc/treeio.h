@@ -28,6 +28,7 @@ typedef struct _TreeFileIterator TreeFileIterator;
 struct _TreeFileIterator {
     FileReader *reader;
     Hashtable *translation;
+	bool more;
 };
 
 
