@@ -161,6 +161,13 @@ Node* SPR_move( Tree *tree, Node *prune, Node *graft ){
 			Parameter_fire(graft->distance);
 			tripod = left;
 		}
+		// NNI involving the right node
+		else if(Node_parent(parent2) == right && parent1 == right){
+			Node_swap_parents(prune, graft);
+			Parameter_fire(prune->distance);
+			Parameter_fire(graft->distance);
+			tripod = Node_sibling(prune);
+		}
 		// prune is a child of the right node
 		// We do not want to detach the right node to reconnect it somewhere else
 		// as we do in the simple case since this node should never change or move
@@ -219,6 +226,7 @@ Node* SPR_move( Tree *tree, Node *prune, Node *graft ){
 				while (n2->parent != siblingPrune) {
 					n2 = n2->parent;
 				}
+				// if n2===graft then it is simply an NNI and it is taken care of above
 				Node* n = Node_sibling(n2); // node to be moved to the right side
 				Node_removeChild(siblingPrune, n);
 				Node_removeChild(siblingPrune, n2);
@@ -227,7 +235,7 @@ Node* SPR_move( Tree *tree, Node *prune, Node *graft ){
 				Node_removeChild(right, prune);
 				Node_addChild(right, n);
 				Node_set_parent(n, right);
-				// attach child of left node to root node
+				// attach child of left node to right node
 				Node_addChild(right, n2);
 				Node_set_parent(n2, right);
 				// attach prune and graft to left node

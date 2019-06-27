@@ -8,6 +8,7 @@
 
 #include "distgamma.h"
 
+#include <strings.h>
 
 #include <gsl/gsl_randist.h>
 

@@ -1513,7 +1513,7 @@ void reorder_topology(Node* node, Node* backup){
 	}
 }
 
-double optimize_tripod(Model* model, Node* centralNode, bool logit){
+double optimize_tripod(Model* model, Node* centralNode){
 	SingleTreeLikelihood* tlk = model->obj;
 	
 	double spr_score = 0;
@@ -1537,8 +1537,6 @@ double optimize_tripod(Model* model, Node* centralNode, bool logit){
 	SingleTreeLikelihood_update_uppers2(tlk);
 	
 	tlk->tripod = true;
-	int c = 0;
-//	if(logit)printf("==\n");
 	
 	int idLeft = Node_id(centralNode->left);
 	int idRight = Node_id(centralNode->right);
@@ -1579,15 +1577,9 @@ double optimize_tripod(Model* model, Node* centralNode, bool logit){
 		tlk->node_upper = centralNode->right;
 		status = opt_maximize( opt_3bl, parameters, &spr_score);
 		if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-//		if(logit)printf("%s %f %e %e %e\n", centralNode->right->name, spr_score, centralNode->distance->value, centralNode->left->distance->value, centralNode->right->distance->value);
-		c++;
+
 		if (fabs(spr_score-lnl2) < 0.1) {
 			break;
-		}
-		if(logit && c>5){
-			printf("%s %e %e\n",centralNode->name, spr_score,lnl2);
-//			Tree_print_newick(stdout, tlk->tree, true);
-//			exit(2);
 		}
 		SingleTreeLikelihood_update_Q(tlk, centralNode->right);
 		// update lower of central node for next round
@@ -1596,7 +1588,6 @@ double optimize_tripod(Model* model, Node* centralNode, bool logit){
 							 idLeft, idLeft);
 		lnl2 = spr_score;
 	} while (1);
-//	if(logit)printf("%d\n",c);
 	free_Optimizer(opt_3bl);
 	tlk->tripod = false;
 	tlk->use_upper = false;
@@ -1655,7 +1646,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
 	}
 	
     opt->moves = 0;
-    
+	
     int count = 0;
     
     int rounds = 0;
@@ -1803,7 +1794,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
                 // SPR
                 Node* centralNode = SPR_move(tree, prune, graft);
 				
-				double spr_score = optimize_tripod(pool[tid], centralNode, false);
+				double spr_score = optimize_tripod(pool[tid], centralNode);
 				
 #ifdef DEBUG_TOPOLOGY_SPR
                     printf("%s %s lnl %f (%f) %d %s ",graft->name, prune->name, spr_score, lnl, d, (spr_score > lnl ? "*" : ""));
@@ -1903,7 +1894,7 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
 				Tree_save(tree);
 				
 				Node* centralNode = SPR_move(tree, prune, graft);
-				
+
 				Node_set_distance(centralNode, d1[pairs[i]->index]);
 				Node_set_distance(centralNode->left, d2[pairs[i]->index]);
 				Node_set_distance(centralNode->right, d3[pairs[i]->index]);
@@ -1912,18 +1903,8 @@ double spr_optimize_bl_openmp( struct TopologyOptimizer * opt ){
 				
 				// no need to reoptimize the first one since it will give the same estimates
 				if(i != 0){
-					spr_score = optimize_tripod(pool[0], centralNode, true);
+					spr_score = optimize_tripod(pool[0], centralNode);
 				}
-				
-				
-//				printf("%s %s %f\n", prune->name, graft->name, spr_score);
-//				Tree_print_newick(stdout, tree, true);
-//				printf("\n");
-//				bool ok = check_tree_topology(tree);
-//				if(!ok){
-//					printf("\n");
-//					exit(123);
-//				}
 				
 #ifdef DEBUG_TOPOLOGY_SPR
                 printf("Parsimony %f (%f) d(prune,graft)=%d max %f [%s -> %s]\n", spr_score, scores[pairs[i]->index], ds[pairs[i]->index], lnl, Node_name(prune), Node_name(graft));
