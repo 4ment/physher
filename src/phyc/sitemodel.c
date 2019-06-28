@@ -266,11 +266,18 @@ void set_rate(SiteModel* sm, const int index, const double value){
     sm->need_update = true;
 }
 
+int _get_site_category(SiteModel* sm, const int pattern){
+	return 0;
+}
+
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
 SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, Simplex* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad){
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
+	sm->site_category = NULL;
+	sm->sp = NULL;
+	sm->get_site_category = _get_site_category;
 	sm->m = m;
 	sm->nstate = m->nstate;
 	
@@ -539,6 +546,10 @@ double *_get_proportions_laguerre( SiteModel *sm ){
 	return sm->cat_proportions;
 }
 
+int _get_site_category_CAT(SiteModel* sm, const int pattern){
+	return sm->site_category[pattern];
+}
+
 #pragma mark -
 // MARK: Discrete SiteModel
 
@@ -592,6 +603,70 @@ void _calculate_rates_discrete( SiteModel *sm ) {
 		sm->cat_rates[i] /= sum;
 	}
 	sm->need_update = false;
+}
+
+#pragma  mark -
+#pragma mark CAT
+
+void _cat_update(SiteModel* sm){
+	double avg = 0;
+	for (int i = 0; i < sm->sp->count; i++ ) {
+		avg += Parameters_value(sm->rates, sm->get_site_category(sm, i)) * sm->sp->weights[i];
+	}
+	avg /= sm->sp->nsites;
+	for (int i = 0; i < sm->cat_count; i++ ) {
+		sm->cat_rates[i] = Parameters_value(sm->rates, i)/avg;
+	}
+	sm->need_update = false;
+}
+
+double _get_rate_cat( SiteModel *sm, const int index ){
+	if ( sm->need_update ) {
+		_cat_update(sm);
+	}
+	return sm->cat_rates[index] * (sm->mu == NULL ? 1.0 : Parameter_value(sm->mu));
+}
+
+SiteModel * new_CATSiteModel_with_parameters( SubstitutionModel *m, const Parameters *params,  const size_t cat_count, SitePattern* sp){
+	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
+	assert(sm);
+	sm->sp = sp;
+	sm->site_category = ivector(sp->count);
+	sm->get_site_category = _get_site_category_CAT;
+	sm->m = m;
+	sm->nstate = m->nstate;
+	
+	sm->distribution = -1;
+	sm->invariant = false;
+	sm->quadrature = -1;
+	
+	sm->cat_count = cat_count;
+	
+	sm->cat_rates = dvector(sm->cat_count);
+	sm->cat_proportions = NULL;
+	sm->proportions = NULL;
+	
+	sm->rates = NULL;
+	
+	if(Parameters_count(params) > 0){
+		sm->rates = new_Parameters(Parameters_count(params));
+		Parameters_add_parameters(sm->rates, params);
+		if (Parameters_name2(params) != NULL) {
+			Parameters_set_name2(sm->rates, Parameters_name2(params));
+		}
+	}
+	sm->mu    = NULL;
+	
+	sm->set_rate = set_rate;
+	
+	sm->get_rate        = _get_rate_cat;
+	sm->get_proportion  = _get_proportion;
+	sm->get_proportions = _get_proportions;
+	
+	sm->integrate   = false;
+	sm->need_update = true;
+	
+	return sm;
 }
 
 #pragma mark -
@@ -705,13 +780,15 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		"model",
 		"mu",
 		"rates",
+		"sitepattern",
 		"substitutionmodel"
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	//json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
 	json_node* distribution_node = get_json_node(node, "distribution");
 	json_node* m_node = get_json_node(node, "substitutionmodel");
 	json_node* mu_node = get_json_node(node, "mu");
+	char* sp_ref = get_json_node_value_string(node, "sitepattern");
 	json_node* proportions_node = NULL;
 	
 	Model* mm = NULL;
@@ -839,8 +916,24 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		}
 	}
 	
+	SiteModel* sm = NULL;
 	
-	SiteModel* sm = new_SiteModel_with_parameters(m, rates, props_simplex, cat, distribution, invariant, quad);
+	if (sp_ref != NULL) {
+		int cat = get_json_node_value_int(node, "categories", 4);
+		SitePattern* sp = Hashtable_get(hash, sp_ref+1);
+		json_node* params_node = get_json_node(node, "parameters");
+		get_parameter_list_from_node(params_node, rates);
+//		get_parameters_references(node, hash, rates);
+		for (int i = 0; i < Parameters_count(rates); i++) {
+			Hashtable_add(hash, Parameters_name(rates, i), Parameters_at(rates, i));
+		}
+		
+		sm = new_CATSiteModel_with_parameters(m, rates, cat, sp);
+	}
+	else {
+		sm = new_SiteModel_with_parameters(m, rates, props_simplex, cat, distribution, invariant, quad);
+	}
+	
 	
 	if (sm->rates != NULL && Parameters_name2(sm->rates) != NULL) {
 		Hashtable_add(hash, Parameters_name2(sm->rates), sm->rates);

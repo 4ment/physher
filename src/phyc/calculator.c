@@ -12,10 +12,11 @@
 
 #include "asr.h"
 #include "ppsites.h"
+#include "cat.h"
 
 void calculatorModel_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {"whattodo"};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_check_required(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
 	char* what_node = get_json_node_value_string(node, "whattodo");
 	
@@ -24,5 +25,8 @@ void calculatorModel_from_json(json_node* node, Hashtable* hash){
 	}
 	else if(strcasecmp(what_node, "ppsite") == 0){
 		posteriors_sites_calculator_from_json(node, hash);
+	}
+	else if(strcasecmp(what_node, "cat") == 0){
+		cat_estimator_from_json(node, hash);
 	}
 }

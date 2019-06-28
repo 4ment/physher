@@ -573,3 +573,39 @@ void json_check_allowed(json_node* node, char** allowed, int length){
 		}
 	}
 }
+
+void json_check_required(json_node* node, char** required, int length){
+	int id = -1;
+	int type = -1;
+	for (int i = 0; i < node->child_count; i++) {
+		if (strcasecmp(node->children[i]->key, "id") == 0) {
+			id = i;
+		}
+		else if (strcasecmp(node->children[i]->key, "type") == 0) {
+			type = i;
+		}
+	}
+	if (node->node_type == MJSON_OBJECT && (id == -1 || type == -1)) {
+		fprintf(stderr, "Missing id or type in:\n");
+		json_tree_print(node);
+		exit(12);
+	}
+	bool* found = malloc(length*sizeof(bool));
+	for (int i = 0; i < node->child_count; i++) {
+		if (node->children[i]->key[0] == '_' || i == id || i == type) continue; // keys starting with _ are comments
+		
+		for (int j = 0 ; j < length; j++) {
+			if (strcasecmp(node->children[i]->key, required[j]) == 0) {
+				found[j] = true;
+				break;
+			}
+		}
+	}
+	for (int j = 0 ; j < length; j++) {
+		if(!found[j]){
+			fprintf(stderr, "Key not found: %s in %s of type %s\n", required[j], node->children[id]->value, node->children[type]->value);
+			exit(12);
+		}
+	}
+	free(found);
+}

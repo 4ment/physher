@@ -50,6 +50,8 @@
 #include "phyc/mc.h"
 #include "phyc/physim.h"
 #include "phyc/demographicmodels.h"
+#include "phyc/calculator.h"
+#include "phyc/sbn.h"
 
 #include "phyc/physhercmd.h"
 
@@ -258,6 +260,12 @@ int main(int argc, char* argv[]){
 		else if(strcasecmp(type, JSON_SIMULTRON) == 0){
 			printf("Simulating sequences...\n");
 			SimulateSequences_from_json(child, hash2);
+		}
+		else if(strcasecmp(type, "calculator") == 0){
+			calculatorModel_from_json(child, hash2);
+		}
+		else if(strcasecmp(type, "sbn") == 0){
+			SBN* sbn = new_SBN_from_json(child, hash2);
 		}
 	}
 	if(models != NULL){

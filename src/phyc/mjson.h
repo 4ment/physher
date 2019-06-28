@@ -58,4 +58,5 @@ void json_tree_print(json_node* node);
 void json_free_tree(json_node* node);
 
 void json_check_allowed(json_node* node, char** allowed, int length);
+void json_check_required(json_node* node, char** required, int length);
 #endif /* mjson_h */

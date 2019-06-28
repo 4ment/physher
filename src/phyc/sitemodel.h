@@ -22,6 +22,7 @@
 #include "parameters.h"
 #include "mstring.h"
 #include "distmodel.h"
+#include "sitepattern.h"
 
 #define SITEMODEL_ALPHA_MIN 0.001
 #define SITEMODEL_ALPHA_MAX 100
@@ -36,6 +37,7 @@ typedef enum quadrature_t {
 
 typedef struct SiteModel{
 	SubstitutionModel *m;
+	SitePattern* sp;
 	int nstate;
 	
 	distribution_t distribution; // parametric distribution
@@ -50,9 +52,13 @@ typedef struct SiteModel{
 	double   (*get_proportion)( struct SiteModel *, const int );
 	double * (*get_proportions)( struct SiteModel * );
 	
+	int (*get_site_category)( struct SiteModel *, const int );
+	
 	unsigned cat_count;
 	double *cat_rates;
 	double *cat_proportions;
+	
+	int* site_category;
 	
 	bool integrate;
 	

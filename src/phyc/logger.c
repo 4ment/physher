@@ -137,9 +137,9 @@ struct Logger* new_logger_from_json(json_node* node, Hashtable* hash){
 	logger->file = stdout;
 	logger->filename = NULL;
 	if(file_node != NULL){
-		char* filename = file_node->key;
+		char* filename = file_node->value;
 		if (strcmp(filename, "stderr") != 0 && strcmp(filename, "stdout") != 0) {
-			logger->filename = String_clone(file_node->key);
+			logger->filename = String_clone(filename);
 			logger->file = fopen(logger->filename, "w");
 		}
 		else if(strcmp(filename, "stderr") == 0){
