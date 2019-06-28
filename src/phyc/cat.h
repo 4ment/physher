@@ -11,4 +11,9 @@
 
 #include <stdio.h>
 
+#include "mjson.h"
+#include "hashtable.h"
+
+void cat_estimator_from_json(json_node* node, Hashtable* hash);
+
 #endif /* cat_h */
