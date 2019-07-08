@@ -38,35 +38,38 @@ void klqp_meanfield_normal_init(variational_t* var){
 	
 	for (int i = 0; i < dim; i++) {
 		Parameter* p = Parameters_at(var->parameters, i);
-		// fix mu when value is small
-		// mu will be set such that mu-sigma*sigma = -10
-		if(Parameter_value(p) < 1.0e-6){
-			//			printf("%e %s\n", Parameter_value(p), Parameter_name(p));
-			Parameter* var_p_mu = Parameters_at(var->var_parameters, i);
-			Parameter* var_p_sigma = Parameters_at(var->var_parameters, i+dim);
-			Parameter_set_estimate(var_p_mu, false);
-		}
-		else{
-			Parameter* var_p_mu = Parameters_at(var->var_parameters, i);
-			double dlogP;
-			double d2logP = posterior->d2logP(posterior, Parameters_at(var->parameters, i)); //Model_second_derivative(posterior, Parameters_at(var->parameters, i), &dlogP, 0.001);
-			double mu = Parameters_value(var->parameters, i); // mean = mode of normal
-			double v = -1.0/d2logP; // variance of normal
-			
-			double q_var = log(sqrt(log(exp(log(v)-2.0*log(mu))+1.0)));
-			double q_mu = log(mu) - q_var*0.5;
-			
-			// d2logp could be non negative are create a nan
-			if (isnan(q_mu)) {
-				q_mu = 1;
+		// lower(p) == 0 and upper(p) == inf
+		if (!isinf(Parameter_lower(p))) {
+			// fix mu when value is small
+			// mu will be set such that mu-sigma*sigma = -10
+			if(Parameter_value(p) < 1.0e-6){
+				//			printf("%e %s\n", Parameter_value(p), Parameter_name(p));
+				Parameter* var_p_mu = Parameters_at(var->var_parameters, i);
+				Parameter* var_p_sigma = Parameters_at(var->var_parameters, i+dim);
+				Parameter_set_estimate(var_p_mu, false);
 			}
-			if (isnan(q_var)) {
-				q_var = 0;
+			else{
+				// Laplus: matching mode and second derivative of the loglikelihood and lognormal distributions
+				//	sigma = sqrt(-1/(f''(m)*m^2))
+				//	mu    = log(m)+sigma^2
+				double d2logP = posterior->d2logP(posterior, Parameters_at(var->parameters, i));
+				double map = Parameters_value(var->parameters, i);
+				double q_sigma = sqrt(-1.0/(d2logP*map*map));
+				double q_mu = log(map) + q_sigma*q_sigma;
+
+				// d2logp could be non negative are create a nan
+				if (isnan(q_mu)) {
+					q_mu = 0;
+				}
+				if (isnan(q_sigma)) {
+					q_sigma = 0.1;
+				}
+				Parameters_set_value(var->var_parameters, i, q_mu);
+				Parameters_set_value(var->var_parameters, i+dim, log(q_sigma));
+				
+				//			printf("%f %f  %f %f %s\n", mu, d2logP, q_mu, q_var, p->name);
+				//			Parameter_set_estimate(var_p_mu, false);
 			}
-			Parameters_set_value(var->var_parameters, i, q_mu);
-			Parameters_set_value(var->var_parameters, i+dim, q_var);
-			//			printf("%f %f  %f %f %s\n", mu, d2logP, q_mu, q_var, p->name);
-			//			Parameter_set_estimate(var_p_mu, false);
 		}
 	}
 	
@@ -139,7 +142,7 @@ void klqp_meanfield_normal_finalize(variational_t* var){
 
 double klqp_meanfield_normal_elbo(variational_t* var){
 	if (var->initialized == false) {
-		klqp_meanfield_normal_init(var);
+ 		klqp_meanfield_normal_init(var);
 		var->initialized = true;
 	}
 	//	printf("elbo\n");
@@ -202,7 +205,7 @@ double klqp_meanfield_normal_elbo(variational_t* var){
 
 void klqp_meanfield_normal_grad_elbo(variational_t* var, double* grads){
 	if (var->initialized == false) {
-		klqp_meanfield_normal_init(var);
+ 		klqp_meanfield_normal_init(var);
 		// save for later
 		//		for (int i = 0; i < Parameters_count(var->parameters); i++) {
 		//			Parameter_store(Parameters_at(var->parameters, i));
@@ -677,7 +680,8 @@ bool klqp_fullrank_normal_sample(variational_t* var, double* values){
 	gsl_ran_multivariate_gaussian(var->rng, mu, L, samples);
 	
 	for (int i = 0; i < dim; i++) {
-		values[i] = gsl_vector_get(samples, i);
+		Parameter* p = Parameters_at(var->parameters, i);
+		values[i] = inverse_transform2(gsl_vector_get(samples, i), Parameter_lower(p), Parameter_upper(p));
 	}
 	
 	gsl_vector_free(mu);
