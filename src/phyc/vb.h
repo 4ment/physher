@@ -34,6 +34,7 @@ typedef struct variational_t{
 	bool ready_to_sample;
 	FILE* file;
 	size_t iter;
+	size_t elbo_multi;
 	//char* filename;
     gsl_rng* rng;
     // transforms

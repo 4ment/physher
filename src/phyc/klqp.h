@@ -21,6 +21,8 @@ void klqp_meanfield_normal_finalize(variational_t* var);
 
 double klqp_meanfield_normal_elbo(variational_t* var);
 
+double klqp_meanfield_normal_elbo_multi(variational_t* var);
+
 void klqp_meanfield_normal_grad_elbo(variational_t* var, double* grads);
 
 double klqp_meanfield_normal_logP(variational_t* var, double* values);

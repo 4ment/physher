@@ -27,6 +27,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		"backward",
 		"distribution",
 		"elbosamples",
+		"elbomulti",
 		"gradsamples",
 		"log",
 		"parameters",
@@ -73,6 +74,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	
 	var->elbo_samples = get_json_node_value_size_t(node, "elbosamples", 100);
 	var->grad_samples = get_json_node_value_size_t(node, "gradsamples", 1);
+	var->elbo_multi = get_json_node_value_int(node, "elbomulti", 1);
 	
 	json_node* var_parameters_node = get_json_node(node, "var_parameters");
 	// Variational model parameters are provided
@@ -109,6 +111,9 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 			bool backward = get_json_node_value_bool(node, "backward", true); // true is KL(Q||P)
 			if(backward){
 				var->elbofn = klqp_meanfield_normal_elbo;
+				if (var->elbo_multi > 1) {
+					var->elbofn = klqp_meanfield_normal_elbo_multi;
+				}
 				var->grad_elbofn = klqp_meanfield_normal_grad_elbo;
 			}
 			else{
@@ -193,8 +198,8 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 					StringBuffer_append_string(buffer, ".var");
 					Parameter* p = new_Parameter(buffer->c, 1, NULL);
 					Parameters_move(var->var_parameters, p);
-				}
-			}
+ 				}
+ 			}
 			// full covariance matrix
 			else{
 				size_t row = dim;

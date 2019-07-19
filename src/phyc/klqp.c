@@ -203,6 +203,75 @@ double klqp_meanfield_normal_elbo(variational_t* var){
 	return elbo/(var->elbo_samples-inf_count) + entropy;
 }
 
+double klqp_meanfield_normal_elbo_multi(variational_t* var){
+	if (var->initialized == false) {
+		klqp_meanfield_normal_init(var);
+		var->initialized = true;
+	}
+	double elbo = 0;
+	size_t dim = Parameters_count(var->parameters);
+	Model* posterior = var->posterior;
+	
+	double* elbos = dvector(var->elbo_multi);
+	
+	for (int i = 0; i < var->elbo_samples; i++) {
+		double mean = 0;
+		int inf_count = 0;
+		for (int k = 0; k < var->elbo_multi; k++) {
+			double jacobian = 0.0;
+			double logQ = 0;
+			for (int j = 0; j < dim; j++) {
+				Parameter* p = Parameters_at(var->parameters, j);
+				Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
+				Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
+				
+				if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
+				
+				double mu;
+				double sigma = exp(Parameter_value(var_p_sigma));
+				
+				if(Parameter_estimate(var_p_mu)){
+					mu = Parameter_value(var_p_mu);
+				}
+				else{
+					//				if(Parameter_value(p) < 1.0e-6){
+					mu = -10 + sigma * sigma;
+					//				}
+					//				else{
+					//					mu = log(Parameter_value(p)) + sigma*sigma;
+					//				}
+				}
+				double eta = rnorm();
+				double zeta = eta * sigma + mu;
+				logQ += dnorml(zeta, mu, sigma);
+				double theta = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), &jacobian);
+				Parameter_set_value(p, theta);
+			}
+			
+			double logP = posterior->logP(posterior);
+			double ratio = logP + jacobian - logQ;
+			if(!isinf(ratio)) elbos[k-inf_count] = ratio;
+			else inf_count++;
+		}
+		if(inf_count == var->elbo_multi){
+			free(elbos);
+			return elbo;
+		}
+		double max = elbos[0];
+		for (int k = 1; k < var->elbo_multi - inf_count; k++) {
+			if(elbos[k] > max) max = elbos[k];
+		}
+		for (int k = 0; k < var->elbo_multi - inf_count; k++) {
+			mean += exp(elbos[k] - max);
+		}
+
+		mean /= var->elbo_multi - inf_count;
+		elbo += log(mean) + max;
+	}
+	free(elbos);
+	return elbo/var->elbo_samples;
+}
+
 void klqp_meanfield_normal_grad_elbo(variational_t* var, double* grads){
 	if (var->initialized == false) {
  		klqp_meanfield_normal_init(var);
@@ -379,6 +448,42 @@ bool klqp_meanfield_normal_sample_some(variational_t* var, const Parameters* par
 		}
 	}
 	return true;
+}
+
+void meanfield_log_samples(variational_t* var){
+	size_t dim = Parameters_count(var->parameters);
+	Model* posterior = var->posterior;
+	double* samples = dvector(dim);
+	
+	for (int i = 0; i < 1000; i++) {
+		
+		double logQ = 0;
+		for (int j = 0; j < dim; j++) {
+			Parameter* p = Parameters_at(var->parameters, j);
+			Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
+			Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
+			
+			if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
+			
+			double mu;
+			double sigma = exp(Parameter_value(var_p_sigma));
+			
+			if(Parameter_estimate(var_p_mu)){
+				mu = Parameter_value(var_p_mu);
+			}
+			else{
+				mu = -10 + sigma * sigma;
+			}
+			double zeta = rnorm() * sigma + mu;
+			logQ += dnorml(zeta, mu, sigma);
+			double theta = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+			Parameter_set_value(p, theta);
+		}
+		
+		double logP = posterior->logP(posterior);
+		fprintf(var->file, "%f%f\n", logP, logQ);
+	}
+	free(samples);
 }
 
 //MARK: Fullrank
