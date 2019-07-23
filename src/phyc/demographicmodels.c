@@ -260,11 +260,18 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 	double* times = NULL;
 	bool* coalescent = NULL;
 	int intervalCount;
-	if(tree != NULL){
-		char* ref = (char*)tree_node->value;
-		// check it starts with a &
-		mtree = Hashtable_get(hash, ref+1);
-		mtree->ref_count++;
+	if(tree_node != NULL){
+		if(tree_node->node_type == MJSON_OBJECT){
+			char* id = get_json_node_value_string(tree_node, "id");
+			mtree = new_TreeModel_from_json(tree_node, hash);
+			Hashtable_add(hash, id, mtree);
+		}
+		else{
+			char* ref = (char*)tree_node->value;
+			// check it starts with a &
+			mtree = Hashtable_get(hash, ref+1);
+			mtree->ref_count++;
+		}
 		tree = mtree->obj;
 	}
 	else{
