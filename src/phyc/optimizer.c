@@ -606,7 +606,7 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
             result = frprmn_optimize( ps, opt->f, opt->data, opt->stop, fmin, OPT_CG_PR );
             break;
         }
-        case OPT_SG:{
+		case OPT_SG: case OPT_SG_ADAM:{
 			double eta = *opt->etas;
 			opt_result eta_adapt_result = OPT_SUCCESS;
 			if(opt->eta_count > 1){
@@ -615,7 +615,12 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 			opt->reset(opt->data);
 			if(eta_adapt_result == OPT_SUCCESS){
 				if(opt->verbosity > 0) printf("Stochastic gradient ascent using eta: %f\n", eta);
-				result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin);
+				if (opt->algorithm == OPT_SG_ADAM) {
+					result = optimize_stochastic_gradient_adam(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin);
+				}
+				else{
+					result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin);
+				}
 				opt->reset(opt->data);
 			}
 			else{
@@ -737,6 +742,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		"threads",
 		"tol",
 		"treelikelihood",
+		"update",
 		"verbosity"
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
@@ -795,7 +801,17 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	}
     // stochastic gradient
     else if(strcasecmp(algorithm_string, "sg") == 0){
-        opt = new_Optimizer(OPT_SG);
+		char* update = get_json_node_value_string(node, "update");
+		if (update != NULL) {
+			if (strcasecmp(update, "adam") == 0) {
+				opt = new_Optimizer(OPT_SG_ADAM);
+				printf("Using adam\n");
+			}
+		}
+		
+		if(opt == NULL){
+        	opt = new_Optimizer(OPT_SG);
+		}
 		opt->stop.frequency_check = get_json_node_value_size_t(node, "frequency_check", 100);
         opt->stop.tolfx = get_json_node_value_double(node, "tol", 0.001);
         json_node* etas = get_json_node(node, "eta");

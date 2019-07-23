@@ -217,6 +217,86 @@ int compare (const void * a, const void * b){
 	return ( *(double*)a - *(double*)b );
 }
 
+opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin){
+	size_t dim = Parameters_count(parameters);
+	
+	double beta1 = 0.9;
+	double beta2 = 0.999;
+	double* grads = dvector(dim);
+	double* mean_grad = dvector(dim);
+	double* var_grad = dvector(dim);
+	double eps = 1.e-8;
+	
+	double elbo = 0;
+	double elbo_prev = -INFINITY;
+	double elbo_best = -INFINITY;
+	double tol_rel_obj = stop->tolfx;
+	size_t eval_elbo = stop->frequency_check;
+	int max_conv = 3;
+	int conv = 0;
+	stop->iter = 0;
+	double *elbos = calloc(stop->iter_max/eval_elbo, sizeof(double));
+	
+	opt_result result = OPT_SUCCESS;
+	
+	double elbo0 = f(parameters, NULL, data);
+	if(verbose > 0)
+		printf("%zu ELBO: %f\n", stop->iter, elbo0);
+	
+	while(stop->iter++ < stop->iter_max){
+		grad_f(parameters, grads, data);
+		double eta_scaled = eta / sqrt(stop->iter);
+		double beta1p = pow(beta1, stop->iter);
+		double beta2p = pow(beta2, stop->iter);
+		for (int i = 0; i < dim; i++) {
+			if (Parameters_estimate(parameters, i)) {
+				double grad = grads[i];
+				mean_grad[i] = beta1*mean_grad[i] + (1.0 - beta1)*grad;
+				var_grad[i] = beta2*var_grad[i] + (1.0 - beta2)*grad*grad;
+				double hat_mean_grad = mean_grad[i]/(1.0 - beta1p);
+				double hat_var_grad = var_grad[i]/(1.0 - beta2p);
+				double v = Parameters_value(parameters, i) + eta_scaled * hat_mean_grad/(sqrt(hat_var_grad) + eps);
+				Parameters_set_value(parameters, i, v);
+			}
+		}
+		
+		if (stop->iter % eval_elbo == 0) {
+			elbo_prev = elbo;
+			elbo = f(parameters, NULL, data);
+			if(verbose > 0)  printf("%zu ELBO: %f (%f)\n", stop->iter, elbo, elbo_prev);
+			if (isnan(elbo) || isinf(elbo)) {
+				result = OPT_FAIL;
+				*fmin = elbo;
+				break;
+			}
+			
+			if (elbo > elbo_best){
+				elbo_best = elbo;
+				*fmin = elbo_best;
+			}
+			double delta_elbo = fabs((elbo_prev - elbo) / elbo);
+			size_t eval_count = stop->iter/eval_elbo;
+			elbos[eval_count-1] = delta_elbo;
+			qsort (elbos, eval_count, sizeof(double), compare);
+			size_t median = eval_count/2;
+			if(elbos[median] < tol_rel_obj && conv == max_conv){
+				if(verbose > 0)  printf("ELBO converged: %f < %f  %f  %zu %zu\n",elbos[median], tol_rel_obj, delta_elbo, median, stop->iter);
+				*fmin = elbo;
+				break;
+			}
+			else if(elbos[median] < tol_rel_obj){
+				conv++;
+			}
+		}
+	}
+	free(grads);
+	free(var_grad);
+	free(var_grad);
+	free(elbos);
+	
+	return result;
+}
+
 opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin){
 	size_t dim = Parameters_count(parameters);
 	double tau = 1;

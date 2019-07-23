@@ -50,10 +50,11 @@ typedef enum opt_algorithm {
     OPT_CG_FR,
     OPT_META,
     OPT_SG,
+	OPT_SG_ADAM,
 	OPT_TOPOLOGY
 }opt_algorithm;
 
-static const char *OPT_ALGORITHMS[7] = {"POWELL","BRENT","BFGS","CG_PR","CG_FR","META","SG"};
+static const char *OPT_ALGORITHMS[10] = {"POWELL","BRENT","BRENTSERIAL","BFGS","CG_PR","CG_FR","META","SG","SGADAM","TOPOLOGY"};
 
 typedef struct OptStopCriterion{
 	time_t time_start;
