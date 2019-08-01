@@ -115,6 +115,7 @@ static void _site_model_free( Model *self ){
 		Model** models = (Model**)self->data;
 		models[0]->free(models[0]); // substitution model
 		if(models[1] != NULL) models[1]->free(models[1]);
+		free(self->data);
 		
 		if(sm->rates != NULL) free_Parameters(sm->rates);
 		//TODO: deal with this
