@@ -43,9 +43,9 @@ void klqp_meanfield_normal_init(variational_t* var){
 			// fix mu when value is small
 			// mu will be set such that mu-sigma*sigma = -10
 			if(Parameter_value(p) < 1.0e-6){
-				//			printf("%e %s\n", Parameter_value(p), Parameter_name(p));
+//				Parameters_set_value(var->var_parameters, i, -5);
+//				Parameters_set_value(var->var_parameters, i+dim, log(0.5));
 				Parameter* var_p_mu = Parameters_at(var->var_parameters, i);
-				Parameter* var_p_sigma = Parameters_at(var->var_parameters, i+dim);
 				Parameter_set_estimate(var_p_mu, false);
 			}
 			else{
@@ -66,9 +66,6 @@ void klqp_meanfield_normal_init(variational_t* var){
 				}
 				Parameters_set_value(var->var_parameters, i, q_mu);
 				Parameters_set_value(var->var_parameters, i+dim, log(q_sigma));
-				
-				//			printf("%f %f  %f %f %s\n", mu, d2logP, q_mu, q_var, p->name);
-				//			Parameter_set_estimate(var_p_mu, false);
 			}
 		}
 	}
@@ -450,14 +447,20 @@ bool klqp_meanfield_normal_sample_some(variational_t* var, const Parameters* par
 	return true;
 }
 
-void meanfield_log_samples(variational_t* var){
+void meanfield_log_samples(variational_t* var, FILE* file){
 	size_t dim = Parameters_count(var->parameters);
 	Model* posterior = var->posterior;
 	double* samples = dvector(dim);
+	fprintf(file, "sample,logP,logQ");
+	for (int j = 0; j < dim; j++) {
+		fprintf(file, ",%s", Parameters_name(var->parameters, j));
+	}
+	fprintf(file, "\n");
 	
-	for (int i = 0; i < 1000; i++) {
+	for (int i = 0; i < var->log_samples; i++) {
 		
 		double logQ = 0;
+		double jacobian = 0.0;
 		for (int j = 0; j < dim; j++) {
 			Parameter* p = Parameters_at(var->parameters, j);
 			Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
@@ -476,12 +479,16 @@ void meanfield_log_samples(variational_t* var){
 			}
 			double zeta = rnorm() * sigma + mu;
 			logQ += dnorml(zeta, mu, sigma);
-			double theta = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
-			Parameter_set_value(p, theta);
+			samples[j] = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), &jacobian);
+			Parameter_set_value(p, samples[j]);
 		}
 		
-		double logP = posterior->logP(posterior);
-		fprintf(var->file, "%f%f\n", logP, logQ);
+		double logP = posterior->logP(posterior) + jacobian;
+		fprintf(file, "%d,%f,%f", i, logP, logQ);
+		for (int j = 0; j < dim; j++) {
+			fprintf(file, ",%f", samples[j]);
+		}
+		fprintf(file, "\n");
 	}
 	free(samples);
 }

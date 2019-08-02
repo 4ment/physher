@@ -33,6 +33,8 @@ bool klqp_meanfield_normal_sample(variational_t* var, double* values);
 
 bool klqp_meanfield_normal_sample_some(variational_t* var, const Parameters* parameters, double* values);
 
+void meanfield_log_samples(variational_t* var, FILE* file);
+
 //MARK: Fullrank
 
 void klqp_fullrank_normal_init(variational_t* var);

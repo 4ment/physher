@@ -30,6 +30,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		"elbomulti",
 		"gradsamples",
 		"log",
+		"log_samples",
 		"parameters",
 		"posterior",
 		"tree",
@@ -75,6 +76,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	var->elbo_samples = get_json_node_value_size_t(node, "elbosamples", 100);
 	var->grad_samples = get_json_node_value_size_t(node, "gradsamples", 1);
 	var->elbo_multi = get_json_node_value_int(node, "elbomulti", 1);
+	var->log_samples = get_json_node_value_int(node, "log_samples", 0);
 	
 	json_node* var_parameters_node = get_json_node(node, "var_parameters");
 	// Variational model parameters are provided
@@ -395,6 +397,58 @@ void _variational_model_sample(Model* self, double* samples, double* logP){
 	}
 }
 
+static void _variational_print(Model* self, FILE* file){
+	variational_t* var = (variational_t*)self->obj;
+	if(var->log_samples > 0){
+		meanfield_log_samples(var, file);
+		return;
+	}
+
+	fprintf(file, "muraw=c(");
+	int i = 0;
+	for (; i < Parameters_count(var->parameters); i++) {
+		double value = Parameters_value(var->var_parameters, i);
+		fprintf(file,"%f%s", value, i ==Parameters_count(var->parameters)-1 ? "":",");
+	}
+	
+	fprintf(file, ")\n\n");
+	fprintf(file, "sigma=c(");
+	for (; i < Parameters_count(var->var_parameters); i++) {
+		fprintf(file, "%f%s", Parameters_value(var->var_parameters, i), i ==Parameters_count(var->var_parameters)-1 ? "":",");
+	}
+	fprintf(file, ")\n");
+	
+	fprintf(file, "mu=c(");
+	size_t dim = Parameters_count(var->parameters);
+	for (i = 0; i < Parameters_count(var->parameters); i++) {
+		Parameter* p = Parameters_at(var->parameters, i);
+		double sd = Parameters_value(var->var_parameters, i+dim);
+		double value = Parameters_value(var->var_parameters, i);
+		if(Parameter_lower(p) == 0){
+			value = exp(value + sd*sd/2.0);
+		}
+		fprintf(file,"%f%s", value, i ==Parameters_count(var->parameters)-1 ? "":",");
+	}
+	fprintf(file, ")\n");
+	
+//	size_t row = dim;
+//	for (int j = 0; j < dim; j++) {
+//		double temp = 0;
+//		// multiply L_j and eta
+//		for (int k = 0; k < j+1; k++) {
+//			if(Parameters_estimate(var->var_parameters, row)){
+//				temp += Parameters_value(var->var_parameters, row)*eta[k];
+//			}
+//			row++;
+//		}
+//		zeta[j] = temp + Parameters_value(var->var_parameters, j); // add mu
+//
+//		Parameter* p = Parameters_at(var->parameters, j);
+//		double theta = inverse_transform2(zeta[j], Parameter_lower(p), Parameter_upper(p));
+//		Parameter_set_value(p, theta);
+//	}
+}
+
 Model* new_VariationalModel(const char* name, variational_t* var){
 	Model *model = new_Model(MODEL_VARIATIONAL, name, var);
 	model->free = _variational_model_free;
@@ -403,6 +457,7 @@ Model* new_VariationalModel(const char* name, variational_t* var){
 	model->gradient = _variational_model_gradient;
 	model->get_free_parameters = _variational_model_get_free_parameters;
 	model->reset = _variational_model_reset;
+	model->print = _variational_print;
 	model->sample = _variational_model_sample;
 	model->samplable = true;
 	

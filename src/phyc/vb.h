@@ -33,6 +33,7 @@ typedef struct variational_t{
 	bool initialized;
 	bool ready_to_sample;
 	FILE* file;
+	size_t log_samples;
 	size_t iter;
 	size_t elbo_multi;
 	//char* filename;
