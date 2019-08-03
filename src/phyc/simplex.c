@@ -15,21 +15,43 @@
 // free to constrained
 void _inverse_transform(const Parameters* parameters, double* values){
 	int N = Parameters_count(parameters); // n=K-1
-	values[N] = 1.0;
-	for (int i = 0; i < N; i++) {
-		values[N] += Parameters_value(parameters, i);
-	}
-	 values[N] = 1.0/values[N];
-	for (int i = 0; i < N; i++) {
-		values[i] = Parameters_value(parameters, i)*values[N];
-	}
+		values[N] = 1.0;
+		for (int i = 0; i < N; i++) {
+			values[N] += Parameters_value(parameters, i);
+		}
+		 values[N] = 1.0/values[N];
+		for (int i = 0; i < N; i++) {
+			values[i] = Parameters_value(parameters, i)*values[N];
+		}
 }
 
 // constrained to free
 void _transform(const double* values, Parameters* parameters){
 	int N = Parameters_count(parameters); // N=K-1
+		for (int i = 0; i < N; i++) {
+			Parameters_set_value(parameters, i, values[i]/values[N]);
+		}
+}
+
+// stick: free to constrained
+void _inverse_transform_stick(const Parameters* parameters, double* values){
+	int N = Parameters_count(parameters); // n=K-1
+	double stick = 1.0;
+	int k = 0;
+	for(; k < N; k++){
+		values[k] = stick * Parameters_value(parameters, k);
+		stick -= values[k];
+	}
+	values[k] = stick;
+}
+
+// stick: constrained to free
+void _transform_stick(const double* values, Parameters* parameters){
+	int N = Parameters_count(parameters); // N=K-1
+	double stick = 1.0;
 	for (int i = 0; i < N; i++) {
-		Parameters_set_value(parameters, i, values[i]/values[N]);
+		Parameters_set_value(parameters, i, values[i]/stick);
+		stick -= values[i];
 	}
 }
 
@@ -57,7 +79,7 @@ Simplex* clone_Simplex(const Simplex* simplex){
 
 void set_values(Simplex* simplex, const double* values){
 	memcpy(simplex->values, values, sizeof(double)*simplex->K);
-	_transform(simplex->values, simplex->parameters);
+	_transform_stick(simplex->values, simplex->parameters);
 }
 
 void set_parameter_value(Simplex* simplex, int index, double value){
@@ -67,18 +89,15 @@ void set_parameter_value(Simplex* simplex, int index, double value){
 
 const double* get_values(Simplex* simplex){
 	if (simplex->need_update) {
-//			print_dvector(simplex->values,4);
-		_inverse_transform(simplex->parameters, simplex->values);
+		_inverse_transform_stick(simplex->parameters, simplex->values);
 		simplex->need_update  = false;
-//		print_dvector(simplex->values,4);
-//		printf("--------------------------------\n");
 	}
 	return simplex->values;
 }
 
 double get_value(Simplex* simplex, int i){
 	if (simplex->need_update) {
-		_inverse_transform(simplex->parameters, simplex->values);
+		_inverse_transform_stick(simplex->parameters, simplex->values);
 		simplex->need_update  = false;
 	}
 	return simplex->values[i];
@@ -109,7 +128,7 @@ Simplex* new_Simplex_with_values(const double *x, int K){
 	for(int i = 0; i < N; i++){
 		double phi = x[i]/x[N];
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0.001, 100)));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0.001, 0.99)));
 		Parameters_at(simplex->parameters, i)->id = i;
 	}
 	simplex->get_values = get_values;
@@ -136,7 +155,7 @@ Simplex* new_Simplex(int K){
 	for(int i = 0; i < N; i++){
 		double phi = simplex->values[i]/simplex->values[N];
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0.001, 100)));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0.001, 0.999)));
 		Parameters_at(simplex->parameters, i)->id = i;
 	}
 	simplex->get_values = get_values;
