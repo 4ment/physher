@@ -14,7 +14,7 @@
 
 // free to constrained
 void _inverse_transform(const Parameters* parameters, double* values){
-	int N = Parameters_count(parameters); // n=K-1
+	size_t N = Parameters_count(parameters); // n=K-1
 		values[N] = 1.0;
 		for (int i = 0; i < N; i++) {
 			values[N] += Parameters_value(parameters, i);
@@ -27,7 +27,7 @@ void _inverse_transform(const Parameters* parameters, double* values){
 
 // constrained to free
 void _transform(const double* values, Parameters* parameters){
-	int N = Parameters_count(parameters); // N=K-1
+	size_t N = Parameters_count(parameters); // N=K-1
 		for (int i = 0; i < N; i++) {
 			Parameters_set_value(parameters, i, values[i]/values[N]);
 		}
@@ -35,7 +35,7 @@ void _transform(const double* values, Parameters* parameters){
 
 // stick: free to constrained
 void _inverse_transform_stick(const Parameters* parameters, double* values){
-	int N = Parameters_count(parameters); // n=K-1
+	size_t N = Parameters_count(parameters); // n=K-1
 	double stick = 1.0;
 	int k = 0;
 	for(; k < N; k++){
@@ -47,7 +47,7 @@ void _inverse_transform_stick(const Parameters* parameters, double* values){
 
 // stick: constrained to free
 void _transform_stick(const double* values, Parameters* parameters){
-	int N = Parameters_count(parameters); // N=K-1
+	size_t N = Parameters_count(parameters); // N=K-1
 	double stick = 1.0;
 	for (int i = 0; i < N; i++) {
 		Parameters_set_value(parameters, i, values[i]/stick);
@@ -118,18 +118,20 @@ double get_value(Simplex* simplex, int i){
 //}
 
 // x is of dimension K
-Simplex* new_Simplex_with_values(const double *x, int K){
+Simplex* new_Simplex_with_values(const double *x, size_t K){
 	Simplex* simplex = (Simplex*)malloc(sizeof(Simplex));
 	simplex->K = K;
 	simplex->parameters = new_Parameters(K-1);
 	simplex->values = clone_dvector(x, K);
 	char name[50] = "";
-	int N = K-1;
+	size_t N = K-1;
+	double stick = 1;
 	for(int i = 0; i < N; i++){
-		double phi = x[i]/x[N];
+		double phi = simplex->values[i]/stick;
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0.001, 0.99)));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0, 1)));
 		Parameters_at(simplex->parameters, i)->id = i;
+		stick -= simplex->values[i];
 	}
 	simplex->get_values = get_values;
 	simplex->get_value = get_value;
@@ -139,24 +141,25 @@ Simplex* new_Simplex_with_values(const double *x, int K){
 	return simplex;
 }
 
-Simplex* new_Simplex(int K){
+Simplex* new_Simplex(size_t K){
 	Simplex* simplex = (Simplex*)malloc(sizeof(Simplex));
 	simplex->K = K;
 	simplex->parameters = new_Parameters(K-1);
 	simplex->values = dvector(K);
 	char name[50] = "";
-	int N = K-1;
+	size_t N = K-1;
 	
 	double p = 1.0/K;
 	for(int i = 0; i < K; i++){
 		simplex->values[i] = p;
 	}
-	
+	double stick = 1;
 	for(int i = 0; i < N; i++){
-		double phi = simplex->values[i]/simplex->values[N];
+		double phi = simplex->values[i]/stick;
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0.001, 0.999)));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0, 1)));
 		Parameters_at(simplex->parameters, i)->id = i;
+		stick -= simplex->values[i];
 	}
 	simplex->get_values = get_values;
 	simplex->get_value = get_value;

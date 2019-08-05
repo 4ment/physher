@@ -31,9 +31,9 @@ struct _Simplex{
 	bool need_update;
 };
 
-Simplex* new_Simplex_with_values(const double *x, int K);
+Simplex* new_Simplex_with_values(const double *x, size_t K);
 
-Simplex* new_Simplex(int K);
+Simplex* new_Simplex(size_t K);
 
 void free_Simplex(Simplex* simplex);
 
