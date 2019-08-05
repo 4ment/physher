@@ -18,7 +18,10 @@
 void _log(struct Logger* logger){
 	for (int i = 0; i < logger->model_count; i++) {
 		Model* model = logger->models[i];
-		fprintf(logger->file, "%s:", model->name);
+		//only print name of model with stderr or stdout
+		if(logger->filename == NULL) {
+			fprintf(logger->file, "%s:", model->name);
+		}
 		if(model->type == MODEL_DISCRETE_PARAMETER){
 			DiscreteParameter* dp = model->obj;
 			for (int j = 0; j < dp->length; j++) {
@@ -33,7 +36,10 @@ void _log(struct Logger* logger){
 			fprintf(logger->file, "\n");
 		}
 		else if (model->print != NULL) {
-			fprintf(logger->file, "\n");
+			//only print name of model with stderr or stdout
+			if(logger->filename == NULL) {
+				fprintf(logger->file, "\n");
+			}
 			model->print(model, logger->file);
 		}
 		else{
