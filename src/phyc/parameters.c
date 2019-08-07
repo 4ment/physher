@@ -528,12 +528,12 @@ size_t Parameters_capacity( const Parameters *p ){
 	return p->capacity;
 }
 
-void Parameters_set_value( Parameters *p, const int index, const double value ){
+void Parameters_set_value( Parameters *p, const size_t index, const double value ){
 	assert( index < p->count);
 	Parameter_set_value(p->list[index], value);
 }
 
-void Parameters_set_value_quietly( Parameters *p, const int index, const double value ){
+void Parameters_set_value_quietly( Parameters *p, const size_t index, const double value ){
 	assert( index < p->count);
 	Parameter_set_value_quietly(p->list[index], value);
 }
@@ -550,7 +550,7 @@ void Parameters_set_all_value( Parameters *p, const double value ){
 	}
 }
 
-double Parameters_value( const Parameters *p, const int index ){
+double Parameters_value( const Parameters *p, const size_t index ){
 	return Parameter_value(p->list[index]);
 }
 
@@ -560,48 +560,48 @@ void Parameters_store(Parameters* ps){
 	}
 }
 
-bool Parameters_estimate( const Parameters *p, const int index ){
+bool Parameters_estimate( const Parameters *p, const size_t index ){
 	return Parameter_estimate(p->list[index] );
 }
 
-void Parameters_set_estimate( Parameters *p, const bool estimate, const int index ){
+void Parameters_set_estimate( Parameters *p, const bool estimate, const size_t index ){
 	Parameter_set_estimate(p->list[index], estimate );
 }
 
-Constraint * Parameters_constraint( const Parameters *p, const int index ){
+Constraint * Parameters_constraint( const Parameters *p, const size_t index ){
 	return Parameter_constraint( Parameters_at(p, index) );
 }
 
-double Parameters_fupper( const Parameters *p, const int index ){
+double Parameters_fupper( const Parameters *p, const size_t index ){
 	return Constraint_fupper( Parameters_at(p, index)->cnstr );
 }
 
-double Parameters_flower( const Parameters *p, const int index ){
+double Parameters_flower( const Parameters *p, const size_t index ){
 	return Constraint_flower( Parameters_at(p, index)->cnstr );
 }
 
-double Parameters_upper( const Parameters *p, const int index ){
+double Parameters_upper( const Parameters *p, const size_t index ){
 	return Parameter_upper( Parameters_at(p, index) );
 }
 
-double Parameters_lower( const Parameters *p, const int index ){
+double Parameters_lower( const Parameters *p, const size_t index ){
 	return Parameter_lower( Parameters_at(p, index) );
 }
 
-void Parameters_set_upper( Parameters *p, const int index, const double value ){
+void Parameters_set_upper( Parameters *p, const size_t index, const double value ){
 	Parameter_set_upper( Parameters_at(p, index), value );
 }
 
-void Parameters_set_lower( Parameters *p, const int index, const double value ){
+void Parameters_set_lower( Parameters *p, const size_t index, const double value ){
 	Parameter_set_lower( Parameters_at(p, index), value );	
 }
 
-void Parameters_set_bounds( Parameters *p, const int index, const double lower, const double upper ){
+void Parameters_set_bounds( Parameters *p, const size_t index, const double lower, const double upper ){
 	Parameter_set_bounds( Parameters_at(p, index), lower, upper );
 }
 
 
-bool Parameters_is_at_boundry( const Parameters *p, const int index, double precision ){
+bool Parameters_is_at_boundry( const Parameters *p, const size_t index, double precision ){
     return ( Parameter_value(p->list[index]) - Parameters_lower(p, index) < precision
             || Parameters_upper(p, index) - Parameter_value(p->list[index]) < precision );
     

@@ -140,7 +140,7 @@ bool Parameter_changed(Parameter *p);
 double check_value( Constraint *cnstr, double value );
 
 
-bool Parameters_is_at_boundry( const Parameters *p, const int index, double precision );
+bool Parameters_is_at_boundry( const Parameters *p, const size_t index, double precision );
 
 Constraint * Parameter_constraint( const Parameter *p );
 
@@ -148,9 +148,9 @@ bool Parameter_estimate( const Parameter *p );
 
 void Parameter_set_estimate( Parameter *p, const bool estimate );
 
-double Parameters_fupper( const Parameters *p, const int index );
+double Parameters_fupper( const Parameters *p, const size_t index );
 
-double Parameters_flower( const Parameters *p, const int index );
+double Parameters_flower( const Parameters *p, const size_t index );
 
 double Parameter_upper( const Parameter *p );
 
@@ -202,33 +202,33 @@ size_t Parameters_count( const Parameters *p );
 
 size_t Parameters_capacity( const Parameters *p );
 
-void Parameters_set_value( Parameters *p, const int index, const double value );
+void Parameters_set_value( Parameters *p, const size_t index, const double value );
 
-void Parameters_set_value_quietly( Parameters *p, const int index, const double value );
+void Parameters_set_value_quietly( Parameters *p, const size_t index, const double value );
 
 void Parameters_set_all_value( Parameters *p, const double value );
 
 void Parameters_fire( Parameters *p );
 
-double Parameters_value( const Parameters *p, const int index );
+double Parameters_value( const Parameters *p, const size_t index );
 
 void Parameters_store(Parameters* ps);
 
-bool Parameters_estimate( const Parameters *p, const int index );
+bool Parameters_estimate( const Parameters *p, const size_t index );
 
-void Parameters_set_estimate( Parameters *p, const bool estimate, const int index );
+void Parameters_set_estimate( Parameters *p, const bool estimate, const size_t index );
 
-Constraint * Parameters_constraint( const Parameters *p, const int index );
+Constraint * Parameters_constraint( const Parameters *p, const size_t index );
 
-double Parameters_upper( const Parameters *p, const int index );
+double Parameters_upper( const Parameters *p, const size_t index );
 
-double Parameters_lower( const Parameters *p, const int index );
+double Parameters_lower( const Parameters *p, const size_t index );
 
-void Parameters_set_upper( Parameters *p, const int index, const double value );
+void Parameters_set_upper( Parameters *p, const size_t index, const double value );
 
-void Parameters_set_lower( Parameters *p, const int index, const double value );
+void Parameters_set_lower( Parameters *p, const size_t index, const double value );
 
-void Parameters_set_bounds( Parameters *p, const int index, const double lower, const double upper );
+void Parameters_set_bounds( Parameters *p, const size_t index, const double lower, const double upper );
 
 void Parameters_remove( Parameters *params, size_t index );
 
@@ -282,6 +282,7 @@ typedef enum model_t{
 	MODEL_COMPOUND,
 	MODEL_DISCRETE_PARAMETER,
 	MODEL_DISTRIBUTION,
+	MODEL_LAPLACE,
 	MODEL_PARSIMONY,
 	MODEL_SIMPLEX,
 	MODEL_SITEMODEL,
@@ -297,6 +298,7 @@ static const char* model_type_strings[] = {
 	"compound",
     "discreteparameter",
 	"distribution",
+	"laplace",
 	"parsimony",
 	"simplex",
 	"sitemodel",
