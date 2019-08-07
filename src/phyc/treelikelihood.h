@@ -237,6 +237,8 @@ void SingleTreeLikelihood_set_nthreads( SingleTreeLikelihood *tlk, int nthreads 
 
 double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pattern_likelihoods );
 
+double calculate_dlnl_dWeibull( SingleTreeLikelihood *tlk, const double* pattern_likelihoods );
+
 
 #pragma mark -
 #pragma mark Upper Likelihood

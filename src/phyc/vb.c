@@ -286,6 +286,12 @@ void free_Variational(variational_t* var){
 	var->posterior->free(var->posterior);
 	free_Parameters(var->var_parameters);
 	free_Parameters(var->parameters);
+	if(var->simplices != NULL){
+		for(int i = 0; i < var->simplex_count; i++){
+			var->simplices[i]->free(var->simplices[i]);
+		}
+		free(var->simplices);
+	}
 	if (var->file != NULL) fclose(var->file);
 	free(var);
 }
