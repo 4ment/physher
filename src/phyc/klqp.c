@@ -189,6 +189,17 @@ double klqp_meanfield_normal_elbo(variational_t* var){
 			Parameter_set_value(p, theta);
 		}
 		
+		if (var->simplex_count > 0) {
+			for(int s = 0; s < var->simplex_count; s++){
+				Simplex* simplex = var->simplices[s]->obj;
+				const double* constrained_values = simplex->get_values(simplex);
+				double stick = 1;
+				for(int k = 0; k < simplex->K-1; k++){
+					jacobian += log(stick);
+					stick -= constrained_values[k];
+				}
+			}
+		}
 		double logP = posterior->logP(posterior);
 		if(!isinf(logP))elbo += logP + jacobian;
 		else inf_count++;
@@ -243,6 +254,18 @@ double klqp_meanfield_normal_elbo_multi(variational_t* var){
 				logQ += dnorml(zeta, mu, sigma);
 				double theta = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), &jacobian);
 				Parameter_set_value(p, theta);
+			}
+			
+			if (var->simplex_count > 0) {
+				for(int s = 0; s < var->simplex_count; s++){
+					Simplex* simplex = var->simplices[s]->obj;
+					const double* constrained_values = simplex->get_values(simplex);
+					double stick = 1;
+					for(int k = 0; k < simplex->K-1; k++){
+						jacobian += log(stick);
+						stick -= constrained_values[k];
+					}
+				}
 			}
 			
 			double logP = posterior->logP(posterior);
@@ -366,9 +389,9 @@ void klqp_meanfield_normal_grad_elbo(variational_t* var, double* grads){
 // TODO: should use a jacobian fucntion instead transform().
 // In this function it works for transform == log but not anything else
 double klqp_meanfield_normal_logP(variational_t* var, double* values){
-	int dim = Parameters_count(var->parameters);
+	size_t dim = Parameters_count(var->parameters);
 	double logP = 0;
-	for (int i = 0; i < dim; i++) {
+	for (size_t i = 0; i < dim; i++) {
 		Parameter* p = Parameters_at(var->parameters, i);
 		double mu = Parameters_value(var->var_parameters, i);
 		double sd = exp(Parameters_value(var->var_parameters, i+dim));
@@ -404,8 +427,8 @@ bool klqp_meanfield_normal_sample(variational_t* var, double* values){
 		var->finalize(var);
 		var->ready_to_sample = true;
 	}
-	int dim = Parameters_count(var->parameters);
-	for (int i = 0; i < dim; i++) {
+	size_t dim = Parameters_count(var->parameters);
+	for (size_t i = 0; i < dim; i++) {
 		Parameter* p = Parameters_at(var->parameters, i);
 		if (!p->estimate) {
 			values[i] = 0;
@@ -452,7 +475,20 @@ void meanfield_log_samples(variational_t* var, FILE* file){
 	Model* posterior = var->posterior;
 	double* samples = dvector(dim);
 	fprintf(file, "sample,logP,logQ");
-	for (int j = 0; j < dim; j++) {
+	
+	int offset = 0; // don't log the simplex unconstrained parameters
+	if (var->simplex_count > 0) {
+		for(int s = 0; s < var->simplex_count; s++){
+			Model* msimplex = var->simplices[s];
+			Simplex* simplex = msimplex->obj;
+			for(int k = 0; k < simplex->K; k++){
+				fprintf(file, ",%s.%d", msimplex->name, k);
+			}
+			offset += simplex->K-1;
+		}
+	}
+	
+	for (int j = offset; j < dim; j++) {
 		fprintf(file, ",%s", Parameters_name(var->parameters, j));
 	}
 	fprintf(file, "\n");
@@ -485,7 +521,18 @@ void meanfield_log_samples(variational_t* var, FILE* file){
 		
 		double logP = posterior->logP(posterior) + jacobian;
 		fprintf(file, "%d,%f,%f", i, logP, logQ);
-		for (int j = 0; j < dim; j++) {
+		
+		if (var->simplex_count > 0) {
+			for(int s = 0; s < var->simplex_count; s++){
+				Simplex* simplex = var->simplices[s]->obj;
+				const double* constrained_values = simplex->get_values(simplex);
+				for(int k = 0; k < simplex->K; k++){
+					fprintf(file, ",%f",constrained_values[k]);
+				}
+			}
+		}
+		
+		for (int j = offset; j < dim; j++) {
 			fprintf(file, ",%f", samples[j]);
 		}
 		fprintf(file, "\n");
@@ -800,5 +847,56 @@ bool klqp_fullrank_normal_sample(variational_t* var, double* values){
 	gsl_vector_free(samples);
 	gsl_matrix_free(L);
 	return true;
+}
+
+void fullrank_log_samples(variational_t* var, FILE* file){
+	size_t dim = Parameters_count(var->parameters);
+	Model* posterior = var->posterior;
+	fprintf(file, "sample,logP,logQ");
+	for (int j = 0; j < dim; j++) {
+		fprintf(file, ",%s", Parameters_name(var->parameters, j));
+	}
+	fprintf(file, "\n");
+	
+	gsl_vector * mu = gsl_vector_calloc(dim);
+	gsl_matrix * L = gsl_matrix_calloc(dim, dim);
+	gsl_vector * gsl_samples = gsl_vector_calloc(dim);
+	gsl_vector * work = gsl_vector_calloc(dim);
+	double* samples = dvector(dim);
+	
+	size_t row = dim;
+	for (int i = 0; i < dim; i++) {
+		gsl_vector_set(mu, i, Parameters_value(var->var_parameters, i));
+		for (int j = 0; j <= i; j++) {
+			gsl_matrix_set(L, i, j, Parameters_value(var->var_parameters, row));
+			row++;
+		}
+	}
+	
+	for (int k = 0; k < var->log_samples; k++) {
+		gsl_ran_multivariate_gaussian(var->rng, mu, L, gsl_samples);
+		
+		double logQ = 0;
+		gsl_ran_multivariate_gaussian_log_pdf (gsl_samples,  mu, L, &logQ, work);
+		
+		double jacobian = 0.0;
+		for (int j = 0; j < dim; j++) {
+			Parameter* p = Parameters_at(var->parameters, j);
+			samples[j] = inverse_transform(gsl_vector_get(gsl_samples, j), Parameter_lower(p), Parameter_upper(p), &jacobian);
+			Parameter_set_value(p, samples[j]);
+		}
+		
+		double logP = posterior->logP(posterior) + jacobian;
+		fprintf(file, "%d,%f,%f", k, logP, logQ);
+		for (int j = 0; j < dim; j++) {
+			fprintf(file, ",%f", samples[j]);
+		}
+		fprintf(file, "\n");
+	}
+	free(samples);
+	gsl_vector_free(mu);
+	gsl_vector_free(gsl_samples);
+	gsl_matrix_free(L);
+	gsl_vector_free(work);
 }
 

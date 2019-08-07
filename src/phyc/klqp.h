@@ -49,4 +49,6 @@ double klqp_fullrank_normal_logP_parameters(variational_t* var, const Parameters
 
 bool klqp_fullrank_normal_sample(variational_t* var, double* values);
 
+void fullrank_log_samples(variational_t* var, FILE* file);
+
 #endif /* klqp_h */

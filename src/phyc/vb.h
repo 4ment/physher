@@ -13,12 +13,15 @@
 
 #include "mjson.h"
 #include "parameters.h"
+#include "simplex.h"
 
 #include <gsl/gsl_rng.h>
 
 
 typedef struct variational_t{
     Model* posterior;
+	Model** simplices;
+	size_t simplex_count;
     Parameters* parameters; // parameters of the posterior
     Parameters* var_parameters; // parameters of variational distribution
     double(*elbofn)(struct variational_t*);

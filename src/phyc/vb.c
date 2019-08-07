@@ -33,6 +33,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		"log_samples",
 		"parameters",
 		"posterior",
+		"simplices",
 		"tree",
 		"var",
 		"var_parameters"
@@ -46,6 +47,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	const char* filename = get_json_node_value_string(node, "log");
 	json_node* parameters_node = get_json_node(node, "parameters");
 	json_node* tree_node = get_json_node(node, "tree");
+	json_node* simplices_node = get_json_node(node, "simplices");
 	
 	variational_t* var = malloc(sizeof(variational_t));
 	var->file = NULL;
@@ -53,6 +55,24 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	var->sample_some = NULL;
 	var->parameters = new_Parameters(1);
 	var->var_parameters = NULL;
+	
+	var->simplex_count = 0;
+	var->simplices = NULL;
+	if(simplices_node != NULL){
+		if (simplices_node->node_type == MJSON_ARRAY) {
+			var->simplices = malloc(simplices_node->child_count*sizeof(Model*));
+			for (int i = 0; i < simplices_node->child_count; i++) {
+				json_node* simplex_node = simplices_node->children[i];
+				char* ref = simplex_node->value;
+				Model* msimplex = Hashtable_get(hash, ref+1);
+				Simplex* simplex = msimplex->obj;
+				Parameters_add_parameters(var->parameters, simplex->parameters);
+				var->simplices[i] = msimplex;
+				msimplex->ref_count++;
+				var->simplex_count++;
+			}
+		}
+	}
 	
 	if(parameters_node){
 		get_parameters_references(node, hash, var->parameters);
@@ -82,7 +102,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	// Variational model parameters are provided
 	if (var_parameters_node->node_type == MJSON_ARRAY) {
 		var->var_parameters = new_Parameters(var_parameters_node->child_count);
-		for(int i = 0; i < Parameters_count(var->var_parameters); i++){
+		for(size_t i = 0; i < Parameters_count(var->var_parameters); i++){
 			json_node* var_p_node = var_parameters_node->children[i];
 			Parameter* var_p = new_Parameter_from_json(var_p_node, hash);
 			Parameters_move(var->var_parameters, var_p);
@@ -95,18 +115,18 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		if (strcasecmp(dist_string, "normal") == 0) {
 			if(var->var_parameters == NULL){
 				var->var_parameters = new_Parameters(dim*2); // mean + sd
-				for(int i = 0; i < dim; i++){
+				for(size_t i = 0; i < dim; i++){
 					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
 					StringBuffer_append_string(buffer, ".mean");
 					Parameter* p = new_Parameter(buffer->c, 0, NULL);
-					p->id = i;
+					p->id = (int)i;
 					Parameters_move(var->var_parameters, p);
 				}
-				for(int i = 0; i < dim; i++){
+				for(size_t i = 0; i < dim; i++){
 					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
 					StringBuffer_append_string(buffer, ".sd");
 					Parameter* p = new_Parameter(buffer->c, 0, NULL);
-					p->id = i+dim;
+					p->id = (int)(i+dim);
 					Parameters_move(var->var_parameters, p);
 				}
 			}
@@ -131,18 +151,18 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		else if (strcasecmp(dist_string, "gamma") == 0) {
 			if(var->var_parameters == NULL){
 				var->var_parameters = new_Parameters(dim*2); // alpha + beta
-				for(int i = 0; i < dim; i++){
+				for(size_t i = 0; i < dim; i++){
 					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
 					StringBuffer_append_string(buffer, ".alpha");
 					Parameter* p = new_Parameter(buffer->c, 0, NULL);
-					p->id = i;
+					p->id = (int)i;
 					Parameters_move(var->var_parameters, p);
 				}
-				for(int i = 0; i < dim; i++){
+				for(size_t i = 0; i < dim; i++){
 					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
 					StringBuffer_append_string(buffer, ".beta");
 					Parameter* p = new_Parameter(buffer->c, 0, NULL);
-					p->id = i+dim;
+					p->id = (int)(i+dim);
 					Parameters_move(var->var_parameters, p);
 				}
 			}
@@ -200,8 +220,8 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 					StringBuffer_append_string(buffer, ".var");
 					Parameter* p = new_Parameter(buffer->c, 1, NULL);
 					Parameters_move(var->var_parameters, p);
- 				}
- 			}
+				}
+			}
 			// full covariance matrix
 			else{
 				size_t row = dim;
@@ -284,7 +304,6 @@ static void _variational_model_free( Model *self ){
 
 static void _variational_model_handle_change( Model *self, Model *model, int index ){
 	variational_t* var = (variational_t*)self->obj;
-	size_t i = index;
 	if(index >= Parameters_count(var->parameters)){
 		index -= Parameters_count(var->parameters);
 	}
@@ -361,7 +380,7 @@ static double _variational_model_logP(Model *self){
 
 static void _variational_model_gradient(Model *self, double* grad){
 	variational_t* var = (variational_t*)self->obj;
-	return var->grad_elbofn(var, grad);
+	var->grad_elbofn(var, grad);
 }
 
 static void _variational_model_get_free_parameters(Model* self, Parameters* parameters){
@@ -400,12 +419,18 @@ void _variational_model_sample(Model* self, double* samples, double* logP){
 static void _variational_print(Model* self, FILE* file){
 	variational_t* var = (variational_t*)self->obj;
 	if(var->log_samples > 0){
-		meanfield_log_samples(var, file);
+		if(Parameters_count(var->var_parameters) == 2*Parameters_count(var->parameters)){
+			meanfield_log_samples(var, file);
+		}
+		else{
+			fullrank_log_samples(var, file);
+		}
+		
 		return;
 	}
 
 	fprintf(file, "muraw=c(");
-	int i = 0;
+	size_t i = 0;
 	for (; i < Parameters_count(var->parameters); i++) {
 		double value = Parameters_value(var->var_parameters, i);
 		fprintf(file,"%f%s", value, i ==Parameters_count(var->parameters)-1 ? "":",");
