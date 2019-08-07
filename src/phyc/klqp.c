@@ -64,52 +64,17 @@ void klqp_meanfield_normal_init(variational_t* var){
 				if (isnan(q_sigma)) {
 					q_sigma = 0.1;
 				}
+				// check mean is not infinity
+				// For short branch b=0.000032, mu=1614.813030 sigma=40.313458 => infinity
+				double mean = exp(q_mu + q_sigma*q_sigma/2);
+				if(isinf(mean) || mean > 10.0*map){
+					q_mu = -6;
+					q_sigma = 0.5;
+				}
 				Parameters_set_value(var->var_parameters, i, q_mu);
 				Parameters_set_value(var->var_parameters, i+dim, log(q_sigma));
 			}
 		}
-	}
-	
-	return;
-	
-	for (int i = 0; i < dim; i++) {
-		//		printf("%s %e", Parameters_name(var->parameters, i), Parameters_value(var->parameters, i));
-		//		printf("bl: %e", Parameters_value(var->parameters, i));
-		
-		double dlogP;
-		double d2logP = Model_second_derivative(posterior, Parameters_at(var->parameters, i), &dlogP, 0.001);
-		double mu = Parameters_value(var->parameters, i); // mean = mode of normal
-		double v = -1.0/d2logP; // variance of normal
-		
-		double q_var = log(sqrt(log(exp(log(v)-2.0*log(mu))+1.0)));
-		double q_mu = log(mu) - q_var*0.5;
-		
-		// e.g. small branch: derivative vanishes at 0
-		
-		if(isnan(q_var)){
-			q_var = -5;
-		}
-		if(mu < 0.0001 && dlogP < -100){
-			q_mu = log(mu) + 1;
-			q_var = 1;
-		}
-		else{
-			q_mu = log(mu) - q_var*0.5;
-		}
-		//		if(d2logP >= 0 || isnan(q_var)){
-		//			q_var = 1;
-		//			q_mu = log(mu)+1;
-		//		}
-		//		if(isinf(q_mu) || isnan(q_mu)){
-		//			q_mu = 1;
-		//		}
-		//		if(isinf(q_var) || isnan(q_var)){
-		//			q_var = 1;
-		//		}
-		
-		Parameters_set_value(var->var_parameters, i, q_mu);
-		Parameters_set_value(var->var_parameters, i+dim, q_var);
-		//		printf(" m: %f d: %f qm: %f qv: %f v: %f d2: %f\n", mu, dlogP, q_mu, q_var, v, d2logP);
 	}
 }
 
