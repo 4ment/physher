@@ -254,6 +254,12 @@ static void _SiteModel_print(Model* model, FILE* out){
 		}
 		fprintf(out, "sum %f\n", sum);
 	}
+	else if(sm->proportions != NULL){
+		fprintf(out, "proportion rate %d\n", sm->proportions->K);
+		for (int i = 0; i < sm->proportions->K; i++){
+			fprintf(out, "%f %f\n",sm->cat_proportions[i], sm->cat_rates[i]);
+		}
+	}
 	else if(sm->cat_count > 1){
 		fprintf(out, "proportion rate %d\n", sm->cat_count);
 		for (int i = 0; i < sm->cat_count; i++){
@@ -315,7 +321,7 @@ SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameter
 		sm->get_proportions = _get_proportions;
 		sm->cat_rates[0] = sm->cat_proportions[0] = 1;
 	}
-	else if (distribution == DISTRIBUTION_DISCRETE) {
+	else if (distribution == DISTRIBUTION_DISCRETE && Parameters_count(sm->rates) != 0) {
 		sm->get_rate        = _get_rate_discrete;
 		sm->get_proportion  = _get_proportion_discrete;
 		sm->get_proportions = _get_proportions_discrete;
@@ -383,52 +389,93 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 	double propVariable = 1.0;
 	int cat = (sm->invariant ? 1 : 0);
 	const int nCat = sm->cat_count - cat;
-	
+	double* quantiles = dvector(sm->cat_count); // cat_count includes invariant sites if specified
+
 	// proportions are estimated from beta distribution
 	if (sm->quadrature == QUADRATURE_BETA){
 		double shape_alpha = Parameters_value(sm->rates, Parameters_count(sm->rates)-2);
 		double shape_beta = Parameters_value(sm->rates, Parameters_count(sm->rates)-1);
-		for (int i = 0; i < nCat; i++) {
-			sm->cat_proportions[i + cat] = gsl_cdf_beta_Qinv((2.0 * i + 1.0) / (2.0 * nCat), shape_alpha, shape_beta);
+		
+		// proportion of invariant is estimated from beta
+		// cat can be equal to 0 or 1
+		if(sm->proportions == NULL){
+			for (int i = 0; i < sm->cat_count; i++) {
+				quantiles[i] = gsl_cdf_beta_Pinv((double)i/sm->cat_count, shape_alpha, shape_beta);
+			}
+			
+			for (int i = 0; i < sm->cat_count-1; i++) {
+				// calculate cat proportions
+				sm->cat_proportions[i] = quantiles[i + 1] - quantiles[i];
+				// calculate quantiles for gamma distribution
+				quantiles[i] = quantiles[i] + (quantiles[i+1] - quantiles[i])/2.0;
+			}
+			sm->cat_proportions[sm->cat_count-1] = 1.0 - quantiles[sm->cat_count-1];
+			quantiles[sm->cat_count-1] = quantiles[sm->cat_count-1] + (1.0 - quantiles[sm->cat_count-1])/2.0;
+		}
+		// proportion of invariant come from a simplex
+		// cat should be equal to 1
+		else{
+			for (int i = 0; i < sm->cat_count-cat; i++) {
+				quantiles[i+cat] = gsl_cdf_beta_Pinv((double)i/(sm->cat_count-cat), shape_alpha, shape_beta);
+			}
+			
+			propVariable = sm->proportions->get_value(sm->proportions, 1);
+			sm->cat_proportions[0] = sm->proportions->get_value(sm->proportions, 0);
+			for (int i = 0; i < sm->cat_count-1-cat; i++) {
+				// calculate cat proportions
+				sm->cat_proportions[i+cat] = (quantiles[i + 1 + cat] - quantiles[i+cat])*propVariable;
+				// calculate quantiles for gamma distribution
+				quantiles[i+cat] = quantiles[i+cat] + (quantiles[i+1+cat] - quantiles[i+cat])/2.0;
+			}
+			sm->cat_proportions[sm->cat_count-1] = (1.0 - quantiles[sm->cat_count-1])*propVariable;
+			quantiles[sm->cat_count-1] = quantiles[sm->cat_count-1] + (1.0 - quantiles[sm->cat_count-1])/2.0;
 		}
 	}
+	// That's +G+D or +G+I+D
 	else if(sm->quadrature == QUADRATURE_DISCRETE){
 		const double* values = sm->proportions->get_values(sm->proportions);
 		double sum = 0;
-		sm->cat_proportions[cat] = values[cat]/2.0;
-		for (int i = 0; i < nCat; i++) {
-			sm->cat_proportions[i+cat] = sum + values[i+cat]/2.0; // pick midpoint
-			sum += values[i+cat];
+		for (int i = 0; i < sm->cat_count-cat; i++) {
+			quantiles[i+cat] = sum + values[i+cat]/2.0; // pick midpoint
+			sum += values[i];
 		}
+		memcpy(sm->cat_proportions, values, sizeof(double)*sm->proportions->K);
 	}
-	// if the simplex is smaller than the number of category then only pinv is estimated
+	// if the dimension of the simplex is then only pinv is estimated
 	// and the remaining categories split 1.0-pinv equally
-	else if (sm->proportions != NULL && sm->proportions->K < sm->cat_count) {
+	// That's the traditional +G+I or +I
+	else if (sm->proportions != NULL && sm->proportions->K == 2) {
 		const double* values = sm->proportions->get_values(sm->proportions);
-		sm->cat_proportions[0] = values[0];
-		for (int i = 0; i < nCat; i++) {
-			sm->cat_proportions[i + cat] = (2.0 * i + 1.0) / (2.0 * nCat);
+		// +I
+		if(sm->distribution == DISTRIBUTION_DISCRETE){
+			memcpy(sm->cat_proportions, values, sizeof(double)*2);
+			sm->cat_rates[0] = 0;
+			sm->cat_rates[1] = 1.0 / sm->cat_proportions[1];
+			sm->need_update = false;
+			return;
+		}
+		// +G+I
+		else{
+			cat = 1;
+			sm->cat_proportions[0] = values[0];
+//			printf("%f %f\n", values[0], values[1]);
+			propVariable = values[1];
+			int gammaCat = sm->cat_count - 1;
+			for (int i = 0; i < gammaCat; i++) {
+				quantiles[i+cat] = (2.0 * i + 1.0) / (2.0 * gammaCat);
+				sm->cat_proportions[i+cat] = propVariable/gammaCat;
+			}
+//			exit(2);
 		}
 	}
 	// distribution without invariant and proportions not estimated
 	// cat_proportions corresponds to quantiles not proportions
+	// That's the traditional +G
 	else if(sm->proportions == NULL){
 		for (int i = 0; i < nCat; i++) {
-			sm->cat_proportions[i] = (2.0 * i + 1.0) / (2.0 * nCat);
+			quantiles[i] = (2.0 * i + 1.0) / (2.0 * nCat);
+			sm->cat_proportions[i] = 1.0/nCat;
 		}
-	}
-	
-	// there is also invariant sites
-	if ( sm->invariant ) {
-		sm->cat_rates[0] = 0.0;
-		propVariable = 1.0 - sm->cat_proportions[0];
-		cat = 1;
-	}
-	// only proportion of invariant
-	if (sm->invariant && Parameters_count(sm->rates) == 0) {
-		sm->cat_rates[cat] = 1.0 / sm->cat_proportions[1];
-		sm->need_update = false;
-		return;
 	}
 	
 	double mean = 0.0;
@@ -437,56 +484,51 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 	
 	// median
 	if(sm->quadrature == QUADRATURE_QUANTILE_MEDIAN || sm->quadrature == QUADRATURE_DISCRETE || sm->quadrature == QUADRATURE_BETA){
+		sm->cat_rates[0] = 0;
 		if(sm->distribution == DISTRIBUTION_GAMMA){
-			for (int i = 0; i < nCat; i++) {
-				sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( sm->cat_proportions[i + cat], alpha, 1.0/alpha );
+			for (int i = 0; i < sm->cat_count - cat; i++) {
+				sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( quantiles[i+cat], alpha, 1.0/alpha );
 			}
 		}
 		else if(sm->distribution == DISTRIBUTION_WEIBULL){
-			for (int i = 0; i < nCat; i++) {
+			for (int i = 0; i < sm->cat_count - cat; i++) {
 				// Unit mean Weibull
 				// sm->cat_rates[i + cat] = gsl_cdf_weibull_Qinv( sm->cat_proportions[i + cat], alpha, 1.0/exp(gammln(1.0 + 1.0/alpha)) );
 				// Fix lambda:=1
-				sm->cat_rates[i + cat] = icdf_weibull_1( sm->cat_proportions[i + cat], alpha);
+				sm->cat_rates[i + cat] = icdf_weibull_1( quantiles[i+cat], alpha);
 			}
 		}
 		else if(sm->distribution == DISTRIBUTION_LOGNORMAL){
-			for (int i = 0; i < nCat; i++) {
-				sm->cat_rates[i + cat] = gsl_cdf_lognormal_Qinv( sm->cat_proportions[i + cat], -alpha*alpha/2, alpha );
+			for (int i = 0; i < sm->cat_count - cat; i++) {
+				sm->cat_rates[i + cat] = gsl_cdf_lognormal_Qinv( quantiles[i+cat], -alpha*alpha/2, alpha );
 			}
 		}
 		else if(sm->distribution == DISTRIBUTION_BETA){
-			for (int i = 0; i < nCat; i++) {
-				sm->cat_rates[i + cat] = gsl_cdf_beta_Qinv( sm->cat_proportions[i + cat], alpha, Parameters_value(sm->rates, 1) );
+			for (int i = 0; i < sm->cat_count - cat; i++) {
+				sm->cat_rates[i + cat] = gsl_cdf_beta_Qinv( quantiles[i+cat], alpha, Parameters_value(sm->rates, 1) );
 			}
 		}
 		
 		if (sm->quadrature == QUADRATURE_BETA) {
-			sm->cat_proportions[0] = 1;
-			for (int i = 0; i < nCat-1; i++) {
-				sm->cat_proportions[i] -= sm->cat_proportions[i+1];
-			}
-			for (int i = 0; i < nCat; i++) {
+			for (int i = 0; i < sm->cat_count - cat; i++) {
 				mean += sm->cat_rates[i + cat]*sm->cat_proportions[i + cat];
 			}
 		}
+		// QUADRATURE_DISCRETE
 		else if ( (sm->proportions != NULL && sm->proportions->K == sm->cat_count)){
-			const double* values = sm->proportions->get_values(sm->proportions);
-			memcpy(sm->cat_proportions, values, sizeof(double)*sm->proportions->K);
-
 			for (int i = 0; i < nCat; i++) {
 				mean += sm->cat_rates[i + cat]*sm->cat_proportions[i + cat];
 			}
 		}
+		// +G or +G+I
 		else if(sm->proportions == NULL || (sm->proportions != NULL && sm->proportions->K != sm->cat_count)){
-			for (int i = 0; i < nCat; i++) {
-				sm->cat_proportions[i + cat] = propVariable / nCat;
+			for (int i = 0; i < sm->cat_count - cat; i++) {
 				mean += sm->cat_rates[i + cat];
 			}
 			mean = (propVariable * mean) / nCat;
 		}
 		
-		for (int i = 0; i < nCat; i++) {
+		for (int i = 0; i < sm->cat_count - cat; i++) {
 			sm->cat_rates[i + cat] /= mean;
 		}
 	}
@@ -507,7 +549,7 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 			sm->cat_proportions[i + cat] = propVariable/nCat;
 		}
 	}
-	
+	free(quantiles);
 	sm->need_update = false;
 }
 
@@ -877,9 +919,12 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			}
 			else if(strcasecmp("beta", method) == 0){
 				quad = QUADRATURE_BETA;
-				if (proportions_node != NULL) {
-					fprintf(stderr, "Beta quadrature does not need proportions to be specified (%s)\n", proportions_node->key);
-					exit(13);
+				if (props_simplex != NULL) {
+					if(props_simplex->K != 2){
+						fprintf(stderr, "QUADRATURE_BETA: simplex should be of dimension 2 or no simplex at all\n");
+						exit(2);
+					}
+					invariant = true;
 				}
 			}
 			else{
