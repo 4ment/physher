@@ -29,6 +29,7 @@
 #include "matrix.h"
 #include "mathconstant.h"
 #include "gaussian.h"
+#include "distkumaraswamy.h"
 
 #include "model.h"
 
@@ -392,15 +393,22 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 	double* quantiles = dvector(sm->cat_count); // cat_count includes invariant sites if specified
 
 	// proportions are estimated from beta distribution
-	if (sm->quadrature == QUADRATURE_BETA){
+	if (sm->quadrature == QUADRATURE_BETA || sm->quadrature == QUADRATURE_KUMARASWAMY){
 		double shape_alpha = Parameters_value(sm->rates, Parameters_count(sm->rates)-2);
 		double shape_beta = Parameters_value(sm->rates, Parameters_count(sm->rates)-1);
 		
 		// proportion of invariant is estimated from beta
 		// cat can be equal to 0 or 1
 		if(sm->proportions == NULL){
-			for (int i = 0; i < sm->cat_count; i++) {
-				quantiles[i] = gsl_cdf_beta_Pinv((double)i/sm->cat_count, shape_alpha, shape_beta);
+			if(sm->quadrature == QUADRATURE_BETA){
+				for (int i = 0; i < sm->cat_count; i++) {
+					quantiles[i] = gsl_cdf_beta_Pinv((double)i/sm->cat_count, shape_alpha, shape_beta);
+				}
+			}
+			else{
+				for (int i = 0; i < sm->cat_count; i++) {
+					quantiles[i] = DistributionModel_kumaraswamy_inverse_CDF((double)i/sm->cat_count, shape_alpha, shape_beta);
+				}
 			}
 			
 			for (int i = 0; i < sm->cat_count-1; i++) {
@@ -483,7 +491,8 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 	const double alpha = Parameters_value(sm->rates, 0);
 	
 	// median
-	if(sm->quadrature == QUADRATURE_QUANTILE_MEDIAN || sm->quadrature == QUADRATURE_DISCRETE || sm->quadrature == QUADRATURE_BETA){
+	if(sm->quadrature == QUADRATURE_QUANTILE_MEDIAN || sm->quadrature == QUADRATURE_DISCRETE ||
+	   sm->quadrature == QUADRATURE_BETA ||	sm->quadrature == QUADRATURE_KUMARASWAMY){
 		sm->cat_rates[0] = 0;
 		if(sm->distribution == DISTRIBUTION_GAMMA){
 			for (int i = 0; i < sm->cat_count - cat; i++) {
@@ -509,7 +518,7 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 			}
 		}
 		
-		if (sm->quadrature == QUADRATURE_BETA) {
+		if (sm->quadrature == QUADRATURE_BETA || sm->quadrature == QUADRATURE_KUMARASWAMY) {
 			for (int i = 0; i < sm->cat_count - cat; i++) {
 				mean += sm->cat_rates[i + cat]*sm->cat_proportions[i + cat];
 			}
@@ -917,8 +926,16 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 					invariant = true;
 				}
 			}
-			else if(strcasecmp("beta", method) == 0){
-				quad = QUADRATURE_BETA;
+			else if(strcasecmp("beta", method) == 0 || strcasecmp("kumaraswamy", method) == 0){
+				if(strcasecmp("beta", method) == 0){
+					quad = QUADRATURE_BETA;
+				}
+				else if(strcasecmp("kumaraswamy", method) == 0){
+					quad = QUADRATURE_KUMARASWAMY;
+				}
+				else{
+					fprintf(stderr, "Could not recognize quadrature type. It should be beta or kumaraswamy");
+				}
 				if (props_simplex != NULL) {
 					if(props_simplex->K != 2){
 						fprintf(stderr, "QUADRATURE_BETA: simplex should be of dimension 2 or no simplex at all\n");
