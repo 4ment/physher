@@ -18,8 +18,11 @@ void fasttree_cat(SingleTreeLikelihood* tlk, bool verbosity){
 	SiteModel* sm = tlk->sm;
 	int cat_count = sm->cat_count;
 	sm->cat_count = 1;
-	int* counts = ivector(cat_count);
-	double* rates = log_spaced_spaced_vector(1.0/cat_count, cat_count, cat_count);
+	int* counts = NULL;
+	if(verbosity > 0) counts = ivector(cat_count);
+	double* rates = dvector(cat_count);
+	log_spaced_spaced_vector2(rates, 1.0/cat_count, cat_count, cat_count);
+//	log_spaced_spaced_vector2(rates+1, 1.0/(cat_count-1), cat_count-1, cat_count-1); // invariant
 	print_dvector(rates, cat_count);
 	double* likelihoods = malloc(sizeof(double)*tlk->sp->count*cat_count);
 	tlk->calculate(tlk);// make sure everything is up-to-date
@@ -43,8 +46,10 @@ void fasttree_cat(SingleTreeLikelihood* tlk, bool verbosity){
 			}
 		}
 		sm->site_category[i] = best;
-		if(verbosity > 0) printf("CAT pattern %d rate index %d rate %f [%f\n", i, best, rates[best], bestLnl);
-		counts[best]++;
+		if(verbosity > 0){
+			printf("CAT pattern %d rate index %d rate %f [%f\n", i, best, rates[best], bestLnl);
+			counts[best]++;
+		}
 	}
 	Parameters_set_value(sm->rates, 0, rates[0]);
 	for (int i = 1; i < cat_count; i++) {
@@ -54,6 +59,7 @@ void fasttree_cat(SingleTreeLikelihood* tlk, bool verbosity){
 		for (int i = 0; i < cat_count; i++) {
 			if(counts[i] == 0) fprintf(stdout, "CAT rate %f not used\n", rates[i]);
 		}
+		free(counts);
 	}
 	SingleTreeLikelihood_use_rescaling(tlk, false);
 	SingleTreeLikelihood_update_all_nodes(tlk);
@@ -61,7 +67,6 @@ void fasttree_cat(SingleTreeLikelihood* tlk, bool verbosity){
 	sm->cat_count = cat_count;
 	free(likelihoods);
 	free(rates);
-	free(counts);
 }
 
 void cat_estimator_from_json(json_node* node, Hashtable* hash){
