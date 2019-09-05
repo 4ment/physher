@@ -327,6 +327,7 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 	else if(strcasecmp(model, "strict") == 0){
 		json_node* p_node = get_json_node(node, "rate");
 		Parameter* p = new_Parameter_from_json(p_node, hash);
+		p->model = MODEL_BRANCHMODEL;
 		bm = new_StrictClock_with_parameter(mtree->obj, p);
 		free_Parameter(p);
 		Hashtable_add(hash, p->name, p);

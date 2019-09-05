@@ -278,6 +278,9 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 		json_node* id_node = get_json_node(freqs_node, "id");
 		Hashtable_add(hash, (char*)id_node->value, mfreqs_simplex);
 		freqs_simplex =  (Simplex*)mfreqs_simplex->obj;
+		for (int i = 0; i < Parameters_count(freqs_simplex->parameters); i++) {
+			Parameters_at(freqs_simplex->parameters, i)->model = MODEL_SUBSTITUTION;
+		}
 	}
 	else if(freqs_node!= NULL && freqs_node->node_type == MJSON_STRING){
 		char* ref = (char*)freqs_node->value;
@@ -312,6 +315,9 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 				mrates_simplex->ref_count++;
 			}
 			rates_simplex = (Simplex*)mrates_simplex->obj;
+			for (int i = 0; i < Parameters_count(rates_simplex->parameters); i++) {
+				Parameters_at(rates_simplex->parameters, i)->model = MODEL_SUBSTITUTION;
+			}
 		}
 		// Rates is made of parameters
 		else{
@@ -319,6 +325,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 			for(int i = 0; i < rates_node->child_count; i++){
 				json_node* p_node = rates_node->children[i];
 				Parameter* p = new_Parameter_from_json(p_node, hash);
+				p->model = MODEL_SUBSTITUTION;
 				Parameters_move(rates, p);
 			}
 		}
@@ -360,6 +367,9 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	
 	if(mfreqs_simplex == NULL  && m->simplex != NULL){
 		mfreqs_simplex = new_SimplexModel("anonymousfreqs", m->simplex);
+		for (int i = 0; i < Parameters_count(m->simplex->parameters); i++) {
+			Parameters_at(m->simplex->parameters, i)->model = MODEL_SUBSTITUTION;
+		}
 	}
 	if(init_node != NULL && datatype->type == DATA_TYPE_NUCLEOTIDE && (Parameters_count(m->rates) >= 5 || m->rates_simplex != NULL)){
 		json_node* patterns_node = get_json_node(init_node, "sitepattern");

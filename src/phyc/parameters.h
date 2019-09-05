@@ -36,6 +36,37 @@
 #define PARAMETER_POSITIVE_INFINTY INFINITY
 #define PARAMETER_NEGATIVE_INFINTY (-INFINITY)
 
+typedef enum model_t{
+	MODEL_BRANCHMODEL=0,
+	MODEL_COALESCENT,
+	MODEL_COMPOUND,
+	MODEL_DISCRETE_PARAMETER,
+	MODEL_DISTRIBUTION,
+	MODEL_LAPLACE,
+	MODEL_PARSIMONY,
+	MODEL_SIMPLEX,
+	MODEL_SITEMODEL,
+	MODEL_SUBSTITUTION,
+	MODEL_TREE,
+	MODEL_TREELIKELIHOOD,
+	MODEL_VARIATIONAL
+}model_t;
+
+static const char* model_type_strings[] = {
+	"branchmodel",
+	"coalescent",
+	"compound",
+	"discreteparameter",
+	"distribution",
+	"laplace",
+	"parsimony",
+	"simplex",
+	"sitemodel",
+	"substitutionmodel",
+	"tree",
+	"treelikelihood",
+	"variational"
+};
 
 struct _Constraint;
 typedef struct _Constraint Constraint;
@@ -65,6 +96,7 @@ struct _Parameter{
 	bool estimate;
 	ListenerList *listeners;
 	int refCount;
+	model_t model; // model it belongs to
 };
 
 
@@ -274,38 +306,6 @@ struct _ListenerList {
 	void (*add)( ListenerList*, Model* );
 	void (*remove)( ListenerList*, Model* );
 	void (*removeAll)( ListenerList*);
-};
-
-typedef enum model_t{
-	MODEL_BRANCHMODEL=0,
-	MODEL_COALESCENT,
-	MODEL_COMPOUND,
-	MODEL_DISCRETE_PARAMETER,
-	MODEL_DISTRIBUTION,
-	MODEL_LAPLACE,
-	MODEL_PARSIMONY,
-	MODEL_SIMPLEX,
-	MODEL_SITEMODEL,
-	MODEL_SUBSTITUTION,
-	MODEL_TREE,
-	MODEL_TREELIKELIHOOD,
-	MODEL_VARIATIONAL
-}model_t;
-
-static const char* model_type_strings[] = {
-	"branchmodel",
-	"coalescent",
-	"compound",
-    "discreteparameter",
-	"distribution",
-	"laplace",
-	"parsimony",
-	"simplex",
-	"sitemodel",
-	"substitutionmodel",
-	"tree",
-	"treelikelihood",
-	"variational"
 };
 
 model_t check_model(const char* type);

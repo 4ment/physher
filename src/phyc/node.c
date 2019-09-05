@@ -75,7 +75,8 @@ Node * new_Node( Node *parent, const char *nodename, const int counter ){
 	Constraint_set_flower(n->distance->cnstr, BL_MIN);
 	Constraint_set_fupper(n->distance->cnstr, BL_MAX);
 	n->height   = new_Parameter_with_postfix(n->name, POSTFIX_HEIGHT, 0, new_Constraint(0,INFINITY));
-	
+	n->height->model = MODEL_TREE;
+	n->distance->model = MODEL_TREE;
 	return n;
 }
 

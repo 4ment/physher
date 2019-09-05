@@ -232,12 +232,14 @@ void init_parameter_arrays(Tree* atree){
 		Parameter* p = NULL;
 		if(Node_isroot(node)){
 			p = new_Parameter(node->name, Node_height(node), new_Constraint(0, INFINITY));
+			p->model = MODEL_TREE;
 			Parameters_move(atree->reparam, p);
             p->id = -Node_id(node)-1;
 			atree->map[Node_id(node)] = count++;
 		}
 		else if(!Node_isleaf(node)){
 			p = new_Parameter(node->name, Node_height(node)/Node_height(Node_parent(nodes2[i])), new_Constraint(0.00001, 0.9999));
+			p->model = MODEL_TREE;
 			Parameters_move(atree->reparam, p);
 			p->id = -Node_id(node)-1;
 			atree->map[Node_id(node)] = count++;
@@ -624,7 +626,7 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	//Parameter_set_fixed( current->distance, true );
 	
 	Tree_update_topology(atree);
-    
+	
 	init_parameter_arrays(atree);
 	
 	free_StringBuffer(buffer);
@@ -1083,6 +1085,22 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		else{
 			exit(2);
 		}
+		// parse date dictionary for dated trees
+		// tip heights are intialized
+		if (dates_node != NULL) {
+			init_dates(tree, dates_node);
+			tree->time_mode = true;
+			tree->rooted = true;
+		}
+		else{
+			tree->time_mode = time_tree;
+			tree->rooted = time_tree;
+		}
+		// initialize heights from distances read from newick file
+		if(tree->time_mode){
+			init_heights_from_distances(tree);
+		}
+		
 		char* id = get_json_node_value_string(node, "id");
 		mtree = new_TreeModel(id, tree);
 	}

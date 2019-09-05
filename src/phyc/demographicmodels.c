@@ -289,6 +289,10 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 	json_node* parameters_node = get_json_node(node, "parameters");
 	Parameters* ps = new_Parameters_from_json(parameters_node, hash);
 	
+	for (int i = 0; i < Parameters_count(ps); i++) {
+		Parameters_at(ps, i)->model = MODEL_COALESCENT;
+	}
+	
 	if(strcasecmp(model, "constant") == 0){
 		if(tree != NULL)
 			c = new_ConstantCoalescent(tree, Parameters_at(ps, 0));

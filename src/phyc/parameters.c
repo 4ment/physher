@@ -165,6 +165,7 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 	p->id = 0;
 	p->listeners = new_ListenerList(1);
 	p->refCount = 1;
+	p->model = -1;
 	return p;
 }
 
@@ -234,6 +235,7 @@ Parameter * clone_Parameter( Parameter *p ){
 	pnew = new_Parameter( p->name, p->value,  cnstr );//pnew ref_count is reset to 1
 	pnew->estimate = p->estimate;
 	pnew->id = p->id;
+	pnew->model = p->model;
 	return pnew;
 }
 

@@ -897,6 +897,9 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			mprops_simplex = new_SimplexModel_from_json(proportions_node, hash);
 			Hashtable_add(hash, mprops_simplex->name, mprops_simplex);
 			props_simplex = (Simplex*)mprops_simplex->obj;
+			for (int i = 0; i < Parameters_count(props_simplex->parameters); i++) {
+				Parameters_at(props_simplex->parameters, i)->model = MODEL_SITEMODEL;
+			}
 		}
 		
 		if(discretization_node != NULL && distribution != DISTRIBUTION_DISCRETE){
@@ -975,7 +978,9 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		}
 		
 		for (int i = 0; i < Parameters_count(rates); i++) {
-			Hashtable_add(hash, Parameters_name(rates, i), Parameters_at(rates, i));
+			Parameter* p = Parameters_at(rates, i);
+			p->model = MODEL_SITEMODEL;
+			Hashtable_add(hash, Parameters_name(rates, i), p);
 		}
 	}
 	
@@ -1007,6 +1012,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	
 	if (mu_node != NULL) {
 		sm->mu = new_Parameter_from_json(mu_node, hash);
+		sm->mu->model = MODEL_SITEMODEL;
 		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
 	}
