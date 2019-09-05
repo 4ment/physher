@@ -78,7 +78,7 @@ char **readNewickTrees( const char *infile, int *trees_count );
 // Newick
 void Tree_print_newick( FILE *pf, Tree *tree, bool internal );
 
-void Tree_print_newick_subtree( FILE *pf, const Node *n, bool internal );
+void Tree_print_newick_subtree( FILE *pf, bool time, const Node *n, bool internal );
 
 void Tree_print_height_newick( FILE *pf, Tree *tree, bool internal );
 

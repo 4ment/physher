@@ -234,26 +234,36 @@ void Tree_print_nexus( FILE *pf, Tree *tree ){
 
 
 
-void Tree_print_newick_subtree( FILE *pf, const Node *n, bool internal ){
+void Tree_print_newick_subtree( FILE *pf, bool time, const Node *n, bool internal ){
 	if( n == NULL ) return;
 	if( n->left != NULL ) fprintf(pf, "(");
 	else{
-		fprintf(pf, "%s:%.8f", n->name, n->distance->value);
+		if(time){
+			fprintf(pf, "%s:%.8f", n->name, Node_time_elapsed((Node*)n) );
+		}
+		else{
+			fprintf(pf, "%s:%.8f", n->name, n->distance->value);
+		}
 		return;
 	}
-	Tree_print_newick_subtree( pf, n->left, internal );
+	Tree_print_newick_subtree( pf, time, n->left, internal );
 	fprintf(pf, ",");
-	Tree_print_newick_subtree( pf, n->right, internal );
+	Tree_print_newick_subtree( pf, time, n->right, internal );
 	fprintf(pf, ")");
 	if( n->parent != NULL ){
 		if( internal ) fprintf(pf, "%s", n->name);
-		fprintf(pf, ":%.8f", n->distance->value);
+		if(time){
+			fprintf(pf, ":%.8f", Node_time_elapsed((Node*)n));
+		}
+		else{
+			fprintf(pf, ":%.8f", n->distance->value);
+		}
 	}
 	else fprintf(pf, ";");
 }
 
 void Tree_print_newick( FILE *pf, Tree *tree, bool internal ){
-    Tree_print_newick_subtree(pf, Tree_root(tree), internal);
+    Tree_print_newick_subtree(pf, Tree_is_time_mode(tree), Tree_root(tree), internal);
 }
 
 static void _Tree_print_height_newick_aux( FILE *pf, Tree *tree, const Node *n, bool internal ){
