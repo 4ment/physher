@@ -250,7 +250,7 @@ void calculate_dldt_uppper( SingleTreeLikelihood *tlk, Node *node, double* patte
 
 void calculate_dldh_uppper( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods );
 
-double dlnldt_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pattern_likelihoods, const double* pattern_dlikelihoods );
+double dlnldt_uppper( SingleTreeLikelihood *tlk, const double* pattern_likelihoods, const double* pattern_dlikelihoods );
 
 double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pattern_likelihoods, const double* pattern_dlikelihoods);
 
