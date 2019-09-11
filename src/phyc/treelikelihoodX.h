@@ -67,8 +67,6 @@ void calculate_branch_likelihood(SingleTreeLikelihood *tlk, double* rootPartials
 
 void calculate_branch_partials(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 
-void update_partials_upper_general( SingleTreeLikelihood *tlk, Node *node );
-
 void node_log_likelihoods_upper_general( const SingleTreeLikelihood *tlk, Node *node );
 
 

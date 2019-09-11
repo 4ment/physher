@@ -264,8 +264,7 @@ void partials_states_and_states( const SingleTreeLikelihood *tlk, int idx1, cons
 			state1 = tlk->sp->patterns[k][idx1];
 			state2 = tlk->sp->patterns[k][idx2];
 			
-			//w = l * tlk->matrix_size;
-			w = u;
+			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + u;
 			
 			if (state1 < nstate && state2 < nstate) {
 				
@@ -319,7 +318,7 @@ void partials_states_transpose( const SingleTreeLikelihood *tlk, int idx1, const
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			state1 = tlk->sp->patterns[k][idx1];
-			w = u;
+			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + u;
 			if (state1 < nstate ) {
 				for(i = 0; i < nstate; i++){
 					*pPartials++ = matrices1[w + state1]; w += 4;
@@ -346,6 +345,7 @@ void partials_states( const SingleTreeLikelihood *tlk, int idx1, const double * 
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			state1 = tlk->sp->patterns[k][idx1];
+			u = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
 			
 			if (state1 < nstate ) {
 				memcpy(pPartials, matrices1+state1*nstate+u, sizeof(double)*nstate);
@@ -357,7 +357,6 @@ void partials_states( const SingleTreeLikelihood *tlk, int idx1, const double * 
 				}
 			}
 		}
-		u += tlk->matrix_size;
 	}
 }
 
@@ -437,7 +436,7 @@ void partials_states_and_undefined( const SingleTreeLikelihood *tlk, int idx1, c
 			
 			state1 = tlk->sp->patterns[k][idx1];
 			
-			w = l * tlk->matrix_size;
+			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
 			
 			if ( state1 < nstate) {
 				
@@ -494,7 +493,7 @@ void partials_undefined( const SingleTreeLikelihood *tlk, const double *partials
 	for ( int l = 0; l < catCount; l++ ) {
 		for ( k = 0; k < patternCount; k++ ) {
 			
-			w = l * tlk->matrix_size;
+			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
 			
 			for ( i = 0; i < nstate; i++) {
 				sum = 0.0;
@@ -568,7 +567,7 @@ void partials_undefined_and_undefined( const SingleTreeLikelihood *tlk, const do
         
         for ( k = 0; k < patternCount; k++ ) {
             
-            w = l * tlk->matrix_size;
+            w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
             
             for ( i = 0; i < nstate; i++ ) {
                 
@@ -668,7 +667,7 @@ void partials_states_and_states_transpose( const SingleTreeLikelihood *tlk, int 
             state1 = tlk->sp->patterns[k][idx1];
             state2 = tlk->sp->patterns[k][idx2];
             
-            w = u;
+            w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + u;
             
             if (state1 < nstate && state2 < nstate) {
                 
@@ -727,9 +726,10 @@ void partials_states_and_undefined_transpose( const SingleTreeLikelihood *tlk, i
             
             m2 = &matrices2[w];
             p2 = &partials2[v];
-            
+		
             if ( state1 < nstate) {
-                
+                w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+				
                 m1 = &matrices1[w + state1*nstate];
                 
                 for ( int i = 0; i < nstate; i++ ) {
@@ -753,7 +753,6 @@ void partials_states_and_undefined_transpose( const SingleTreeLikelihood *tlk, i
             }
             v += nstate;
         }
-        w += tlk->matrix_size;
     }
 }
 
@@ -768,7 +767,7 @@ static void _calculate_branch_likelihood_undefined(SingleTreeLikelihood *tlk, do
 		const double weight = tlk->sm->get_proportion(tlk->sm, l);
 		for(int k = 0; k < patternCount; k++) {
 			const double* partialsChildPtr = partials+v;
-			const double* transMatrixPtr = &matrices[l * tlk->matrix_size];
+			const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size];
 			
 			for(int i = 0; i < stateCount; i++) {
 				double sum = 0.0;
@@ -795,7 +794,7 @@ static void _calculate_branch_likelihood_state(SingleTreeLikelihood *tlk, double
 		const double weight = tlk->sm->get_proportion(tlk->sm, l);
 		for(int k = 0; k < patternCount; k++) {
 			int state = tlk->sp->patterns[k][partialsIndex];
-			int w =  l * tlk->matrix_size + state;
+			int w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size + state;
 			if(state < stateCount){
 				for(int i = 0; i < stateCount; i++) {
 					rootPartials[u++] += matrices[w] * upperPartials[v++] * weight;
@@ -803,7 +802,7 @@ static void _calculate_branch_likelihood_state(SingleTreeLikelihood *tlk, double
 				}
 			}
 			else{
-				const double* transMatrixPtr = &matrices[l*tlk->matrix_size];
+				const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size];
 				int ii = 0;
 				for(int i = 0; i < stateCount; i++) {
 					double sum = 0;
@@ -834,7 +833,7 @@ static void _calculate_branch_likelihood_state2(SingleTreeLikelihood *tlk, doubl
 			double sum;
 			
 			if(state < stateCount){
-				transMatrixPtr = &matrices[l * tlk->matrix_size + state*stateCount];
+				transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size + state*stateCount];
 				sum = 0;
 				for(int i = 0; i < stateCount; i++) {
 					sum += transMatrixPtr[i] * partialsChildPtr[i];
@@ -843,7 +842,7 @@ static void _calculate_branch_likelihood_state2(SingleTreeLikelihood *tlk, doubl
 				u += stateCount;
 			}
 			else{
-				transMatrixPtr = &matrices[l*tlk->matrix_size];
+				transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size];
 				int ii = 0;
 				for(int i = 0; i < stateCount; i++) {
 					sum = 0;
@@ -895,7 +894,7 @@ static void _calculate_branch_partials_undefined(SingleTreeLikelihood *tlk, doub
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < patternCount; k++) {
 			const double* partialsChildPtr = partials+v;
-			const double* transMatrixPtr = &matrices[l * tlk->matrix_size];
+			const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size];
 			
 			for(int i = 0; i < stateCount; i++) {
 				double sum = 0.0;
@@ -920,7 +919,7 @@ static void _calculate_branch_partials_state(SingleTreeLikelihood *tlk, double* 
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < patternCount; k++) {
 			int state = tlk->sp->patterns[k][partialsIndex];
-			int w =  l * tlk->matrix_size + state;
+			int w =  tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size + state;
 			if(state < stateCount){
 				for(int i = 0; i < stateCount; i++) {
 					rootPartials[v] = matrices[w] * upperPartials[v];
@@ -929,7 +928,7 @@ static void _calculate_branch_partials_state(SingleTreeLikelihood *tlk, double* 
 				}
 			}
 			else{
-				const double* transMatrixPtr = &matrices[l*tlk->matrix_size];
+				const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size];
 				int ii = 0;
 				for(int i = 0; i < stateCount; i++) {
 					double sum = 0;
@@ -960,7 +959,7 @@ static void _calculate_branch_partials_state2(SingleTreeLikelihood *tlk, double*
 			double sum;
 			
 			if(state < stateCount){
-				transMatrixPtr = &matrices[l * tlk->matrix_size + state*stateCount];
+				transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size + state*stateCount];
 				sum = 0;
 				for(int i = 0; i < stateCount; i++) {
 					sum += transMatrixPtr[i] * partialsChildPtr[i];
@@ -969,7 +968,7 @@ static void _calculate_branch_partials_state2(SingleTreeLikelihood *tlk, double*
 				u += stateCount;
 			}
 			else{
-				transMatrixPtr = &matrices[l*tlk->matrix_size];
+				transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size];
 				int ii = 0;
 				for(int i = 0; i < stateCount; i++) {
 					sum = 0;
@@ -1146,7 +1145,7 @@ void partials_states_and_states_even_SSE( const SingleTreeLikelihood *tlk, int i
             state1 = tlk->sp->patterns[k][idx1];
             state2 = tlk->sp->patterns[k][idx2];
             
-            w = l * tlk->matrix_size;
+            w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
             
             if (state1 < nstate && state2 < nstate) {
                 
@@ -1205,7 +1204,7 @@ void partials_states_and_undefined_even_SSE( const SingleTreeLikelihood *tlk, in
 			
 			state1 = tlk->sp->patterns[k][idx1];
 			
-			w = l * tlk->matrix_size;
+			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
 			
 			m2 = (__m128d*)&matrices2[w];
 			
@@ -1266,7 +1265,7 @@ void partials_undefined_and_undefined_even_SSE( const SingleTreeLikelihood *tlk,
         
         for ( k = 0; k < patternCount; k++ ) {
             
-            w = l * tlk->matrix_size;
+            w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
             
             m1 = (__m128d*)&matrices1[w];
             m2 = (__m128d*)&matrices2[w];
@@ -1654,182 +1653,6 @@ void partials_undefined_and_undefined_omp( const SingleTreeLikelihood *tlk, cons
 #pragma mark -
 #pragma mark Upper Likelihood
 
-// Called by a node whose parent is NOT the root and the node's sibling is a leaf
-static void _update_upper_partials_state( SingleTreeLikelihood *tlk, const double *matrix_upper, const double *partials_upper, const double *matrix_lower, int sibling_index, double *partials ){
-    int w,w2,i,j,k;
-    int v = 0;
-    double sum1,sum2;
-    int nstate = tlk->sm->nstate;
-    int state;
-    double *pPartials = partials;
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-		
-		for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            state = tlk->sp->patterns[k][ sibling_index ];
-            
-			w  = l * tlk->matrix_size;
-			
-			for ( i = 0; i < nstate; i++ ) {
-				w2 = l * tlk->matrix_size + i;
-				sum1 = sum2 = 0.;
-                
-                for ( j = 0; j < nstate; j++) {
-                    sum1 += matrix_upper[w2] * partials_upper[v + j];
-                    w2 += nstate;
-                }
-                
-                if( state < nstate){
-                    sum2 = matrix_lower[w+state];
-                    w += nstate;
-                }
-                else {
-                    sum2 = 1.0;
-                    w += nstate;
-                }
-                
-				*pPartials++ = sum1 * sum2 ;
-			}
-			v += nstate;
-		}
-    }
-}
-
-// Called by a node whose parent is NOT the root and the node's sibling is NOT a leaf
-static void _update_upper_partials_undefined( SingleTreeLikelihood *tlk, const double *matrix_upper, const double *partials_upper, const double *matrix_lower, const double *partials_lower, double *partials ){
-    int w,w2,i,j,k;
-    int v = 0;
-    double sum1,sum2;
-    int nstate = tlk->sm->nstate;
-    double *pPartials = partials;
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-		
-		for ( k = 0; k < tlk->pattern_count; k++ ) {
-			
-			w  = l * tlk->matrix_size;
-			
-			for ( i = 0; i < nstate; i++ ) {
-				w2 = l * tlk->matrix_size + i;
-				sum1 = sum2 = 0.;
-                
-                for ( j = 0; j < nstate; j++) {
-                    sum1 += matrix_upper[w2] * partials_upper[v + j];
-                    sum2 += matrix_lower[w]  * partials_lower[v + j];
-                    w++;
-                    w2 += nstate;
-                }
-                
-				*pPartials++ = sum1 * sum2 ;
-			}
-			v += nstate;
-		}
-    }
-}
-
-// Called by a child of the root but not if the child's sibling is NOT leaf
-static void _update_upper_partials_root_and_undefined( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *frequencies, double *partials_upper ){
-    int w,i,j,k;
-    int v = 0;
-	double *pPartials = partials_upper;
-    int nstate = tlk->sm->nstate;
-    
-	for ( int l = 0; l < tlk->cat_count; l++ ) {
-		
-		for ( k = 0; k < tlk->pattern_count; k++ ) {
-			
-			w = l * tlk->matrix_size;
-			
-			for ( i = 0; i < nstate; i++ ) {
-				
-				*pPartials = 0.;
-				
-				for ( j = 0; j < nstate; j++ ) {
-					*pPartials += matrices1[w] * partials1[v + j];
-					w++;
-				}
-				*pPartials *= frequencies[i];
-				pPartials++;
-			}
-			v += nstate;
-		}
-    }
-}
-
-// Called by a child of the root and the child's sibling is a leaf
-static void _update_upper_partials_root_and_state( const SingleTreeLikelihood *tlk, const double *matrices1, int idx1, const double *frequencies, double *partials_upper ){
-    int w;
-	double *pPartials = partials_upper;
-    int state1;
-    int nstate = tlk->sm->nstate;
-    
-	for ( int l = 0; l < tlk->cat_count; l++ ) {
-		
-		for ( int k = 0; k < tlk->pattern_count; k++ ) {
-			
-            state1 = tlk->sp->patterns[k][idx1];
-            
-			w = l * tlk->matrix_size;
-            
-            if( state1 < nstate ){
-                for ( int i = 0; i < nstate; i++ ) {
-                    *pPartials++ = matrices1[w+state1] * frequencies[i];
-                    w+=nstate;
-                }
-            }
-            else {
-                memcpy(pPartials, frequencies, sizeof(double)*nstate);
-                pPartials += nstate;
-            }
-            
-		}
-    }
-}
-
-
-
-void update_partials_upper_general( SingleTreeLikelihood *tlk, Node *node ){
-    Node *parent = Node_parent(node);
-    Node *sibling = Node_sibling(node);
-	
-	const double* freqs = tlk->get_root_frequencies(tlk);
-	int upperIndex = tlk->upper_partial_indexes[Node_id(node)];
-	int upperParentIndex = tlk->upper_partial_indexes[Node_id(parent)];
-    if( Node_isroot(parent) ){
-        if( Node_isleaf(sibling) ){
-            _update_upper_partials_root_and_state(tlk,
-												  tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)],
-												  tlk->mapping[Node_id(sibling)],
-												  freqs,
-												  tlk->partials[tlk->current_partials_indexes[upperIndex]][upperIndex] );
-        }
-        else {
-            _update_upper_partials_root_and_undefined(tlk,
-													  tlk->partials[tlk->current_partials_indexes[Node_id(sibling)]][Node_id(sibling)],
-													  tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)],
-													  freqs,
-													  tlk->partials[tlk->current_partials_indexes[Node_id(sibling)]][Node_id(sibling)] );
-        }
-    }
-    else if( Node_isleaf(sibling) ){
-        _update_upper_partials_state(tlk,
-									 tlk->matrices[tlk->current_matrices_indexes[Node_id(parent)]][Node_id(parent)],
-									 tlk->partials[tlk->current_partials_indexes[upperParentIndex]][upperParentIndex],
-									 tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)],
-									 tlk->mapping[Node_id(sibling)],
-									 tlk->partials[tlk->current_partials_indexes[Node_id(sibling)]][Node_id(sibling)]);
-    }
-    else {
-        _update_upper_partials_undefined(tlk,
-										 tlk->matrices[tlk->current_matrices_indexes[Node_id(parent)]][Node_id(parent)],
-										 tlk->partials[tlk->current_partials_indexes[upperParentIndex]][upperParentIndex],
-										 tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)],
-										 tlk->partials[tlk->current_partials_indexes[Node_id(sibling)]][Node_id(sibling)],
-										 tlk->partials[tlk->current_partials_indexes[upperIndex]][upperIndex]);
-    }
-}
-
 static void _partial_lower_upper( const SingleTreeLikelihood *tlk, const double *partials_upper, const double *partials_lower, const double *matrix_lower, const double *proportions, double *pattern_lk ){
     int w,i,j,k;
     int v = 0;
@@ -1897,13 +1720,22 @@ static void _partial_lower_upper_leaf( const SingleTreeLikelihood *tlk, const do
 
 void node_log_likelihoods_upper_general( const SingleTreeLikelihood *tlk, Node *node ){
 	int node_index = Node_id(node);
-    
-    if ( !Node_isleaf(node) ) {
-        _partial_lower_upper(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->partials[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
-    }
-    else {
-        _partial_lower_upper_leaf(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->mapping[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
-    }
+	if ( !Node_isleaf(node) ) {
+		_partial_lower_upper(tlk,
+							 tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[node_index]]][tlk->upper_partial_indexes[node_index]],
+							 tlk->partials[tlk->current_partials_indexes[node_index]][node_index],
+							 tlk->matrices[tlk->current_matrices_indexes[node_index]][node_index],
+							 tlk->sm->get_proportions(tlk->sm),
+							 tlk->pattern_lk+tlk->sp->count );
+	}
+	else {
+		_partial_lower_upper_leaf(tlk,
+								  tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[node_index]]][tlk->upper_partial_indexes[node_index]],
+								  tlk->mapping[node_index],
+								  tlk->matrices[tlk->current_matrices_indexes[node_index]][node_index],
+								  tlk->sm->get_proportions(tlk->sm),
+								  tlk->pattern_lk+tlk->sp->count );
+	}
 }
 
 

@@ -371,8 +371,13 @@ void partials_states_4( const SingleTreeLikelihood *tlk, int idx1, const double 
 				*pPartials++ = matrices1[w + state1];
 			}
 			else {
-				memcpy(pPartials, TWENTY_DOUBLE_ONES, sizeof(double)*4);
-				pPartials += 4;
+				// P.[1 1 1 1]^T = [1 1 1 1] when P is probability matrix
+				//memcpy(pPartials, TWENTY_DOUBLE_ONES, sizeof(double)*4);
+				// When derivatives are calculated P is NOT a probability matrix so we do the calculation
+				*pPartials++ = matrices1[0] + matrices1[1] + matrices1[2] + matrices1[3];
+				*pPartials++ = matrices1[4] + matrices1[5] + matrices1[6] + matrices1[7];
+				*pPartials++ = matrices1[8] + matrices1[9] + matrices1[10] + matrices1[11];
+				*pPartials++ = matrices1[12] + matrices1[13] + matrices1[14] + matrices1[15];
 			}
 		}
 		u += 16;
@@ -1496,7 +1501,7 @@ void partials_states_and_states_4_SSE( const SingleTreeLikelihood *tlk, int idx1
 			state1 = tlk->sp->patterns[k][idx1];
 			state2 = tlk->sp->patterns[k][idx2];
 			
-			w = u;
+			w = tlk->sm->get_site_category(tlk->sm, k)*16 + u;
 			
 			if (state1 < 4 && state2 < 4) {
 				
@@ -1565,16 +1570,19 @@ void partials_states_4_SSE( const SingleTreeLikelihood *tlk, int idx1, const dou
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
 			state1 = tlk->sp->patterns[k][idx1];
+			u = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
 			
 			if (state1 < 4) {
 				memcpy(pPartials, &matrices1[u+4*state1], 4*sizeof(double));
 				pPartials += 4;
 			}
 			else {
-				*pPartials++ = 1.0;
-				*pPartials++ = 1.0;
-				*pPartials++ = 1.0;
-				*pPartials++ = 1.0;
+				// P.[1 1 1 1]^T = [1 1 1 1] when P is probability matrix
+				// When derivatives are calculated P is NOT a probability matrix so we do the calculation
+				*pPartials++ = matrices1[0] + matrices1[4] + matrices1[8] + matrices1[12];
+				*pPartials++ = matrices1[1] + matrices1[5] + matrices1[9] + matrices1[13];
+				*pPartials++ = matrices1[2] + matrices1[6] + matrices1[10] + matrices1[14];
+				*pPartials++ = matrices1[3] + matrices1[7] + matrices1[11] + matrices1[15];
 			}
 		}
 		u += 16;
@@ -1594,26 +1602,23 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 	int k;
 	int w = 0;
 	int state1;
-    
-	double *pPartials = partials3;
-	const double *m1 = matrices1;
 	
-	__m128d p2v0, p2v2, m2v0, m2v2;
-	double temp[2] __attribute__ ((aligned (16)));
+	__m128d p2v0, p2v2, m2v0, m2v2, *m1, temp;
+	__m128d* pPartials = (__m128d*)partials3;
 	
 	for ( int l = 0; l < tlk->cat_count; l++ ) {
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
 			state1 = tlk->sp->patterns[k][idx1];
+			w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
 			
 			
 			p2v0 = _mm_load_pd(&partials2[v]);
 			p2v2 = _mm_load_pd(&partials2[v+2]);
 			
 			if ( state1 < 4) {
-				
-				m1 = &matrices1[w + state1*4];
+				m1 = (__m128d*)&matrices1[w + state1*4];
 				
 				
 				m2v0 = _mm_load_pd(&matrices2[w]);
@@ -1621,15 +1626,8 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 				
 				m2v0 = _mm_mul_pd(m2v0, p2v0);
 				m2v2 = _mm_mul_pd(m2v2, p2v2);
-				
-				m2v0 = _mm_add_pd(m2v0, m2v2);
-				
-				_mm_store_pd(temp, m2v0);
-				
-				*pPartials++ = *m1 * (temp[0]+temp[1]);
-				m1++;
-				
-				
+				temp = _mm_add_pd(m2v0, m2v2);
+
 				
 				m2v0 = _mm_load_pd(&matrices2[w+4]);
 				m2v2 = _mm_load_pd(&matrices2[w+6]);
@@ -1639,9 +1637,9 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 				
 				m2v0 = _mm_add_pd(m2v0, m2v2);
 				
-				_mm_store_pd(temp, m2v0);
-				
-				*pPartials++ = *m1 * (temp[0]+temp[1]);
+				m2v2 = _mm_unpacklo_pd(temp,m2v0);
+				temp = _mm_unpackhi_pd(temp,m2v0);
+				*pPartials++ = _mm_mul_pd(*m1, _mm_add_pd(m2v2, temp));
 				m1++;
 				
 				
@@ -1651,15 +1649,8 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 				
 				m2v0 = _mm_mul_pd(m2v0, p2v0);
 				m2v2 = _mm_mul_pd(m2v2, p2v2);
-				
-				m2v0 = _mm_add_pd(m2v0, m2v2);
-				
-				_mm_store_pd(temp, m2v0);
-				
-				*pPartials++ = *m1 *  (temp[0]+temp[1]);
-				m1++;
-				
-				
+				temp = _mm_add_pd(m2v0, m2v2);
+
 				
 				m2v0 = _mm_load_pd(&matrices2[w+12]);
 				m2v2 = _mm_load_pd(&matrices2[w+14]);
@@ -1669,11 +1660,9 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 				
 				m2v0 = _mm_add_pd(m2v0, m2v2);
 				
-				_mm_store_pd(temp, m2v0);
-				
-				*pPartials++ = *m1 * (temp[0]+temp[1]);
-				m1++;
-				
+				m2v2 = _mm_unpacklo_pd(temp,m2v0);
+				temp = _mm_unpackhi_pd(temp,m2v0);
+				*pPartials++ = _mm_mul_pd(*m1, _mm_add_pd(m2v2, temp));
 			}
 			else {
 				// Child 1 has a gap or unknown state so don't use it
@@ -1683,13 +1672,7 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 				
 				m2v0 = _mm_mul_pd(m2v0, p2v0);
 				m2v2 = _mm_mul_pd(m2v2, p2v2);
-				
-				m2v0 = _mm_add_pd(m2v0, m2v2);
-				
-				_mm_store_pd(temp, m2v0);
-				
-				*pPartials++ = temp[0]+temp[1];
-				
+				temp = _mm_add_pd(m2v0, m2v2);
 				
 				
 				m2v0 = _mm_load_pd(&matrices2[w+4]);
@@ -1699,11 +1682,10 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 				m2v2 = _mm_mul_pd(m2v2, p2v2);
 				
 				m2v0 = _mm_add_pd(m2v0, m2v2);
-				
-				_mm_store_pd(temp, m2v0);
-				
-				*pPartials++ = temp[0]+temp[1];
-				
+
+				m2v2 = _mm_unpacklo_pd(temp,m2v0);
+				temp = _mm_unpackhi_pd(temp,m2v0);
+				*pPartials++ = _mm_add_pd(m2v2, temp);
 				
 				
 				m2v0 = _mm_load_pd(&matrices2[w+8]);
@@ -1711,13 +1693,7 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 				
 				m2v0 = _mm_mul_pd(m2v0, p2v0);
 				m2v2 = _mm_mul_pd(m2v2, p2v2);
-				
-				m2v0 = _mm_add_pd(m2v0, m2v2);
-				
-				_mm_store_pd(temp, m2v0);
-				
-				*pPartials++ = temp[0]+temp[1];
-				
+				temp = _mm_add_pd(m2v0, m2v2);
 				
 				
 				m2v0 = _mm_load_pd(&matrices2[w+12]);
@@ -1728,9 +1704,9 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 				
 				m2v0 = _mm_add_pd(m2v0, m2v2);
 				
-				_mm_store_pd(temp, m2v0);
-				
-				*pPartials++ = temp[0]+temp[1];
+				m2v2 = _mm_unpacklo_pd(temp,m2v0);
+				temp = _mm_unpackhi_pd(temp,m2v0);
+				*pPartials++ = _mm_add_pd(m2v2, temp);
 				
 			}
 			v += 4;
@@ -1754,15 +1730,15 @@ void partials_undefined_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, co
 	int k;
 	int w = 0;
 	
-	double *pPartials = partials3;
-	
-	__m128d m1v0, m1v2, m2v0, m2v2, p1v0, p1v2, p2v0, p2v2;
-	double temp[2] __attribute__ ((aligned (16)));
+	__m128d* pPartials = (__m128d*)partials3;
+	__m128d m1v0, m1v2, m2v0, m2v2, p1v0, p1v2, p2v0, p2v2, temp;
 	
 	for ( int l = 0; l < tlk->cat_count; l++ ) {
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
+			
+			w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
+			
 			p1v0 = _mm_load_pd(&partials1[v]);
 			p1v2 = _mm_load_pd(&partials1[v+2]);
 			
@@ -1787,12 +1763,7 @@ void partials_undefined_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, co
 			
 			m2v0 = _mm_add_pd(m2v0, m2v2);
 			
-			m1v0 = _mm_hadd_pd(m1v0, m2v0);
-			
-			_mm_store_pd(temp, m1v0);
-			
-			*pPartials++ = temp[0]*temp[1];
-			
+			temp = _mm_hadd_pd(m1v0, m2v0);
 			
 			
 			m1v0 = _mm_load_pd(&matrices1[w+4]);
@@ -1813,10 +1784,9 @@ void partials_undefined_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, co
 			
 			m1v0 = _mm_hadd_pd(m1v0, m2v0);
 			
-			_mm_store_pd(temp, m1v0);
-			
-			*pPartials++ = temp[0]*temp[1];
-			
+			m2v0 = _mm_unpacklo_pd(temp,m1v0);
+			temp = _mm_unpackhi_pd(temp,m1v0);
+			*pPartials++ = _mm_mul_pd(m2v0, temp);
 			
 			
 			m1v0 = _mm_load_pd(&matrices1[w+8]);
@@ -1835,12 +1805,7 @@ void partials_undefined_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, co
 			
 			m2v0 = _mm_add_pd(m2v0, m2v2);
 			
-			m1v0 = _mm_hadd_pd(m1v0, m2v0);
-			
-			_mm_store_pd(temp, m1v0);
-			
-			*pPartials++ = temp[0]*temp[1];
-			
+			temp = _mm_hadd_pd(m1v0, m2v0);
 			
 			
 			m1v0 = _mm_load_pd(&matrices1[w+12]);
@@ -1861,10 +1826,9 @@ void partials_undefined_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, co
 			
 			m1v0 = _mm_hadd_pd(m1v0, m2v0);
 			
-			_mm_store_pd(temp, m1v0);
-			
-			*pPartials++ = temp[0]*temp[1];
-			
+			m2v0 = _mm_unpacklo_pd(temp,m1v0);
+			temp = _mm_unpackhi_pd(temp,m1v0);
+			*pPartials++ = _mm_mul_pd(m2v0, temp);
 			
 			v += 4;
 		}
@@ -1884,14 +1848,14 @@ void partials_undefined_4_SSE( const SingleTreeLikelihood *tlk, const double *pa
 	int k;
 	int w = 0;
 	
-	double *pPartials = partials3;
-	
-	__m128d m1v0, m1v2, p1v0, p1v2;
-	double temp[2] __attribute__ ((aligned (16)));
+	__m128d *pPartials = (__m128d*)partials3;
+	__m128d m1v0, m1v2, p1v0, p1v2, temp;
 	
 	for ( int l = 0; l < tlk->cat_count; l++ ) {
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
+			
+			w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
 			
 			p1v0 = _mm_load_pd(&partials1[v]);
 			p1v2 = _mm_load_pd(&partials1[v+2]);
@@ -1903,13 +1867,7 @@ void partials_undefined_4_SSE( const SingleTreeLikelihood *tlk, const double *pa
 			
 			m1v0 = _mm_mul_pd(m1v0, p1v0);
 			m1v2 = _mm_mul_pd(m1v2, p1v2);
-			
-			m1v0 = _mm_add_pd(m1v0, m1v2);
-			
-			_mm_store_pd(temp, m1v0);
-			
-			*pPartials++ = temp[0]+temp[1];
-			
+			temp = _mm_add_pd(m1v0, m1v2);
 			
 			
 			m1v0 = _mm_load_pd(&matrices1[w+4]);
@@ -1917,13 +1875,11 @@ void partials_undefined_4_SSE( const SingleTreeLikelihood *tlk, const double *pa
 			
 			m1v0 = _mm_mul_pd(m1v0, p1v0);
 			m1v2 = _mm_mul_pd(m1v2, p1v2);
-			
 			m1v0 = _mm_add_pd(m1v0, m1v2);
 			
-			_mm_store_pd(temp, m1v0);
-			
-			*pPartials++ = temp[0]+temp[1];
-			
+			m1v2 = _mm_unpacklo_pd(temp,m1v0);
+			temp = _mm_unpackhi_pd(temp,m1v0);
+			*pPartials++ = _mm_add_pd(m1v2, temp);
 			
 			
 			m1v0 = _mm_load_pd(&matrices1[w+8]);
@@ -1931,27 +1887,19 @@ void partials_undefined_4_SSE( const SingleTreeLikelihood *tlk, const double *pa
 			
 			m1v0 = _mm_mul_pd(m1v0, p1v0);
 			m1v2 = _mm_mul_pd(m1v2, p1v2);
-			
-			m1v0 = _mm_add_pd(m1v0, m1v2);
-			
-			_mm_store_pd(temp, m1v0);
-			
-			*pPartials++ = temp[0]+temp[1];
-			
+			temp = _mm_add_pd(m1v0, m1v2);
 			
 			
 			m1v0 = _mm_load_pd(&matrices1[w+12]);
 			m1v2 = _mm_load_pd(&matrices1[w+14]);
-			
 			m1v0 = _mm_mul_pd(m1v0, p1v0);
 			m1v2 = _mm_mul_pd(m1v2, p1v2);
 			
 			m1v0 = _mm_add_pd(m1v0, m1v2);
 			
-			_mm_store_pd(temp, m1v0);
-			
-			*pPartials++ = temp[0]+temp[1];
-			
+			m1v2 = _mm_unpacklo_pd(temp,m1v0);
+			temp = _mm_unpackhi_pd(temp,m1v0);
+			*pPartials++ = _mm_add_pd(m1v2, temp);
 			
 			v += 4;
 		}
@@ -2077,7 +2025,7 @@ void update_partials_4_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int pa
 		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
 	}
 }
-
+	
 static void _calculate_branch_likelihood_undefined_SSE(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, const double* partials, const double* matrices){
 	memset(rootPartials, 0, sizeof(double)*tlk->sm->nstate*tlk->pattern_count);
 	int v = 0;
@@ -2250,7 +2198,7 @@ static void _calculate_branch_partials_undefined_SSE(SingleTreeLikelihood *tlk, 
 	
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < tlk->pattern_count; k++) {
-			m = (__m128d*)&matrices[l*16];
+			m = (__m128d*)&matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l*16];
 			p1 = _mm_load_pd(&partials[v]);
 			p2 = _mm_load_pd(&partials[v+2]);
 			
@@ -2293,7 +2241,7 @@ static void _calculate_branch_partials_upper_undefined_SSE(SingleTreeLikelihood 
 			int state = tlk->sp->patterns[k][upperPartialsIndex];
 			
 			if(state < 4){
-				__m128d* m = (__m128d*)&matrices[l * 16 + state*4];
+				__m128d* m = (__m128d*)&matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l * 16 + state*4];
 				temp = _mm_mul_pd(*m, p1); m++;
 				temp = _mm_add_pd(temp, _mm_mul_pd(*m,p2));
 				_mm_store_pd(t,temp);
@@ -2301,7 +2249,7 @@ static void _calculate_branch_partials_upper_undefined_SSE(SingleTreeLikelihood 
 				u+=4;
 			}
 			else{
-				__m128d* m = (__m128d*)&matrices[l*16];
+				__m128d* m = (__m128d*)&matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l*16];
 				
 				temp = _mm_mul_pd(*m, p1); m++;
 				temp = _mm_add_pd(temp, _mm_mul_pd(*m,p2)); m++;
@@ -2335,8 +2283,8 @@ static void _calculate_branch_partials_state_SSE(SingleTreeLikelihood *tlk, doub
 	__m128d* rp = (__m128d*)rootPartials;
 	__m128d* m1, *m2;
 	for(int l = 0; l < tlk->cat_count; l++) {
-		const double* transMatrixPtr = &matrices[l*16];
 		for(int k = 0; k < tlk->pattern_count; k++) {
+			const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l*16];
 			const int state = tlk->sp->patterns[k][partialsIndex];
 			if(state < 4){
 				m1 = (__m128d*)&transMatrixPtr[state*4];
@@ -3251,7 +3199,7 @@ void update_partials_4_AVX( SingleTreeLikelihood *tlk, int partialsIndex, int pa
 
 #pragma mark -
 #pragma mark Upper likelihood Reversible
-	
+
 static void _calculate_branch_likelihood_undefined2(SingleTreeLikelihood *tlk, double* rootPartials, int idx, const double* partials, const double* matrices){
 	memset(rootPartials, 0, sizeof(double)*tlk->sm->nstate*tlk->pattern_count);
 	int v = 0;
@@ -3461,7 +3409,7 @@ static void _calculate_branch_partials_undefined(SingleTreeLikelihood *tlk, doub
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < tlk->pattern_count; k++) {
 			const double* partialsChildPtr = partials+v;
-			const double* transMatrixPtr = &matrices[l*16];
+			const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k) +l*16];
 			
 			double sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
 			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
@@ -3497,7 +3445,7 @@ static void _calculate_branch_partials_state(SingleTreeLikelihood *tlk, double* 
 		for(int k = 0; k < tlk->pattern_count; k++) {
 			int state = tlk->sp->patterns[k][partialsIndex];
 			if(state < 4){
-				int w =  l * 16 + state;
+				int w =  tlk->sm->get_site_category(tlk->sm, k) + l * 16 + state;
 				
 				rootPartials[v] = matrices[w] * upperPartials[v]; w += 4; v++;
 				rootPartials[v] = matrices[w] * upperPartials[v]; w += 4; v++;
@@ -3505,7 +3453,7 @@ static void _calculate_branch_partials_state(SingleTreeLikelihood *tlk, double* 
 				rootPartials[v] = matrices[w] * upperPartials[v]; v++;
 			}
 			else{
-				const double* transMatrixPtr = &matrices[l*16];
+				const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k) + l*16];
 				
 				rootPartials[v] = (transMatrixPtr[0] + transMatrixPtr[1] + transMatrixPtr[2] + transMatrixPtr[3]) * upperPartials[v]; v++;
 				rootPartials[v] = (transMatrixPtr[4] + transMatrixPtr[5] + transMatrixPtr[6] + transMatrixPtr[7]) * upperPartials[v]; v++;
@@ -3530,7 +3478,7 @@ static void _calculate_branch_partials_state2(SingleTreeLikelihood *tlk, double*
 			double sum;
 			
 			if(state < 4){
-				transMatrixPtr = &matrices[l * 16 + state*4];
+				transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k) + l * 16 + state*4];
 				
 				sum = transMatrixPtr[0] * partialsChildPtr[0];
 				sum += transMatrixPtr[1] * partialsChildPtr[1];
@@ -3540,7 +3488,7 @@ static void _calculate_branch_partials_state2(SingleTreeLikelihood *tlk, double*
 				u+=4;
 			}
 			else{
-				transMatrixPtr = &matrices[l*16];
+				transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k) + l*16];
 				
 				sum = transMatrixPtr[0] * partialsChildPtr[0];
 				sum += transMatrixPtr[1] * partialsChildPtr[1];
@@ -4580,23 +4528,4 @@ static void _partial_lower_upper_leaf_sse( const SingleTreeLikelihood *tlk, cons
     }
 }
 
-void node_log_likelihoods_upper_sse_4( const SingleTreeLikelihood *tlk, Node *node ){
-	int node_index = Node_id(node);
-    if ( !Node_isleaf(node) ) {
-        _partial_lower_upper_sse(tlk,
-								 tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[node_index]]][tlk->upper_partial_indexes[node_index]],
-								 tlk->partials[tlk->current_partials_indexes[node_index]][node_index],
-								 tlk->matrices[tlk->current_matrices_indexes[node_index]][node_index],
-								 tlk->sm->get_proportions(tlk->sm),
-								 tlk->pattern_lk+tlk->sp->count );
-    }
-    else {
-        _partial_lower_upper_leaf_sse(tlk,
-									  tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[node_index]]][tlk->upper_partial_indexes[node_index]],
-									  tlk->mapping[node_index],
-									  tlk->matrices[tlk->current_matrices_indexes[node_index]][node_index],
-									  tlk->sm->get_proportions(tlk->sm),
-									  tlk->pattern_lk+tlk->sp->count );
-    }
-}
 #endif
