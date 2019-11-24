@@ -44,15 +44,16 @@ void init_meanfield_gamma(variational_t* var){
 //			return;
 //		}
 
-		Parameter* var_p_mu = Parameters_at(var->var_parameters, i);
-		double dlogP;
-		double d2logP = Model_second_derivative(posterior, Parameters_at(var->parameters, i), &dlogP, 0.001);
-		double mu = Parameters_value(var->parameters, i); // mean = mode of normal
-		double v = -1.0/d2logP; // variance of normal
-//		printf("%f %s\n", mu, Parameter_name(var_p_mu));
-		double q_beta = log(0.5*(mu + sqrt(mu*mu + 4.0*v))/(2.0*v));
-		double q_alpha = log((mu * q_beta + 1.0)*2);
+		// Laplus initialization
+		double d2logP = posterior->d2logP(posterior, Parameters_at(var->parameters, i));
+		double map = Parameters_value(var->parameters, i);
+        
+        double rate = map * -d2logP;
+        double shape = rate*map + 1;
 		
+        double q_alpha = log(shape);
+        double q_beta = log(rate);
+        
 		if (isnan(q_alpha)) {
 			q_alpha = 0;
 		}
@@ -102,13 +103,14 @@ void grad_elbo_gamma_meanfield(variational_t* var, double* grads){
             double dlogP =  posterior->dlogP(posterior, p);
 			
 			double alpha = exp(Parameters_value(var->var_parameters, k));
-			double beta = exp(Parameters_value(var->var_parameters, k+dim));
+            double lbeta = Parameters_value(var->var_parameters, k+dim);
+            double beta = exp(lbeta);
 			
 			double psi_alpha = gsl_sf_psi(alpha);
 			double psi1_alpha = gsl_sf_psi_1(alpha);
 			double psi2_alpha = gsl_sf_psi_n(2, alpha);
 			
-			double epsilon = (log(z[k]) - psi_alpha + log(beta))/sqrt(psi1_alpha);
+			double epsilon = (log(z[k]) - psi_alpha + lbeta)/sqrt(psi1_alpha);
 			
 			double h_alpha = z[k] * (epsilon*psi2_alpha/(2.0*sqrt(psi1_alpha)) + psi1_alpha);
 			double u_alpha = epsilon*psi2_alpha/(2.0*sqrt(psi1_alpha)) + psi1_alpha + (psi2_alpha/(2.0*psi1_alpha));
@@ -117,7 +119,7 @@ void grad_elbo_gamma_meanfield(variational_t* var, double* grads){
 			
 			// alpha
 			double g_rep = dlogP * h_alpha;
-			double dlogqda = log(beta) - psi_alpha + log(z[k]);
+			double dlogqda = lbeta - psi_alpha + log(z[k]);
 			double g_corr = logP*(dlogqdz*h_alpha + dlogqda + u_alpha);
 			grads[k] += g_rep + g_corr;
 			
