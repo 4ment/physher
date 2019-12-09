@@ -33,6 +33,7 @@ typedef struct variational_t{
 	double (*logP)( struct variational_t*, double* x );
     double (*parameters_logP)( struct variational_t*, const Parameters* parameters );
 	void (*finalize)( struct variational_t* );
+    void (*print)( struct variational_t*, FILE* file );
 	bool initialized;
 	bool ready_to_sample;
 	FILE* file;

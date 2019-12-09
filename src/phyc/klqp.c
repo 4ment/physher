@@ -27,6 +27,8 @@
 
 //MARK: Meanfield
 
+//MARK: normal meanfield
+
 void klqp_meanfield_normal_init(variational_t* var){
 	size_t dim = Parameters_count(var->parameters);
 	Model* posterior = var->posterior;
@@ -273,8 +275,49 @@ void klqp_meanfield_normal_grad_elbo(variational_t* var, double* grads){
 	double* zeta = dvector(dim);
 	memset(grads, 0, sizeof(double)*dim*2);
 	
+	int simplex_parameter_count = 0;
+	if (var->simplex_count > 0) {
+		for(int s = 0; s < var->simplex_count; s++){
+			Simplex* simplex = var->simplices[s]->obj;
+			simplex_parameter_count += simplex->K - 1;
+		}
+	}
+	
+	// process simplices first
 	for (int i = 0; i < var->grad_samples; i++) {
-		for ( int j = 0; j < dim; j++) {
+		if (var->simplex_count > 0) {
+			int idx = 0;
+			for(int s = 0; s < var->simplex_count; s++){
+				Simplex* simplex = var->simplices[s]->obj;
+				for(int k = 0; k < simplex->K-1; k++){
+					Parameter* p = Parameters_at(var->parameters, idx);
+					double mu = Parameters_value(var->var_parameters, idx);
+					double sigma = exp(Parameters_value(var->var_parameters, idx+dim));
+					
+					eta[idx] = rnorm();
+					zeta[idx] = eta[idx] * sigma + mu;
+					double theta = inverse_transform2(zeta[idx], Parameter_lower(p), Parameter_upper(p));
+					Parameter_set_value(p, theta);
+					idx++;
+				}
+			}
+			idx = 0;
+			for(int s = 0; s < var->simplex_count; s++){
+				Simplex* simplex = var->simplices[s]->obj;
+				for(int k = 0; k < simplex->K-1; k++){
+					Parameter* p = Parameters_at(var->parameters, idx);
+					double dlogP = posterior->dlogP(posterior, p);
+					double gldits = 1.0/zeta[idx] + 1.0/(zeta[idx]-1.0); // grad log det transform of stick
+					const double gldit = grad_log_det_inverse_transform(zeta[idx], Parameter_lower(p), Parameter_upper(p));
+					double grad_mu = dlogP * grad_inverse_transform(zeta[idx], Parameter_lower(p), Parameter_upper(p)) + gldit + gldits;
+					grads[idx] += grad_mu;
+					grads[dim+idx] += grad_mu * eta[idx] * exp(Parameters_value(var->var_parameters, dim+idx));
+					idx++;
+				}
+			}
+		}
+		
+		for ( int j = simplex_parameter_count; j < dim; j++) {
 			Parameter* p = Parameters_at(var->parameters, j);
 			Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
 			Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
@@ -304,7 +347,7 @@ void klqp_meanfield_normal_grad_elbo(variational_t* var, double* grads){
 			Parameter_set_value(p, theta);
 		}
 		
-		for ( int j = 0; j < dim; j++) {
+		for ( int j = simplex_parameter_count; j < dim; j++) {
 			Parameter* p = Parameters_at(var->parameters, j);
 			Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
 			Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
@@ -435,7 +478,7 @@ bool klqp_meanfield_normal_sample_some(variational_t* var, const Parameters* par
 	return true;
 }
 
-void meanfield_log_samples(variational_t* var, FILE* file){
+void klqp_meanfield_normal_log_samples(variational_t* var, FILE* file){
 	size_t dim = Parameters_count(var->parameters);
 	Model* posterior = var->posterior;
 	double* samples = dvector(dim);
@@ -473,14 +516,14 @@ void meanfield_log_samples(variational_t* var, FILE* file){
 			double sigma = exp(Parameter_value(var_p_sigma));
 			
 			if(Parameter_estimate(var_p_mu)){
-				mu = Parameter_value(var_p_mu);
+				mu = exp(Parameter_value(var_p_mu));
 			}
-			else{
+            else{
 				mu = -10 + sigma * sigma;
 			}
-			double zeta = rnorm() * sigma + mu;
-			logQ += dnorml(zeta, mu, sigma);
-			samples[j] = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), &jacobian);
+            double zeta = rnorm() * sigma + mu;
+            logQ += dnorml(zeta, mu, sigma);
+            samples[j] = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), &jacobian);
 			Parameter_set_value(p, samples[j]);
 		}
 		
@@ -492,18 +535,264 @@ void meanfield_log_samples(variational_t* var, FILE* file){
 				Simplex* simplex = var->simplices[s]->obj;
 				const double* constrained_values = simplex->get_values(simplex);
 				for(int k = 0; k < simplex->K; k++){
-					fprintf(file, ",%f",constrained_values[k]);
+					fprintf(file, ",%e",constrained_values[k]);
 				}
 			}
 		}
 		
 		for (int j = offset; j < dim; j++) {
-			fprintf(file, ",%f", samples[j]);
+			fprintf(file, ",%e", samples[j]);
 		}
 		fprintf(file, "\n");
 	}
 	free(samples);
 }
+
+//MARK: lognormal meanfield
+
+// elbo is calculated using the entropy of the variational distribution
+double klqp_meanfield_lognormal_elbo(variational_t* var){
+    if (var->initialized == false) {
+        klqp_meanfield_normal_init(var);
+        var->initialized = true;
+    }
+
+    double elbo = 0;
+    size_t dim = Parameters_count(var->parameters);
+    Model* posterior = var->posterior;
+    
+    int inf_count = 0;
+    // entropy = log_2(sigma exp(mu + 1/2) sqrt(2 pi))
+    // entropy (nats) = mu + 1/2(log(2 pi e sigma^2))
+    double entropy = log(2.0*M_PI*M_E)/2.0*dim;
+    for (int j = 0; j < dim; j++) {
+        double mu = Parameters_value(var->var_parameters, j);
+        double sigma = exp(Parameters_value(var->var_parameters, j+dim));
+        entropy += mu + log(sigma*sigma)/2.0;
+    }
+    
+    for (int i = 0; i < var->elbo_samples; i++) {
+//        double logQ = 0;
+        for (int j = 0; j < dim; j++) {
+            Parameter* p = Parameters_at(var->parameters, j);
+            double mu = Parameters_value(var->var_parameters, j);
+            double sigma = exp(Parameters_value(var->var_parameters, j+dim));
+            double theta = gsl_ran_lognormal(var->rng, mu, sigma);
+//            logQ += log(gsl_ran_lognormal_pdf(theta, mu, sigma));
+            Parameter_set_value(p, theta);
+        }
+        
+        double logP = posterior->logP(posterior);
+        if(!isinf(logP)) elbo += logP;// - logQ;
+        else inf_count++;
+        
+        if(isinf(elbo) || isnan(elbo)){
+            return elbo;
+        }
+    }
+    return elbo/(var->elbo_samples-inf_count) + entropy;
+}
+
+void klqp_meanfield_lognormal_grad_elbo(variational_t* var, double* grads){
+    if (var->initialized == false) {
+        //klqp_meanfield_normal_init(var);
+        // save for later
+        //        for (int i = 0; i < Parameters_count(var->parameters); i++) {
+        //            Parameter_store(Parameters_at(var->parameters, i));
+        //        }
+        var->initialized = true;
+    }
+    
+    Model* posterior = var->posterior;
+    size_t dim = Parameters_count(var->parameters);
+    double* thetas = dvector(dim);
+    memset(grads, 0, sizeof(double)*dim*2);
+    // entropy = mu + 1/2(log(2 pi e sigma^2))
+    // dE/d\sigma = 1/sigma
+    // dE/d\mu = 1
+    
+    for (int i = 0; i < var->grad_samples; i++) {
+        for ( int j = 0; j < dim; j++) {
+            Parameter* p = Parameters_at(var->parameters, j);
+            double mu = Parameters_value(var->var_parameters, j);
+            double sigma = exp(Parameters_value(var->var_parameters, j+dim));
+            
+            thetas[j] = gsl_ran_lognormal(var->rng, mu, sigma);
+            Parameter_set_value(p, thetas[j]);
+        }
+        
+        for ( int j = 0; j < dim; j++) {
+            Parameter* p = Parameters_at(var->parameters, j);
+            double mu = Parameters_value(var->var_parameters, j);
+            double sigma = exp(Parameters_value(var->var_parameters, j+dim));
+            
+            double dlogP = posterior->dlogP(posterior, p);
+            grads[j] += dlogP * thetas[j];// + 1.0;
+            grads[dim+j] += dlogP * thetas[j] * (log(thetas[j]) - mu)/sigma;// + (log(thetas[j]) - mu)/sigma + 1.0/sigma;
+        }
+    }
+    
+    for (int j = 0; j < dim; j++) {
+        double sigma = exp(Parameters_value(var->var_parameters, j+dim));
+        // last terms are entropy derivatives
+        grads[j] = grads[j]/var->grad_samples + 1.0;
+        grads[dim+j] = grads[dim+j]/var->grad_samples + 1.0/(sigma);
+    }
+    free(thetas);
+    
+    if (var->file != NULL) {
+        fprintf(var->file, "%zu", var->iter++);
+        for(int i = 0; i < Parameters_count(var->var_parameters); i++){
+            fprintf(var->file, ",%e", Parameters_value(var->var_parameters, i));
+        }
+        for(int i = 0; i < Parameters_count(var->var_parameters); i++){
+            fprintf(var->file, ",%e", grads[i]);
+        }
+        fprintf(var->file, "\n");
+    }
+}
+
+// assumes that values are in R+
+double klqp_meanfield_lognormal_logP(variational_t* var, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    double logP = 0;
+    for (size_t i = 0; i < dim; i++) {
+        double mu = Parameters_value(var->var_parameters, i);
+        double sigma = exp(Parameters_value(var->var_parameters, i+dim));
+        logP += log(gsl_ran_lognormal_pdf(values[i], mu, sigma));
+    }
+    return logP;
+}
+
+// assumes that parameters are in R+
+double klqp_meanfield_lognormal_logP_parameters(variational_t* var, const Parameters* parameters){
+    size_t dim = Parameters_count(var->parameters);
+    size_t dim2 = Parameters_count(parameters);
+    double logP = 0;
+    for (int i = 0; i < dim2; i++) {
+        Parameter* p = Parameters_at(parameters, i);
+        for (int j = 0; j < dim; j++) {
+            Parameter* p2 = Parameters_at(var->parameters, j);
+            if (p == p2) {
+                double mu = Parameters_value(var->var_parameters, i);
+                double sigma = exp(Parameters_value(var->var_parameters, i+dim));
+                logP += log(gsl_ran_lognormal_pdf(Parameter_value(p), mu, sigma));
+                break;
+            }
+        }
+    }
+    return logP;
+}
+
+// check success
+bool klqp_meanfield_lognormal_sample(variational_t* var, double* values){
+    if(!var->ready_to_sample){
+        var->finalize(var);
+        var->ready_to_sample = true;
+    }
+    size_t dim = Parameters_count(var->parameters);
+    for (size_t i = 0; i < dim; i++) {
+        Parameter* p = Parameters_at(var->parameters, i);
+        if (!p->estimate) {
+            values[i] = 0;
+            continue;
+        }
+        double mu = Parameters_value(var->var_parameters, i);
+        double sigma = exp(Parameters_value(var->var_parameters, i+dim));
+        values[i] = gsl_ran_lognormal(var->rng, mu, sigma);
+    }
+    return true;
+}
+
+bool klqp_meanfield_lognormal_sample_some(variational_t* var, const Parameters* parameters, double* values){
+    if(!var->ready_to_sample){
+        var->finalize(var);
+        var->ready_to_sample = true;
+    }
+    size_t dim = Parameters_count(var->parameters);
+    size_t dim2 = Parameters_count(parameters);
+    for (int i = 0; i < dim2; i++) {
+        Parameter* p = Parameters_at(parameters, i);
+        for (int j = 0; j < dim; j++) {
+            Parameter* p2 = Parameters_at(var->parameters, j);
+            if (p == p2) {
+                if (!p->estimate) {
+                    values[i] = 0;
+                }
+                else{
+                    double mu = Parameters_value(var->var_parameters, j);
+                    double sigma = Parameters_value(var->var_parameters, j+dim);
+                    values[i] = gsl_ran_lognormal(var->rng, mu, sigma);
+                }
+                break;
+            }
+        }
+    }
+    return true;
+}
+
+void klqp_meanfield_lognormal_log_samples(variational_t* var, FILE* file){
+    size_t dim = Parameters_count(var->parameters);
+    Model* posterior = var->posterior;
+    double* samples = dvector(dim);
+    fprintf(file, "sample,logP,logQ");
+    
+    int offset = 0; // don't log the simplex unconstrained parameters
+    if (var->simplex_count > 0) {
+        for(int s = 0; s < var->simplex_count; s++){
+            Model* msimplex = var->simplices[s];
+            Simplex* simplex = msimplex->obj;
+            for(int k = 0; k < simplex->K; k++){
+                fprintf(file, ",%s.%d", msimplex->name, k);
+            }
+            offset += simplex->K-1;
+        }
+    }
+    
+    for (int j = offset; j < dim; j++) {
+        fprintf(file, ",%s", Parameters_name(var->parameters, j));
+    }
+    fprintf(file, "\n");
+    
+    for (int i = 0; i < var->log_samples; i++) {
+        
+        double logQ = 0;
+        double jacobian = 0.0;
+        for (int j = 0; j < dim; j++) {
+            Parameter* p = Parameters_at(var->parameters, j);
+            Parameter* var_p_mu = Parameters_at(var->var_parameters, j);
+            Parameter* var_p_sigma = Parameters_at(var->var_parameters, j+dim);
+            
+            double mu = Parameter_value(var_p_mu);
+            double sigma = exp(Parameter_value(var_p_sigma));
+            
+            if(i==0)printf("%f %f\n", mu, sigma);
+            samples[j] = gsl_ran_lognormal(var->rng, mu, sigma);
+            logQ += dnorml(samples[j], mu, sigma);
+            Parameter_set_value(p, samples[j]);
+        }
+        
+        double logP = posterior->logP(posterior) + jacobian;
+        fprintf(file, "%d,%f,%f", i, logP, logQ);
+        
+        if (var->simplex_count > 0) {
+            for(int s = 0; s < var->simplex_count; s++){
+                Simplex* simplex = var->simplices[s]->obj;
+                const double* constrained_values = simplex->get_values(simplex);
+                for(int k = 0; k < simplex->K; k++){
+                    fprintf(file, ",%e",constrained_values[k]);
+                }
+            }
+        }
+        
+        for (int j = offset; j < dim; j++) {
+            fprintf(file, ",%e", samples[j]);
+        }
+        fprintf(file, "\n");
+    }
+    free(samples);
+}
+
 
 //MARK: Fullrank
 
@@ -814,11 +1103,24 @@ bool klqp_fullrank_normal_sample(variational_t* var, double* values){
 	return true;
 }
 
-void fullrank_log_samples(variational_t* var, FILE* file){
+void klqp_fullrank_log_samples(variational_t* var, FILE* file){
 	size_t dim = Parameters_count(var->parameters);
 	Model* posterior = var->posterior;
 	fprintf(file, "sample,logP,logQ");
-	for (int j = 0; j < dim; j++) {
+	
+	int offset = 0; // don't log the simplex unconstrained parameters
+	if (var->simplex_count > 0) {
+		for(int s = 0; s < var->simplex_count; s++){
+			Model* msimplex = var->simplices[s];
+			Simplex* simplex = msimplex->obj;
+			for(int k = 0; k < simplex->K; k++){
+				fprintf(file, ",%s.%d", msimplex->name, k);
+			}
+			offset += simplex->K-1;
+		}
+	}
+	
+	for (int j = offset; j < dim; j++) {
 		fprintf(file, ",%s", Parameters_name(var->parameters, j));
 	}
 	fprintf(file, "\n");
@@ -853,7 +1155,18 @@ void fullrank_log_samples(variational_t* var, FILE* file){
 		
 		double logP = posterior->logP(posterior) + jacobian;
 		fprintf(file, "%d,%f,%f", k, logP, logQ);
-		for (int j = 0; j < dim; j++) {
+		
+		if (var->simplex_count > 0) {
+			for(int s = 0; s < var->simplex_count; s++){
+				Simplex* simplex = var->simplices[s]->obj;
+				const double* constrained_values = simplex->get_values(simplex);
+				for(int k = 0; k < simplex->K; k++){
+					fprintf(file, ",%f",constrained_values[k]);
+				}
+			}
+		}
+		
+		for (int j = offset; j < dim; j++) {
 			fprintf(file, ",%f", samples[j]);
 		}
 		fprintf(file, "\n");

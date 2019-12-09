@@ -23,4 +23,6 @@ double variational_gamma_meanfield_logP(variational_t* var, double* values);
 
 bool variational_sample_some_gamma_meanfield(variational_t* var, const Parameters* parameters, double* values);
 
+void meanfield_gamma_log_samples(variational_t* var, FILE* file);
+
 #endif /* gamvi_h */

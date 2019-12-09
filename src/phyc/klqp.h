@@ -33,7 +33,24 @@ bool klqp_meanfield_normal_sample(variational_t* var, double* values);
 
 bool klqp_meanfield_normal_sample_some(variational_t* var, const Parameters* parameters, double* values);
 
-void meanfield_log_samples(variational_t* var, FILE* file);
+void klqp_meanfield_normal_log_samples(variational_t* var, FILE* file);
+
+//MARK: lognormal meanfield
+
+double klqp_meanfield_lognormal_elbo(variational_t* var);
+
+void klqp_meanfield_lognormal_grad_elbo(variational_t* var, double* grads);
+
+double klqp_meanfield_lognormal_logP(variational_t* var, double* values);
+
+double klqp_meanfield_lognormal_logP_parameters(variational_t* var, const Parameters* parameters);
+
+bool klqp_meanfield_lognormal_sample(variational_t* var, double* values);
+
+bool klqp_meanfield_lognormal_sample_some(variational_t* var, const Parameters* parameters, double* values);
+
+void klqp_meanfield_lognormal_log_samples(variational_t* var, FILE* file);
+
 
 //MARK: Fullrank
 
@@ -49,6 +66,6 @@ double klqp_fullrank_normal_logP_parameters(variational_t* var, const Parameters
 
 bool klqp_fullrank_normal_sample(variational_t* var, double* values);
 
-void fullrank_log_samples(variational_t* var, FILE* file);
+void klqp_fullrank_log_samples(variational_t* var, FILE* file);
 
 #endif /* klqp_h */

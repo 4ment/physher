@@ -646,6 +646,7 @@ Tree * new_Tree2( Node *root, bool containBL ){
 	atree->rooted = false;
 	atree->dated = false;
 	atree->time_mode = false;
+	atree->homochronous = true;
 	
 	_Tree_count_nodes(root, &atree->nTips, &atree->nNodes);
 	

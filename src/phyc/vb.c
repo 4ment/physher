@@ -15,6 +15,7 @@
 #include "tree.h"
 #include "utils.h"
 #include "transforms.h"
+#include "matrix.h"
 
 #include "gamvi.h"
 
@@ -112,24 +113,41 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	StringBuffer* buffer = new_StringBuffer(10);
 	if(strcasecmp(var_string, "meanfield") == 0){
 //		printf("Creating meanfield variational model\n");
+        size_t param_count = 2;
+        char** params = malloc(param_count*sizeof(char*));
+        
+        if (strcasecmp(dist_string, "normal") == 0 || strcasecmp(dist_string, "lognormal") == 0) {
+            params[0] = String_clone(".mu");
+            params[1] = String_clone(".sigma");
+        }
+        else if(strcasecmp(dist_string, "gamma") == 0){
+            params[0] = String_clone(".alpha");
+            params[1] = String_clone(".beta");
+        }
+        else{
+            fprintf(stderr, "meanfield distribution should be: normal, lognormal, or gamma");
+            exit(1);
+        }
+        if(var->var_parameters == NULL){
+            var->var_parameters = new_Parameters(dim*2); // mean + sd
+            for(size_t i = 0; i < dim; i++){
+                StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
+                StringBuffer_append_string(buffer, params[0]);
+                Parameter* p = new_Parameter(buffer->c, 0, NULL);
+                p->id = (int)i;
+                Parameters_move(var->var_parameters, p);
+            }
+            for(size_t i = 0; i < dim; i++){
+                StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
+                StringBuffer_append_string(buffer, params[1]);
+                Parameter* p = new_Parameter(buffer->c, 0, NULL);
+                p->id = (int)(i+dim);
+                Parameters_move(var->var_parameters, p);
+            }
+        }
+        free_cmatrix(params, param_count);
+        
 		if (strcasecmp(dist_string, "normal") == 0) {
-			if(var->var_parameters == NULL){
-				var->var_parameters = new_Parameters(dim*2); // mean + sd
-				for(size_t i = 0; i < dim; i++){
-					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
-					StringBuffer_append_string(buffer, ".mean");
-					Parameter* p = new_Parameter(buffer->c, 0, NULL);
-					p->id = (int)i;
-					Parameters_move(var->var_parameters, p);
-				}
-				for(size_t i = 0; i < dim; i++){
-					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
-					StringBuffer_append_string(buffer, ".sd");
-					Parameter* p = new_Parameter(buffer->c, 0, NULL);
-					p->id = (int)(i+dim);
-					Parameters_move(var->var_parameters, p);
-				}
-			}
 			bool backward = get_json_node_value_bool(node, "backward", true); // true is KL(Q||P)
 			if(backward){
 				var->elbofn = klqp_meanfield_normal_elbo;
@@ -147,25 +165,9 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 			var->finalize = klqp_meanfield_normal_finalize;
 			var->logP = klqp_meanfield_normal_logP;
 			var->parameters_logP = klqp_meanfield_normal_logP_parameters;
+            var->print = klqp_meanfield_normal_log_samples;
 		}
-		else if (strcasecmp(dist_string, "gamma") == 0) {
-			if(var->var_parameters == NULL){
-				var->var_parameters = new_Parameters(dim*2); // alpha + beta
-				for(size_t i = 0; i < dim; i++){
-					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
-					StringBuffer_append_string(buffer, ".alpha");
-					Parameter* p = new_Parameter(buffer->c, 0, NULL);
-					p->id = (int)i;
-					Parameters_move(var->var_parameters, p);
-				}
-				for(size_t i = 0; i < dim; i++){
-					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
-					StringBuffer_append_string(buffer, ".beta");
-					Parameter* p = new_Parameter(buffer->c, 0, NULL);
-					p->id = (int)(i+dim);
-					Parameters_move(var->var_parameters, p);
-				}
-			}
+        else if (strcasecmp(dist_string, "gamma") == 0) {
 			var->elbofn = elbo_gamma_meanfield;
 			var->grad_elbofn = grad_elbo_gamma_meanfield;
 			
@@ -174,7 +176,19 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 			var->finalize = NULL; //TODO: implement function
 			var->logP = variational_gamma_meanfield_logP;
 			var->parameters_logP = variational_gamma_meanfield_parameters_logP;
+            var->print = meanfield_gamma_log_samples;
 		}
+        else if (strcasecmp(dist_string, "lognormal") == 0) {
+            var->elbofn = klqp_meanfield_lognormal_elbo;
+            var->grad_elbofn = klqp_meanfield_lognormal_grad_elbo;
+            var->sample = klqp_meanfield_lognormal_sample;
+            var->sample_some = klqp_meanfield_lognormal_sample_some;
+            //TODO: implement lognormal finalize
+            var->finalize = klqp_meanfield_normal_finalize;
+            var->logP = klqp_meanfield_lognormal_logP;
+            var->parameters_logP = klqp_meanfield_lognormal_logP_parameters;
+            var->print = klqp_meanfield_lognormal_log_samples;
+        }
 		else{
 			fprintf(stderr, "distribution %s not recognized\n", dist_string);
 			exit(1);
@@ -207,7 +221,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 						StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
 						StringBuffer_append_strings(buffer, 2, ".", Parameters_name(var->parameters, j));
 						StringBuffer_append_string(buffer, ".cov");
-						Parameter* p = new_Parameter(buffer->c, 1, NULL);
+						Parameter* p = new_Parameter(buffer->c, 0.1, NULL);
 						if (Node_parent(nodei) != nodej && Node_parent(nodej) != nodei && Node_sibling(nodei) != nodej) {
 							p->estimate = false;
 							p->value = 0;
@@ -218,7 +232,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 					}
 					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
 					StringBuffer_append_string(buffer, ".var");
-					Parameter* p = new_Parameter(buffer->c, 1, NULL);
+					Parameter* p = new_Parameter(buffer->c, 0.1, NULL);
 					Parameters_move(var->var_parameters, p);
 				}
 			}
@@ -230,13 +244,13 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 						StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
 						StringBuffer_append_strings(buffer, 2, ".", Parameters_name(var->parameters, j));
 						StringBuffer_append_string(buffer, ".cov");
-						Parameter* p = new_Parameter(buffer->c, 1, NULL);
+						Parameter* p = new_Parameter(buffer->c, 0.1, NULL);
 						Parameters_move(var->var_parameters, p);
 						row++;
 					}
 					StringBuffer_set_string(buffer, Parameters_name(var->parameters, i));
 					StringBuffer_append_string(buffer, ".var");
-					Parameter* p = new_Parameter(buffer->c, 1, NULL);
+					Parameter* p = new_Parameter(buffer->c, 0.1, NULL);
 					Parameters_move(var->var_parameters, p);
 		//			p->estimate = false;
 					row++;
@@ -249,6 +263,7 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		var->sample = klqp_fullrank_normal_sample;
 		var->logP = klqp_fullrank_normal_logP;
         var->parameters_logP = klqp_fullrank_normal_logP_parameters;
+        var->print = klqp_fullrank_log_samples;
 	}
 	
 	// variational parameters were not provided 
@@ -425,13 +440,7 @@ void _variational_model_sample(Model* self, double* samples, double* logP){
 static void _variational_print(Model* self, FILE* file){
 	variational_t* var = (variational_t*)self->obj;
 	if(var->log_samples > 0){
-		if(Parameters_count(var->var_parameters) == 2*Parameters_count(var->parameters)){
-			meanfield_log_samples(var, file);
-		}
-		else{
-			fullrank_log_samples(var, file);
-		}
-		
+        var->print(var, file);
 		return;
 	}
 

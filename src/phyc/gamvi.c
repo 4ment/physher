@@ -225,7 +225,6 @@ double variational_gamma_meanfield_logP(variational_t* var, double* values){
 	int dim = Parameters_count(var->parameters);
 	double logP = 0;
 	for (int i = 0; i < dim; i++) {
-		Parameter* p = Parameters_at(var->parameters, i);
 		double alpha = exp(Parameters_value(var->var_parameters, i));
 		double beta = exp(Parameters_value(var->var_parameters, i+dim));
 		logP += log(gsl_ran_gamma_pdf(values[i], alpha, 1.0/beta));
@@ -259,4 +258,63 @@ bool variational_sample_some_gamma_meanfield(variational_t* var, const Parameter
 		}
 	}
 	return true;
+}
+
+void meanfield_gamma_log_samples(variational_t* var, FILE* file){
+    size_t dim = Parameters_count(var->parameters);
+    Model* posterior = var->posterior;
+    double* samples = dvector(dim);
+    fprintf(file, "sample,logP,logQ");
+    
+    int offset = 0; // don't log the simplex unconstrained parameters
+    if (var->simplex_count > 0) {
+        for(int s = 0; s < var->simplex_count; s++){
+            Model* msimplex = var->simplices[s];
+            Simplex* simplex = msimplex->obj;
+            for(int k = 0; k < simplex->K; k++){
+                fprintf(file, ",%s.%d", msimplex->name, k);
+            }
+            offset += simplex->K-1;
+        }
+    }
+    
+    for (int j = offset; j < dim; j++) {
+        fprintf(file, ",%s", Parameters_name(var->parameters, j));
+    }
+    fprintf(file, "\n");
+    
+    for (int i = 0; i < var->log_samples; i++) {
+        
+        double logQ = 0;
+        double jacobian = 0.0;
+        for (int j = 0; j < dim; j++) {
+            Parameter* p = Parameters_at(var->parameters, j);
+            double mu = exp(Parameters_value(var->var_parameters, j));
+            double sigma = exp(Parameters_value(var->var_parameters, j+dim));
+            
+            
+            samples[j] = gsl_ran_gamma(var->rng, mu, 1.0/sigma);
+            logQ += log(gsl_ran_gamma_pdf(samples[j], mu, 1.0/sigma));
+            Parameter_set_value(p, samples[j]);
+        }
+        
+        double logP = posterior->logP(posterior) + jacobian;
+        fprintf(file, "%d,%f,%f", i, logP, logQ);
+        
+        if (var->simplex_count > 0) {
+            for(int s = 0; s < var->simplex_count; s++){
+                Simplex* simplex = var->simplices[s]->obj;
+                const double* constrained_values = simplex->get_values(simplex);
+                for(int k = 0; k < simplex->K; k++){
+                    fprintf(file, ",%e",constrained_values[k]);
+                }
+            }
+        }
+        
+        for (int j = offset; j < dim; j++) {
+            fprintf(file, ",%e", samples[j]);
+        }
+        fprintf(file, "\n");
+    }
+    free(samples);
 }
