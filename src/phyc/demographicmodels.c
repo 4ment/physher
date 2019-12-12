@@ -482,22 +482,81 @@ double _constant_calculate( Coalescent* coal ){
 	return coal->logP;
 }
 
+
+static void _premultiply_proportions(Node* node, double* descendant, unsigned *map, Parameters* reparams){
+    if(!Node_isleaf(node)){
+        descendant[Node_id(node)] = descendant[Node_id(node->parent)]*Parameters_value(reparams, map[Node_id(node)]);
+        _premultiply_proportions(node->left, descendant, map, reparams);
+        _premultiply_proportions(node->right, descendant, map, reparams);
+    }
+}
+
+static void _get_lower(Node* node, double* lower){
+    if(!Node_isleaf(node)){
+        _get_lower(node->left, lower);
+        _get_lower(node->right, lower);
+    }
+    else{
+        *lower = dmax(Node_height(node), *lower);
+    }
+}
+
 double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
-	if(p != Parameters_at(coal->p, 0)) return 0;
+	if(p != Parameters_at(coal->p, 0) && p->model != MODEL_TREE) return 0;
 	if ( coal->need_update_intervals ) {
 		_update_intervals(coal);
 	}
-	double theta = Parameters_value(coal->p, 0);
-	double theta2 = theta*theta;
-	double dlogP = 0.0;
-	for( int i = 0; i< coal->n; i++  ){
-		dlogP += choose(coal->lineages[i], 2) * coal->times[i] /theta2;
-		
-		if( coal->iscoalescent[i] ){
-			dlogP -= 1.0/theta;
-		}
-		
-	}
+    double dlogP = 0.0;
+    if(p == Parameters_at(coal->p, 0)){
+        double theta = Parameters_value(coal->p, 0);
+        double theta2 = theta*theta;
+        for( int i = 0; i< coal->n; i++  ){
+            dlogP += choose(coal->lineages[i], 2) * coal->times[i] /theta2;
+            
+            if( coal->iscoalescent[i] ){
+                dlogP -= 1.0/theta;
+            }
+            
+        }
+    }
+    else{
+        Node* node = Tree_node(coal->tree, -p->id-1);
+        size_t node_id = Node_id(node);
+        size_t index = 0;
+        double* proportion_derivatives = dvector(coal->n);
+        double lower = 0;
+        double theta = Parameters_value(coal->p, 0);
+        for(; index < coal->n; index++){
+            if(node_id == coal->nodes[index]->index){
+                break;
+            }
+        }
+        unsigned *map = get_reparam_map(coal->tree);
+        Parameters* reparams = get_reparams(coal->tree);
+        _get_lower(node, &lower);
+        
+        if (Node_isroot(node)) {
+            proportion_derivatives[Node_id(node)] = 1;
+        }
+        else{
+            proportion_derivatives[Node_id(node)] = Node_height(Node_parent(node)) - lower;
+            dlogP = proportion_derivatives[Node_id(node)]*choose(coal->lineages[index+1], 2);
+        }
+        _premultiply_proportions(node->left, proportion_derivatives, map, reparams);
+        _premultiply_proportions(node->right, proportion_derivatives, map, reparams);
+        
+        index--;
+        Node* parent = node;
+        Node* n = Tree_node(coal->tree, coal->nodes[index]->index);
+        while(index != 0){
+            dlogP -= (proportion_derivatives[Node_id(parent)] - proportion_derivatives[Node_id(n)])*choose(coal->lineages[index+1], 2);
+            parent = n;
+            index--;
+            n = Tree_node(coal->tree, coal->nodes[index]->index);
+        }
+        free(proportion_derivatives);
+        dlogP /= theta;
+    }
 	return dlogP;
 }
 

@@ -516,7 +516,7 @@ void klqp_meanfield_normal_log_samples(variational_t* var, FILE* file){
 			double sigma = exp(Parameter_value(var_p_sigma));
 			
 			if(Parameter_estimate(var_p_mu)){
-				mu = exp(Parameter_value(var_p_mu));
+				mu = Parameter_value(var_p_mu);
 			}
             else{
 				mu = -10 + sigma * sigma;
