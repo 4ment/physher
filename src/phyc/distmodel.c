@@ -359,31 +359,32 @@ double DistributionModel_lognormal_logP_with_values(DistributionModel* dm, const
 
 double DistributionModel_lognormal_dlogP(DistributionModel* dm, const Parameter* p){
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
-		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
+		if (p == Parameters_at(dm->x,i)) {
 			double mu = Parameters_value(dm->parameters, 0);
 			double sigma = Parameters_value(dm->parameters, 1);
 			if(Parameters_count(dm->parameters) > 2){
 				mu = Parameters_value(dm->parameters, i*2);
 				sigma = Parameters_value(dm->parameters, i*2+1);
 			}
-			error("DistributionModel_lognormal_dlogP not yet implemented");
-			return INFINITY;
-			
+            double x = Parameter_value(p);
+			return -1.0/x - (log(x) - mu)/(sigma*sigma*x);
 		}
 	}
 	return 0;
 }
 
 double DistributionModel_lognormal_d2logP(DistributionModel* dm, const Parameter* p){
-	error("DistributionModel_lognormal_d2logP not yet implemented");
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
-		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
-			double alpha = Parameters_value(dm->parameters, 0);
-			if(Parameters_count(dm->parameters) > 2){
-				alpha = Parameters_value(dm->parameters, i*2);
-			}
-			return -(alpha-1.0)/Parameter_value(p)/Parameter_value(p);
-		}
+		if (p == Parameters_at(dm->x,i)) {
+            double mu = Parameters_value(dm->parameters, 0);
+            double sigma = Parameters_value(dm->parameters, 1);
+            if(Parameters_count(dm->parameters) > 2){
+                mu = Parameters_value(dm->parameters, i*2);
+                sigma = Parameters_value(dm->parameters, i*2+1);
+            }
+            double x = Parameter_value(p);
+            return -1.0/(x*x) + (log(x) - mu)/(sigma*sigma*x*x);
+        }
 	}
 	return 0;
 }
@@ -627,10 +628,10 @@ DistributionModel* new_IndependantNormalDistributionModel_with_parameters(Parame
 	return dm;
 }
 
-DistributionModel* new_IndependantLognormalDistributionModel(const double shape, const double rate, const Parameters* x){
+DistributionModel* new_IndependantLognormalDistributionModel(const double mu, const double sigma, const Parameters* x){
 	Parameters* ps = new_Parameters(2);
-	Parameters_move(ps, new_Parameter("gamma.shape", shape, NULL));
-	Parameters_move(ps, new_Parameter("gamma.rate", rate, NULL));
+    Parameters_move(ps, new_Parameter("lognormal.mean", mu, NULL));
+    Parameters_move(ps, new_Parameter("lognormal.sigma", sigma, NULL));
 	DistributionModel* dm = new_DistributionModel(ps, x);
 	dm->type = DISTRIBUTION_LOGNORMAL;
 	dm->logP = DistributionModel_lognormal_logP;
