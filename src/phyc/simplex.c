@@ -127,9 +127,11 @@ Simplex* new_Simplex_with_values(const double *x, size_t K){
 	size_t N = K-1;
 	double stick = 1;
 	for(int i = 0; i < N; i++){
+        Constraint* constraint = new_Constraint(0, 1);
+        Constraint_set_fupper(constraint, 0.99);
 		double phi = simplex->values[i]/stick;
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0, 1)));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, constraint));
 		Parameters_at(simplex->parameters, i)->id = i;
 		stick -= simplex->values[i];
 	}
@@ -155,9 +157,12 @@ Simplex* new_Simplex(size_t K){
 	}
 	double stick = 1;
 	for(int i = 0; i < N; i++){
+        Constraint* constraint = new_Constraint(0, 1);
+        Constraint_set_fupper(constraint, 0.999);
+        Constraint_set_flower(constraint, 0.001);
 		double phi = simplex->values[i]/stick;
 		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, new_Constraint(0, 1)));
+		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, constraint));
 		Parameters_at(simplex->parameters, i)->id = i;
 		stick -= simplex->values[i];
 	}
