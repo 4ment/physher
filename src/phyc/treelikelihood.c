@@ -198,6 +198,26 @@ double _singleTreeLikelihood_reparametrized_full_logP(Model *self){
 	return self->lp;
 }
 
+static void _calculate_dlog_jacobian(Node* noderef, Node* node, double* dlogP, double* descendant, unsigned *map, Parameters* reparams, double* lowers){
+    if(!Node_isleaf(node)){
+        if(!Node_isroot(node) && node != noderef){
+            descendant[Node_id(node)] = descendant[Node_id(node->parent)]*Parameters_value(reparams, map[Node_id(node)]);
+        }
+        else if(!Node_isroot(node)){
+            descendant[Node_id(node)] = Node_height(Node_parent(node)) - lowers[Node_id(node)];
+        }
+        else{
+            descendant[Node_id(node)] = 1;
+        }
+        _calculate_dlog_jacobian(noderef, node->left, dlogP, descendant, map, reparams, lowers);
+        _calculate_dlog_jacobian(noderef, node->right, dlogP, descendant, map, reparams, lowers);
+        
+        if(!Node_isroot(node) && node != noderef){
+            *dlogP += descendant[Node_id(node->parent)]/(Node_height(Node_parent(node)) - lowers[Node_id(node)]);
+        }
+    }
+}
+
 double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 	
@@ -233,19 +253,29 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 	if (p->model == MODEL_TREE) {
 		double* pattern_dlikelihoods = tlk->pattern_lk + 2*tlk->sp->count;
 		Node* node = NULL;
-		
+        double adjustement = 0;
 		// reparameterized heights
 		if (p->id < 0) {
 			int realIndex = -p->id-1;
 			node = Tree_node(tlk->tree, realIndex);
 			calculate_dldp_uppper_reparam(tlk, node, pattern_dlikelihoods);
+            double* descendant = dvector(Tree_node_count(tlk->tree));
+            unsigned *map = get_reparam_map(tlk->tree);
+            Parameters* reparams = get_reparams(tlk->tree);
+            double* lowers = dvector(Tree_node_count(tlk->tree));
+            if (!Tree_homochronous(tlk->tree)) {
+                collect_lowers(Tree_root(tlk->tree), lowers);
+            }
+            _calculate_dlog_jacobian(node, node, &adjustement, descendant, map, reparams, lowers);
+            free(lowers);
+            free(descendant);
 		}
 		// distances
 		else{
 			node = Tree_node(tlk->tree, p->id);
 			calculate_dldt_uppper(tlk, node, pattern_dlikelihoods);
 		}
-		dlogP = dlnldt_uppper(tlk, pattern_likelihoods, pattern_dlikelihoods);
+		dlogP = dlnldt_uppper(tlk, pattern_likelihoods, pattern_dlikelihoods) + adjustement;
 //		printf("dlogP: %f finite diff: %f (%d %s) %f == %d -- %e\n", dlogP, Model_first_derivative(self, p, 0.00001), node->id, p->name, p->value, node->depth, Node_height(node));
 	}
 	else if(p->model == MODEL_SUBSTITUTION){
@@ -2923,9 +2953,12 @@ void derivative_P_wrt_p_heterochronous(SingleTreeLikelihood* tlk, Node* node, co
 	
 	d *= tlk->bm->get(tlk->bm, node);
 	
-	for (int k = 0; k < tlk->matrix_size*cat_count; k++) {
-		mat[k] *= d;
-	}
+    for (int i = 0; i < cat_count; i++) {
+        double v = d * tlk->sm->get_rate(tlk->sm, i);
+        for (int k = 0; k < tlk->matrix_size; k++) {
+            mat[i*tlk->matrix_size+k] *= v;
+        }
+    }
 }
 
 // called on node that is reparameterized with p
