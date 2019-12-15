@@ -964,36 +964,90 @@ double _coalescent_skyride_calculate( Coalescent* coal ){
 
 double _skyride_calculate_dlogP( Coalescent* coal, const Parameter* p ){
 	int ii = 0;
-	for(; ii < Parameters_count(coal->p); ii++){
-		if(Parameters_at(coal->p, ii) == p){
-			break;
-		}
-	}
-	if(ii == Parameters_count(coal->p)) return 0;
-	
+    if(p->model == MODEL_TREE){
+        
+    }
+    else{
+        for(; ii < Parameters_count(coal->p); ii++){
+            if(Parameters_at(coal->p, ii) == p){
+                break;
+            }
+        }
+        if(ii == Parameters_count(coal->p)) return 0;
+    }
+    
 	if ( coal->need_update_intervals ) {
 		_update_intervals(coal);
 	}
-	
-	int index = 0;
-	double dlogP = 0;
-	double mexpPop = exp(-Parameters_value(coal->p, ii));
-	for( int i = 0; i< coal->n; i++  ){
-		// t==0 for consecutive samling events
-		if(coal->times[i] != 0.0){
-			if(index == ii){
-				dlogP += coal->times[i]*choose(coal->lineages[i], 2)*mexpPop;
-			}
-		}
-		
-		if(coal->iscoalescent[i]){
-			if( index == ii){
-				dlogP -= 1.0;
-				break;
-			}
-			index++;
-		}
-	}
+	double dlogP = 0.0;
+    if(p->model != MODEL_TREE){
+        int index = 0;
+        double mexpPop = exp(-Parameters_value(coal->p, ii));
+        for( int i = 0; i< coal->n; i++  ){
+            // t==0 for consecutive samling events
+            if(coal->times[i] != 0.0){
+                if(index == ii){
+                    dlogP += coal->times[i]*choose(coal->lineages[i], 2)*mexpPop;
+                }
+            }
+            
+            if(coal->iscoalescent[i]){
+                if( index == ii){
+                    dlogP -= 1.0;
+                    break;
+                }
+                index++;
+            }
+        }
+    }
+    else{
+        Node* node = Tree_node(coal->tree, -p->id-1);
+        size_t node_id = Node_id(node);
+        size_t index = 0;
+        double lower = 0;
+        for(; index < coal->n; index++){
+            if(node_id == coal->nodes[index]->index){
+                break;
+            }
+        }
+        // another tree
+        if(index == coal->n) return 0;
+        
+        double* proportion_derivatives = dvector(coal->n);
+        unsigned *map = get_reparam_map(coal->tree);
+        Parameters* reparams = get_reparams(coal->tree);
+        _get_lower(node, &lower);
+        size_t theta_index = 0;
+        for(int i = 0; i < index; i++){
+            if(coal->iscoalescent[i]){
+                theta_index++;
+            }
+        }
+        
+        if (Node_isroot(node)) {
+            proportion_derivatives[Node_id(node)] = 1;
+        }
+        else{
+            proportion_derivatives[Node_id(node)] = Node_height(Node_parent(node)) - lower;
+            dlogP = proportion_derivatives[Node_id(node)]*choose(coal->lineages[index+1], 2)/exp(Parameters_value(coal->p, theta_index+1));
+        }
+        _premultiply_proportions(node->left, proportion_derivatives, map, reparams);
+        _premultiply_proportions(node->right, proportion_derivatives, map, reparams);
+        index--;
+        Node* parent = node;
+        Node* n = Tree_node(coal->tree, coal->nodes[index]->index);
+        while(index != 0){
+            dlogP -= (proportion_derivatives[Node_id(parent)] - proportion_derivatives[Node_id(n)])*choose(coal->lineages[index+1], 2)/exp(Parameters_value(coal->p, theta_index));
+            parent = n;
+            index--;
+            n = Tree_node(coal->tree, coal->nodes[index]->index);
+            // t==0 for consecutive samling events
+            if(coal->times[index+1] != 0.0){
+                theta_index--;
+            }
+        }
+        free(proportion_derivatives);
+    }
 	
 	return dlogP;
 }

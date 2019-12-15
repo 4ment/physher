@@ -208,5 +208,7 @@ bool Tree_is_time_mode(Tree* tree);
 Parameters* get_reparams(Tree* tree);
 unsigned* get_reparam_map(Tree* tree);
 
+void collect_lowers(Node* node, double* lowers);
+
 #endif
 
