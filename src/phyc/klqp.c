@@ -896,9 +896,7 @@ double klqp_fullrank_normal_elbo(variational_t* var){
 	Model* posterior = var->posterior;
 	double elbo = 0;
 	size_t dim = Parameters_count(var->parameters);
-	size_t grad_dim = Parameters_count(var->var_parameters);
-	
-	double* eta = dvector(grad_dim);
+	double* eta = dvector(dim);
 	
 	// Entropy
 	double entropy = 0;
@@ -906,20 +904,20 @@ double klqp_fullrank_normal_elbo(variational_t* var){
 	int count = 0;
 	for (int d = 0; d < dim; ++d) {
 		r += d+1;
-		if(Parameters_estimate(var->var_parameters, r)){
+//		if(Parameters_estimate(var->var_parameters, r)){
 			double tmp = fabs(Parameters_value(var->var_parameters, r));
 			if (tmp != 0.0) entropy += log(tmp);
 			count++;
-		}
+//		}
 	}
 	entropy +=  0.5 * (1.0 + LOG_TWO_PI) * count;
 	
 	for (int i = 0; i < var->elbo_samples; i++) {
 		double jacobian = 0.0;
-		for (int j = 0; j < grad_dim; j++) {
-			if(Parameters_estimate(var->var_parameters, j)){
+		for (int j = 0; j < dim; j++) {
+//			if(Parameters_estimate(var->var_parameters, j)){
 				eta[j] = rnorm();
-			}
+//			}
 		}
 		
 		size_t row = dim;
@@ -937,6 +935,16 @@ double klqp_fullrank_normal_elbo(variational_t* var){
 			double theta = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), &jacobian);
 			Parameter_set_value(p, theta);
 		}
+        
+        for(int s = 0; s < var->simplex_count; s++){
+            Simplex* simplex = var->simplices[s]->obj;
+            const double* constrained_values = simplex->get_values(simplex);
+            double stick = 1;
+            for(int k = 0; k < simplex->K-1; k++){
+                jacobian += log(stick);
+                stick -= constrained_values[k];
+            }
+        }
 		
 		double logP = posterior->logP(posterior);
 		elbo += logP + jacobian;
@@ -961,24 +969,30 @@ void klqp_fullrank_normal_grad_elbo(variational_t* var, double* grads){
 	Model* posterior = var->posterior;
 	size_t dim = Parameters_count(var->parameters);
 	size_t grad_dim = 2*dim + (dim*dim-dim)/2;
-	double* eta = dvector(grad_dim);
-	double* zeta = dvector(grad_dim);
+	double* eta = dvector(dim);
+	double* zeta = dvector(dim);
 	memset(grads, 0, sizeof(double)*grad_dim);
 	
+    size_t simplex_parameter_count = 0;
+    for(int s = 0; s < var->simplex_count; s++){
+        Simplex* simplex = var->simplices[s]->obj;
+        simplex_parameter_count += simplex->K - 1;
+    }
+    
 	for (int i = 0; i < var->grad_samples; i++) {
-		for (int j = 0; j < grad_dim; j++) {
-			if(Parameters_estimate(var->var_parameters, j)){
+		for (int j = 0; j < dim; j++) {
+//			if(Parameters_estimate(var->var_parameters, j)){
 				eta[j] = rnorm();
-			}
+//			}
 		}
 		size_t row = dim;
 		for (int j = 0; j < dim; j++) {
 			double temp = 0;
 			// multiply L_j and eta
 			for (int k = 0; k < j+1; k++) {
-				if(Parameters_estimate(var->var_parameters, row)){
+//				if(Parameters_estimate(var->var_parameters, row)){
 					temp += Parameters_value(var->var_parameters, row)*eta[k];
-				}
+//				}
 				row++;
 			}
 			zeta[j] = temp + Parameters_value(var->var_parameters, j); // add mu
@@ -996,12 +1010,14 @@ void klqp_fullrank_normal_grad_elbo(variational_t* var, double* grads){
 			
 			const double gldit = grad_log_det_inverse_transform(zeta[k], Parameter_lower(p), Parameter_upper(p));
 			double grad_mu = dlogP * grad_inverse_transform(zeta[k], Parameter_lower(p), Parameter_upper(p)) + gldit;
-			
+            if (k < simplex_parameter_count) {
+                grad_mu += 1.0/zeta[k] + 1.0/(zeta[k]-1.0); // grad log det transform of stick
+            }
 			grads[k] += grad_mu;
 			for (int j = 0; j < k+1; j++) {
-				if(Parameters_estimate(var->var_parameters, row)){
+//				if(Parameters_estimate(var->var_parameters, row)){
 					grads[row] += grad_mu*eta[j];
-				}
+//				}
 				row++;
 			}
 		}
@@ -1014,9 +1030,9 @@ void klqp_fullrank_normal_grad_elbo(variational_t* var, double* grads){
 	size_t diag = dim-1;
 	for (int i = 0; i < dim; i++) {
 		diag += i+1;
-		if(Parameters_estimate(var->var_parameters, i)){
+//		if(Parameters_estimate(var->var_parameters, i)){
 			grads[diag] += 1.0/Parameters_value(var->var_parameters, diag);
-		}
+//		}
 	}
 	free(eta);
 	free(zeta);
