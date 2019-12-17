@@ -67,6 +67,7 @@ static bool _calculate_partials_noexp_integrate( SingleTreeLikelihood *tlk, Node
 
 void calculate_dldp_uppper_reparam( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods );
 double calculate_dl_dr(SingleTreeLikelihood* tlk, double* pattern_likelihoods);
+double calculate_dl_dr_discrete(SingleTreeLikelihood* tlk, Node* node, double* pattern_likelihoods);
 
 #pragma mark -
 #pragma mark TreeLikelihoodModel
@@ -303,7 +304,17 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 		}
 	}
 	else if(p->model == MODEL_BRANCHMODEL){
-		dlogP = calculate_dl_dr(tlk, pattern_likelihoods);
+        if (tlk->bm->name == CLOCK_STRICT) {
+            dlogP = calculate_dl_dr(tlk, pattern_likelihoods);
+        }
+        else if(tlk->bm->name == CLOCK_DISCRETE){
+            Node* node = Tree_node(tlk->tree, p->id);
+            dlogP = calculate_dl_dr_discrete(tlk, node, pattern_likelihoods);
+        }
+        else{
+            fprintf(stderr, "derivative for clock not yet implemented\n");
+            exit(2);
+        }
 //		printf("dlogP: %f finite diff: %f (%s)\n", dlogP, Model_first_derivative(self, p, 0.00001), p->name);
 	}
 	
@@ -3229,6 +3240,57 @@ double calculate_dl_dr(SingleTreeLikelihood* tlk, double* pattern_likelihoods){
 	return dlnldR;
 }
 
+// one rate per branch
+double calculate_dl_dr_discrete(SingleTreeLikelihood* tlk, Node* node, double* pattern_likelihoods){
+    const int nstate   = tlk->sm->nstate;
+    const int patternCount = tlk->sp->count;
+    
+    int tempMatrixId = Node_id(Tree_root(tlk->tree));
+    double* mat = tlk->matrices[0][tempMatrixId];
+    double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->sm->nstate;
+    double* pattern_dlnl = tlk->pattern_lk + tlk->sp->count*2;
+    memset(pattern_dlnl, 0, sizeof(double)*tlk->sp->count);
+    
+    double* spare_partials = tlk->partials[0][tlk->upper_partial_indexes[Tree_root(tlk->tree)->id]];
+    
+    double dlnldR = 0;
+    
+    const double* freqs = tlk->get_root_frequencies(tlk);
+    double cat = tlk->sm->cat_count;
+    const int nodeId = Node_id(node);
+    
+    // calculate derivative of probability matrix wrt substitution rate
+    get_Q_times_P(tlk, node, mat);
+    for (int i = 0; i < cat; i++) {
+        double v = Node_time_elapsed(node) * tlk->sm->get_rate(tlk->sm, i);
+        for (int k = 0; k < tlk->matrix_size; k++) {
+            mat[i*tlk->matrix_size+k] *= v;
+        }
+    }
+    
+    tlk->calculate_branch_likelihood(tlk, spare_partials, tlk->upper_partial_indexes[nodeId], nodeId, tempMatrixId );
+    tlk->integrate_partials(tlk, spare_partials, tlk->sm->get_proportions(tlk->sm), root_partials );
+    int v = 0;
+    int i = 0;
+    
+    for ( int k = 0; k < patternCount; k++ ) {
+        for ( i = 0; i < nstate; i++ ) {
+            pattern_dlnl[k] += freqs[i] * root_partials[v];
+            v++;
+        }
+        
+        if ( tlk->scale ) {
+            //printf("scaling\n");
+            tlk->pattern_lk[k] += getLogScalingFactor( tlk, k);
+        }
+    }
+    
+    for ( int k = 0; k < patternCount; k++ ) {
+        dlnldR += pattern_dlnl[k]/pattern_likelihoods[k] * tlk->sp->weights[k];
+    }
+    
+    return dlnldR;
+}
 
 #pragma mark -
 #pragma mark Upper Likelihood

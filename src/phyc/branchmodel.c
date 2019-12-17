@@ -136,9 +136,12 @@ static void _branchmodel_handle_change( Model *self, Model *model, int index ){
 	else if(bm->name == CLOCK_STRICT){
 		self->listeners->fire(self->listeners, self, -1 );
 	}
-	else if(bm->name == CLOCK_LOCAL){
-		self->listeners->fire(self->listeners, self, index );
-	}
+    else if(bm->name == CLOCK_LOCAL){
+        self->listeners->fire(self->listeners, self, index );
+    }
+    else if(bm->name == CLOCK_DISCRETE){
+        self->listeners->fire(self->listeners, self, index );
+    }
 	else{
 		self->listeners->fire(self->listeners, self, -1 );
 	}
@@ -298,6 +301,7 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 	char* allowed[] = {
 		"indicators",
 		"model",
+        "parameters",
 		"rate",
 		"tree",
 		
@@ -324,14 +328,39 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 	if(model == NULL || strcasecmp(model, "noclock") == 0){
 		bm = new_NoClock((Tree*)mtree->obj);
 	}
-	else if(strcasecmp(model, "strict") == 0){
-		json_node* p_node = get_json_node(node, "rate");
-		Parameter* p = new_Parameter_from_json(p_node, hash);
-		p->model = MODEL_BRANCHMODEL;
-		bm = new_StrictClock_with_parameter(mtree->obj, p);
-		free_Parameter(p);
-		Hashtable_add(hash, p->name, p);
-	}
+    else if(strcasecmp(model, "strict") == 0){
+        json_node* p_node = get_json_node(node, "rate");
+        Parameter* p = new_Parameter_from_json(p_node, hash);
+        p->model = MODEL_BRANCHMODEL;
+        bm = new_StrictClock_with_parameter(mtree->obj, p);
+        free_Parameter(p);
+        Hashtable_add(hash, p->name, p);
+    }
+    else if(strcasecmp(model, "discrete") == 0){
+        json_node* parameters_node = get_json_node(node, "parameters");
+        Parameters* ps = new_Parameters_from_json(parameters_node, hash);
+        
+        for (int i = 0; i < Parameters_count(ps); i++) {
+            Parameters_at(ps, i)->model = MODEL_BRANCHMODEL;
+        }
+        Tree* tree = mtree->obj;
+        //TODO: check that the number of parameters is equal to the number of branches -1
+        DiscreteParameter* map = new_DiscreteParameter_with_postfix(DISCRETE_POSTFIX, Tree_node_count(tree));
+        // assumes that root has the highest id
+        for (int i = 0; i < Tree_node_count(tree)-1; i++) {
+            Node* node = Tree_node(tree, i);
+            map->values[Node_id(node)] = i;
+            Parameters_at(ps, i)->id = Node_id(node);
+        }
+        bm = new_DiscreteClock_with_parameters(tree, ps, map);
+        free_Parameters(ps);
+        // add Paramters to hash
+        char* id_ps = get_json_node_value_string(parameters_node, "id");
+        if(id_ps != NULL){
+            Parameters_set_name2(bm->rates, id_ps);
+            Hashtable_add(hash, id_ps, bm->rates);
+        }
+    }
 	else{
 		fprintf(stderr, "BranchModel type unknown %s\n", model);
 		exit(1);
@@ -821,7 +850,8 @@ BranchModel * new_DiscreteClock2( Tree *tree, const int n ){
 		sprintf(name+4, "%d", i);
 		Parameters_move(rates, new_Parameter_with_postfix(name, DISCRETE_POSTFIX, .01, new_Constraint(BRANCHMODEL_RATE_MIN, 100)));
 	}
-    BranchModel *bm = new_DiscreteClock_with_parameters( tree, rates );
+    DiscreteParameter* map = new_DiscreteParameter_with_postfix(DISCRETE_POSTFIX, Tree_node_count(tree) );
+    BranchModel *bm = new_DiscreteClock_with_parameters( tree, rates, map );
     bm->get = _get_DiscreteClock2;
 	return bm;
 }
@@ -833,10 +863,11 @@ BranchModel * new_DiscreteClock( Tree *tree, const int n ){
 		sprintf(name+4, "%d", i);
 		Parameters_move(rates, new_Parameter_with_postfix(name, DISCRETE_POSTFIX, .01, new_Constraint(BRANCHMODEL_RATE_MIN, 100)));
 	}
-	return new_DiscreteClock_with_parameters( tree, rates );
+    DiscreteParameter* map = new_DiscreteParameter_with_postfix(DISCRETE_POSTFIX, Tree_node_count(tree) );
+	return new_DiscreteClock_with_parameters( tree, rates, map );
 }
 
-BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *rates ){
+BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *rates, DiscreteParameter *map ){
 	BranchModel *bm = BranchModel_init(tree, CLOCK_DISCRETE);
 		
 	bm->get = _get_DiscreteClock;
@@ -845,10 +876,7 @@ BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *r
 	bm->rates = new_Parameters(Parameters_count(rates));
 	Parameters_add_parameters(bm->rates, rates);
 	
-	bm->map = new_DiscreteParameter_with_postfix(DISCRETE_POSTFIX, Tree_node_count(tree) );
-	
-	DiscreteClock_set_random_branch_assigment( bm );
-	
+	bm->map = map;
 	bm->indicators = NULL;
 	bm->unscaled_rates = NULL;
 	bm->need_update = false;
@@ -983,10 +1011,10 @@ BranchModel * new_DiscreteClock_from_LocalClock_tree( Tree *tree ){
 }
 
 BranchModel * new_DiscreteClock_from_LocalClock( const BranchModel *localBm ){
-	
+	DiscreteParameter* map = new_DiscreteParameter_with_postfix(DISCRETE_POSTFIX, Tree_node_count(localBm->tree) );
 	Parameters *newRates = clone_Parameters(localBm->rates);
-	
-	BranchModel *bm = new_DiscreteClock_with_parameters( localBm->tree, newRates);
+	BranchModel *bm = new_DiscreteClock_with_parameters( localBm->tree, newRates, map);
+    DiscreteClock_set_random_branch_assigment( bm );
 	DiscreteClock_set_classes(bm, localBm->map->values);
 	bm->id = localBm->id+1;
 	return bm;

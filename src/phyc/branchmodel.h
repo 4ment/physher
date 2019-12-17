@@ -137,7 +137,7 @@ BranchModel * new_DiscreteClock2( Tree *tree, const int n );
 
 BranchModel * new_DiscreteClock( Tree *tree, const int n );
 
-BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *rates );
+BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *rates, DiscreteParameter *map );
 
 BranchModel * new_DiscreteClock_from_tree( Tree *tree );
 
