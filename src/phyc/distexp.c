@@ -97,6 +97,13 @@ double DistributionModel_log_exp_with_values_mean(DistributionModel* dm, const d
 }
 
 double DistributionModel_dlog_exp(DistributionModel* dm, const Parameter* p){
+    if (p == Parameters_at(dm->parameters, 0)) {
+        double dlogf = Parameters_count(dm->x)/Parameters_value(dm->parameters, 0);
+        for(int i = 0; i < Parameters_count(dm->x); i++){
+            dlogf -= Parameters_value(dm->x, i);
+        }
+        return dlogf;
+    }
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
 		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
 			return -Parameters_value(dm->parameters, 0);
@@ -106,6 +113,14 @@ double DistributionModel_dlog_exp(DistributionModel* dm, const Parameter* p){
 }
 
 double DistributionModel_dlog_exp_mean(DistributionModel* dm, const Parameter* p){
+    if (p == Parameters_at(dm->parameters, 0)) {
+        double dlogf = -Parameters_count(dm->x)/Parameters_value(dm->parameters, 0);
+        double mean2 = Parameters_value(dm->parameters, 0)*Parameters_value(dm->parameters, 0);
+        for(int i = 0; i < Parameters_count(dm->x); i++){
+            dlogf += Parameters_value(dm->x, i)/mean2;
+        }
+        return dlogf;
+    }
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
 		if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
 			return -1.0/Parameters_value(dm->parameters, 0);
