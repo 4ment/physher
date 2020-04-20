@@ -330,7 +330,7 @@ struct _Model {
 	double (*dlogP)( Model *, const Parameter* );
 	double (*d2logP)( Model *, const Parameter* );
 	double (*ddlogP)(Model*, const Parameter*, const Parameter*);
-	void (*gradient)( Model *, const Parameters*, double*);
+	void (*gradient)( Model *, double* );
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, int );
