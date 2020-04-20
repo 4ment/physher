@@ -481,49 +481,53 @@ bool json_prune_ignored(json_node* node){
 	return false;
 }
 
-void json_tree_print_aux(json_node* node, size_t level){
-	for(size_t i = 0; i < level; i++) printf("  ");
+void json_tree_print_aux(json_node* node, size_t level, FILE* file){
+	for(size_t i = 0; i < level; i++) fprintf(file, "  ");
 	if(node->node_type == MJSON_STRING && node->key != NULL){
-		printf("\"%s\":\"%s\"", (char*)node->key, (char*)node->value);
+		fprintf(file, "\"%s\":\"%s\"", (char*)node->key, (char*)node->value);
 	}
 	else if(node->node_type == MJSON_PRIMITIVE && node->key != NULL){
-		printf("\"%s\":%s", (char*)node->key, (char*)node->value);
+		fprintf(file, "\"%s\":%s", (char*)node->key, (char*)node->value);
 	}
 	else if(node->node_type == MJSON_STRING){
-		printf("\"%s\"", (char*)node->value);
+		fprintf(file, "\"%s\"", (char*)node->value);
 	}
 	else if(node->node_type == MJSON_PRIMITIVE){
-		printf("%s", (char*)node->value);
+		fprintf(file, "%s", (char*)node->value);
 	}
 	else if(node->node_type == MJSON_ARRAY){
-		printf("\"%s\": [\n", (char*)node->key);
+		fprintf(file, "\"%s\": [\n", (char*)node->key);
 	}
 	else if(node->node_type == MJSON_OBJECT){
 		// root node and anonymous object in arrays
-		if(node->parent != NULL && node->key != NULL) printf("\"%s\": ", (char*)node->key);
-		printf("{\n");
+		if(node->parent != NULL && node->key != NULL) fprintf(file, "\"%s\": ", (char*)node->key);
+		fprintf(file, "{\n");
 	}
 	else{
 		error("error json_tree_print_aux");
 	}
 	level++;
 	for (int i = 0; i < node->child_count; i++) {
-		json_tree_print_aux(node->children[i], level);
-		if(i != node->child_count-1) printf(",\n");
-		else printf("\n");
+		json_tree_print_aux(node->children[i], level, file);
+		if(i != node->child_count-1) fprintf(file, ",\n");
+		else fprintf(file, "\n");
 	}
 	if(node->node_type == MJSON_ARRAY){
-		for(size_t i = 0; i < level-1; i++) printf("  ");
-		printf("]");
+		for(size_t i = 0; i < level-1; i++) fprintf(file, "  ");
+		fprintf(file, "]");
 	}
 	else if(node->node_type == MJSON_OBJECT){
-		for(size_t i = 0; i < level-1; i++) printf("  ");
-		printf("}");
+		for(size_t i = 0; i < level-1; i++) fprintf(file, "  ");
+		fprintf(file, "}");
 	}
 }
 
 void json_tree_print(json_node* node){
-	json_tree_print_aux(node, 0);
+	json_tree_print_aux(node, 0, stdout);
+}
+
+void json_tree_fprint(json_node* node, FILE* file){
+    json_tree_print_aux(node, 0, file);
 }
 
 void json_free_tree(json_node* node){

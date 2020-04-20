@@ -21,7 +21,7 @@
 
 
 SubstitutionModel * new_LG(){
-	Simplex* freqs = new_Simplex(20);
+	Simplex* freqs = new_Simplex("lg", 20);
 	freqs->set_values(freqs, AMINO_ACID_MODEL_LG_FREQUENCIES);
 	SubstitutionModel *m = new_LG_with_parameters(freqs);
 	
@@ -30,7 +30,7 @@ SubstitutionModel * new_LG(){
 
 SubstitutionModel * new_LG_with_parameters(Simplex* freqs){
 	if(freqs == NULL){
-		freqs = new_Simplex(20);
+		freqs = new_Simplex("lg", 0);
 		freqs->set_values(freqs, AMINO_ACID_MODEL_LG_FREQUENCIES);
 	}
     SubstitutionModel *m = create_aa_model("LG", LG, freqs);

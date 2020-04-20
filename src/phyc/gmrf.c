@@ -23,7 +23,7 @@ double DistributionModel_log_gmrf(DistributionModel* dm){
 	Parameters* x = dm->x;
 	size_t fieldDimension = Parameters_count(x);
 	double sum = 0;
-	double precision = Parameters_value(dm->parameters, 0);
+	double precision = Parameters_value(dm->parameters[0], 0);
 	
 	for(int i = 1; i < fieldDimension; i++){
 		double popSize = Parameters_value(x, i);
@@ -56,7 +56,7 @@ double DistributionModel_log_gmrf_time_aware(DistributionModel* dm){
 		}
 	}
 	double sum = 0;
-	double precision = Parameters_value(dm->parameters, 0);
+	double precision = Parameters_value(dm->parameters[0], 0);
 	
 	for(int i = 1; i < fieldDimension; i++){
 		double popSize = Parameters_value(x, i);
@@ -75,7 +75,7 @@ double DistributionModel_log_gammarf(DistributionModel* dm){
 	
 	Parameters* x = dm->x;
 	size_t fieldDimension = Parameters_count(x);
-	double precision = Parameters_value(dm->parameters, 0);
+	double precision = Parameters_value(dm->parameters[0], 0);
 	dm->lp = 0;
 	for(int i = 1; i < fieldDimension; i++){
 		dm->lp += log(gsl_ran_gamma_pdf(Parameters_value(x, i), precision, Parameters_value(x, i-1)/precision));
@@ -89,7 +89,7 @@ double DistributionModel_log_gammarf(DistributionModel* dm){
 double DistributionModel_log_gmrf_with_values(DistributionModel* dm, const double* values){
 	size_t fieldDimension = Parameters_count(dm->x);
 	double sum = 0;
-	double precision = Parameters_value(dm->parameters, 0);
+	double precision = Parameters_value(dm->parameters[0], 0);
 	
 	for(size_t i = 1; i < fieldDimension; i++){
 		sum += pow(values[i - 1] - values[i], 2.0);
@@ -106,7 +106,7 @@ double DistributionModel_log_gmrf_with_values_time_aware(DistributionModel* dm, 
 	if(coal->need_update_intervals) coal->update_intervals(coal);
 	size_t fieldDimension = Parameters_count(dm->x);
 	double sum = 0;
-	double precision = Parameters_value(dm->parameters, 0);
+	double precision = Parameters_value(dm->parameters[0], 0);
 	double* intervals = dvector(fieldDimension);
 	int j = 0;
 	double interval = 0;
@@ -131,10 +131,10 @@ double DistributionModel_log_gmrf_with_values_time_aware(DistributionModel* dm, 
 double DistributionModel_dlog_gmrf(DistributionModel* dm, const Parameter* p){
 	Parameters* x = dm->x;
 	size_t fieldDimension = Parameters_count(x);
-	double precision = Parameters_value(dm->parameters, 0);
+	double precision = Parameters_value(dm->parameters[0], 0);
 	
 	// precision
-	if(p == Parameters_at(dm->parameters, 0)){
+	if(p == Parameters_at(dm->parameters[0], 0)){
 		double sum = 0;
 		for(int i = 1; i < fieldDimension; i++){
 			double popSize = Parameters_value(x, i);
@@ -179,11 +179,11 @@ double DistributionModel_dlog_gmrf_time_aware(DistributionModel* dm, const Param
 			interval = 0;
 		}
 	}
-	double precision = Parameters_value(dm->parameters, 0);
+	double precision = Parameters_value(dm->parameters[0], 0);
 	double dlogP = 0;
 	
 	// precision
-	if(p == Parameters_at(dm->parameters, 0)){
+	if(p == Parameters_at(dm->parameters[0], 0)){
 		double sum = 0;
 		for(int i = 1; i < fieldDimension; i++){
 			double popSize = Parameters_value(x, i);
@@ -221,10 +221,10 @@ double DistributionModel_dlog_gmrf_time_aware(DistributionModel* dm, const Param
 double DistributionModel_d2log_gmrf(DistributionModel* dm, const Parameter* p){
 	Parameters* x = dm->x;
 	size_t fieldDimension = Parameters_count(x);
-	double precision = Parameters_value(dm->parameters, 0);
+	double precision = Parameters_value(dm->parameters[0], 0);
 	
 	// precision
-	if(p == Parameters_at(dm->parameters, 0)){
+	if(p == Parameters_at(dm->parameters[0], 0)){
 		return -(fieldDimension - 1)/2.0/(precision*precision);
 	}
 	
@@ -246,7 +246,7 @@ double DistributionModel_d2log_gmrf_time_aware(DistributionModel* dm, const Para
 	
 	Parameters* x = dm->x;
 	size_t fieldDimension = Parameters_count(x);
-	double precision = Parameters_value(dm->parameters, 0);
+	double precision = Parameters_value(dm->parameters[0], 0);
 	double d2logP = 0;
 	double* intervals = dvector(fieldDimension);
 	int j = 0;
@@ -260,7 +260,7 @@ double DistributionModel_d2log_gmrf_time_aware(DistributionModel* dm, const Para
 	}
 	
 	// precision
-	if(p == Parameters_at(dm->parameters, 0)){
+	if(p == Parameters_at(dm->parameters[0], 0)){
 		d2logP = -(fieldDimension - 1)/2.0/(precision*precision);
 	}
 	else{
@@ -289,11 +289,11 @@ double DistributionModel_ddlog_gmrf(DistributionModel* dm, const Parameter* p1, 
 	size_t fieldDimension = Parameters_count(x);
 	
 	// precision
-	if(p1 == Parameters_at(dm->parameters, 0) && p2 == Parameters_at(dm->parameters, 0)){
+	if(p1 == Parameters_at(dm->parameters[0], 0) && p2 == p1){
 		return DistributionModel_d2log_gmrf(dm, p1);
 	}
 	// precision and one of the x
-	if(p1 == Parameters_at(dm->parameters, 0) || p2 == Parameters_at(dm->parameters, 0)){
+	if(p1 == Parameters_at(dm->parameters[0], 0) || p2 == p1){
 		for (int i = 0; i < fieldDimension; i++) {
 			if((p1 == Parameters_at(x, i) || p2 == Parameters_at(x, i)) ){
 				if (i == 0) {
@@ -321,7 +321,7 @@ double DistributionModel_ddlog_gmrf(DistributionModel* dm, const Parameter* p1, 
 		}
 		// consecutive
 		else if(abs(first - second) == 1){
-			return Parameters_value(dm->parameters, 0);
+			return Parameters_value(dm->parameters[0], 0);
 		}
 	}
 	
@@ -348,11 +348,11 @@ double DistributionModel_ddlog_gmrf_time_aware(DistributionModel* dm, const Para
 	double ddlogP = 0;
 	
 	// precision
-	if(p1 == Parameters_at(dm->parameters, 0) && p2 == Parameters_at(dm->parameters, 0)){
+	if(p1 == Parameters_at(dm->parameters[0], 0) && p2 == p1){
 		ddlogP = DistributionModel_d2log_gmrf(dm, p1);
 	}
 	// precision and one of the x
-	else if(p1 == Parameters_at(dm->parameters, 0) || p2 == Parameters_at(dm->parameters, 0)){
+	else if(p1 == Parameters_at(dm->parameters[0], 0) || p2 == p1){
 		for (int i = 0; i < fieldDimension; i++) {
 			if((p1 == Parameters_at(x, i) || p2 == Parameters_at(x, i)) ){
 				if (i == 0) {
@@ -384,7 +384,7 @@ double DistributionModel_ddlog_gmrf_time_aware(DistributionModel* dm, const Para
 			}
 			// consecutive
 			else if(abs(first - second) == 1){
-				ddlogP = Parameters_value(dm->parameters, 0);
+				ddlogP = Parameters_value(dm->parameters[0], 0);
 			}
 		}
 	}
@@ -403,8 +403,8 @@ static double DistributionModel_gmrf_sample_evaluate(DistributionModel* dm){
 	return DistributionModel_log_gmrf(dm);
 }
 
-DistributionModel* new_GMRF_with_parameters(Parameters* parameters, const Parameters* x, Coalescent* coalescent, distribution_parameterization parameterization){
-	DistributionModel* dm = new_DistributionModel(parameters, x);
+DistributionModel* new_GMRF_with_parameters(Parameters** parameters, Parameters* x, Coalescent* coalescent, distribution_parameterization parameterization){
+	DistributionModel* dm = new_DistributionModel(parameters, 1, x);
 	dm->type = DISTRIBUTION_GMRF;
 	dm->parameterization = parameterization;
 	dm->logP = DistributionModel_log_gmrf;
@@ -415,22 +415,25 @@ DistributionModel* new_GMRF_with_parameters(Parameters* parameters, const Parame
 	dm->d2logP = DistributionModel_d2log_gmrf;
 	dm->ddlogP = DistributionModel_ddlog_gmrf;
 	dm->data = coalescent;
+    dm->shift = INFINITY;
 	return dm;
 }
 
 Model* new_GMRFModel_from_json(json_node* node, Hashtable* hash){
 	char* id = get_json_node_value_string(node, "id");
 	char* model_key = get_json_node_value_string(node, "tree");
+    json_node* parameters_node = get_json_node(node, "parameters");
+    
+    json_node* x_node = get_json_node(node, "x");
+    Parameters* x = distmodel_get_x(id, x_node, hash);
 	
-	Parameters* x = new_Parameters(1);
-	get_parameters_references2(node, hash, x, "x");
-	
-	Parameters* parameters = new_Parameters(1);
-	get_parameters_references(node, hash, parameters);
-	
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Hashtable_add(hash, Parameters_name(parameters, i), Parameters_at(parameters, i));
-	}
+    if (parameters_node->child_count != 1 && strcasecmp(parameters_node->children[0]->key, "precision") != 0) {
+        fprintf(stderr, "GMRF should be parametrized with precision parameters\n");
+        exit(13);
+    }
+    
+    size_t parameters_dim = 1;
+    Parameters** parameters = distmodel_get_parameters(id, parameters_node, hash, &parameters_dim);
 	
 	DistributionModel* dm = NULL;
 	Model* model = NULL;
@@ -452,8 +455,8 @@ Model* new_GMRFModel_from_json(json_node* node, Hashtable* hash){
 	
 	dm->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	
-	free_Parameters(parameters);
-	free_Parameters(x);
+	free_Parameters(parameters[0]);
+    free(parameters);
 	
 	return model;
 }

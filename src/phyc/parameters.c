@@ -215,6 +215,69 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 	return new_Parameter((char*)id_node->value, value, cnstr);
 }
 
+Parameters* new_MultiParameter_from_json(json_node* node, Hashtable* hash){
+    char* allowed[] = {
+        "dimension",
+        "flower",
+        "fupper",
+        "lower",
+        "upper",
+        "values"
+    };
+    json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+    
+    if (node->node_type == MJSON_STRING) {
+        char* ref = (char*)node->value;
+        Parameters*p = Hashtable_get(hash, ref+1);
+        // refCount of parameters inside p are NOT incremented
+        return p;
+    }
+    
+    size_t dim = get_json_node_value_size_t(node, "dimension", 0);
+    Parameters* parameters = new_Parameters(dim);
+    
+    json_node* lower_node = get_json_node(node, "lower");
+    json_node* upper_node = get_json_node(node, "upper");
+    char* id = get_json_node_value_string(node, "id");
+    Parameters_set_name2(parameters, id);
+    double lower = -INFINITY;
+    double upper = INFINITY;
+    if(lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0){
+        lower = atof((char*)lower_node->value);
+        
+    }
+    if(upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0){
+        upper = atof((char*)upper_node->value);
+        
+    }
+    json_node* values = get_json_node(node, "values");
+    size_t K = values->child_count;
+    if (dim == 0) {
+        dim = K;
+    }
+    if(dim < K){
+        fprintf(stderr, "%s - dimension attribute (%zu) cannot be smaller than the number of values (%zu)\n", id, dim, K);
+        exit(2);
+    }
+    
+    StringBuffer* buffer = new_StringBuffer(10);
+    int i = 0;
+    while (i != dim) {
+        for(int j = 0; j < values->child_count; j++){
+            if(i == dim) break;
+            Constraint* cnstr = new_Constraint(lower, upper);
+            json_node* child = values->children[j];
+            double value = atof((char*)child->value);
+            StringBuffer_empty(buffer);
+            StringBuffer_append_format(buffer, "%s.%d", id, i+1);
+            Parameters_move(parameters, new_Parameter(buffer->c, value, cnstr));
+            i++;
+        }
+    }
+    free_StringBuffer(buffer);
+    return parameters;
+}
+
 Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash){
 	Parameters* parameters = new_Parameters(node->child_count);
 	bool found = get_parameter_list_from_node(node, parameters);
@@ -252,6 +315,39 @@ void free_Parameter( Parameter *p ){
 	}
 }
 
+json_node* Parameter_to_json(Parameter* parameter, json_node* parent){
+    json_node* jnode = create_json_node_object(parent, parameter->name);
+    add_json_node(parent, jnode);
+    add_json_node_string(jnode, "id", parameter->name);
+    add_json_node_string(jnode, "type", "parameter");
+    add_json_node_double(jnode, "value", parameter->value);
+    if(!isinf(parameter->cnstr->lower))
+        add_json_node_double(jnode, "lower", parameter->cnstr->lower);
+    if(!isinf(parameter->cnstr->upper))
+        add_json_node_double(jnode, "upper", parameter->cnstr->upper);
+//    add_json_node_double(node, "flower", parameter->cnstr->flower);
+//    add_json_node_double(node, "fupper", parameter->cnstr->fupper);
+    return jnode;
+}
+
+json_node* Parameters_to_json(Parameters* parameters, json_node* parent){
+    json_node* jnode = create_json_node_object(parent, Parameters_name2(parameters));
+    add_json_node(parent, jnode);
+    add_json_node_string(jnode, "id", Parameters_name2(parameters));
+    add_json_node_string(jnode, "type", "parameter");
+    add_json_node_size_t(jnode, "dimension", Parameters_count(parameters));
+    if(!isinf(Parameters_lower(parameters, 0)))
+        add_json_node_double(jnode, "lower", Parameters_lower(parameters, 0));
+    if(!isinf(Parameters_upper(parameters, 0)))
+        add_json_node_double(jnode, "upper", Parameters_upper(parameters, 0));
+    double* values = dvector(Parameters_count(parameters));
+    for (int i = 0; i < Parameters_count(parameters); i++) {
+        values[i] = Parameters_value(parameters, i);
+    }
+    add_json_node_array_double(jnode, "values", values, Parameters_count(parameters));
+    free(values);
+    return jnode;
+}
 
 void Parameter_set_name( Parameter *p, const char *name ){
 	if ( p->name != NULL ) {
@@ -404,17 +500,24 @@ void Parameter_print( const Parameter *p ){
 #pragma mark Parameters
 
 Parameters * new_Parameters( const size_t capacity ){
-	Parameters *ps = (Parameters *)malloc( sizeof(Parameters) );
-	assert(ps);
-	ps->name = NULL;
-	ps->list = (Parameter **)malloc( capacity * sizeof(Parameter *) );
-	assert(ps->list);
-	for (int i = 0; i < capacity; i++) {
-		ps->list[i] = NULL;
-	}
-	ps->count = 0;
-	ps->capacity = capacity;
-	return ps;
+    Parameters *ps = (Parameters *)malloc( sizeof(Parameters) );
+    assert(ps);
+    ps->name = NULL;
+    ps->list = (Parameter **)malloc( capacity * sizeof(Parameter *) );
+    assert(ps->list);
+    for (int i = 0; i < capacity; i++) {
+        ps->list[i] = NULL;
+    }
+    ps->count = 0;
+    ps->capacity = capacity;
+    return ps;
+}
+
+
+Parameters * new_Parameters_with_name( const char* name, const size_t capacity ){
+    Parameters* ps = new_Parameters(capacity);
+    ps->name = String_clone(name);
+    return ps;
 }
 
 void free_Parameters( Parameters *ps ){
@@ -783,6 +886,11 @@ static double _dummy_sample_evaluate(Model* m){
 	exit(2);
 }
 
+static void _dummy_jsonize(Model* m, json_node* node){
+    fprintf(stderr, "jsonize function not implemented for model %s\n", m->name);
+    exit(2);
+}
+
 #pragma mark -
 
 
@@ -815,6 +923,7 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->sample_evaluate = _dummy_sample_evaluate;
 	model->samplable = false;
 	model->print = NULL;
+    model->jsonize = _dummy_jsonize;
 	return model;
 }
 
@@ -1037,6 +1146,48 @@ void get_parameters_slice(char* ref, Parameters* parameters, Hashtable* hash){
 	free(copy);
 }
 
+void get_multi_parameter_from_node(json_node* node, Parameters* parameters){
+    size_t dim = get_json_node_value_size_t(node, "dimension", 0);
+    json_node* lower_node = get_json_node(node, "lower");
+    json_node* upper_node = get_json_node(node, "upper");
+    char* id = get_json_node_value_string(node, "id");
+    double lower = -INFINITY;
+    double upper = INFINITY;
+    if(lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0){
+        lower = atof((char*)lower_node->value);
+        
+    }
+    if(upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0){
+        upper = atof((char*)upper_node->value);
+        
+    }
+    json_node* values = get_json_node(node, "values");
+    size_t K = values->child_count;
+    if (dim == 0) {
+        dim = K;
+    }
+    if(dim < K){
+        fprintf(stderr, "%s - dimension attribute (%zu) cannot be smaller than the number of values (%zu)\n", id, dim, K);
+        exit(2);
+    }
+    
+    StringBuffer* buffer = new_StringBuffer(10);
+    int i = 0;
+    while (i != dim) {
+        for(int j = 0; j < values->child_count; j++){
+            if(i == dim) break;
+            Constraint* cnstr = new_Constraint(lower, upper);
+            json_node* child = values->children[j];
+            double value = atof((char*)child->value);
+            StringBuffer_empty(buffer);
+            StringBuffer_append_format(buffer, "%s.%d", id, i+1);
+            Parameters_move(parameters, new_Parameter(buffer->c, value, cnstr));
+            i++;
+        }
+    }
+    free_StringBuffer(buffer);
+}
+
 void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* parameters){
 	if(node->node_type == MJSON_ARRAY){
 		for (int i = 0; i < node->child_count; i++) {
@@ -1103,13 +1254,31 @@ void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* para
 		}
 	}
 	else if(node->node_type == MJSON_OBJECT){
+        if(get_json_node(node, "type") != NULL && get_json_node(node, "id") != NULL){
+            json_node* p_node_dimension = get_json_node(node, "dimension");
+            if(p_node_dimension != NULL){
+                get_multi_parameter_from_node(node, parameters);
+            }
+            else{
+                Parameter* p = new_Parameter_from_json(node, hash);
+                Parameters_move(parameters, p);
+            }
+            return;
+        }
 		for(int i = 0; i < node->child_count; i++){
 			json_node* p_node = node->children[i];
-			Parameter* p = new_Parameter_from_json(p_node, hash);
-			Parameters_move(parameters, p);
+            json_node* p_node_dimension = get_json_node(p_node, "dimension");
+            if(p_node_dimension != NULL){
+                get_multi_parameter_from_node(p_node, parameters);
+            }
+            else{
+                Parameter* p = new_Parameter_from_json(p_node, hash);
+                Parameters_move(parameters, p);
+            }
 		}
 	}
 	else{
+        fprintf(stderr, "Do not recognize node type of %s", node->key);
 		exit(1);
 	}
 }
@@ -1119,45 +1288,7 @@ bool get_parameter_list_from_node(json_node* node, Parameters* parameters){
 	for (int i = 0; i < node->child_count; i++) {
 		json_node* child = node->children[i];
 		if(strcasecmp(child->key, "dimension") == 0 && child->node_type == MJSON_PRIMITIVE){
-			size_t dim = get_json_node_value_size_t(node, "dimension", 0);
-			json_node* lower_node = get_json_node(node, "lower");
-			json_node* upper_node = get_json_node(node, "upper");
-			char* id = get_json_node_value_string(node, "id");
-			double lower = -INFINITY;
-			double upper = INFINITY;
-			if(lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0){
-				lower = atof((char*)lower_node->value);
-				
-			}
-			if(upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0){
-				upper = atof((char*)upper_node->value);
-				
-			}
-			json_node* values = get_json_node(node, "values");
-			size_t K = values->child_count;
-			if (dim == 0) {
-				dim = K;
-			}
-			if(dim < K){
-				fprintf(stderr, "%s - dimension attribute (%zu) cannot be smaller than the number of values (%zu)\n", id, dim, K);
-				exit(2);
-			}
-			
-			StringBuffer* buffer = new_StringBuffer(10);
-			int i = 0;
-			while (i != dim) {
-				for(int j = 0; j < values->child_count; j++){
-					if(i == dim) break;
-					Constraint* cnstr = new_Constraint(lower, upper);
-					json_node* child = values->children[j];
-					double value = atof((char*)child->value);
-					StringBuffer_empty(buffer);
-					StringBuffer_append_format(buffer, "%s.%d", id, i+1);
-					Parameters_move(parameters, new_Parameter(buffer->c, value, cnstr));
-					i++;
-				}
-			}
-			free_StringBuffer(buffer);
+            get_multi_parameter_from_node(node, parameters);
 			return true;
 		}
 	}

@@ -59,7 +59,7 @@ static void _p_t_transpose_unrestricted( SubstitutionModel *m, const double t, d
 
 
 SubstitutionModel * new_UnrestrictedNucleotideModel( ){
-	Simplex* freqs = new_Simplex(4);
+	Simplex* freqs = new_Simplex("urev", 4);
 	SubstitutionModel *m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA, freqs);
 	
 	m->rates = new_Parameters( 11 );

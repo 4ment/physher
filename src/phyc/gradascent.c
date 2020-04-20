@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <signal.h>
 
 #include "matrix.h"
 
@@ -18,6 +19,16 @@
 #if defined (PTHREAD_ENABLED)
 #include <pthread.h>
 #endif
+
+bool sgd_interrupted = false;
+
+void sgd_signal_callback_handler( int signum ) {
+	printf("Caught signal %d\n",signum);
+	if ( sgd_interrupted == true ) {
+		exit(SIGINT);
+	}
+	sgd_interrupted = true;
+}
 
 #if defined (PTHREAD_ENABLED)
 
@@ -319,6 +330,10 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 	double elbo0 = f(parameters, NULL, data);
 	if(verbose > 0)  printf("%zu ELBO: %f\n", stop->iter, elbo0);
 	
+	signal(SIGINT, sgd_signal_callback_handler);
+	sgd_interrupted = false;
+	
+	
 	while(stop->iter++ < stop->iter_max){
 		grad_f(parameters, grads, data);
 		
@@ -337,7 +352,13 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 		// ascent
 		for (int i = 0; i < dim; i++) {
 			if (Parameters_estimate(parameters, i)) {
-				double v = Parameters_value(parameters, i) + eta_scaled * grads[i] / (tau + sqrt(history_grad_squared[i]));
+                double v = Parameters_value(parameters, i);
+                if (Parameters_constraint(parameters, i) != NULL && Parameters_lower(parameters, i) == 0) {
+                    v = exp(log(v) + eta_scaled * grads[i] / (tau + sqrt(history_grad_squared[i])));
+                }
+                else{
+                    v += eta_scaled * grads[i] / (tau + sqrt(history_grad_squared[i]));
+                }
 				Parameters_set_value(parameters, i, v);
 			}
 		}
@@ -380,6 +401,10 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 			}
 			else if(elbos[median] < tol_rel_obj){
 				conv++;
+			}
+			if(sgd_interrupted){
+				*fmin = elbo;
+				break;
 			}
 		}
 	}

@@ -1023,6 +1023,13 @@ void print_imatrix( int **mat, const int m, const size_t n ){
 	fprintf(stdout, "\n===================\n");
 }
 
+void print_bvector(  const bool *m,  const size_t dim ){
+	fprintf(stdout, "\n=-------------------\n");
+	for( size_t i = 0; i < dim; i++ ){
+		fprintf(stdout, "%d ",m[i]);
+	}
+	fprintf(stdout, "\n===================\n");
+}
 
 void compare_dmatrix(  const double **m1,  const double **m2, const size_t nrow, const size_t ncol ){
 	for (size_t i = 0; i < nrow; i++) {

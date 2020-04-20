@@ -54,7 +54,8 @@ typedef enum distribution_t{
 
 struct _DistributionModel{
 	distribution_t type;
-	Parameters* parameters;
+	Parameters** parameters;
+    size_t parameter_count;
 	Parameters* x;
 	Simplex* simplex;
 	Tree* tree;
@@ -81,9 +82,7 @@ struct _DistributionModel{
 
 DistributionModel* new_UniformTreeDistribution(Tree* tree);
 
-DistributionModel* new_DistributionModel(const Parameters* p, const Parameters* x);
-
-DistributionModel* new_DistributionModelSimplex(Parameters* p, Simplex* simplex);
+DistributionModel* new_DistributionModel(Parameters** p, size_t dim, Parameters* x);
 
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 
@@ -96,5 +95,9 @@ double DistributionModel_dlog_0(DistributionModel* dm, const Parameter* p);
 double DistributionModel_d2log_0(DistributionModel* dm, const Parameter* p);
 
 double DistributionModel_ddlog_0(DistributionModel* dm, const Parameter* p1, const Parameter* p2);
+
+Parameters** distmodel_get_parameters(const char* who, json_node* parameters_node, Hashtable* hash, size_t *dim);
+
+Parameters* distmodel_get_x(const char* who, json_node* node, Hashtable* hash);
 
 #endif /* distmodel_h */

@@ -16,10 +16,8 @@
 #include "mjson.h"
 #include "distmodel.h"
 
+DistributionModel* new_ExponentialDistributionModel_with_parameters(Parameters** parameters, Parameters* x, distribution_parameterization parameterization);
+
 Model* new_ExponentialDistributionModel_from_json(json_node* node, Hashtable* hash);
-
-DistributionModel* new_ExponentialDistributionModel_with_parameters(Parameters* parameters, const Parameters* x, distribution_parameterization parameterization);
-
-DistributionModel* new_ExponentialDistributionModel(const double lambda, const Parameters* x);
 
 #endif /* distexp_h */

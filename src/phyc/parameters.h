@@ -49,7 +49,8 @@ typedef enum model_t{
 	MODEL_SUBSTITUTION,
 	MODEL_TREE,
 	MODEL_TREELIKELIHOOD,
-	MODEL_VARIATIONAL
+    MODEL_VARIATIONAL,
+    MODEL_VARIATIONAL_TREELIKELIHOOD
 }model_t;
 
 static const char* model_type_strings[] = {
@@ -65,7 +66,8 @@ static const char* model_type_strings[] = {
 	"substitutionmodel",
 	"tree",
 	"treelikelihood",
-	"variational"
+    "variational"
+    "variationaltreelikelihood"
 };
 
 struct _Constraint;
@@ -145,9 +147,15 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 
 Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash);
 
+Parameters* new_MultiParameter_from_json(json_node* node, Hashtable* hash);
+
 void free_Parameter( Parameter *p );
 
 Parameter * clone_Parameter( Parameter *p );
+
+json_node* Parameter_to_json(Parameter* parameter, json_node* parent);
+
+json_node* Parameters_to_json(Parameters* parameters, json_node* parent);
 
 char * Parameter_name( const Parameter *p );
 
@@ -205,6 +213,8 @@ void Parameter_print( const Parameter *p );
 #pragma mark Parameters
 
 Parameters * new_Parameters( const size_t capacity );
+
+Parameters * new_Parameters_with_name( const char* name, const size_t capacity );
 
 Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash);
 
@@ -320,7 +330,7 @@ struct _Model {
 	double (*dlogP)( Model *, const Parameter* );
 	double (*d2logP)( Model *, const Parameter* );
 	double (*ddlogP)(Model*, const Parameter*, const Parameter*);
-	void (*gradient)( Model *, double* );
+	void (*gradient)( Model *, const Parameters*, double*);
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, int );
@@ -340,6 +350,7 @@ struct _Model {
 	double storedLogP;
 	bool samplable; // model is a distribution that can sampled directly
 	void (*print)(Model*, FILE*);
+    void (*jsonize)(Model*, json_node*);
 };
 
 
@@ -369,5 +380,6 @@ void get_parameters_references(json_node* node, Hashtable* hash, Parameters* par
 
 void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* parameters, const char* tag);
 
+void get_parameters_slice(char* ref, Parameters* parameters, Hashtable* hash);
 
 #endif

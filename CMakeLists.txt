@@ -326,11 +326,15 @@ install(FILES phyc-config.cmake DESTINATION lib/phyc)
 # Tests
 #
 
-#IF (BUILD_TESTING)
+IF (BUILD_TESTING)
 	enable_testing()
 	add_subdirectory(tests)
 
-#	add_test (NAME Test_clone
-#		WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests"
-#		COMMAND test_clone )
-#ENDIF (BUILD_TESTING)
+	add_test (NAME Test_clone
+		WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+		COMMAND test_clone )
+	add_test (NAME Test_distribution
+		WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+		COMMAND test_distributions )
+
+ENDIF (BUILD_TESTING)

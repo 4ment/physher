@@ -20,7 +20,7 @@
 #include "matrix.h"
 
 SubstitutionModel * new_DAYHOFF(){
-    Simplex* freqs = new_Simplex(20);
+    Simplex* freqs = new_Simplex("dayoff", 20);
 	freqs->set_values(freqs, AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES);
     SubstitutionModel *m = new_DAYHOFF_with_parameters(freqs);
     
@@ -29,7 +29,7 @@ SubstitutionModel * new_DAYHOFF(){
 
 SubstitutionModel * new_DAYHOFF_with_parameters( Simplex *freqs ){
 	if(freqs == NULL){
-		freqs = new_Simplex(20);
+		freqs = new_Simplex("dayoff", 20);
 		freqs->set_values(freqs, AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES);
 	}
 	SubstitutionModel *m = create_aa_model("DAYHOFF", DAYHOFF, freqs);

@@ -240,6 +240,7 @@ bool * clone_bvector( const bool *v, const size_t n );
 void print_uivector( const unsigned *m, const size_t dim );
 void print_ivector( const int *m, const size_t dim );
 
+void print_bvector(  const bool *m,  const size_t dim );
 
 /************************************************************/
 unsigned int row_index( unsigned int i, unsigned int M );

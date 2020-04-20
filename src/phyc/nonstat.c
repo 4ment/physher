@@ -23,7 +23,7 @@
 static void _nuc_unrestricted_nonstat_update_Q( SubstitutionModel *m );
 
 SubstitutionModel * new_NONSTATNucleotideModel(){
-	Simplex* freqs = new_Simplex(4);
+	Simplex* freqs = new_Simplex("nonstat", 4);
     SubstitutionModel *m = create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA, freqs);
 	
 	m->rates = new_Parameters( 11 );

@@ -67,7 +67,7 @@
 static void k80_update_Q( SubstitutionModel *m );
 
 SubstitutionModel * new_K80(){
-	Simplex* freqs = new_Simplex(4);
+	Simplex* freqs = new_Simplex("k80", 4);
 	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
 		Parameters_set_estimate(freqs->parameters, false, i);
 	}
@@ -89,7 +89,7 @@ SubstitutionModel * new_K80_with_values( const double kappa ){
 }
 
 SubstitutionModel * new_K80_with_parameters( Parameter* kappa ){
-	Simplex* freqs = new_Simplex(4);
+	Simplex* freqs = new_Simplex("k80", 4);
 	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
 		Parameters_set_estimate(freqs->parameters, false, i);
 	}

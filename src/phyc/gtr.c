@@ -79,7 +79,7 @@ SubstitutionModel * new_GTR_with_values( const double *freqs, const double *rate
 	Parameter* cg = new_Parameter_with_postfix("gtr.d", "model", 1, new_Constraint(0.001, 100) );
 	Parameter* ct = new_Parameter_with_postfix("gtr.e", "model", 1, new_Constraint(0.001, 100) );
 	
-    Simplex* sfreqs = new_Simplex(4);
+    Simplex* sfreqs = new_Simplex("gtr", 4);
 	sfreqs->set_values(sfreqs, freqs);
 	
 	SubstitutionModel* model = new_GTR_with_parameters(sfreqs, ac, ag, at, cg, ct, NULL);

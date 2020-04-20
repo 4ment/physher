@@ -118,23 +118,25 @@ double get_value(Simplex* simplex, int i){
 //}
 
 // x is of dimension K
-Simplex* new_Simplex_with_values(const double *x, size_t K){
+Simplex* new_Simplex_with_values(const char* name, const double *x, size_t K){
 	Simplex* simplex = (Simplex*)malloc(sizeof(Simplex));
 	simplex->K = K;
-	simplex->parameters = new_Parameters(K-1);
+	simplex->parameters = new_Parameters_with_name(name, K-1);
 	simplex->values = clone_dvector(x, K);
-	char name[50] = "";
+    StringBuffer* buffer = new_StringBuffer(10);
 	size_t N = K-1;
 	double stick = 1;
 	for(int i = 0; i < N; i++){
+        StringBuffer_empty(buffer);
+        StringBuffer_append_format(buffer, "%s.phi%d", name, i);
         Constraint* constraint = new_Constraint(0, 1);
         Constraint_set_fupper(constraint, 0.99);
 		double phi = simplex->values[i]/stick;
-		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, constraint));
+		Parameters_move(simplex->parameters, new_Parameter(buffer->c, phi, constraint));
 		Parameters_at(simplex->parameters, i)->id = i;
 		stick -= simplex->values[i];
 	}
+    free_StringBuffer(buffer);
 	simplex->get_values = get_values;
 	simplex->get_value = get_value;
 	simplex->set_values = set_values;
@@ -143,14 +145,14 @@ Simplex* new_Simplex_with_values(const double *x, size_t K){
 	return simplex;
 }
 
-Simplex* new_Simplex(size_t K){
+Simplex* new_Simplex(const char* name, size_t K){
 	Simplex* simplex = (Simplex*)malloc(sizeof(Simplex));
 	simplex->K = K;
 	simplex->parameters = new_Parameters(K-1);
+    Parameters_set_name2(simplex->parameters, name);
 	simplex->values = dvector(K);
-	char name[50] = "";
 	size_t N = K-1;
-	
+    StringBuffer* buffer = new_StringBuffer(10);
 	double p = 1.0/K;
 	for(int i = 0; i < K; i++){
 		simplex->values[i] = p;
@@ -161,11 +163,11 @@ Simplex* new_Simplex(size_t K){
         Constraint_set_fupper(constraint, 0.999);
         Constraint_set_flower(constraint, 0.001);
 		double phi = simplex->values[i]/stick;
-		sprintf(name, "%d", i );
-		Parameters_move(simplex->parameters, new_Parameter_with_postfix("phi", name, phi, constraint));
+        Parameters_move(simplex->parameters, new_Parameter(buffer->c, phi, constraint));
 		Parameters_at(simplex->parameters, i)->id = i;
 		stick -= simplex->values[i];
 	}
+    free_StringBuffer(buffer);
 	simplex->get_values = get_values;
 	simplex->get_value = get_value;
 	simplex->set_values = set_values;
@@ -275,6 +277,7 @@ Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
+    char* id = get_json_node_value_string(node, "id");
 	json_node* values = get_json_node(node, "values");
 	Simplex* simplex = NULL;
 	
@@ -288,15 +291,14 @@ Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
 			}
 			x[i] = atof((char*)child->value);
 		}
-		simplex = new_Simplex_with_values(x, values->child_count);
+		simplex = new_Simplex_with_values(id, x, values->child_count);
 		free(x);
 	}
 	else{
 		json_node* dimension = get_json_node(node, "dimension");
-		simplex = new_Simplex(atoi((char*)dimension->value));
+		simplex = new_Simplex(id, atoi((char*)dimension->value));
 	}
-	json_node* id_node = get_json_node(node, "id");
-	Model* model = new_SimplexModel((char*)id_node->value, simplex);
+	Model* model = new_SimplexModel(id, simplex);
 	return model;
 }
 

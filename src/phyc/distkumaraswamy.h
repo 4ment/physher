@@ -13,9 +13,7 @@
 #include "mjson.h"
 #include "distmodel.h"
 
-double DistributionModel_kumaraswamy_inverse_CDF(double p, double a, double b);
-
-DistributionModel* new_KumaraswamyDistributionModel_with_parameters(Parameters* parameters, const Parameters* x);
+DistributionModel* new_KumaraswamyDistributionModel_with_parameters(Parameters** parameters, Parameters* x);
 
 Model* new_KumaraswamyDistributionModel_from_json(json_node* node, Hashtable* hash);
 

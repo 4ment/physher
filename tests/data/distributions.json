@@ -1,0 +1,126 @@
+{
+"exponential":{
+	"id":"exponential",
+	"type": "distribution", 
+	"distribution": "exponential",
+	"parameters":{
+		"lambda":{"id":"lambdabl", "type":"parameter", "value": 10, "lower": 0}
+	},
+	"x":{
+		"id": "positive2x", "type": "parameter", "dimension": 2, "values": [1, 2]
+	}
+},
+"flatdirichlet":{
+	"id":"flatdirichlet",
+	"type": "distribution", 
+	"distribution": "dirichlet",
+	"x": {
+		"id":"simplex3",
+		"type":"Simplex",
+		"values":[0.2, 0.3, 0.5] 
+	}
+},
+"dirichlet":{
+	"id":"dirichlet",
+	"type": "distribution", 
+	"distribution": "dirichlet",
+	"parameters":{
+		"concentration":{"id":"concentration", "type":"parameter", "dimension": 3, "values":[10,1,2]}
+	},
+	"x":"$simplex3"
+},
+"gamma":{
+	"id":"gamma",
+	"type": "distribution", 
+	"distribution": "gamma",
+	"parameters":{
+		"shape":{"id":"gamma.shape", "type":"parameter", "value":0.5, "lower": 0},
+		"rate":{"id":"gamma.rate", "type":"parameter", "value":0.5, "lower": 0}
+	},
+	"x":"%positive2x"
+},
+"lognormal":{
+	"id":"lognormal",
+	"type": "distribution", 
+	"distribution": "lognormal",
+	"parameters":{
+		"mu":{"id":"lognormal.mu", "type":"parameter", "value":0.5},
+		"sigma":{"id":"lognormal.sigma", "type":"parameter", "value":0.5, "lower": 0}
+	},
+	"x":"%positive2x"
+},
+"normal":{
+	"id":"normal",
+	"type": "distribution", 
+	"distribution": "normal",
+	"parameters":{
+		"mean":{"id":"normal.mu", "type":"parameter", "value":0.5},
+		"sigma":{"id":"normal.sigma", "type":"parameter", "value":0.5, "lower": 0}
+	},
+	"x":"%positive2x"
+},
+"normal2":{
+	"id":"normal2",
+	"type": "distribution", 
+	"distribution": "normal",
+	"parameters":{
+		"mean": "&normal.mu",
+		"sigma": "&normal.sigma"
+	},
+	"x":"%positive2x"
+},
+"cauchy":{
+	"id":"cauchy",
+	"type": "distribution", 
+	"distribution": "cauchy",
+	"parameters":{
+		"location":{"id":"cauchy.location", "type":"parameter", "value":0.5},
+		"scale":{"id":"cauchy.scale", "type":"parameter", "value":0.5, "lower": 0}
+	},
+	"x":"%positive2x"
+},
+"beta":{
+	"id":"beta",
+	"type": "distribution", 
+	"distribution": "beta",
+	"parameters":{
+		"alpha":{"id":"beta.alpha", "type":"parameter", "value": 3, "lower": 0},
+		"beta":{"id":"beta.beta", "type":"parameter", "value": 4, "lower": 0}
+	},
+	"x":{
+		"id": "zero-one2x", "type": "parameter", "dimension": 2, "values": [0.1, 0.2]
+	}
+},
+"multivariatenormal":{
+	"id":"multivariatenormal",
+	"type": "distribution", 
+	"distribution": "multivariatenormal",
+	"parameters":{
+		"mu":{"id":"multivariatenormal.mu", "type":"parameter", "dimension": 2, "values": [0.5, 0.1]},
+		"sigma":{"id":"multivariatenormal.sigma", "type":"parameter", "dimension": 4, "values": [1]}
+	},
+	"x":"%positive2x"
+},
+"multivariatenormal2":{
+	"id":"multivariatenormal2",
+	"type": "distribution", 
+	"distribution": "multivariatenormal",
+	"parameters":{
+		"mu":{"id":"multivariatenormal2.mu", "type":"parameter", "dimension": 2, "values": [0.5, 0.1]},
+		"L":{"id":"multivariatenormal2.sigma", "type":"parameter", "dimension": 3, "values": [1,2,3]}
+	},
+	"x":"%positive2x"
+},
+
+"gmrf":{
+	"id":"multivariatenormal2",
+	"type": "distribution", 
+	"distribution": "gmrf",
+	"parameters":{
+		"precision":{"id":"gmrf.precision", "type":"parameter", "value": 0.1}
+	},
+	"x":{
+		"id": "positive3x", "type": "parameter", "dimension": 3, "values": [1, 2, 3]
+	}
+}
+}

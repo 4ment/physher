@@ -59,7 +59,7 @@ SubstitutionModel * new_HKY(Simplex* freqs){
 
 SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa ){
 	
-	Simplex* sfreqs = new_Simplex(4);
+	Simplex* sfreqs = new_Simplex("hky", 4);
 	sfreqs->set_values(sfreqs, freqs);
 	
 	SubstitutionModel *m = create_nucleotide_model("HKY", HKY, sfreqs);

@@ -55,6 +55,7 @@ size_t get_json_node_value_size_t(json_node* node, const char* key, size_t defau
 void json_tree_to_string(json_node* node);
 bool json_prune_ignored(json_node* node);
 void json_tree_print(json_node* node);
+void json_tree_fprint(json_node* node, FILE* file);
 void json_free_tree(json_node* node);
 
 void json_check_allowed(json_node* node, char** allowed, int length);
