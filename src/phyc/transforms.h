@@ -26,6 +26,8 @@ double grad_log_det_inverse_logit(double y);
 
 double transform(double x, double lb, double ub);
 
+double transform2(double x, double lb, double ub, double* lp);
+
 double inverse_transform(double x, double lb, double ub, double* lp);
 
 double inverse_transform2(double x, double lb, double ub);

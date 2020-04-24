@@ -481,6 +481,24 @@ bool json_prune_ignored(json_node* node){
 	return false;
 }
 
+
+bool json_prune_underscored(json_node* node){
+    for (int i = 0; i < node->child_count; i++) {
+        if(node->children[i]->key != NULL && node->children[i]->key[0] == '_'){
+            json_free_tree(node->children[i]);
+            for (int j = i; j < node->child_count-1; j++) {
+                node->children[j] = node->children[j+1];
+            }
+            node->child_count--;
+            i--;
+        }
+        else{
+            json_prune_underscored(node->children[i]);
+        }
+    }
+    return false;
+}
+
 void json_tree_print_aux(json_node* node, size_t level, FILE* file){
 	for(size_t i = 0; i < level; i++) fprintf(file, "  ");
 	if(node->node_type == MJSON_STRING && node->key != NULL){

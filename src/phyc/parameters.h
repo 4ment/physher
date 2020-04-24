@@ -66,7 +66,7 @@ static const char* model_type_strings[] = {
 	"substitutionmodel",
 	"tree",
 	"treelikelihood",
-    "variational"
+    "variational",
     "variationaltreelikelihood"
 };
 
@@ -330,7 +330,7 @@ struct _Model {
 	double (*dlogP)( Model *, const Parameter* );
 	double (*d2logP)( Model *, const Parameter* );
 	double (*ddlogP)(Model*, const Parameter*, const Parameter*);
-	void (*gradient)( Model *, double* );
+	void (*gradient)( Model *, const Parameters*, double* );
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, int );

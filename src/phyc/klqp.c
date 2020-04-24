@@ -259,7 +259,7 @@ double klqp_meanfield_normal_elbo_multi(variational_t* var){
 	return elbo/var->elbo_samples;
 }
 
-void klqp_meanfield_normal_grad_elbo(variational_t* var, double* grads){
+void klqp_meanfield_normal_grad_elbo(variational_t* var, const Parameters* parameters, double* grads){
 	if (var->initialized == false) {
  		klqp_meanfield_normal_init(var);
 		// save for later
@@ -405,26 +405,6 @@ double klqp_meanfield_normal_logP(variational_t* var, double* values){
 		double sd = exp(Parameters_value(var->var_parameters, i+dim));
 		double zeta = transform(values[i], Parameter_lower(p), Parameter_upper(p));
 		logP += dnorml(zeta, mu, sd) - zeta;
-	}
-	return logP;
-}
-
-double klqp_meanfield_normal_logP_parameters(variational_t* var, const Parameters* parameters){
-	size_t dim = Parameters_count(var->parameters);
-	size_t dim2 = Parameters_count(parameters);
-	double logP = 0;
-	for (int i = 0; i < dim2; i++) {
-		Parameter* p = Parameters_at(parameters, i);
-		for (int j = 0; j < dim; j++) {
-			Parameter* p2 = Parameters_at(var->parameters, j);
-			if (p == p2) {
-				double mu = Parameters_value(var->var_parameters, i);
-				double sd = exp(Parameters_value(var->var_parameters, i+dim));
-				double zeta = transform(Parameter_value(p), Parameter_lower(p), Parameter_upper(p));
-				logP += dnorml(zeta, mu, sd) - zeta;
-				break;
-			}
-		}
 	}
 	return logP;
 }
@@ -593,7 +573,7 @@ double klqp_meanfield_lognormal_elbo(variational_t* var){
     return elbo/(var->elbo_samples-inf_count) + entropy;
 }
 
-void klqp_meanfield_lognormal_grad_elbo(variational_t* var, double* grads){
+void klqp_meanfield_lognormal_grad_elbo(variational_t* var, const Parameters* parameters, double* grads){
     if (var->initialized == false) {
         //klqp_meanfield_normal_init(var);
         // save for later
@@ -660,26 +640,6 @@ double klqp_meanfield_lognormal_logP(variational_t* var, double* values){
         double mu = Parameters_value(var->var_parameters, i);
         double sigma = exp(Parameters_value(var->var_parameters, i+dim));
         logP += log(gsl_ran_lognormal_pdf(values[i], mu, sigma));
-    }
-    return logP;
-}
-
-// assumes that parameters are in R+
-double klqp_meanfield_lognormal_logP_parameters(variational_t* var, const Parameters* parameters){
-    size_t dim = Parameters_count(var->parameters);
-    size_t dim2 = Parameters_count(parameters);
-    double logP = 0;
-    for (int i = 0; i < dim2; i++) {
-        Parameter* p = Parameters_at(parameters, i);
-        for (int j = 0; j < dim; j++) {
-            Parameter* p2 = Parameters_at(var->parameters, j);
-            if (p == p2) {
-                double mu = Parameters_value(var->var_parameters, i);
-                double sigma = exp(Parameters_value(var->var_parameters, i+dim));
-                logP += log(gsl_ran_lognormal_pdf(Parameter_value(p), mu, sigma));
-                break;
-            }
-        }
     }
     return logP;
 }
@@ -960,7 +920,7 @@ double klqp_fullrank_normal_elbo(variational_t* var){
 	return elbo/var->elbo_samples + entropy;
 }
 
-void klqp_fullrank_normal_grad_elbo(variational_t* var, double* grads){
+void klqp_fullrank_normal_grad_elbo(variational_t* var, const Parameters* parameters, double* grads){
 	if (var->initialized == false) {
 		klqp_fullrank_normal_init(var);
 		var->initialized = true;
@@ -1078,12 +1038,6 @@ double klqp_fullrank_normal_logP(variational_t* var, double* values){
 	gsl_vector_free(work);
 	
 	return logP + logJac;
-}
-
-double klqp_fullrank_normal_logP_parameters(variational_t* var, const Parameters* parameters){
-	//TODO: need to rethink this function. Does not make sense in multivariate case
-	error("variational_fullrank_parameters_logP\n");
-	return 0;
 }
 
 bool klqp_fullrank_normal_sample(variational_t* var, double* values){

@@ -17,21 +17,43 @@
 
 #include <gsl/gsl_rng.h>
 
+typedef struct variational_block_t{
+    Model* posterior;
+    Model** simplices;
+    size_t simplex_count;
+    size_t simplex_parameter_count;
+    Parameters* parameters; // parameters of the posterior
+    Parameters** var_parameters; // parameters of variational distribution
+    size_t var_parameters_count; // length of array var_parameters
+    void (*sample1)(struct variational_block_t*, double* jacobian); // sample from q and set values in p
+    void (*sample2)(struct variational_block_t*, const Parameters*); // sample from q and set values in p
+    void (*sample)(struct variational_block_t*, double* values); // sample from q and set values in vector values
+    double (*entropy)(struct variational_block_t*);
+    void (*grad_elbo)(struct variational_block_t*, const Parameters*, double* grads);
+    void (*grad_entropy)(struct variational_block_t*, const Parameters*, double*);
+    double (*logP)(struct variational_block_t*, double* values);
+    double (*logQ)(struct variational_block_t*, double* values);
+    bool use_entropy;
+    gsl_rng* rng;
+    bool initialized;
+    double* etas;
+}variational_block_t;
 
 typedef struct variational_t{
     Model* posterior;
+    variational_block_t** blocks;
+    size_t block_count;
 	Model** simplices;
 	size_t simplex_count;
     Parameters* parameters; // parameters of the posterior
     Parameters* var_parameters; // parameters of variational distribution
     double(*elbofn)(struct variational_t*);
-    void(*grad_elbofn)(struct variational_t*, double*);
+    void(*grad_elbofn)(struct variational_t*, const Parameters*, double*);
     size_t elbo_samples;
     size_t grad_samples;
 	bool (*sample)( struct variational_t*, double* values );
 	bool (*sample_some)( struct variational_t*, const Parameters* parameters, double* values );
 	double (*logP)( struct variational_t*, double* x );
-    double (*parameters_logP)( struct variational_t*, const Parameters* parameters );
 	void (*finalize)( struct variational_t* );
     void (*print)( struct variational_t*, FILE* file );
 	bool initialized;

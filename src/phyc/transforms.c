@@ -53,13 +53,35 @@ double transform(double x, double lb, double ub){
         return log(ub-x);
     }
 	else if(!isinf(ub) && !isinf(lb)){
-		return logit(x-lb)/(ub-lb);
+		return logit((x-lb)/(ub-lb));
 	}
+    return x;
+}
+
+double transform2(double x, double lb, double ub, double* lp){
+    // lower bound
+    if(!isinf(lb) && isinf(ub)){
+        *lp += -log(x - lb);
+        return log(x-lb);
+    }
+    // upper bound
+    else if(!isinf(ub) && isinf(lb)){
+        *lp += log(-1.0/(ub-x));
+        return log(ub-x);
+    }
+    else if(!isinf(ub) && !isinf(lb)){
+        *lp += log((ub-lb)/((ub-x)*(x-lb)));
+        return logit((x-lb)/(ub-lb));
+    }
     return x;
 }
 
 double inverse_transform(double z, double lb, double ub, double* lp){
     // lower bound
+    /*if(lb == 0 && isinf(ub)){
+        *lp += z - log(exp(z) + 1);
+        return log(exp(z)+1);
+    }*/
     if(!isinf(lb) && isinf(ub)){
         *lp += z;
         return exp(z) + lb;
@@ -97,6 +119,9 @@ double inverse_transform(double z, double lb, double ub, double* lp){
 
 double inverse_transform2(double z, double lb, double ub){
     // lower bound
+    /*if(lb == 0 && isinf(ub)){
+        return log(exp(z)+1);
+    }*/
     if(!isinf(lb) && isinf(ub)){
         return exp(z) + lb;
     }

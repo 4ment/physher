@@ -16,6 +16,8 @@
 #include "utils.h"
 #include "transforms.h"
 #include "matrix.h"
+#include "filereader.h"
+#include "distmodel.h"
 
 #include "gamvi.h"
 
@@ -23,7 +25,345 @@
 #include "klqp.h"
 
 
+variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* hash){
+    variational_block_t* var = malloc(sizeof(variational_block_t));
+    char* allowed[] = {
+        "distribution",
+        "entropy", // use entropy or not
+        "parameters",
+        "simplices",
+        "tree",
+        "x"
+    };
+    json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+    
+    const char* id = get_json_node_value_string(node, "id");
+    const char* dist_string = get_json_node_value_string(node, "distribution");
+    json_node* parameters_node = get_json_node(node, "parameters");
+    json_node* simplices_node = get_json_node(node, "simplices");
+    json_node* tree_node = get_json_node(node, "tree");
+    var->use_entropy = get_json_node_value_bool(node, "entropy", true);
+
+    var->sample = NULL;
+    var->var_parameters = NULL;
+
+    var->simplex_count = 0;
+    var->simplex_parameter_count = 0;
+    var->simplices = NULL;
+    
+    var->initialized = false;
+    var->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
+    
+    if(simplices_node != NULL){
+        if (simplices_node->node_type == MJSON_ARRAY) {
+            var->simplices = malloc(simplices_node->child_count*sizeof(Model*));
+            for (int i = 0; i < simplices_node->child_count; i++) {
+                json_node* simplex_node = simplices_node->children[i];
+                char* ref = simplex_node->value;
+                Model* msimplex = Hashtable_get(hash, ref+1);
+                Simplex* simplex = msimplex->obj;
+                Parameters_add_parameters(var->parameters, simplex->parameters);
+                var->simplices[i] = msimplex;
+                msimplex->ref_count++;
+                var->simplex_count++;
+                var->simplex_parameter_count += simplex->K-1;
+            }
+        }
+    }
+
+    if (tree_node != NULL) {
+        char* tree_string = get_json_node_value_string(node, "tree");
+        Model* mtree = Hashtable_get(hash, tree_string+1);
+        Tree* tree = mtree->obj;
+        Node** nodes = Tree_get_nodes(tree, POSTORDER);
+
+        for(int i = 0; i < Tree_node_count(tree)-2; i++){
+            Parameters_add(var->parameters, nodes[i]->distance);
+        }
+    }
+
+    var->posterior = NULL; // set by variational_t
+    json_node* x_node = get_json_node(node, "x");
+    var->parameters = distmodel_get_x(id, x_node, hash);
+    
+    var->var_parameters = malloc(parameters_node->child_count*sizeof(Parameters*));
+    var->var_parameters_count = parameters_node->child_count;
+    for (int i = 0; i < parameters_node->child_count; i++) {
+        json_node* p_node = parameters_node->children[i];
+        json_node* dim_node = get_json_node(p_node, "dimension");
+        Parameters* multi_parameter = NULL;
+        if(dim_node != NULL){
+            multi_parameter = new_MultiParameter_from_json(p_node, hash);
+            Hashtable_add(hash, Parameters_name2(multi_parameter), multi_parameter);
+        }
+        else{
+            multi_parameter = new_Parameters(1);
+            Parameter* parameter = new_Parameter_from_json(p_node, hash);
+            Parameters_move(multi_parameter, parameter);
+            Parameters_set_name2(multi_parameter, Parameter_name(parameter));
+            Hashtable_add(hash, Parameter_name(parameter), parameter);
+        }
+        var->var_parameters[i] = multi_parameter;
+    }
+    
+    if (dist_string == NULL || strcasecmp(dist_string, "normal") == 0) {
+        var->etas = dvector(Parameters_count(var->parameters));
+        size_t mu_length = Parameters_count(var->var_parameters[0]);
+        size_t sigma_length = Parameters_count(var->var_parameters[1]);
+        if (var->var_parameters_count != 2 || mu_length != sigma_length) {
+            fprintf(stderr, "Meanfield normal should have 2 parameter vectors of same length: mu (length: %zu) and sigma (length: %zu)\n", mu_length, sigma_length);
+            exit(2);
+        }
+        if (Parameters_count(var->var_parameters[0]) != Parameters_count(var->parameters)) {
+            fprintf(stderr, "The length of mu and sigma (%zu) in meanfield model should be equal to the length of input parameters x (%zu)\n", mu_length, Parameters_count(var->parameters));
+            exit(2);
+        }
+        // check order: mu should be first, then sigma
+        if (strcasecmp(parameters_node->children[0]->key, "mu") != 0) {
+            Parameters* temp = var->var_parameters[0];
+            var->var_parameters[0] = var->var_parameters[1];
+            var->var_parameters[1] = temp;
+        }
+        bool backward = get_json_node_value_bool(node, "backward", true); // true is KL(Q||P)
+        if(backward){
+            var->entropy = klqp_block_meanfield_normal_entropy;
+            var->grad_elbo = klqp_block_meanfield_normal_grad_elbo;
+            var->grad_entropy = klqp_block_meanfield_normal_grad_entropy;
+            var->sample = klqp_block_meanfield_normal_sample;
+            var->sample1 = klqp_block_meanfield_normal_sample1;
+            var->sample2 = klqp_block_meanfield_normal_sample2;
+//            var->sample_some = klqp_block_meanfield_normal_sample_some;
+//            var->finalize = klqp_meanfield_normal_finalize;
+            var->logP = klqp_block_meanfield_normal_logP;
+            var->logQ = klqp_block_meanfield_normal_logQ;
+//            var->parameters_logP = klqp_block_meanfield_normal_logP_parameters;
+//            var->print = klqp_meanfield_normal_log_samples;
+            
+        }
+        else{
+//                var->elbofn = klpq_normal_meanfield;
+//                var->grad_elbofn = grad_klpq_normal_meanfield;
+        }
+    }
+    else if (dist_string == NULL || strcasecmp(dist_string, "multivariatenormal") == 0) {
+        var->etas = dvector(Parameters_count(var->parameters)*2); // etas and zetas
+        size_t mu_length = Parameters_count(var->var_parameters[0]);
+        size_t sigma_length = Parameters_count(var->var_parameters[1]);
+        if (var->var_parameters_count != 2 || sigma_length != (mu_length*(mu_length-1))/2+mu_length) {
+            fprintf(stderr, "Fullrank normal should have 2 parameter vectors: mu (length: %zu) and sigma (length: %zu)\n", mu_length, sigma_length);
+            exit(2);
+        }
+        // check order: mu should be first, then sigma
+        if (strcasecmp(parameters_node->children[0]->key, "mu") != 0) {
+            Parameters* temp = var->var_parameters[0];
+            var->var_parameters[0] = var->var_parameters[1];
+            var->var_parameters[1] = temp;
+        }
+    
+        if (Parameters_count(var->var_parameters[0]) != Parameters_count(var->parameters)) {
+            fprintf(stderr, "The length of mu (%zu) in fullrank model should be equal to the length of input parameters x (%zu)\n", mu_length, Parameters_count(var->parameters));
+            exit(2);
+        }
+    
+        bool backward = get_json_node_value_bool(node, "backward", true); // true is KL(Q||P)
+        if(backward){
+            var->entropy = klqp_block_fullrank_normal_entropy;
+            var->grad_elbo = klqp_block_fullrank_normal_grad_elbo;
+            var->grad_entropy = klqp_block_fullrank_normal_grad_entropy;
+            var->sample = klqp_block_fullrank_normal_sample;
+            var->sample1 = klqp_block_fullrank_normal_sample1;
+            var->sample2 = klqp_block_fullrank_normal_sample2;
+//            var->sample_some = klqp_block_meanfield_normal_sample_some;
+//            var->finalize = klqp_meanfield_normal_finalize;
+            var->logP = klqp_block_fullrank_normal_logP;
+            var->logQ = klqp_block_fullrank_normal_logQ;
+//            var->parameters_logP = klqp_block_meanfield_normal_logP_parameters;
+//            var->print = klqp_meanfield_normal_log_samples;
+            
+        }
+        else{
+
+        }
+    }
+    else{
+        fprintf(stderr, "distribution %s not recognized\n", dist_string);
+        exit(1);
+    }
+
+    return var;
+}
+
+double variational_logP(variational_t* var, double* values){
+    double logP = 0;
+    size_t shift = 0;
+    for(int j = 0; j < var->block_count; j++){
+        variational_block_t* block = var->blocks[j];
+        logP += block->logP(block, values+shift);
+        for(int k = 0; k < block->var_parameters_count; k++){
+            shift += Parameters_count(block->var_parameters[k]);
+        }
+    }
+    return logP;
+}
+
+double variational_logP_parameters(variational_t* var, const Parameters* parameters){
+    double logP = 0;
+    fprintf(stderr, "variational_logP_parameters no implemented \n");
+    exit(3);
+    return logP;
+}
+
+bool variational_sample(variational_t* var, double* values){
+    if(!var->ready_to_sample){
+        var->finalize(var);
+        var->ready_to_sample = true;
+    }
+    
+    size_t shift = 0;
+    for(int j = 0; j < var->block_count; j++){
+        variational_block_t* block = var->blocks[j];
+        block->sample(block, values+shift);
+        for(int k = 0; k < block->var_parameters_count; k++){
+            shift += Parameters_count(block->var_parameters[k]);
+        }
+    }
+    return true;
+}
+
+void _variational_jsonize(Model* model, json_node* jroot){
+    variational_t* var = model->obj;
+    for (int i = 0; i < var->block_count; i++) {
+        variational_block_t* block = var->blocks[i];
+        for (int j = 0; j < block->var_parameters_count; j++) {
+            Parameters_to_json(block->var_parameters[j], jroot);
+        }
+    }
+}
+
+void variational_load(variational_t* var, const char* filename){
+    char* content = load_file(filename);
+    json_node* json = create_json_tree(content);
+    free(content);
+    for(size_t i = 0; i < var->block_count; i++){
+        variational_block_t* block = var->blocks[i];
+        for(size_t j = 0; j < block->var_parameters_count; j++){
+            char* var_id = Parameters_name2(block->var_parameters[j]);
+            json_node* parameters_node = get_json_node(json, var_id);
+            if(parameters_node != NULL){
+                json_node* values = get_json_node(parameters_node, "values");
+                if(values->child_count != Parameters_count(block->var_parameters[j])){
+                    fprintf(stderr, "Could not load values of parameters with ID: %s (%zu %zu)", var_id, values->child_count, Parameters_count(block->var_parameters[j]));
+                    continue;
+                }
+                for(size_t k = 0; k < values->child_count; k++){
+                    double value = atof((char*)values->children[k]->value);
+                    Parameters_set_value(block->var_parameters[j], k, value);
+                }
+            }
+        }
+    }
+    json_free_tree(json);
+}
+
+Model* new_Variational_from_json2(json_node* node, Hashtable* hash){
+    char* allowed[] = {
+        "distributions",
+        "divergence",
+        "elbosamples",
+        "elbomulti",
+        "gradsamples",
+        "init",
+        "log",
+        "log_samples",
+        "parameters",
+        "posterior",
+        "simplices",
+        "tree",
+        "var",
+        "var_parameters"
+    };
+    json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+    
+    const char* posterior_string = get_json_node_value_string(node, "posterior");
+    const char* id = get_json_node_value_string(node, "id");
+    const char* filename = get_json_node_value_string(node, "log");
+    const char* divergence = get_json_node_value_string(node, "divergence");
+    json_node* blocks_node = get_json_node(node, "distributions");
+    json_node* init_node = get_json_node(node, "init");
+    
+    variational_t* var = malloc(sizeof(variational_t));
+    
+    var->posterior = Hashtable_get(hash, posterior_string+1);
+    var->posterior->ref_count++;
+    
+    var->file = NULL;
+    var->sample = NULL;
+    var->sample_some = NULL;
+    var->parameters = NULL;
+    var->var_parameters = NULL;
+    
+    var->simplex_count = 0;
+    var->simplices = NULL;
+    
+    var->block_count = blocks_node->child_count;
+    var->blocks = malloc(blocks_node->child_count*sizeof(variational_block_t*));
+    for (int i = 0; i < var->block_count; i++) {
+        json_node* block_node = blocks_node->children[i];
+        variational_block_t* block = new_VariationalBlock_from_json(block_node, hash);
+        block->posterior = var->posterior;
+        var->blocks[i] = block;
+    }
+    
+    var->elbo_samples = get_json_node_value_size_t(node, "elbosamples", 100);
+    var->grad_samples = get_json_node_value_size_t(node, "gradsamples", 1);
+    var->elbo_multi = get_json_node_value_int(node, "elbomulti", 1);
+    var->log_samples = get_json_node_value_int(node, "log_samples", 0);
+    
+    if(divergence == NULL || strcasecmp(divergence, "klqp") == 0){
+        if (var->elbo_multi > 1) {
+            var->elbofn = variational_klqp_elbo_multi;
+        }
+        else{
+            var->elbofn = variational_klqp_elbo;
+        }
+        var->grad_elbofn = variational_klqp_grad_elbo;
+    }
+    var->sample = variational_sample;
+    var->logP = variational_logP;
+    var->print = klqp_fullrank_log_samples;
+    
+    var->initialized = false;
+    var->ready_to_sample = false;
+    var->iter = 0;
+    StringBuffer* buffer = new_StringBuffer(10);
+    if (filename != NULL) {
+        var->file = fopen(filename, "w");
+        fprintf(var->file, "iteration");
+        for(int i = 0; i < Parameters_count(var->var_parameters); i++){
+            fprintf(var->file, ",%s", Parameters_name(var->var_parameters, i));
+        }
+        for(int i = 0; i < Parameters_count(var->var_parameters); i++){
+            fprintf(var->file, ",%s.grad", Parameters_name(var->var_parameters, i));
+        }
+        fprintf(var->file, "\n");
+    }
+    
+    free_StringBuffer(buffer);
+    var->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
+    
+    if (init_node != NULL) {
+        variational_load(var, init_node->value);
+    }
+    
+    return new_VariationalModel(id, var);
+}
+
 Model* new_Variational_from_json(json_node* node, Hashtable* hash){
+    json_node* blocks_node = get_json_node(node, "distributions");
+    if (blocks_node != NULL) {
+        return new_Variational_from_json2(node, hash);
+    }
+    
 	char* allowed[] = {
 		"backward",
 		"distribution",
@@ -51,6 +391,8 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	json_node* simplices_node = get_json_node(node, "simplices");
 	
 	variational_t* var = malloc(sizeof(variational_t));
+    var->blocks = NULL;
+    var->block_count = 0;
 	var->file = NULL;
 	var->sample = NULL;
 	var->sample_some = NULL;
@@ -164,7 +506,6 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 			var->sample_some = klqp_meanfield_normal_sample_some;
 			var->finalize = klqp_meanfield_normal_finalize;
 			var->logP = klqp_meanfield_normal_logP;
-			var->parameters_logP = klqp_meanfield_normal_logP_parameters;
             var->print = klqp_meanfield_normal_log_samples;
 		}
         else if (strcasecmp(dist_string, "gamma") == 0) {
@@ -175,7 +516,6 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 			var->sample_some = variational_sample_some_gamma_meanfield;
 			var->finalize = NULL; //TODO: implement function
 			var->logP = variational_gamma_meanfield_logP;
-			var->parameters_logP = variational_gamma_meanfield_parameters_logP;
             var->print = meanfield_gamma_log_samples;
 		}
         else if (strcasecmp(dist_string, "lognormal") == 0) {
@@ -186,7 +526,6 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
             //TODO: implement lognormal finalize
             var->finalize = klqp_meanfield_normal_finalize;
             var->logP = klqp_meanfield_lognormal_logP;
-            var->parameters_logP = klqp_meanfield_lognormal_logP_parameters;
             var->print = klqp_meanfield_lognormal_log_samples;
         }
 		else{
@@ -262,7 +601,6 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 		var->grad_elbofn = klqp_fullrank_normal_grad_elbo;
 		var->sample = klqp_fullrank_normal_sample;
 		var->logP = klqp_fullrank_normal_logP;
-        var->parameters_logP = klqp_fullrank_normal_logP_parameters;
         var->print = klqp_fullrank_log_samples;
 	}
 	
@@ -307,6 +645,20 @@ void free_Variational(variational_t* var){
 		}
 		free(var->simplices);
 	}
+    if(var->blocks != NULL){
+        for (int i = 0; i < var->block_count; i++) {
+            variational_block_t* block = var->blocks[i];
+            for (int j = 0; j < block->var_parameters_count; j++) {
+                free_Parameters(block->var_parameters[j]);
+            }
+            free(block->var_parameters);
+            free_Parameters(block->parameters);
+            if(block->etas != NULL) free(block->etas);
+            free(block);
+        }
+//        var->posterior->free(var->posterior);
+        free(var->blocks);
+    }
 	if (var->file != NULL) fclose(var->file);
 	free(var);
 }
@@ -383,7 +735,6 @@ static Model* _variational_model_clone(Model* self, Hashtable *hash){
 	clone->elbo_samples = var->elbo_samples;
 	clone->grad_samples = var->grad_samples;
 	clone->logP = var->logP;
-	clone->parameters_logP = var->parameters_logP;
 	clone->initialized = var->initialized;
 	clone->finalize = var->finalize;
 	clone->iter = var->iter;
@@ -399,9 +750,9 @@ static double _variational_model_logP(Model *self){
 	return var->elbofn(var);
 }
 
-static void _variational_model_gradient(Model *self, double* grad){
+static void _variational_model_gradient(Model *self, const Parameters* parameters, double* grad){
 	variational_t* var = (variational_t*)self->obj;
-	var->grad_elbofn(var, grad);
+	var->grad_elbofn(var, parameters, grad);
 }
 
 static void _variational_model_get_free_parameters(Model* self, Parameters* parameters){
@@ -500,6 +851,7 @@ Model* new_VariationalModel(const char* name, variational_t* var){
 	model->print = _variational_print;
 	model->sample = _variational_model_sample;
 	model->samplable = true;
+    model->jsonize = _variational_jsonize;
 	
 	for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
 		Parameters_at(var->var_parameters, i)->listeners->add( Parameters_at(var->var_parameters, i)->listeners, model );

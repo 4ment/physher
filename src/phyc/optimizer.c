@@ -63,8 +63,7 @@ double model_negative_logP( Parameters *params, double *grad, void *data ){
 
 static void _gradient( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
-//	printf("%f\n", model->logP(model));
-	model->gradient(model, grad);
+	model->gradient(model, params, grad);
 }
 
 static void _reset(void* data){
