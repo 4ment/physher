@@ -81,28 +81,638 @@ void klqp_meanfield_normal_init(variational_t* var){
 }
 
 void klqp_meanfield_normal_finalize(variational_t* var){
-	size_t dim = Parameters_count(var->parameters);
-	
-	for (int i = 0; i < dim; i++) {
-		Parameter_restore(Parameters_at(var->parameters, i));
-	}
-	
-	for (int i = 0; i < dim; i++) {
-		double sigma = exp(Parameters_value(var->var_parameters, i+dim));
-		if(!Parameters_at(var->var_parameters, i)->estimate){
-			Parameters_set_value(var->var_parameters, i, -10 + sigma);
-		}
-		//		double mu = Parameters_value(var->var_parameters, i);
-		//		if(!Parameters_at(var->var_parameters, i)->estimate){
-		//			mu = -10 + sigma;
-		//		}
-		////		double mean = exp(mu + sigma*sigma/2.0);
-		////		double mode = exp(mu - sigma*sigma);
-		////		printf("%f %f %f %f %s\n", Parameters_value(var->parameters, i), mode,
-		////			   mu, sigma, Parameters_name(var->parameters, i));
-	}
+    size_t dim = Parameters_count(var->parameters);
+    
+    for (int i = 0; i < dim; i++) {
+        Parameter_restore(Parameters_at(var->parameters, i));
+    }
+    
+    for (int i = 0; i < dim; i++) {
+        double sigma = exp(Parameters_value(var->var_parameters, i+dim));
+        if(!Parameters_at(var->var_parameters, i)->estimate){
+            Parameters_set_value(var->var_parameters, i, -10 + sigma);
+        }
+        //        double mu = Parameters_value(var->var_parameters, i);
+        //        if(!Parameters_at(var->var_parameters, i)->estimate){
+        //            mu = -10 + sigma;
+        //        }
+        ////        double mean = exp(mu + sigma*sigma/2.0);
+        ////        double mode = exp(mu - sigma*sigma);
+        ////        printf("%f %f %f %f %s\n", Parameters_value(var->parameters, i), mode,
+        ////               mu, sigma, Parameters_name(var->parameters, i));
+    }
 }
 
+//MARK: block KL(Q||P)
+
+double variational_klqp_elbo(variational_t* var){
+    double elbo = 0;
+    Model* posterior = var->posterior;
+    
+    double entropy = 0;
+    for(int i = 0; i < var->block_count; i++){
+        variational_block_t* block = var->blocks[i];
+        if (block->use_entropy) {
+            entropy += block->entropy(block);
+        }
+        else{
+            // estimate entropy
+        }
+    }
+    int inf_count = 0;
+    
+    for (int i = 0; i < var->elbo_samples; i++) {
+        double jacobian = 0.0;
+        double logQ = 0.0;
+        for(int i = 0; i < var->block_count; i++){
+            variational_block_t* block = var->blocks[i];
+            block->sample1(block, &jacobian);
+            if(block->use_entropy){
+                logQ += block->logQ(block, block->etas);
+            }
+        }
+        double logP = posterior->logP(posterior);
+        if(!isinf(logP))elbo += logP + jacobian;
+        else inf_count++;
+        
+        if(isinf(elbo) || isnan(elbo)){
+            return elbo;
+        }
+    }
+    return elbo/(var->elbo_samples-inf_count) + entropy;
+}
+
+double variational_klqp_elbo_multi(variational_t* var){
+    double elbo = 0;
+    Model* posterior = var->posterior;
+    
+    double* elbos = dvector(var->elbo_multi);
+    
+    for (int s = 0; s < var->elbo_samples; s++) {
+        double mean = 0;
+        int inf_count = 0;
+        for (int k = 0; k < var->elbo_multi; k++) {
+            double jacobian = 0.0;
+            double logQ = 0;
+            for(int i = 0; i < var->block_count; i++){
+                variational_block_t* block = var->blocks[i];
+                block->sample1(block, &jacobian);
+                logQ += block->logQ(block, block->etas);
+            }
+            double logP = posterior->logP(posterior);
+            double ratio = logP - logQ + jacobian;
+            if(!isinf(ratio)) elbos[k-inf_count] = ratio;
+            else inf_count++;
+        }
+        if(inf_count == var->elbo_multi){
+            free(elbos);
+            return elbo;
+        }
+        double max = elbos[0];
+        for (int k = 1; k < var->elbo_multi - inf_count; k++) {
+            if(elbos[k] > max) max = elbos[k];
+        }
+        for (int k = 0; k < var->elbo_multi - inf_count; k++) {
+            mean += exp(elbos[k] - max);
+        }
+
+        mean /= var->elbo_multi - inf_count;
+        elbo += log(mean) + max;
+    }
+    free(elbos);
+    return elbo/var->elbo_samples;
+}
+
+
+void variational_klqp_grad_elbo(variational_t* var, const Parameters* parameters, double* grads){
+    size_t dim = Parameters_count(parameters);
+    memset(grads, 0, sizeof(double)*Parameters_count(parameters));
+    
+    for (int i = 0; i < var->grad_samples; i++) {
+        // sample within each block. etas should be stored for jacobians
+        for(int j = 0; j < var->block_count; j++){
+            variational_block_t* block = var->blocks[j];
+            block->sample2(block, parameters);
+        }
+        
+        for(int j = 0; j < var->block_count; j++){
+            variational_block_t* block = var->blocks[j];
+            block->grad_elbo(block, parameters, grads);
+        }
+    }
+    
+    for (int j = 0; j < dim; j++) {
+        grads[j] /= var->grad_samples;
+    }
+    
+    // Add gradient entropy if needed
+    for(int j = 0; j < var->block_count; j++){
+        variational_block_t* block = var->blocks[j];
+        if (block->use_entropy) {
+            block->grad_entropy(block, parameters, grads);
+        }
+    }
+}
+
+//MARK: block normal meanfield
+
+void klqp_block_meanfield_normal_sample1(variational_block_t* var, double* jacobian){
+    size_t dim = Parameters_count(var->parameters);
+    
+    for (int j = 0; j < dim; j++) {
+        Parameter* p = Parameters_at(var->parameters, j);
+        Parameter* var_p_mu = Parameters_at(var->var_parameters[0], j);
+        Parameter* var_p_sigma = Parameters_at(var->var_parameters[1], j);
+        
+        if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
+        
+        double mu;
+        double sigma = Parameter_value(var_p_sigma);
+        
+        if(Parameter_estimate(var_p_mu)){
+            mu = Parameter_value(var_p_mu);
+        }
+        else{
+            //                if(Parameter_value(p) < 1.0e-6){
+            mu = -10 + sigma * sigma;
+            //                }
+            //                else{
+            //                    mu = log(Parameter_value(p)) + sigma*sigma;
+            //                }
+        }
+        var->etas[j] = rnorm();
+        double zeta = var->etas[j] * sigma + mu;
+        double theta = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), jacobian);
+        Parameter_set_value(p, theta);
+    }
+    
+    if (jacobian != NULL) {
+        for(int s = 0; s < var->simplex_count; s++){
+            Simplex* simplex = var->simplices[s]->obj;
+            const double* constrained_values = simplex->get_values(simplex);
+            double stick = 1;
+            for(int k = 0; k < simplex->K-1; k++){
+                *jacobian += log(stick);
+                stick -= constrained_values[k];
+            }
+        }
+    }
+}
+
+double klqp_block_meanfield_normal_entropy(variational_block_t* var){
+    // Entropy: 0.5(1 + log(2 \pi s^2))
+    // 0.5(1+log(2\pi) + sum(log(sigma))
+    size_t count = 0;
+    double entropy = 0;
+    size_t dim = Parameters_count(var->parameters);
+    for (size_t i = 0; i < dim; i++) {
+        if(Parameters_estimate(var->var_parameters[1], i)){
+            entropy += log(Parameters_value(var->var_parameters[1], i));
+            count++;
+        }
+    }
+    entropy += 0.5 * count * (1.0 + LOG_TWO_PI);
+    return entropy;
+}
+
+// parameters are the variational parameters
+void klqp_block_meanfield_normal_sample2(variational_block_t* var, const Parameters* parameters){
+    size_t dim = Parameters_count(var->parameters);
+    size_t opt_param_dim = Parameters_count(parameters);
+    
+    // find first mu
+    size_t mu_idx = 0;
+    for ( ; mu_idx < opt_param_dim; mu_idx++) {
+        if(Parameters_at(parameters, mu_idx) == Parameters_at(var->var_parameters[0], 0)){
+            break;
+        }
+    }
+    // not beeing optimized
+    if (mu_idx == opt_param_dim) return;
+    
+    
+    for (int idx = 0; idx < dim; idx++) {
+        Parameter* p = Parameters_at(var->parameters, idx);
+        double mu = Parameters_value(var->var_parameters[0], idx);
+        double sigma = Parameters_value(var->var_parameters[1], idx);
+        
+        var->etas[idx] = rnorm();
+        double zeta = var->etas[idx] * sigma + mu;
+        double theta = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+        Parameter_set_value(p, theta);
+    }
+}
+
+void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Parameters* parameters, double* grads){
+    
+    // find first mu and sigma
+    size_t mu_idx = 0;
+    size_t sigma_idx = 0;
+    size_t opt_param_dim = Parameters_count(parameters);
+    for ( ; mu_idx < opt_param_dim; mu_idx++) {
+        if(Parameters_at(parameters, mu_idx) == Parameters_at(var->var_parameters[0], 0)){
+            break;
+        }
+    }
+    // not beeing optimized
+    if (mu_idx == opt_param_dim) return;
+    
+    for ( ; sigma_idx < opt_param_dim; sigma_idx++) {
+        if(Parameters_at(parameters, sigma_idx) == Parameters_at(var->var_parameters[1], 0)){
+            break;
+        }
+    }
+    
+    Model* posterior = var->posterior;
+    size_t dim = Parameters_count(var->parameters);
+    size_t simplex_parameter_count = var->simplex_parameter_count;
+    
+    int idx = 0;
+    if (simplex_parameter_count > 0) {
+        for(int s = 0; s < var->simplex_count; s++){
+            Simplex* simplex = var->simplices[s]->obj;
+            for(int k = 0; k < simplex->K-1; k++){
+                Parameter* p = Parameters_at(var->parameters, idx);
+                double mu = Parameters_value(var->var_parameters[0], idx);
+                double sigma = Parameters_value(var->var_parameters[1], idx);
+                double dlogP = posterior->dlogP(posterior, p);
+                double zeta = var->etas[idx] * sigma + mu;
+                double gldits = 1.0/zeta + 1.0/(zeta - 1.0); // grad log det transform of stick
+                const double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
+                double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit + gldits;
+                grads[mu_idx + idx] += grad_mu;
+                grads[sigma_idx + idx] += grad_mu * var->etas[idx] * sigma;
+                idx++;
+            }
+        }
+    }
+    
+    for ( ; idx < dim; idx++) {
+        Parameter* p = Parameters_at(var->parameters, idx);
+        double mu = Parameters_value(var->var_parameters[0], idx);
+        double sigma = Parameters_value(var->var_parameters[1], idx);
+        
+        double dlogP = posterior->dlogP(posterior, p);
+        double zeta = var->etas[idx]*sigma + mu;
+        double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
+        double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit;
+        grads[mu_idx + idx] += grad_mu;
+        grads[sigma_idx + idx] += grad_mu * var->etas[idx] * sigma;
+    }
+}
+
+void klqp_block_meanfield_normal_grad_entropy(variational_block_t* var, const Parameters* parameters, double* grads){
+    // Entropy: 0.5(1 + log(2 \pi s^2))
+    // 0.5(1+log(2\pi) + sum(log(sigma))
+    
+    // find first sigma
+    size_t sigma_idx = 0;
+    size_t opt_param_dim = Parameters_count(parameters);
+    for ( ; sigma_idx < opt_param_dim; sigma_idx++) {
+        if(Parameters_at(parameters, sigma_idx) == Parameters_at(var->var_parameters[1], 0)){
+            break;
+        }
+    }
+    // not beeing optimized
+    if (sigma_idx == opt_param_dim) return;
+    
+    size_t dim = Parameters_count(var->parameters);
+    for (int j = 0; j < dim; j++) {
+        grads[j + sigma_idx] += 1.0;
+    }
+}
+
+double klqp_block_meanfield_normal_logP(variational_block_t* var, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    double logP = 0;
+    for (size_t i = 0; i < dim; i++) {
+        Parameter* p = Parameters_at(var->parameters, i);
+        double mu = Parameters_value(var->var_parameters[0], i);
+        double sd = Parameters_value(var->var_parameters[1], i);
+        double zeta = transform2(values[i], Parameter_lower(p), Parameter_upper(p), &logP);
+        logP += dnorml(zeta, mu, sd);
+    }
+    return logP;
+}
+
+
+double klqp_block_meanfield_normal_logQ(variational_block_t* var, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    double logP = 0;
+    for (size_t i = 0; i < dim; i++) {
+        double mu = Parameters_value(var->var_parameters[0], i);
+        double sd = Parameters_value(var->var_parameters[1], i);
+        logP += dnorml(values[i], mu, sd);
+    }
+    return logP;
+}
+
+
+void klqp_block_meanfield_normal_sample(variational_block_t* var, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    
+    for (int j = 0; j < dim; j++) {
+        Parameter* p = Parameters_at(var->parameters, j);
+        Parameter* var_p_mu = Parameters_at(var->var_parameters[0], j);
+        Parameter* var_p_sigma = Parameters_at(var->var_parameters[1], j);
+        
+        if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
+        
+        double mu;
+        double sigma = Parameter_value(var_p_sigma);
+        
+        if(Parameter_estimate(var_p_mu)){
+            mu = Parameter_value(var_p_mu);
+        }
+        else{
+            //                if(Parameter_value(p) < 1.0e-6){
+            mu = -10 + sigma * sigma;
+            //                }
+            //                else{
+            //                    mu = log(Parameter_value(p)) + sigma*sigma;
+            //                }
+        }
+        double zeta = rnorm() * sigma + mu;
+        values[j] = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+    }
+}
+
+bool klqp_block_meanfield_normal_sample_some(variational_block_t* var, const Parameters* parameters, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    size_t dim2 = Parameters_count(parameters);
+    for (int i = 0; i < dim2; i++) {
+        Parameter* p = Parameters_at(parameters, i);
+        for (int j = 0; j < dim; j++) {
+            Parameter* p2 = Parameters_at(var->parameters, j);
+            if (p == p2) {
+                if (!p->estimate) {
+                    values[i] = 0;
+                }
+                else{
+                    double mu = Parameters_value(var->var_parameters[0], j);
+                    double sd = Parameters_value(var->var_parameters[1], j);
+                    const double zeta = rnorm() * exp(sd) + mu;
+                    values[i] = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+                }
+                break;
+            }
+        }
+    }
+    return true;
+}
+
+//MARK: block normal fullrank
+
+void klqp_block_fullrank_normal_sample1(variational_block_t* var, double* jacobian){
+    size_t dim = Parameters_count(var->parameters);
+    for (int j = 0; j < dim; j++) {
+        var->etas[j] = rnorm();
+    }
+    
+    size_t row = 0;
+    for (int j = 0; j < dim; j++) {
+        double temp = 0;
+        // multiply L_j and eta
+        for (int k = 0; k < j+1; k++) {
+            if(Parameters_estimate(var->var_parameters[1], row)){
+                temp += Parameters_value(var->var_parameters[1], row)*var->etas[k];
+            }
+            row++;
+        }
+        double zeta = temp + Parameters_value(var->var_parameters[0], j); // add mu
+        Parameter* p = Parameters_at(var->parameters, j);
+        double theta = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), jacobian);
+        Parameter_set_value(p, theta);
+    }
+    
+    
+    if (jacobian != NULL) {
+        for(int s = 0; s < var->simplex_count; s++){
+            Simplex* simplex = var->simplices[s]->obj;
+            const double* constrained_values = simplex->get_values(simplex);
+            double stick = 1;
+            for(int k = 0; k < simplex->K-1; k++){
+                *jacobian += log(stick);
+                stick -= constrained_values[k];
+            }
+        }
+    }
+}
+
+double klqp_block_fullrank_normal_entropy(variational_block_t* var){
+    size_t dim = Parameters_count(var->parameters);
+    double entropy = 0;
+    int r = -1;
+    int count = 0;
+    for (int d = 0; d < dim; ++d) {
+        r += d+1;
+//        if(Parameters_estimate(var->var_parameters, r)){
+            double tmp = fabs(Parameters_value(var->var_parameters[1], r));
+            if (tmp != 0.0) entropy += log(tmp);
+            count++;
+//        }
+    }
+    entropy +=  0.5 * (1.0 + LOG_TWO_PI) * count;
+    return entropy;
+}
+
+// parameters are the variational parameters
+void klqp_block_fullrank_normal_sample2(variational_block_t* var, const Parameters* parameters){
+    size_t dim = Parameters_count(var->parameters);
+    
+    for (int j = 0; j < dim; j++) {
+        var->etas[j] = rnorm();
+    }
+    
+    size_t row = 0;
+    for (int j = 0; j < dim; j++) {
+        double temp = 0;
+        // multiply L_j and eta
+        for (int k = 0; k < j+1; k++) {
+//            if(Parameters_estimate(var->var_parameters[1], row)){
+                temp += Parameters_value(var->var_parameters[1], row)*var->etas[k];
+//            }
+            row++;
+        }
+        double zeta = temp + Parameters_value(var->var_parameters[0], j); // add mu
+        var->etas[j+dim] = zeta;
+        Parameter* p = Parameters_at(var->parameters, j);
+        double theta = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+        Parameter_set_value(p, theta);
+    }
+}
+
+void klqp_block_fullrank_normal_grad_elbo(variational_block_t* var, const Parameters* parameters, double* grads){
+    
+    // find first mu and sigma
+    size_t mu_idx = 0;
+    size_t sigma_idx = 0;
+    size_t opt_param_dim = Parameters_count(parameters);
+    for ( ; mu_idx < opt_param_dim; mu_idx++) {
+        if(Parameters_at(parameters, mu_idx) == Parameters_at(var->var_parameters[0], 0)){
+            break;
+        }
+    }
+    // not beeing optimized
+    if (mu_idx == opt_param_dim) return;
+    
+    for ( ; sigma_idx < opt_param_dim; sigma_idx++) {
+        if(Parameters_at(parameters, sigma_idx) == Parameters_at(var->var_parameters[1], 0)){
+            break;
+        }
+    }
+    
+    Model* posterior = var->posterior;
+    size_t simplex_parameter_count = var->simplex_parameter_count;
+    size_t  dim = Parameters_count(var->parameters);
+    size_t row = 0;
+    for (int k = 0; k < dim; k++){
+        Parameter* p = Parameters_at(var->parameters, k);
+        double dlogP = posterior->dlogP(posterior, p);
+        double zeta = var->etas[dim+k];
+        const double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
+        double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit;
+        if (k < simplex_parameter_count) {
+            grad_mu += 1.0/zeta + 1.0/(zeta - 1.0); // grad log det transform of stick
+        }
+        grads[mu_idx + k] += grad_mu;
+        for (int j = 0; j < k+1; j++) {
+            grads[sigma_idx + row] += grad_mu*var->etas[j];
+            row++;
+        }
+    }
+}
+
+void klqp_block_fullrank_normal_grad_entropy(variational_block_t* var, const Parameters* parameters, double* grads){
+    // find first sigma
+    size_t sigma_idx = 0;
+    size_t opt_param_dim = Parameters_count(parameters);
+    for ( ; sigma_idx < opt_param_dim; sigma_idx++) {
+        if(Parameters_at(parameters, sigma_idx) == Parameters_at(var->var_parameters[1], 0)){
+            break;
+        }
+    }
+    // not beeing optimized
+    if (sigma_idx == opt_param_dim) return;
+    
+    size_t dim = Parameters_count(var->parameters);
+    int diag = -1;
+    for (int i = 0; i < dim; i++) {
+        diag += i+1;
+//        if(Parameters_estimate(var->var_parameters, i)){
+            grads[diag + sigma_idx] += 1.0/Parameters_value(var->var_parameters[1], diag);
+//        }
+    }
+}
+
+double klqp_block_fullrank_normal_logP(variational_block_t* var, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    gsl_vector * mu = gsl_vector_calloc(dim);
+    gsl_matrix * L = gsl_matrix_calloc(dim, dim);
+    gsl_vector * x = gsl_vector_calloc(dim);
+    gsl_vector * work = gsl_vector_calloc(dim);
+    
+    double logJac = 0;
+    size_t row = 0;
+    for (int i = 0; i < dim; i++) {
+        Parameter* p = Parameters_at(var->parameters, i);
+        double zeta = transform(values[i], Parameter_lower(p), Parameter_upper(p));
+        gsl_vector_set(x, i, zeta);
+        logJac += zeta;
+        gsl_vector_set(mu, i, Parameters_value(var->var_parameters[0], i));
+        for (int j = 0; j <= i; j++) {
+            gsl_matrix_set(L, i, j, Parameters_value(var->var_parameters[1], row));
+            row++;
+        }
+    }
+    double logP = 0;
+    gsl_ran_multivariate_gaussian_log_pdf (x,  mu, L, &logP, work);
+    
+    gsl_vector_free(mu);
+    gsl_matrix_free(L);
+    gsl_vector_free(x);
+    gsl_vector_free(work);
+    
+    return logP + logJac;
+}
+
+double klqp_block_fullrank_normal_logQ(variational_block_t* var, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    gsl_vector * mu = gsl_vector_calloc(dim);
+    gsl_matrix * L = gsl_matrix_calloc(dim, dim);
+    gsl_vector * x = gsl_vector_calloc(dim);
+    gsl_vector * work = gsl_vector_calloc(dim);
+    
+    size_t row = 0;
+    for (int i = 0; i < dim; i++) {
+        gsl_vector_set(x, i, values[i]);
+        gsl_vector_set(mu, i, Parameters_value(var->var_parameters[0], i));
+        for (int j = 0; j <= i; j++) {
+            gsl_matrix_set(L, i, j, Parameters_value(var->var_parameters[1], row));
+            row++;
+        }
+    }
+    double logP = 0;
+    gsl_ran_multivariate_gaussian_log_pdf (x,  mu, L, &logP, work);
+    
+    gsl_vector_free(mu);
+    gsl_matrix_free(L);
+    gsl_vector_free(x);
+    gsl_vector_free(work);
+    
+    return logP;
+}
+
+
+void klqp_block_fullrank_normal_sample(variational_block_t* var, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    for (int j = 0; j < dim; j++) {
+        var->etas[j] = rnorm();
+    }
+    
+    size_t row = 0;
+    for (int j = 0; j < dim; j++) {
+        double temp = 0;
+        // multiply L_j and eta
+        for (int k = 0; k < j+1; k++) {
+            if(Parameters_estimate(var->var_parameters[1], row)){
+                temp += Parameters_value(var->var_parameters[1], row)*var->etas[k];
+            }
+            row++;
+        }
+        double zeta = temp + Parameters_value(var->var_parameters[0], j); // add mu
+        Parameter* p = Parameters_at(var->parameters, j);
+        double theta = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+        values[j] = theta;
+    }
+}
+
+bool klqp_block_fullrank_normal_sample_some(variational_block_t* var, const Parameters* parameters, double* values){
+    size_t dim = Parameters_count(var->parameters);
+    size_t dim2 = Parameters_count(parameters);
+    for (int i = 0; i < dim2; i++) {
+        Parameter* p = Parameters_at(parameters, i);
+        for (int j = 0; j < dim; j++) {
+            Parameter* p2 = Parameters_at(var->parameters, j);
+            if (p == p2) {
+                if (!p->estimate) {
+                    values[i] = 0;
+                }
+                else{
+                    double mu = Parameters_value(var->var_parameters[0], j);
+                    double sd = Parameters_value(var->var_parameters[1], j);
+                    const double zeta = rnorm() * exp(sd) + mu;
+                    values[i] = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+                }
+                break;
+            }
+        }
+    }
+    return true;
+}
+
+
+#pragma mark - normal meanfield
 
 double klqp_meanfield_normal_elbo(variational_t* var){
 	if (var->initialized == false) {
