@@ -302,15 +302,8 @@ IF(NOT LIBRARY_ONLY)
 	add_executable(physher src/physher.c)
 	target_link_libraries(physher phyc)
 
-	add_executable(bootstrap src/bootstrap.c)
-	target_link_libraries(bootstrap phyc)
-
-	add_executable(modelAveraging src/modelAveraging.c)
-	target_link_libraries(modelAveraging phyc)
 	
 	install(TARGETS physher RUNTIME DESTINATION bin)
-	install(TARGETS modelAveraging RUNTIME DESTINATION bin)
-	install(TARGETS bootstrap RUNTIME DESTINATION bin)
 ENDIF()
 
 # Install libs

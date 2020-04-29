@@ -46,7 +46,6 @@ PooledTreeLikelihood * new_PooledTreeLikelihood( SingleTreeLikelihood *tlk, cons
 	
 	// use the original tlk
 	pool->tlks[0] = tlk;
-	pool->tlks[0]->opt.verbosity = 0;
 	pool->count++;
 	
 	for (int i = 1; i < count; i++) {

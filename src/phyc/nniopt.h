@@ -24,13 +24,4 @@
 
 double nni_optimize_bl( struct TopologyOptimizer * opt );
 
-double nnni_optimize_bl( struct TopologyOptimizer * opt );
-
-double nni_optimize_heights( struct TopologyOptimizer * opt );
-
-#pragma mark -
-#pragma mark Parsimony
-
-double nni_optimize_bl_parsimony( struct TopologyOptimizer * opt );
-
 #endif

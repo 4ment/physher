@@ -43,33 +43,6 @@ typedef enum treelikelihood_approximation {
     TREELIKELIHOOD_APPROXIMATION_DERIVATIVE_DIAGONAL
 }treelikelihood_approximation;
 
-// 32 bytes
-typedef struct Optimizable{
-	double tolx;
-	double tolfx;
-	opt_algorithm method;
-	int max_iteration;
-	bool optimize;
-
-	
-} Optimizable;
-
-// 244 bytes
-typedef struct OptConfig{
-	Optimizable bl;
-	Optimizable freqs;
-	Optimizable relative_rates;
-	Optimizable rates;
-	Optimizable heights;
-    tree_search_algorithm topology_alogrithm;
-    int topology_threads;
-    bool topology_optimize;
-	double precision;
-	int max_rounds;
-	int verbosity;
-	bool interruptible;
-}OptConfig;
-
 struct _SingleTreeLikelihood;
 
 typedef struct _SingleTreeLikelihood SingleTreeLikelihood;
@@ -77,7 +50,6 @@ typedef struct _SingleTreeLikelihood SingleTreeLikelihood;
 typedef double (*calculate_upper_t)( SingleTreeLikelihood *, Node *);
 
 struct _SingleTreeLikelihood{
-	OptConfig opt;
 	
 	Tree        *tree;
 	SiteModel   *sm;
@@ -158,17 +130,6 @@ struct _SingleTreeLikelihood{
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm );
 
 Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash);
-
-#pragma mark -
-#pragma mark Optimizable
-
-void Optimizable_init( Optimizable *opt, bool optimize, opt_algorithm method, const int max_iteration, const double tolx, const double tolfx );
-
-void Optimizable_copy( const Optimizable *src, Optimizable *dst );
-
-void OptConfig_init( SingleTreeLikelihood *tlk );
-
-void OptConfig_copy( const OptConfig *src, OptConfig *dst );
 
 
 #pragma mark -

@@ -53,12 +53,6 @@ $(OBJDIR)/%.o: $(PHYCDIR)/%.c
 physher: ${OBJFILES}
 	$(CC) $(CFLAGS) $(LDFLAGS) -o ${BINDIR}/physher $(SRCDIR)/physher.c $(OBJFILES) $(LDLIBS)
 
-modelavg: ${OBJFILES}
-	$(CC) $(CFLAGS) $(LDFLAGS) -o ${BINDIR}/modelavg $(SRCDIR)/modelAveraging.c $(OBJFILES) $(LDLIBS)
-
-bootstrap: ${OBJFILES}
-	$(CC) $(CFLAGS) $(LDFLAGS) -o ${BINDIR}/bootstrap $(SRCDIR)/bootstrap.c $(OBJFILES) $(LDLIBS)
-
 clean:
 	rm -f ${BINDIR}/physher
 	rm -f ${BINDIR}/modelavg

@@ -22,7 +22,6 @@
 
 #include "treesearch.h"
 #include "parsimony.h"
-#include "optimize.h"
 #include "matrix.h"
 
 #include <time.h>
@@ -112,249 +111,281 @@ static void sort_desc_spr_parsimony( int *prunes, int *grafts, double *scores, i
 	}
 }
 
+typedef double (*function_f)(void *);
 
-// backup contains the two branches together
-// params should be contrained between 0 and backup
-// should not be called on the children of root
-static double _optimize_brent_branch_length_constrained( Parameters *params, double *grad, void *data ){
-	BrentData *mydata = (BrentData*)data;
-	
-    Node *node = Tree_get_node(mydata->tlk->tree, POSTORDER, mydata->index_param);
-    
-    Node_set_distance( node, Parameters_value(params, 0) );
-    Node_set_distance( Node_parent(node), mydata->backup[0]-Parameters_value(params, 0) );
-    
-    SingleTreeLikelihood_update_one_node( mydata->tlk, node);
-    double lnl = fabs(mydata->f(mydata));
-    //printf("sf %f - %f %f %f\n",lnl, mydata->backup[0], Parameters_value(params, 0),mydata->backup[0]-Parameters_value(params, 0));
-    
-    return lnl;
-}
-
-
-// node node1 is the node that also changes its parent
-// node node2 is the grafted node with meaningless branch length
-double optimize_brent_branch_length_3nodes( SingleTreeLikelihood *stlk, Optimizer *opt, BrentData *data, Parameters *param, Node *node1, Node *node2, Node *node3 ){
-    opt_result status = OPT_NEED_CHECK;
-    double lnl = stlk->calculate(stlk);
-    double lnl2 = lnl+10;
-    data->index_param = -1;
-    //printf("-- lnl %f\n",lnl);
-    
-    data->backup[0] = Node_distance(node1) + Node_distance(Node_parent(node1));
-    
-    if( Node_isroot(node1) ){
-        printf("Cannot be called on the root\n%s\n%s: %d\n", __func__, __FILE__, __LINE__);
-        exit(1);
-    }
-    double upper = Parameter_upper(node1->distance);
-    Parameter_set_upper(node1->distance, data->backup[0]);
-
-    int i = 0;
-    while ( i < 3 ) {
-        
-        SingleTreeLikelihood_update_all_nodes(stlk);
-        data->index_param = node1->postorder_idx;
-        Parameters_add(param, node1->distance);
-        
-        opt_set_objective_function(opt, _optimize_brent_branch_length_constrained);
-//        SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
-		
-        status = opt_optimize( opt, param, &lnl2);
-        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-        
-        Node_set_distance( node1, Parameters_value(param, 0) );
-        Node_set_distance( Node_parent(node1), data->backup[0]-Parameters_value(param, 0) );
-		Parameters_pop(param);
-        
-        //printf("== lnl %f (%f) %f  %s %f %s %f\n", -lnl2, lnl, data->backup[0], node1->name, Parameters_value(param, 0), node1->parent->name, (data->backup[0]-Parameters_value(param, 0)) );
-        
-        SingleTreeLikelihood_update_all_nodes(stlk);
-        data->index_param = node2->postorder_idx;
-        Parameters_add(param, node2->distance);
-        
-        opt_set_objective_function(opt, optimize_brent_branch_length);
-//        SingleTreeLikelihood_set_upper_function(stlk, NULL);
-		
-        status = opt_optimize( opt, param, &lnl2);
-        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-        Node_set_distance(node2, Parameters_value(param, 0));
-        Parameters_pop(param);
-        //printf("++ lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
-        
-        
-        if ( -lnl2 - lnl < 0.001 ){
-            //printf("  %f %f\n", lnl2,lnl);
-            lnl = -lnl2;
-            break;
-        }
-        lnl = -lnl2;
-    }
-    
-    Parameter_set_upper(node1->distance, upper);
-    SingleTreeLikelihood_update_all_nodes(stlk);
-    
-    //return stlk->calculate(stlk);
-    return lnl;
-}
-
-// node node1 is the node that also changes its parent
-// node node2 is the pruned node with meaningless branch length
-double optimize_brent_branch_length_2b( SingleTreeLikelihood *stlk, Optimizer *opt, BrentData *data, Parameters *param, Node *node1, Node *node2 ){
-    opt_result status = OPT_NEED_CHECK;
-    double lnl = stlk->calculate(stlk);
-    double lnl2 = lnl+10;
-    data->index_param = -1;
-    //printf("-- lnl %f\n",lnl);
-    
-    data->backup[0] = Node_distance(node1) + Node_distance(Node_parent(node1));
-    
-    if( Node_isroot(node1) ){
-        printf("Cannot be called on the root\n%s\n%s: %d\n", __func__, __FILE__, __LINE__);
-        exit(1);
-    }
-    double upper = Parameter_upper(node1->distance);
-    Parameter_set_upper(node1->distance, data->backup[0]);
-    
-    while ( 1 ) {
-        
-        SingleTreeLikelihood_update_all_nodes(stlk);
-        data->index_param = node1->postorder_idx;
-        Parameters_add(param, node1->distance);
-        
-        opt_set_objective_function(opt, _optimize_brent_branch_length_constrained);
-//        SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
-		
-        status = opt_optimize( opt, param, &lnl2);
-        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-        
-        Node_set_distance( node1, Parameters_value(param, 0) );
-        Node_set_distance( Node_parent(node1), data->backup[0]-Parameters_value(param, 0) );
-		Parameters_pop(param);
-        
-        //printf("== lnl %f (%f) %f  %s %f %s %f\n", -lnl2, lnl, data->backup[0], node1->name, Parameters_value(param, 0), node1->parent->name, (data->backup[0]-Parameters_value(param, 0)) );
-        
-        SingleTreeLikelihood_update_all_nodes(stlk);
-        data->index_param = node2->postorder_idx;
-        Parameters_add(param, node2->distance);
-        
-        opt_set_objective_function(opt, optimize_brent_branch_length);
-//        SingleTreeLikelihood_set_upper_function(stlk, NULL);
-		
-        status = opt_optimize( opt, param, &lnl2);
-        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-        Node_set_distance(node2, Parameters_value(param, 0));
-        Parameters_pop(param);
-        //printf("++ lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
-        
-        
-        if ( -lnl2 - lnl < 0.001 ){
-            //printf("  %f %f\n", lnl2,lnl);
-            lnl = -lnl2;
-            break;
-        }
-        lnl = -lnl2;
-    }
-    
-    Parameter_set_upper(node1->distance, upper);
-    SingleTreeLikelihood_update_all_nodes(stlk);
-    
-    //return stlk->calculate(stlk);
-    return lnl;
-}
-
-// node node1 is the node that also changes its parent
-// node node2 is the pruned node with meaningless branch length
-double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *opt, BrentData *data, Parameters *param, Node *node1, Node *node2 ){
-	opt_result status = OPT_NEED_CHECK;
-    double lnl = stlk->calculate(stlk);
-    double lnl2 = lnl+10;
-    data->index_param = -1;
-#ifdef DEBUG_TOPOLOGY_SPR
-    printf("-- lnl %f\n",lnl);
-#endif
-    
-    if( Node_isroot(node1) ){
-        printf("Cannot be called on the root\n%s\n%s: %d\n", __func__, __FILE__, __LINE__);
-        exit(1);
-    }
-    
-#ifdef DEBUG_TOPOLOGY_SPR
-    printf("%f %f %f %f\n", Node_distance(node1), Node_distance(node1->left), Node_distance(node1->right), Node_distance(node2));
-#endif
-    while ( 1 ) {
-        
-        SingleTreeLikelihood_update_all_nodes(stlk);
-        data->index_param = node1->left->postorder_idx;
-        Parameters_add(param, node1->left->distance);
-        
-        
-        status = opt_optimize( opt, param, &lnl2);
-        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-        
-        Node_set_distance( node1->left, Parameters_value(param, 0) );
-#ifdef DEBUG_TOPOLOGY_SPR
-        printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->left->name, Parameters_value(param, 0) );
-#endif
-        Parameters_pop(param);
-        
-        
-        SingleTreeLikelihood_update_all_nodes(stlk);
-        data->index_param = node1->right->postorder_idx;
-        Parameters_add(param, node1->right->distance);
-        
-        
-        status = opt_optimize( opt, param, &lnl2);
-        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-        
-        Node_set_distance( node1->right, Parameters_value(param, 0) );
-#ifdef DEBUG_TOPOLOGY_SPR
-        printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->right->name, Parameters_value(param, 0) );
-#endif
-        Parameters_pop(param);
-  
-        SingleTreeLikelihood_update_all_nodes(stlk);
-        data->index_param = node1->postorder_idx;
-        Parameters_add(param, node1->distance);
-        
-        
-        status = opt_optimize( opt, param, &lnl2);
-        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-        
-        Node_set_distance( node1, Parameters_value(param, 0) );
-#ifdef DEBUG_TOPOLOGY_SPR
-        printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->name, Parameters_value(param, 0) );
-#endif
-        Parameters_pop(param);
-        
-        SingleTreeLikelihood_update_all_nodes(stlk);
-        data->index_param = node2->postorder_idx;
-        Parameters_add(param, node2->distance);
-        
-        
-        status = opt_optimize( opt, param, &lnl2);
-        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
-        
-        Node_set_distance( node2, Parameters_value(param, 0) );
-#ifdef DEBUG_TOPOLOGY_SPR
-        printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
-#endif
-		Parameters_pop(param);
-		
-        if ( -lnl2 - lnl < 0.01 ){
-            lnl = -lnl2;
-            break;
-        }
-        lnl = -lnl2;
-    }
-    
-    SingleTreeLikelihood_update_all_nodes(stlk);
-#ifdef DEBUG_TOPOLOGY_SPR
-    printf("%f %f %f %f\n", Node_distance(node1), Node_distance(node1->left), Node_distance(node1->right), Node_distance(node2));
-#endif
-    //return stlk->calculate(stlk);
-    return lnl;
-}
+//typedef struct BrentData{
+//    SingleTreeLikelihood *tlk;
+//    function_f f;
+//    int index_param;
+//    double *backup;
+//    void *model; // extra pointer if we use coalescent or penalized likelihood
+//    double threshold;
+//} BrentData;
+//
+//BrentData * new_BrentData( SingleTreeLikelihood *tlk){
+//    BrentData *data = (BrentData*)malloc( sizeof(BrentData) );
+//    assert(data);
+//    data->index_param = 0;
+//    data->tlk = tlk;
+//    data->backup = NULL;
+//    data->model = NULL;
+//    data->f = standard_loglikelihood_brent;
+//    
+//    data->threshold = 1e-5;
+//    //data->threshold = -1;
+//    return data;
+//}
+//
+//void free_BrentData( BrentData *data ){
+//    if( data->backup != NULL ){
+//        free( data->backup);
+//    }
+//    free(data);
+//    data = NULL;
+//}
+//
+//// backup contains the two branches together
+//// params should be contrained between 0 and backup
+//// should not be called on the children of root
+//static double _optimize_brent_branch_length_constrained( Parameters *params, double *grad, void *data ){
+//	BrentData *mydata = (BrentData*)data;
+//	
+//    Node *node = Tree_get_node(mydata->tlk->tree, POSTORDER, mydata->index_param);
+//    
+//    Node_set_distance( node, Parameters_value(params, 0) );
+//    Node_set_distance( Node_parent(node), mydata->backup[0]-Parameters_value(params, 0) );
+//    
+//    SingleTreeLikelihood_update_one_node( mydata->tlk, node);
+//    double lnl = fabs(mydata->f(mydata));
+//    //printf("sf %f - %f %f %f\n",lnl, mydata->backup[0], Parameters_value(params, 0),mydata->backup[0]-Parameters_value(params, 0));
+//    
+//    return lnl;
+//}
+//
+//
+//// node node1 is the node that also changes its parent
+//// node node2 is the grafted node with meaningless branch length
+//double optimize_brent_branch_length_3nodes( SingleTreeLikelihood *stlk, Optimizer *opt, BrentData *data, Parameters *param, Node *node1, Node *node2, Node *node3 ){
+//    opt_result status = OPT_NEED_CHECK;
+//    double lnl = stlk->calculate(stlk);
+//    double lnl2 = lnl+10;
+//    data->index_param = -1;
+//    //printf("-- lnl %f\n",lnl);
+//    
+//    data->backup[0] = Node_distance(node1) + Node_distance(Node_parent(node1));
+//    
+//    if( Node_isroot(node1) ){
+//        printf("Cannot be called on the root\n%s\n%s: %d\n", __func__, __FILE__, __LINE__);
+//        exit(1);
+//    }
+//    double upper = Parameter_upper(node1->distance);
+//    Parameter_set_upper(node1->distance, data->backup[0]);
+//
+//    int i = 0;
+//    while ( i < 3 ) {
+//        
+//        SingleTreeLikelihood_update_all_nodes(stlk);
+//        data->index_param = node1->postorder_idx;
+//        Parameters_add(param, node1->distance);
+//        
+//        opt_set_objective_function(opt, _optimize_brent_branch_length_constrained);
+////        SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
+//		
+//        status = opt_optimize( opt, param, &lnl2);
+//        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+//        
+//        Node_set_distance( node1, Parameters_value(param, 0) );
+//        Node_set_distance( Node_parent(node1), data->backup[0]-Parameters_value(param, 0) );
+//		Parameters_pop(param);
+//        
+//        //printf("== lnl %f (%f) %f  %s %f %s %f\n", -lnl2, lnl, data->backup[0], node1->name, Parameters_value(param, 0), node1->parent->name, (data->backup[0]-Parameters_value(param, 0)) );
+//        
+//        SingleTreeLikelihood_update_all_nodes(stlk);
+//        data->index_param = node2->postorder_idx;
+//        Parameters_add(param, node2->distance);
+//        
+//        opt_set_objective_function(opt, optimize_brent_branch_length);
+////        SingleTreeLikelihood_set_upper_function(stlk, NULL);
+//		
+//        status = opt_optimize( opt, param, &lnl2);
+//        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+//        Node_set_distance(node2, Parameters_value(param, 0));
+//        Parameters_pop(param);
+//        //printf("++ lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
+//        
+//        
+//        if ( -lnl2 - lnl < 0.001 ){
+//            //printf("  %f %f\n", lnl2,lnl);
+//            lnl = -lnl2;
+//            break;
+//        }
+//        lnl = -lnl2;
+//    }
+//    
+//    Parameter_set_upper(node1->distance, upper);
+//    SingleTreeLikelihood_update_all_nodes(stlk);
+//    
+//    //return stlk->calculate(stlk);
+//    return lnl;
+//}
+//
+//// node node1 is the node that also changes its parent
+//// node node2 is the pruned node with meaningless branch length
+//double optimize_brent_branch_length_2b( SingleTreeLikelihood *stlk, Optimizer *opt, BrentData *data, Parameters *param, Node *node1, Node *node2 ){
+//    opt_result status = OPT_NEED_CHECK;
+//    double lnl = stlk->calculate(stlk);
+//    double lnl2 = lnl+10;
+//    data->index_param = -1;
+//    //printf("-- lnl %f\n",lnl);
+//    
+//    data->backup[0] = Node_distance(node1) + Node_distance(Node_parent(node1));
+//    
+//    if( Node_isroot(node1) ){
+//        printf("Cannot be called on the root\n%s\n%s: %d\n", __func__, __FILE__, __LINE__);
+//        exit(1);
+//    }
+//    double upper = Parameter_upper(node1->distance);
+//    Parameter_set_upper(node1->distance, data->backup[0]);
+//    
+//    while ( 1 ) {
+//        
+//        SingleTreeLikelihood_update_all_nodes(stlk);
+//        data->index_param = node1->postorder_idx;
+//        Parameters_add(param, node1->distance);
+//        
+//        opt_set_objective_function(opt, _optimize_brent_branch_length_constrained);
+////        SingleTreeLikelihood_set_upper_function(stlk, calculate_uppper_2nodes);
+//		
+//        status = opt_optimize( opt, param, &lnl2);
+//        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+//        
+//        Node_set_distance( node1, Parameters_value(param, 0) );
+//        Node_set_distance( Node_parent(node1), data->backup[0]-Parameters_value(param, 0) );
+//		Parameters_pop(param);
+//        
+//        //printf("== lnl %f (%f) %f  %s %f %s %f\n", -lnl2, lnl, data->backup[0], node1->name, Parameters_value(param, 0), node1->parent->name, (data->backup[0]-Parameters_value(param, 0)) );
+//        
+//        SingleTreeLikelihood_update_all_nodes(stlk);
+//        data->index_param = node2->postorder_idx;
+//        Parameters_add(param, node2->distance);
+//        
+//        opt_set_objective_function(opt, optimize_brent_branch_length);
+////        SingleTreeLikelihood_set_upper_function(stlk, NULL);
+//		
+//        status = opt_optimize( opt, param, &lnl2);
+//        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+//        Node_set_distance(node2, Parameters_value(param, 0));
+//        Parameters_pop(param);
+//        //printf("++ lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
+//        
+//        
+//        if ( -lnl2 - lnl < 0.001 ){
+//            //printf("  %f %f\n", lnl2,lnl);
+//            lnl = -lnl2;
+//            break;
+//        }
+//        lnl = -lnl2;
+//    }
+//    
+//    Parameter_set_upper(node1->distance, upper);
+//    SingleTreeLikelihood_update_all_nodes(stlk);
+//    
+//    //return stlk->calculate(stlk);
+//    return lnl;
+//}
+//
+//// node node1 is the node that also changes its parent
+//// node node2 is the pruned node with meaningless branch length
+//double optimize_brent_branch_length_3( SingleTreeLikelihood *stlk, Optimizer *opt, BrentData *data, Parameters *param, Node *node1, Node *node2 ){
+//	opt_result status = OPT_NEED_CHECK;
+//    double lnl = stlk->calculate(stlk);
+//    double lnl2 = lnl+10;
+//    data->index_param = -1;
+//#ifdef DEBUG_TOPOLOGY_SPR
+//    printf("-- lnl %f\n",lnl);
+//#endif
+//    
+//    if( Node_isroot(node1) ){
+//        printf("Cannot be called on the root\n%s\n%s: %d\n", __func__, __FILE__, __LINE__);
+//        exit(1);
+//    }
+//    
+//#ifdef DEBUG_TOPOLOGY_SPR
+//    printf("%f %f %f %f\n", Node_distance(node1), Node_distance(node1->left), Node_distance(node1->right), Node_distance(node2));
+//#endif
+//    while ( 1 ) {
+//        
+//        SingleTreeLikelihood_update_all_nodes(stlk);
+//        data->index_param = node1->left->postorder_idx;
+//        Parameters_add(param, node1->left->distance);
+//        
+//        
+//        status = opt_optimize( opt, param, &lnl2);
+//        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+//        
+//        Node_set_distance( node1->left, Parameters_value(param, 0) );
+//#ifdef DEBUG_TOPOLOGY_SPR
+//        printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->left->name, Parameters_value(param, 0) );
+//#endif
+//        Parameters_pop(param);
+//        
+//        
+//        SingleTreeLikelihood_update_all_nodes(stlk);
+//        data->index_param = node1->right->postorder_idx;
+//        Parameters_add(param, node1->right->distance);
+//        
+//        
+//        status = opt_optimize( opt, param, &lnl2);
+//        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+//        
+//        Node_set_distance( node1->right, Parameters_value(param, 0) );
+//#ifdef DEBUG_TOPOLOGY_SPR
+//        printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->right->name, Parameters_value(param, 0) );
+//#endif
+//        Parameters_pop(param);
+//  
+//        SingleTreeLikelihood_update_all_nodes(stlk);
+//        data->index_param = node1->postorder_idx;
+//        Parameters_add(param, node1->distance);
+//        
+//        
+//        status = opt_optimize( opt, param, &lnl2);
+//        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+//        
+//        Node_set_distance( node1, Parameters_value(param, 0) );
+//#ifdef DEBUG_TOPOLOGY_SPR
+//        printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node1->name, Parameters_value(param, 0) );
+//#endif
+//        Parameters_pop(param);
+//        
+//        SingleTreeLikelihood_update_all_nodes(stlk);
+//        data->index_param = node2->postorder_idx;
+//        Parameters_add(param, node2->distance);
+//        
+//        
+//        status = opt_optimize( opt, param, &lnl2);
+//        if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
+//        
+//        Node_set_distance( node2, Parameters_value(param, 0) );
+//#ifdef DEBUG_TOPOLOGY_SPR
+//        printf("** lnl %f (%f) %s %f\n", -lnl2, lnl,node2->name, Parameters_value(param, 0) );
+//#endif
+//		Parameters_pop(param);
+//		
+//        if ( -lnl2 - lnl < 0.01 ){
+//            lnl = -lnl2;
+//            break;
+//        }
+//        lnl = -lnl2;
+//    }
+//    
+//    SingleTreeLikelihood_update_all_nodes(stlk);
+//#ifdef DEBUG_TOPOLOGY_SPR
+//    printf("%f %f %f %f\n", Node_distance(node1), Node_distance(node1->left), Node_distance(node1->right), Node_distance(node2));
+//#endif
+//    //return stlk->calculate(stlk);
+//    return lnl;
+//}
 
 bool is_SPR_valid( Node *prune, Node *graft ){
     if( prune == graft ) return false;
@@ -438,34 +469,26 @@ bool is_SPR_valid( Node *prune, Node *graft ){
 
 // neighborhood size 2(n − 3)(2n − 7)
 double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
-    SingleTreeLikelihood *tlk = opt->tlk;
+    Model *mtlk = opt->tlk;
+    SingleTreeLikelihood* tlk = mtlk->obj;
     
-    
-    double lnl = tlk->calculate(tlk);
+    double lnl = mtlk->logP(mtlk);
     //double max = lnl;
     
     SingleTreeLikelihood *tlk2 = clone_SingleTreeLikelihood_share(tlk, true, false);
     
     Parsimony *parsimony = new_Parsimony(tlk2->sp, tlk2->tree);
     double score = parsimony->calculate(parsimony);
-    if(tlk->opt.verbosity > 0){
+    if(opt->verbosity > 0){
         printf("\nParsimony score: %f\n\n", score);
     }
     
 	Optimizer *opt_bl = new_Optimizer(OPT_BRENT);
-    BrentData *data_brent = new_BrentData( tlk2 );
-    data_brent->backup = dvector(1);
-    data_brent->f = standard_loglikelihood_brent;
-    if( tlk->use_upper ){
-        data_brent->f = standard_loglikelihood_upper_brent;
-    }
+    opt_set_max_iteration(opt_bl, 1000);
+    opt_set_tolx( opt_bl, 0.001);
     
-    opt_set_data(opt_bl, data_brent);
-    opt_set_objective_function(opt_bl, optimize_brent_branch_length);
-    opt_set_max_iteration(opt_bl, tlk->opt.bl.max_iteration);
-    opt_set_tolx( opt_bl, tlk->opt.bl.tolx);
-    
-	Parameters *oneparameter = new_Parameters(1);
+//	Parameters *oneparameter = new_Parameters(1);
+//    opt_set_parameters(opt_bl, oneparameter);
     
     double *branches = dvector(Tree_node_count(tlk->tree));
     
@@ -817,9 +840,8 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
     }
     
     free_Parsimony(parsimony);
-    free_BrentData(data_brent);
     free_Optimizer(opt_bl);
-    free_Parameters(oneparameter);
+//    free_Parameters(oneparameter);
     free_SingleTreeLikelihood_share(tlk2, true, false);
     
     free(branches);

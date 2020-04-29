@@ -23,7 +23,6 @@
 #include <stdlib.h>
 
 #include "optimizer.h"
-#include "optimize.h"
 #include "matrix.h"
 #include "linefunction.h"
 #include "matrix.h"

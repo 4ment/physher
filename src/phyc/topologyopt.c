@@ -24,7 +24,6 @@
 
 #include "matrix.h"
 #include "tree.h"
-#include "optimize.h"
 #include "treeio.h"
 #include "parsimony.h"
 #include "spropt.h"
@@ -73,23 +72,6 @@ void TopologyOptimizer_set_algorithm( TopologyOptimizer *opt, tree_search_algori
             if ( tlk->bm == NULL || !Tree_is_time_mode(tlk->tree)){
                 opt->optimize = nni_optimize_bl;
             }
-            else {
-                opt->optimize = nni_optimize_heights;
-            }
-            break;
-        }
-        case TREE_SEARCH_NNNI:{
-            opt->K = 0.75;
-			SingleTreeLikelihood* tlk = opt->tlk->obj;
-            if ( tlk->bm == NULL || !Tree_is_time_mode(tlk->tree)){
-                opt->optimize = nnni_optimize_bl;
-            }
-            break;
-        }
-        case TREE_SEARCH_PARSIMONY_NNI:{
-            opt->K = 0.75;
-            opt->optimize = nni_optimize_bl_parsimony;
-            
             break;
         }
         case TREE_SEARCH_PARSIMONY_SPR:{

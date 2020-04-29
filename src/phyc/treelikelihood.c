@@ -199,7 +199,7 @@ double _singleTreeLikelihood_reparametrized_full_logP(Model *self){
 	return self->lp;
 }
 
-static void _calculate_dlog_jacobian(Node* noderef, Node* node, double* dlogP, double* descendant, unsigned *map, Parameters* reparams, double* lowers){
+static void _calculate_dlog_jacobian(const Node* noderef, Node* node, double* dlogP, double* descendant, unsigned *map, Parameters* reparams, double* lowers){
     if(!Node_isleaf(node)){
         if(!Node_isroot(node) && node != noderef){
             descendant[Node_id(node)] = descendant[Node_id(node->parent)]*Parameters_value(reparams, map[Node_id(node)]);
@@ -923,8 +923,6 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 	tlk->scale = false;
 	tlk->scaling_factors = NULL;
 	tlk->scaling_threshold = 1.E-40;
-	
-	OptConfig_init(tlk);
     
     
 	tlk->hessian = NULL;
@@ -1217,10 +1215,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	newtlk->integrate_partials   = tlk->integrate_partials;
 	newtlk->node_log_likelihoods = tlk->node_log_likelihoods;
 	newtlk->calculate_branch_likelihood = tlk->calculate_branch_likelihood;
-	
-	OptConfig_copy( &tlk->opt, &newtlk->opt );
-    
-    
+
 	newtlk->hessian = NULL;
     newtlk->hessian_length = 0;
     newtlk->lnl_bl = INFINITY;
@@ -2982,26 +2977,30 @@ void calculate_dldp_uppper_aux(SingleTreeLikelihood *tlk, Node *node, const Node
 			derivative_P_wrt_p_heterochronous(tlk, node, noderef);
 		}
 
-#ifndef NDEBUG
-		if(Tree_homochronous(tlk->tree) && !Node_isleaf(node)){
-			assert(Node_height(node->parent)*Parameters_value(get_reparams(tlk->tree), get_reparam_map(tlk->tree)[node->id]) == Node_height(node) );
-		}
-		else if(!Tree_homochronous(tlk->tree) && !Node_isleaf(node)){
-			double* lowers = dvector(Tree_node_count(tlk->tree));
-			Node **nodes = Tree_get_nodes(tlk->tree, POSTORDER);
-			for ( int i = 0; i < Tree_node_count(tlk->tree); i++) {
-				Node* node = nodes[i];
-				if( Node_isleaf(node) ){
-					lowers[Node_id(node)] = Node_height(node);
-				}
-				else{
-					lowers[Node_id(node)] = dmax(lowers[Node_left(node)->id], lowers[Node_right(node)->id]);
-				}
-			}
-			assert(lowers[Node_id(node)] + (Node_height(node->parent) - lowers[Node_id(node)])*Parameters_value(get_reparams(tlk->tree), get_reparam_map(tlk->tree)[node->id]) == Node_height(node) );
-			free(lowers);
-		}
-#endif
+//#ifndef NDEBUG
+//		if(Tree_homochronous(tlk->tree) && !Node_isleaf(node)){
+//			assert(Node_height(node->parent)*Parameters_value(get_reparams(tlk->tree), get_reparam_map(tlk->tree)[node->id]) == Node_height(node) );
+//		}
+//		else if(!Tree_homochronous(tlk->tree) && !Node_isleaf(node)){
+//			double* lowers = dvector(Tree_node_count(tlk->tree));
+//			Node **nodes = Tree_get_nodes(tlk->tree, POSTORDER);
+//			for ( int i = 0; i < Tree_node_count(tlk->tree); i++) {
+//				Node* node = nodes[i];
+//				if( Node_isleaf(node) ){
+//					lowers[Node_id(node)] = Node_height(node);
+//				}
+//				else{
+//					lowers[Node_id(node)] = dmax(lowers[Node_left(node)->id], lowers[Node_right(node)->id]);
+//				}
+//			}
+//            if(lowers[Node_id(node)] + (Node_height(node->parent) - lowers[Node_id(node)])*Parameters_value(get_reparams(tlk->tree), get_reparam_map(tlk->tree)[node->id]) != Node_height(node)){
+//                fprintf(stderr, "%f %f\n",  lowers[Node_id(node)] + (Node_height(node->parent) - lowers[Node_id(node)])*Parameters_value(get_reparams(tlk->tree), get_reparam_map(tlk->tree)[node->id]), Node_height(node));
+//            }
+//
+//			assert(lowers[Node_id(node)] + (Node_height(node->parent) - lowers[Node_id(node)])*Parameters_value(get_reparams(tlk->tree), get_reparam_map(tlk->tree)[node->id]) == Node_height(node) );
+//			free(lowers);
+//		}
+//#endif
 	}
 	
 	if(!Node_isleaf(node)){
@@ -3391,55 +3390,4 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 	// set for update later
 	//SingleTreeLikelihood_update_one_node(tlk, node);
 	return lk;
-}
-
-#pragma mark -
-// MARK: Optimizable
-
-void Optimizable_init( Optimizable *opt, bool optimize, opt_algorithm method, const int max_iteration, const double tolx, const double tolfx ){
-	(*opt).optimize      = optimize;
-	(*opt).method        = method;
-	(*opt).max_iteration = max_iteration;
-	(*opt).tolx          = tolx;
-	(*opt).tolfx         = tolfx;
-}
-
-void Optimizable_copy( const Optimizable *src, Optimizable *dst ){
-	(*dst).optimize      = (*src).optimize;
-	(*dst).method        = (*src).method;
-	(*dst).max_iteration = (*src).max_iteration;
-	(*dst).tolx          = (*src).tolx;
-	(*dst).tolfx         = (*src).tolfx;
-}
-
-void OptConfig_init( SingleTreeLikelihood *tlk ){
-	Optimizable_init(&tlk->opt.freqs, false, OPT_BRENT, 100, 0.001, OPTIMIZATION_PRECISION);
-	Optimizable_init(&tlk->opt.relative_rates, false, OPT_BRENT, 100, 0.001, OPTIMIZATION_PRECISION);
-	Optimizable_init(&tlk->opt.bl, false, OPT_BRENT, 100, 0.001, OPTIMIZATION_PRECISION);
-	Optimizable_init(&tlk->opt.rates, false, OPT_BRENT, 100, 0.0001, OPTIMIZATION_PRECISION);
-	Optimizable_init(&tlk->opt.heights, false, OPT_BRENT, 100, 0.0001, OPTIMIZATION_PRECISION);
-    tlk->opt.topology_optimize = 0;
-    tlk->opt.topology_alogrithm = TREE_SEARCH_NNI;
-    tlk->opt.topology_threads = 1;
-	tlk->opt.max_rounds = 10000;
-	tlk->opt.precision = 0.001;
-	tlk->opt.verbosity = 1;
-    tlk->opt.interruptible = false;
-}
-
-void OptConfig_copy( const OptConfig *src, OptConfig *dst ){
-	Optimizable_copy(&src->freqs, &dst->freqs);
-	Optimizable_copy(&src->relative_rates, &dst->relative_rates);
-	Optimizable_copy(&src->bl, &dst->bl);
-	Optimizable_copy(&src->rates, &dst->rates);
-	Optimizable_copy(&src->heights, &dst->heights);
-	
-    dst->topology_optimize  = src->topology_optimize;
-    dst->topology_alogrithm = src->topology_alogrithm;
-    dst->topology_threads   = src->topology_threads;
-    
-	dst->max_rounds = src->max_rounds;
-	dst->precision  = src->precision;
-	dst->verbosity  = src->verbosity;
-	dst->interruptible  = src->interruptible;
 }
