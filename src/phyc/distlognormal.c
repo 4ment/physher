@@ -20,7 +20,8 @@ double DistributionModel_lognormal_logP(DistributionModel* dm){
     if(!dm->need_update) return dm->lp;
     dm->lp = 0;
     if(Parameters_count(dm->parameters[0]) > 1){
-        for (int i = 0; i < Parameters_count(dm->x); i++) {
+        size_t dim = Parameters_count(dm->x);
+        for (int i = 0; i < dim; i++) {
             double mu = Parameters_value(dm->parameters[0], i);
             double sigma = Parameters_value(dm->parameters[1], i);
             double x = Parameters_value(dm->x, i);
@@ -96,7 +97,8 @@ double DistributionModel_lognormal_dlogP(DistributionModel* dm, const Parameter*
 // multiple Xs multiple distribution
 double DistributionModel_lognormal_dlogP_multi(DistributionModel* dm, const Parameter* p){
     // derivative wrt mu
-    for(size_t i = 0; i < Parameters_count(dm->parameters[0]); i++){
+    size_t pdim = Parameters_count(dm->parameters[0]);
+    for(size_t i = 0; i < pdim; i++){
         if (p == Parameters_at(dm->parameters[0], i)) {
             double mu = Parameters_value(dm->parameters[0], i);
             double sigma = Parameters_value(dm->parameters[1], i);
@@ -111,7 +113,8 @@ double DistributionModel_lognormal_dlogP_multi(DistributionModel* dm, const Para
     }
     
     // derivative wrt x
-    for (int i = 0; i < Parameters_count(dm->x); i++) {
+    size_t xdim = Parameters_count(dm->x);
+    for (int i = 0; i < xdim; i++) {
         if (p == Parameters_at(dm->x,i)) {
             double mu = Parameters_value(dm->parameters[0], i);
             double sigma = Parameters_value(dm->parameters[1], i);

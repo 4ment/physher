@@ -26,6 +26,7 @@
 #include "utilsio.h"
 
 #include "distbeta.h"
+#include "distbetaprime.h"
 #include "distexp.h"
 #include "distgamma.h"
 #include "distcauchy.h"
@@ -968,6 +969,9 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 	
 	if (strcasecmp(d_string, "beta") == 0) {
         return new_BetaDistributionModel_from_json(node, hash);
+    }
+    else if (strcasecmp(d_string, "betaprime") == 0) {
+        return new_BetaPrimeDistributionModel_from_json(node, hash);
     }
     else if (strcasecmp(d_string, "exponential") == 0) {
         return new_ExponentialDistributionModel_from_json(node, hash);

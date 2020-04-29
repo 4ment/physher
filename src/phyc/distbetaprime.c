@@ -1,28 +1,29 @@
 //
-//  distbeta.c
+//  distbetaprime.c
 //  physher
 //
-//  Created by mathieu on 17/4/20.
+//  Created by mathieu on 29/4/20.
 //  Copyright © 2020 Mathieu Fourment. All rights reserved.
 //
 
-#include "distbeta.h"
+#include "distbetaprime.h"
 
 #include <gsl/gsl_randist.h>
+#include <gsl/gsl_sf_gamma.h>
 
 #include "distmodel.h"
 #include "matrix.h"
 #include "parametersio.h"
 #include "statistics.h"
 
-double DistributionModel_log_beta(DistributionModel* dm){
+double DistributionModel_log_betaprime(DistributionModel* dm){
     double logP = 0;
     if(Parameters_count(dm->parameters[0]) > 1){
         for (int i = 0; i < Parameters_count(dm->x); i++) {
             double alpha = Parameters_value(dm->parameters[0], i);
             double beta = Parameters_value(dm->parameters[1], i);
             double x = Parameters_value(dm->x, i);
-            logP += log(gsl_ran_beta_pdf(x, alpha, beta));
+            logP += (alpha - 1.0)*log(x) - (alpha + beta)*log(1.0 + x) - gsl_sf_lnbeta(alpha, beta);
         }
     }
     else{
@@ -30,89 +31,93 @@ double DistributionModel_log_beta(DistributionModel* dm){
         double beta = Parameters_value(dm->parameters[1], 0);
         for (int i = 0; i < Parameters_count(dm->x); i++) {
             double x = Parameters_value(dm->x, i);
-            logP += log(gsl_ran_beta_pdf(x, alpha, beta));
+            logP += (alpha - 1.0)*log(x) - (alpha + beta)*log(1.0 + x) - gsl_sf_lnbeta(alpha, beta);
         }
     }
     return logP;
 }
 
-double DistributionModel_log_beta_with_values(DistributionModel* dm, const double* values){
+double DistributionModel_log_betaprime_with_values(DistributionModel* dm, const double* values){
     double logP = 0;
     if(Parameters_count(dm->parameters[0]) > 1){
         for (int i = 0; i < Parameters_count(dm->x); i++) {
             double alpha = Parameters_value(dm->parameters[0], i);
             double beta = Parameters_value(dm->parameters[1], i);
-            logP += log(gsl_ran_beta_pdf(values[i], alpha, beta));
+            logP += (alpha - 1.0)*log(values[i]) - (alpha + beta)*log(1.0 + values[i]) - gsl_sf_lnbeta(alpha, beta);
         }
     }
     else{
         double alpha = Parameters_value(dm->parameters[0], 0);
         double beta = Parameters_value(dm->parameters[1], 0);
         for (int i = 0; i < Parameters_count(dm->x); i++) {
-            logP += log(gsl_ran_beta_pdf(values[i], alpha, beta));
+            logP += (alpha - 1.0)*log(values[i]) - (alpha + beta)*log(1.0 + values[i]) - gsl_sf_lnbeta(alpha, beta);
         }
     }
     return logP;
 }
 
-double DistributionModel_dlog_beta(DistributionModel* dm, const Parameter* p){
-    error("DistributionModel_dlog_beta not implemented\n");
+double DistributionModel_dlog_betaprime(DistributionModel* dm, const Parameter* p){
+    error("DistributionModel_dlog_betaprime not implemented\n");
     return 0;
 }
 
-double DistributionModel_d2log_beta(DistributionModel* dm, const Parameter* p){
-    error("DistributionModel_d2log_beta not implemented\n");
+double DistributionModel_d2log_betaprime(DistributionModel* dm, const Parameter* p){
+    error("DistributionModel_d2log_betaprime not implemented\n");
     return 0;
 }
 
-static void DistributionModel_beta_sample(DistributionModel* dm, double* samples){
+static void DistributionModel_betaprime_sample(DistributionModel* dm, double* samples){
+    double sample;
     if(Parameters_count(dm->parameters[0]) > 1){
         for (int i = 0; i < Parameters_count(dm->x); i++) {
-            samples[i] = gsl_ran_beta(dm->rng, Parameters_value(dm->parameters[0], i), Parameters_value(dm->parameters[1], i));
+            sample = gsl_ran_beta(dm->rng, Parameters_value(dm->parameters[0], i), Parameters_value(dm->parameters[1], i));
+            samples[i] = sample/(1.0 - sample);
         }
     }
     else{
         double alpha = Parameters_value(dm->parameters[0], 0);
         double beta = Parameters_value(dm->parameters[1], 0);
         for (int i = 0; i < Parameters_count(dm->x); i++) {
-            samples[i] = gsl_ran_beta(dm->rng, alpha, beta);
+            sample = gsl_ran_beta(dm->rng, alpha, beta);
+            samples[i] = sample/(1.0 - sample);
         }
     }
 }
 
-static double DistributionModel_beta_sample_evaluate(DistributionModel* dm){
+static double DistributionModel_betaprime_sample_evaluate(DistributionModel* dm){
+    double sample;
     if(Parameters_count(dm->parameters[0]) > 1){
         for (int i = 0; i < Parameters_count(dm->x); i++) {
-            double sample = gsl_ran_beta(dm->rng, Parameters_value(dm->parameters[0], i), Parameters_value(dm->parameters[1], i));
-            Parameters_set_value(dm->x, i, sample);
+            sample = gsl_ran_beta(dm->rng, Parameters_value(dm->parameters[0], i), Parameters_value(dm->parameters[1], i));
+            Parameters_set_value(dm->x, i, sample/(1.0 - sample));
         }
     }
     else{
         double alpha = Parameters_value(dm->parameters[0], 0);
         double beta = Parameters_value(dm->parameters[1], 0);
         for (int i = 0; i < Parameters_count(dm->x); i++) {
-            double sample = gsl_ran_beta(dm->rng, alpha, beta);
-            Parameters_set_value(dm->x, i, sample);
+            sample = gsl_ran_beta(dm->rng, alpha, beta);
+            Parameters_set_value(dm->x, i, sample/(1.0 - sample));
         }
     }
-    return DistributionModel_log_beta(dm);
+    return DistributionModel_log_betaprime(dm);
 }
 
-DistributionModel* new_BetaDistributionModel_with_parameters(Parameters** parameters, Parameters* x){
+DistributionModel* new_BetaPrimeDistributionModel_with_parameters(Parameters** parameters, Parameters* x){
     DistributionModel* dm = new_DistributionModel(parameters, 2, x);
-    dm->type = DISTRIBUTION_BETA;
-    dm->logP = DistributionModel_log_beta;
-    dm->logP_with_values = DistributionModel_log_beta_with_values;
-    dm->dlogP = DistributionModel_dlog_beta;
-    dm->d2logP = DistributionModel_d2log_beta;
+    dm->type = DISTRIBUTION_BETA_PRIME;
+    dm->logP = DistributionModel_log_betaprime;
+    dm->logP_with_values = DistributionModel_log_betaprime_with_values;
+    dm->dlogP = DistributionModel_dlog_betaprime;
+    dm->d2logP = DistributionModel_d2log_betaprime;
     dm->ddlogP = DistributionModel_ddlog_0;
-    dm->sample = DistributionModel_beta_sample;
-    dm->sample_evaluate = DistributionModel_beta_sample_evaluate;
+    dm->sample = DistributionModel_betaprime_sample;
+    dm->sample_evaluate = DistributionModel_betaprime_sample_evaluate;
     dm->shift = 0;
     return dm;
 }
 
-Model* new_BetaDistributionModel_from_json(json_node* node, Hashtable* hash){
+Model* new_BetaPrimeDistributionModel_from_json(json_node* node, Hashtable* hash){
     char* id = get_json_node_value_string(node, "id");
     
     json_node* x_node = get_json_node(node, "x");
@@ -124,24 +129,8 @@ Model* new_BetaDistributionModel_from_json(json_node* node, Hashtable* hash){
 
     // empirical
     if (file != NULL) {
-        size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
-        Vector** samples = read_log_for_parameters_t(file, burnin, x);
-        size_t paramCount = Parameters_count(x);
-        parameters = malloc(sizeof(Parameters*)*2);
-        parameters[0] = new_Parameters(paramCount);
-        parameters[1] = new_Parameters(paramCount);
-        
-        for (int i = 0; i < paramCount; i++) {
-            double* vec = Vector_data(samples[i]);
-            double m = mean(vec, Vector_length(samples[i]));
-            double v = variance(vec, Vector_length(samples[i]), m);
-            double alpha = m*(m*(1.0 - m)/v - 1.0);
-            double beta = (1.0 - m)*(m*(1.0 - m)/v - 1.0);
-            Parameters_move(parameters[0], new_Parameter("alpha", alpha, new_Constraint(0, INFINITY)));
-            Parameters_move(parameters[1], new_Parameter("beta", beta, new_Constraint(0, INFINITY)));
-            free_Vector(samples[i]);
-        }
-        free(samples);
+        fprintf(stderr, "Empirical estimation of beta prime parameters not implemented yet\n");
+        exit(1);
     }
     else if(get_json_node(node, "parameters") == NULL){
         parameters = malloc(sizeof(Parameters*)*2);
@@ -169,7 +158,7 @@ Model* new_BetaDistributionModel_from_json(json_node* node, Hashtable* hash){
         }
     }
     
-    DistributionModel* dm = new_BetaDistributionModel_with_parameters(parameters, x);
+    DistributionModel* dm = new_BetaPrimeDistributionModel_with_parameters(parameters, x);
     
     dm->shift = get_json_node_value_double(node, "shift", dm->shift);
     
