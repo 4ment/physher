@@ -15,8 +15,14 @@
 #include "distmodel.h"
 #include "matrix.h"
 #include "utils.h"
-#include "optimize.h"
+#include "optimizer.h"
 #include "compoundmodel.h"
+#include "distgamma.h"
+#include "distlognormal.h"
+#include "distbeta.h"
+#include "distbetaprime.h"
+#include "distmultinormal.h"
+
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_sf_gamma.h>
@@ -119,8 +125,8 @@ double calculate_laplace_beta(Laplace* laplace){
 		logP -= log(gsl_ran_beta_pdf(map, alpha, beta));
 		
 		if(dm != NULL){
-			Parameters_set_value(dm->parameters, i*2, alpha);
-			Parameters_set_value(dm->parameters, i*2+1, beta);
+			Parameters_set_value(dm->parameters[0], i, alpha);
+			Parameters_set_value(dm->parameters[1], i, beta);
 		}
 	}
 	return logP;
@@ -171,8 +177,8 @@ double calculate_laplace_beta2(Laplace* laplace, DistributionModel* dm){
 		
 		logP -= log(gsl_ran_beta_pdf(map, alpha, beta));
 		
-		Parameters_set_value(dm->parameters, i*2, alpha);
-		Parameters_set_value(dm->parameters, i*2+1, beta);
+		Parameters_set_value(dm->parameters[0], i, alpha);
+		Parameters_set_value(dm->parameters[1], i, beta);
 //		printf("map: %f dlogP: %f d2logP: %f [%f,%f]\n",map, dlogP, d2logP, alpha, beta);
 	}
 	
@@ -305,8 +311,8 @@ double calculate_laplace_gamma(Laplace* laplace){
 			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_SCALE) {
 				rate = 1.0/rate;
 			}
-			Parameters_set_value(dm->parameters, i*2, shape);
-			Parameters_set_value(dm->parameters, i*2+1, rate);
+			Parameters_set_value(dm->parameters[0], i, shape);
+			Parameters_set_value(dm->parameters[1], i, rate);
 		}
 	}
 	
@@ -441,11 +447,11 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 		}
 		printf("map: %f dlogP: %e d2logP: %f [%f,%f]\n",map, dlogP, d2logP, shape, rate);
 
-		Parameters_set_value(dm->parameters, i*2, shape);
+		Parameters_set_value(dm->parameters[0], i, shape);
 		if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_SCALE) {
 			rate = 1.0/rate;
 		}
-		Parameters_set_value(dm->parameters, i*2+1, rate);
+		Parameters_set_value(dm->parameters[1], i, rate);
 		logP -= log(gsl_ran_gamma_pdf(map, shape, rate));
 	}
 	
@@ -458,6 +464,12 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 }
 
 double calculate_laplace_multivariate_normal(Laplace* laplace){
+    Model* refdist = laplace->refdist;
+    DistributionModel* dm = NULL;
+    if(refdist != NULL){
+        dm = refdist->obj;
+    }
+    
 	size_t paramCount = Parameters_count(laplace->parameters);
 	gsl_matrix* H = gsl_matrix_alloc(paramCount, paramCount);
 	gsl_vector* mu = gsl_vector_alloc(paramCount);
@@ -516,7 +528,27 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
 //		printf("%f %e\n", log(Parameters_value(laplace->parameters, i)), Parameters_value(laplace->parameters, i));
 	}
 	
-	printf("Multivariatenormal Laplace: %f logQ: %f %f\n", logP - logQ, logQ, gsl_ran_multivariate_gaussian_log_pdf(mu, mu, L, &logQ, work));
+    if(refdist != NULL){
+        if(paramCount*paramCount == Parameters_count(dm->parameters[1])){
+            for (int i = 0; i < paramCount; i++) {
+                Parameters_set_value(dm->parameters[0], i, Parameters_value(laplace->parameters, i));
+                for (int j = 0; j < paramCount; j++) {
+                    double sigma = gsl_matrix_get(H, i, j);
+                    Parameters_set_value(dm->parameters[1], i*paramCount+j, sigma);
+                }
+            }
+        }
+        else{
+            size_t row = 0;
+            for(int i = 0; i < paramCount; i++){
+                for(int j = 0; j <= i; j++){
+                    Parameters_set_value(dm->parameters[1], row, gsl_matrix_get(L, i, j));
+                    row++;
+                }
+            }
+        }
+    }
+	printf("Multivariatenormal Laplace: %f logQ: %f %d\n", logP - logQ, logQ, gsl_ran_multivariate_gaussian_log_pdf(mu, mu, L, &logQ, work));
 
 	gsl_vector_free(work);
 	gsl_matrix_free(H);
@@ -530,6 +562,12 @@ double calculate_laplace_lognormal(Laplace* laplace){
 	//	sigma = sqrt(-1/(f''(m)*m^2))
 	//	mu    = log(m)+sigma^2
 	Model* posterior = laplace->model;
+    Model* refdist = laplace->refdist;
+    DistributionModel* dm = NULL;
+    if(refdist != NULL){
+        dm = refdist->obj;
+    }
+    
 	double logP = posterior->logP(posterior);
 	int N = 10;
 	double* x = calloc(N, sizeof(double));
@@ -645,6 +683,11 @@ double calculate_laplace_lognormal(Laplace* laplace){
 			continue;
 		}
 		logP -= log(gsl_ran_lognormal_pdf(map, mu, sigma));
+        
+        if(dm != NULL){
+            Parameters_set_value(dm->parameters[0], i, mu);
+            Parameters_set_value(dm->parameters[1], i, sigma);
+        }
 	}
 	
 	free(x);
@@ -660,7 +703,7 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 	//	sigma = sqrt(-1/(f''(m)*m^2))
 	//	mu    = log(m)+sigma^2
 	Model* posterior = laplace->model;
-	Parameters* parameters = dm->parameters;
+	Parameters* parameters = dm->x;
 	double logP = 0;
 	posterior->logP(posterior);
 	int N = 10;
@@ -779,8 +822,8 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 		}
 		logP -= log(gsl_ran_lognormal_pdf(map, mu, sigma));
 		
-		Parameters_set_value(dm->parameters, i*2, mu);
-		Parameters_set_value(dm->parameters, i*2+1, sigma);
+		Parameters_set_value(dm->parameters[0], i, mu);
+		Parameters_set_value(dm->parameters[1], i, sigma);
 	}
 	
 	free(x);
@@ -811,15 +854,19 @@ double calculate_laplace_betaprime(Laplace* laplace){
 //	alpha = 1 - f''(m) * (m^2) * (m + 1)
 //	beta = -f''(m) * m * (m + 1) - 1
 	Model* posterior = laplace->model;
+    Model* refdist = laplace->refdist;
+    DistributionModel* dm = NULL;
+    if(refdist != NULL){
+        dm = refdist->obj;
+    }
 	double logP = posterior->logP(posterior);
 	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
 		double map = Parameters_value(laplace->parameters, i);
 		double d2logP = laplace->model->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
-//		printf("%d] %f %f %f\n", i, d2logP, Model_second_derivative(posterior, Parameters_at(laplace->parameters, i), NULL, 0.0001), map);
 		double alpha = 1.0 - d2logP*(map*map)*(map + 1.0);
 		double beta = -d2logP*map*(map + 1.0) - 1.0;
-//		printf("%f %f %f %s %f %f\n", map, laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i)), d2logP, Parameters_name(laplace->parameters, i), alpha, beta);
-		if (beta < 0) {
+
+        if (beta < 0) {
 			double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
 			beta = fabs(dlogP) - 1;
 			alpha = 1;
@@ -859,6 +906,11 @@ double calculate_laplace_betaprime(Laplace* laplace){
 			}
 		}
 		logP -= dlogbetaprime(map, alpha, beta);
+        
+        if(dm != NULL){
+            Parameters_set_value(dm->parameters[0], i, alpha);
+            Parameters_set_value(dm->parameters[1], i, beta);
+        }
 	}
 	
 	printf("Beta' Laplace: %f\n", logP);
@@ -871,8 +923,8 @@ double calculate_laplace_gamma_from_mcmc(Laplace* laplace){
     DistributionModel* dm = empirical->obj;
 	
 	for (int i = 0; i< Parameters_count(laplace->parameters); i++) {
-		double alpha = Parameters_value(dm->parameters, i*2);
-		double beta = Parameters_value(dm->parameters, i*2+1);
+		double alpha = Parameters_value(dm->parameters[0], i);
+		double beta = Parameters_value(dm->parameters[1], i);
 //		printf("mean: %f MLE: %f mode: %f diff: %f [%f %f] var: %f skew: %f\n", alpha/beta, Parameters_value(laplace->parameters, i), (alpha-1.0)/beta,
 //			   Parameters_value(laplace->parameters, i)- (alpha-1.0)/beta, alpha, beta, alpha/beta/beta, 2.0/(sqrt(alpha)));
 		double mode = (alpha-1.0)/beta;
@@ -895,8 +947,8 @@ double calculate_laplace_lognormal_from_mcmc(Laplace* laplace){
 	DistributionModel* dm = empirical->obj;
 	
 	for (int i = 0; i< Parameters_count(laplace->parameters); i++) {
-		double mu = Parameters_value(dm->parameters, i*2);
-		double sigma = Parameters_value(dm->parameters, i*2+1);
+		double mu = Parameters_value(dm->parameters[0], i);
+		double sigma = Parameters_value(dm->parameters[1], i);
 		//		printf("mean: %f MLE: %f mode: %f diff: %f [%f %f] var: %f skew: %f\n", alpha/beta, Parameters_value(laplace->parameters, i), exp(mu-sigma*sigma),
 		//			   Parameters_value(laplace->parameters, i)- exp(mu-sigma*sigma), mu, sigma, (exp(sigma*sigma)-1.0)*exp(2.0*mu+sigma*sigma), exp(sigma*sigma + 2.0)*sqrt(exp(sigma*sigma) - 1.0));
 		double mode = exp(mu-sigma*sigma);
@@ -941,7 +993,88 @@ void _free_Laplace(Laplace* laplace){
 	free(laplace);
 }
 
+Laplace* new_Laplace_from_json2(json_node* node, Hashtable* hash){
+    char* allowed[] = {
+        "distribution",
+        "model",
+        "x"
+    };
+    json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+    
+    char* id = get_json_node_value_string(node, "id");
+    char* ref_model = get_json_node_value_string(node, "model");
+    json_node* dist_node = get_json_node(node, "distribution");
+    json_node* x_node = get_json_node(node, "x");
+    Laplace* laplace = malloc(sizeof(Laplace));
+    laplace->model = Hashtable_get(hash, ref_model+1);
+    laplace->model->ref_count++;
+    laplace->parameters = NULL;
+    laplace->refdist = NULL;
+    laplace->empirical = NULL;
+    laplace->free = _free_Laplace;
+    
+    
+    if(dist_node->node_type == MJSON_STRING){
+        char* r = get_json_node_value_string(node, "distribution");
+        laplace->refdist = Hashtable_get(hash, r+1);
+        laplace->refdist->ref_count++;
+    }
+    else{
+        char* d_string = get_json_node_value_string(dist_node, "distribution");
+        if(strcasecmp(d_string, "gamma") == 0){
+            laplace->refdist = new_GammaDistributionModel_from_json(dist_node, hash);
+        }
+        else if(strcasecmp(d_string, "lognormal") == 0){
+            laplace->refdist = new_LogNormalDistributionModel_from_json(dist_node, hash);
+        }
+        else if(strcasecmp(d_string, "beta") == 0){
+            laplace->refdist = new_BetaDistributionModel_from_json(dist_node, hash);
+        }
+        else if(strcasecmp(d_string, "betaprime") == 0){
+            laplace->refdist = new_BetaDistributionModel_from_json(dist_node, hash);
+        }
+        else if(strcasecmp(d_string, "multivariatenormal") == 0){
+            laplace->refdist = new_MultivariateNormalDistributionModel_from_json(dist_node, hash);
+        }
+        else{
+            fprintf(stderr, "Distribution unknown: %s in Laplace with ID: %s", d_string, id);
+            exit(1);
+        }
+    }
+    
+    DistributionModel* dm = laplace->refdist->obj;
+    if (dm->type == DISTRIBUTION_GAMMA) {
+        laplace->calculate = calculate_laplace_gamma;
+    }
+    else if (dm->type == DISTRIBUTION_LOGNORMAL) {
+        laplace->calculate = calculate_laplace_lognormal;
+    }
+    else if (dm->type == DISTRIBUTION_BETA) {
+        laplace->calculate = calculate_laplace_beta;
+    }
+    else if (dm->type == DISTRIBUTION_BETA_PRIME) {
+        laplace->calculate = calculate_laplace_betaprime;
+    }
+    else if (dm->type == DISTRIBUTION_NORMAL_MULTIVARIATE) {
+        laplace->calculate = calculate_laplace_multivariate_normal;
+    }
+    else{
+        fprintf(stderr, "Distribution unknown in Laplace with ID: %s", id);
+        exit(1);
+    }
+    
+    laplace->parameters = distmodel_get_x(id, x_node, hash);
+    
+    return laplace;
+}
+
+
 Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
+    json_node* dist_node = get_json_node(node, "distribution");
+    if(dist_node->node_type != MJSON_STRING){
+        return new_Laplace_from_json2(node, hash);
+    }
+
 	char* allowed[] = {
 		"distribution",
 		"empirical",

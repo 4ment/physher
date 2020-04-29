@@ -52,9 +52,9 @@ double dmax( double a, double b);
 
 double dmin( double a, double b);
 
-double dmax_vector( const double *array, int n );
+double dmax_vector( const double *array, size_t n );
 
-double dmin_vector( const double *array, int n );
+double dmin_vector( const double *array, size_t n );
 
 size_t which_dmin( const double *array, size_t n );
 

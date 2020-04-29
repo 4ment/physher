@@ -71,7 +71,7 @@ double dmin( double a, double b){
 	return ( a < b ? a : b);
 }
 
-double dmin_vector( const double *array, int n ){
+double dmin_vector( const double *array, size_t n ){
 	double min = array[0];
 	for (int i = 1; i < n; i++) {
 		if( array[i] < min ) min = array[i];
@@ -79,7 +79,7 @@ double dmin_vector( const double *array, int n ){
 	return min;
 }
 
-double dmax_vector( const double *array, int n ){
+double dmax_vector( const double *array, size_t n ){
 	double max = array[0];
 	for (int i = 1; i < n; i++) {
 		if( array[i] > max ) max = array[i];
