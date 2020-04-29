@@ -17,6 +17,8 @@
 
 #include "hashfunctions.h"
 
+#include <string.h>
+
 unsigned int RSHash( const char* str, unsigned int len)
 {
 	unsigned int b    = 378551;

@@ -37,7 +37,7 @@ MKDIR_P = mkdir -p
 
 .PHONY: directories
 
-all: clean directories physher modelavg bootstrap
+all: clean directories physher
 
 directories: ${OBJDIR} ${BINDIR}
 
@@ -55,8 +55,6 @@ physher: ${OBJFILES}
 
 clean:
 	rm -f ${BINDIR}/physher
-	rm -f ${BINDIR}/modelavg
-	rm -f ${BINDIR}/bootstrap
 	rm -f $(OBJDIR)/*.o
 
 	
