@@ -31,17 +31,7 @@
 #include "mjson.h"
 
 static double TWENTY_DOUBLE_ONES[20] = {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
-//#define SCALING_THRESHOLD 1.0e-100
 
-
-//#define SSE3_ENABLED 1
-
-typedef enum treelikelihood_approximation {
-    TREELIKELIHOOD_APPROXIMATION_NONE,
-    TREELIKELIHOOD_APPROXIMATION_HESSIAN_DIAGONAL,
-    TREELIKELIHOOD_APPROXIMATION_HESSIAN,
-    TREELIKELIHOOD_APPROXIMATION_DERIVATIVE_DIAGONAL
-}treelikelihood_approximation;
 
 struct _SingleTreeLikelihood;
 
@@ -96,11 +86,6 @@ struct _SingleTreeLikelihood{
 	void (*update_partials_flexible)( SingleTreeLikelihood *, double*, int, double*, double*, int, double*, double* );
 	void (*integrate_partials)( const SingleTreeLikelihood *, const double *, const double *, double * );
 	void (*node_log_likelihoods)( const SingleTreeLikelihood *, const double *, const double *, double * );
-
-    treelikelihood_approximation approx;
-	double *hessian; // used for the Taylor approximation [nNodes x nNodes]
-    int hessian_length;
-    double lnl_bl;
 
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
 	bool use_SIMD;

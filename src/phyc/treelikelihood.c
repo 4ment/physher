@@ -923,12 +923,6 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 	tlk->scale = false;
 	tlk->scaling_factors = NULL;
 	tlk->scaling_threshold = 1.E-40;
-    
-    
-	tlk->hessian = NULL;
-    tlk->approx = TREELIKELIHOOD_APPROXIMATION_NONE;
-    tlk->hessian_length = 0;
-    tlk->lnl_bl = INFINITY;
 	
 	tlk->node_id = -1;
     
@@ -1019,9 +1013,6 @@ void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk ){
 	free(tlk->pattern_lk);
 	free(tlk->root_partials);
 	
-	if ( tlk->hessian != NULL ) {
-		free(tlk->hessian);
-	}
 	free(tlk->upper_partial_indexes);
 	if(tlk->root_frequencies != NULL)free(tlk->root_frequencies);
 	
@@ -1068,10 +1059,6 @@ void free_SingleTreeLikelihood_share( SingleTreeLikelihood *tlk, bool shared_sit
 	if ( !shared_sitemodel && tlk->sm != NULL)   free_SiteModel( tlk->sm );
 	if ( !shared_sitepattern && tlk->sp != NULL) free_SitePattern( tlk->sp );
 	
-	if ( tlk->hessian != NULL ) {
-		free(tlk->hessian);
-	}
-	
 	free(tlk->upper_partial_indexes);
     if(tlk->root_frequencies != NULL)free(tlk->root_frequencies);
 	free(tlk);
@@ -1117,9 +1104,6 @@ void free_SingleTreeLikelihood_share2( SingleTreeLikelihood *tlk, bool shared_tr
 	if ( !shared_sitemodel && tlk->sm != NULL) free_SiteModel( tlk->sm );
 	if ( !shared_sitepattern && tlk->sp != NULL) free_SitePattern( tlk->sp );
 	
-	if ( tlk->hessian != NULL ) {
-		free(tlk->hessian);
-	}
     if(tlk->root_frequencies != NULL)free(tlk->root_frequencies);
 	free(tlk);
 }
@@ -1215,18 +1199,6 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	newtlk->integrate_partials   = tlk->integrate_partials;
 	newtlk->node_log_likelihoods = tlk->node_log_likelihoods;
 	newtlk->calculate_branch_likelihood = tlk->calculate_branch_likelihood;
-
-	newtlk->hessian = NULL;
-    newtlk->hessian_length = 0;
-    newtlk->lnl_bl = INFINITY;
-    newtlk->approx = TREELIKELIHOOD_APPROXIMATION_NONE;
-	
-	if ( tlk->hessian != NULL ) {
-		newtlk->hessian = clone_dvector(tlk->hessian, tlk->hessian_length );
-        newtlk->hessian_length = tlk->hessian_length;
-        newtlk->lnl_bl = tlk->lnl_bl;
-        newtlk->approx = tlk->approx;
-	}
 	
 	newtlk->upper_partial_indexes = clone_ivector(tlk->upper_partial_indexes, Tree_node_count(tlk->tree));
 	
