@@ -299,6 +299,7 @@ Parameter * clone_Parameter( Parameter *p ){
 	pnew->estimate = p->estimate;
 	pnew->id = p->id;
 	pnew->model = p->model;
+    pnew->stored_value = p->stored_value;
 	return pnew;
 }
 

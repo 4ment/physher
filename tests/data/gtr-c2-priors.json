@@ -1,0 +1,136 @@
+{
+"model":{
+	"id":"posterior",
+	"type" : "compound",
+	"distributions":[
+		{
+			"id":"treelikelihood",
+			"type": "treelikelihood",
+			"sitepattern":{
+				"id":"patterns",
+				"type":"sitepattern",		
+				"datatype":"nucleotide",
+				"alignment":{
+					"id": "seqs",
+					"type": "alignment",
+					"file":"tiny.fa"
+				}
+			},
+			"sitemodel":{
+				"id": "sitemodel",
+				"type": "sitemodel",
+				"distribution":{
+					"distribution": "gamma",
+					"categories": 2,
+					"parameters":{
+						"alpha":{"id":"alpha", "type":"parameter", "value":0.1, "lower":0, "upper":"infinity"}
+					}
+				},
+				"substitutionmodel":{
+					"id":"sm",
+					"type":"substitutionmodel",
+					"model":"gtr",
+					"datatype":"nucleotide",
+					"frequencies":{
+						"id":"freqs",
+						"type":"Simplex",
+						"values":[0.25,0.25,0.25,0.25] 
+					},
+					"rates":{
+						"ac":{"id":"ac", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+						"ag":{"id":"ag", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+						"at":{"id":"at", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+						"cg":{"id":"cg", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+						"ct":{"id":"ct", "type":"parameter", "value":1, "lower":0, "upper":"infinity"}
+					},
+					"init":{
+						"id":"aaa",
+						"sitepattern": "&patterns"
+					}
+				}
+					
+			},
+			"tree":{
+				"id":"tree",
+				"type":"tree",
+				"init":{
+					"id":"nj",
+					"algorithm":"nj",
+					"model":"jc69",
+					"sitepattern": "&patterns"
+				},
+				"parameters":"tree.distances"
+			}
+		},
+		{
+			"id":"priorbl",
+			"type": "distribution", 
+			"distribution": "exponential",
+			"parameters":{
+				"lambda":{"id":"lambdabl", "type":"parameter", "value":10, "lower":0}
+			},
+			"x":"%tree.distances"
+		},
+		{
+			"id":"priorfreqs",
+			"type": "distribution", 
+			"distribution": "dirichlet",
+			"parameters":{
+				"concentration":{"id":"concentration.priorfreqs", "type":"parameter", "dimension": 4, "values":[1], "lower":0}
+			},
+			"x":"$freqs"
+		}
+	
+	]
+},
+"physher":[
+	{
+		"id":"metaopt",
+		"type":"optimizer",
+		"algorithm":"meta",
+		"precision":0.001,
+		"max": 10,
+		"model":"&posterior",
+		"list":[
+			{				
+				"id":"optbl",
+				"type":"optimizer",
+				"algorithm":"serial",
+				"model":"&posterior",
+				"parameters":["%tree.distances"]
+			},
+			{				
+				"id":"optgamma",
+				"type":"optimizer",
+				"algorithm":"brent",
+				"model":"&posterior",
+				"parameters":"&alpha"
+			},
+			{				
+				"id":"optfreqs",
+				"type":"optimizer",
+				"algorithm":"serial",
+				"model":"&posterior",
+				"parameters":[
+					"&ac", "&ag", "&at", "&cg", "&ct", "$freqs"
+				]
+			}
+		]
+	},
+	{
+		"id": "log",
+		"type": "logger",
+		"tree": "&tree"
+	},
+	{
+		"id": "log2",
+		"type": "logger",
+		"models": ["&posterior", "&treelikelihood"]
+	},
+	{
+		"id": "log3",
+		"type": "logger",
+		"parameters": ["$freqs", "&ac", "&ag", "&at", "&cg", "&ct", "&alpha"]
+	}
+]
+}

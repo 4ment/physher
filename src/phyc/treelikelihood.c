@@ -42,8 +42,6 @@
 #include "treelikelihoodX.h"
 #include "treelikelihoodCodon.h"
 
-#include "pooledtreelikelihood.h"
-
 #ifdef USE_SSE
 #include <xmmintrin.h>
 #endif
@@ -784,6 +782,75 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 #pragma mark -
 // MARK: SingleTreeLikelihood
 
+void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
+    Tree* tree = tlk->tree;
+    size_t nodeCount = Tree_node_count(tree);
+    Node **nodes = Tree_get_nodes(tlk->tree, POSTORDER);
+    
+    if(index == 0){
+        tlk->current_matrices_indexes = uivector(2*nodeCount);
+        tlk->current_partials_indexes = uivector(2*nodeCount);
+        tlk->stored_matrices_indexes = NULL;
+        tlk->stored_partials_indexes = NULL;
+        memset(tlk->current_matrices_indexes, 0, 2*nodeCount * sizeof(unsigned));
+        memset(tlk->current_partials_indexes, 0, 2*nodeCount * sizeof(unsigned));
+        tlk->partials = (double***)malloc(2*sizeof(double**));
+        tlk->partials[0] = (double**)malloc( tlk->partials_dim*sizeof(double*));
+        tlk->partials[1] = NULL;
+        
+        int i = 0;
+        for ( ; i < nodeCount; i++ ) {
+            if( Node_isleaf( nodes[i] ) ){
+                tlk->partials[0][Node_id( nodes[i] )] = NULL;
+            }
+            else {
+                tlk->partials[0][Node_id( nodes[i] )] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+                memset(tlk->partials[0][Node_id( nodes[i] )], 0.0, tlk->partials_size * sizeof(double));
+            }
+        }
+        for ( ; i < tlk->partials_dim; i++ ) {
+            tlk->partials[0][i] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+            memset(tlk->partials[0][i], 0.0, tlk->partials_size * sizeof(double));
+        }
+        tlk->matrices = (double***)malloc( 2*sizeof(double**) );
+        tlk->matrices[0] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
+        tlk->matrices[1] = NULL;
+        
+        int mat_len = tlk->matrix_size*tlk->sm->cat_count;
+        for ( int i = 0; i < tlk->matrix_dim; i++ ) {
+            tlk->matrices[0][i] = aligned16_malloc( mat_len * sizeof(double) );
+            memset(tlk->matrices[0][i], 0.0, mat_len * sizeof(double));
+        }
+    }
+    else{
+        tlk->stored_matrices_indexes = uivector(nodeCount*2);
+        tlk->stored_partials_indexes = uivector(Tree_node_count(tree)*2);
+        memset(tlk->stored_matrices_indexes, 0, 2*nodeCount * sizeof(unsigned));
+        memset(tlk->stored_partials_indexes, 0, 2*nodeCount * sizeof(unsigned));
+        tlk->partials[1] = (double**)malloc( tlk->partials_dim*sizeof(double*));
+        int i = 0;
+        for ( ; i < Tree_node_count(tree); i++ ) {
+            if( Node_isleaf( nodes[i] ) ){
+                tlk->partials[1][Node_id( nodes[i] )] = NULL;
+            }
+            else {
+                tlk->partials[1][Node_id( nodes[i] )] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+                memset(tlk->partials[1][Node_id( nodes[i] )], 0.0, tlk->partials_size * sizeof(double));
+            }
+        }
+        for ( ; i < tlk->partials_dim; i++ ) {
+            tlk->partials[1][i] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+            memset(tlk->partials[1][i], 0.0, tlk->partials_size * sizeof(double));
+        }
+        tlk->matrices[1] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
+        
+        int mat_len = tlk->matrix_size*tlk->sm->cat_count;
+        for ( int i = 0; i < tlk->matrix_dim; i++ ) {
+            tlk->matrices[1][i] = aligned16_malloc( mat_len * sizeof(double) );
+            memset(tlk->matrices[1][i], 0.0, mat_len * sizeof(double));
+        }
+    }
+}
 
 SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm ){
 	SingleTreeLikelihood *tlk = (SingleTreeLikelihood *)malloc( sizeof(SingleTreeLikelihood));
@@ -822,48 +889,9 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 //        tlk->partials_size += sp->count * sm->cat_count;
 //        tlk->matrix_size   += sm->nstate;
 //    }
-	tlk->current_matrices_indexes = uivector(Tree_node_count(tree)*2);
-	tlk->stored_matrices_indexes = uivector(Tree_node_count(tree)*2);
-	tlk->current_partials_indexes = uivector(Tree_node_count(tree)*2);
-	tlk->stored_partials_indexes = uivector(Tree_node_count(tree)*2);
-	memset(tlk->current_matrices_indexes, 0, 2*Tree_node_count(tree) * sizeof(unsigned));
-	memset(tlk->stored_matrices_indexes, 0, 2*Tree_node_count(tree) * sizeof(unsigned));
-	memset(tlk->current_partials_indexes, 0, 2*Tree_node_count(tree) * sizeof(unsigned));
-	memset(tlk->stored_partials_indexes, 0, 2*Tree_node_count(tree) * sizeof(unsigned));
-	tlk->partials = (double***)malloc(2*sizeof(double**));
-	assert(tlk->partials);
-	tlk->partials[0] = (double**)malloc( tlk->partials_dim*sizeof(double*));
-	tlk->partials[1] = (double**)malloc( tlk->partials_dim*sizeof(double*));
-	int i = 0;
-	for ( ; i < Tree_node_count(tree); i++ ) {
-		if( Node_isleaf( nodes[i] ) ){
-			tlk->partials[0][Node_id( nodes[i] )] = NULL;
-			tlk->partials[1][Node_id( nodes[i] )] = NULL;
-		}
-		else {
-			tlk->partials[0][Node_id( nodes[i] )] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
-			tlk->partials[1][Node_id( nodes[i] )] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
-			memset(tlk->partials[0][Node_id( nodes[i] )], 0.0, tlk->partials_size * sizeof(double));
-			memset(tlk->partials[1][Node_id( nodes[i] )], 0.0, tlk->partials_size * sizeof(double));
-		}
-	}
-	for ( ; i < tlk->partials_dim; i++ ) {
-		tlk->partials[0][i] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
-		tlk->partials[1][i] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
-		memset(tlk->partials[0][i], 0.0, tlk->partials_size * sizeof(double));
-		memset(tlk->partials[1][i], 0.0, tlk->partials_size * sizeof(double));
-	}
-	tlk->matrices = (double***)malloc( 2*sizeof(double**) );
-	tlk->matrices[0] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
-	tlk->matrices[1] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
 	
-	int mat_len = tlk->matrix_size*sm->cat_count;
-	for ( int i = 0; i < tlk->matrix_dim; i++ ) {
-		tlk->matrices[0][i] = aligned16_malloc( mat_len * sizeof(double) );
-		tlk->matrices[1][i] = aligned16_malloc( mat_len * sizeof(double) );
-		memset(tlk->matrices[0][i], 0.0, mat_len * sizeof(double));
-		memset(tlk->matrices[1][i], 0.0, mat_len * sizeof(double));
-	}
+    allocate_storage(tlk, 0);
+    allocate_storage(tlk, 1); // used by mcmc with store/restore
 	
 	tlk->root_partials = aligned16_malloc( tlk->root_partials_size * sizeof(double) );
     assert(tlk->root_partials);
@@ -988,25 +1016,35 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk ){
 	if(tlk->scaling_factors != NULL ){
 		free_dmatrix( tlk->scaling_factors[0], tlk->partials_dim);
-		free_dmatrix( tlk->scaling_factors[1], tlk->partials_dim);
+        if(tlk->scaling_factors[1] != NULL){
+            free_dmatrix( tlk->scaling_factors[1], tlk->partials_dim);
+        }
 		free(tlk->scaling_factors);
 	}
 	for ( int i = 0; i < tlk->partials_dim; i++ ) {
 		if( tlk->partials[0][i] != NULL ){
 			free(tlk->partials[0][i]);
-			free(tlk->partials[1][i]);
 		}
 	}
-	free(tlk->partials[0]);
-	free(tlk->partials[1]);
-	free(tlk->partials);
+    free(tlk->partials[0]);
 	free_dmatrix(tlk->matrices[0], tlk->matrix_dim);
-	free_dmatrix(tlk->matrices[1], tlk->matrix_dim);
-	free(tlk->matrices);
 	free(tlk->current_partials_indexes);
-	free(tlk->stored_partials_indexes);
 	free(tlk->current_matrices_indexes);
-	free(tlk->stored_matrices_indexes);
+    
+    if(tlk->partials[1] != NULL){
+        for ( int i = 0; i < tlk->partials_dim; i++ ) {
+            if( tlk->partials[1][i] != NULL ){
+                free(tlk->partials[1][i]);
+            }
+        }
+        free(tlk->partials[1]);
+        free_dmatrix(tlk->matrices[1], tlk->matrix_dim);
+        free(tlk->stored_partials_indexes);
+        free(tlk->stored_matrices_indexes);
+    }
+    
+    free(tlk->partials);
+    free(tlk->matrices);
 	
 	free(tlk->mapping);
 	free(tlk->update_nodes);
@@ -1026,88 +1064,6 @@ void free_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 	free_SingleTreeLikelihood_internals(tlk);
 }
 
-void free_SingleTreeLikelihood_share( SingleTreeLikelihood *tlk, bool shared_sitepattern, bool shared_sitemodel ){
-	if(tlk->scaling_factors != NULL ){
-		free_dmatrix( tlk->scaling_factors[0], tlk->partials_dim);
-		free_dmatrix( tlk->scaling_factors[1], tlk->partials_dim);
-		free(tlk->scaling_factors);
-	}
-	for ( int i = 0; i < tlk->partials_dim; i++ ) {
-		if( tlk->partials[0][i] != NULL ){
-			free(tlk->partials[0][i]);
-			free(tlk->partials[1][i]);
-		}
-	}
-	free(tlk->partials[0]);
-	free(tlk->partials[1]);
-	free(tlk->partials);
-	free_dmatrix(tlk->matrices[0], tlk->matrix_dim);
-	free_dmatrix(tlk->matrices[1], tlk->matrix_dim);
-	free(tlk->matrices);
-	free(tlk->current_partials_indexes);
-	free(tlk->stored_partials_indexes);
-	free(tlk->current_matrices_indexes);
-	free(tlk->stored_matrices_indexes);
-	
-	free(tlk->mapping);
-	free(tlk->update_nodes);
-	free(tlk->pattern_lk);
-	free(tlk->root_partials);
-    
-	if ( tlk->bm != NULL )     tlk->bm->free( tlk->bm, false );
-	if ( tlk->tree != NULL )   free_Tree( tlk->tree );
-	if ( !shared_sitemodel && tlk->sm != NULL)   free_SiteModel( tlk->sm );
-	if ( !shared_sitepattern && tlk->sp != NULL) free_SitePattern( tlk->sp );
-	
-	free(tlk->upper_partial_indexes);
-    if(tlk->root_frequencies != NULL)free(tlk->root_frequencies);
-	free(tlk);
-}
-
-void free_SingleTreeLikelihood_share2( SingleTreeLikelihood *tlk, bool shared_tree, bool shared_sitemodel, bool shared_sitepattern, bool shared_branchmodel ){
-	if(tlk->scaling_factors != NULL ){
-		free_dmatrix( tlk->scaling_factors[0], tlk->partials_dim);
-		free_dmatrix( tlk->scaling_factors[1], tlk->partials_dim);
-		free(tlk->scaling_factors);
-	}
-	for ( int i = 0; i < tlk->partials_dim; i++ ) {
-		if( tlk->partials[0][i] != NULL ){
-			free(tlk->partials[0][i]);
-			free(tlk->partials[1][i]);
-		}
-	}
-	free(tlk->partials[0]);
-	free(tlk->partials[1]);
-	free(tlk->partials);
-	free_dmatrix(tlk->matrices[0], tlk->matrix_dim);
-	free_dmatrix(tlk->matrices[1], tlk->matrix_dim);
-	free(tlk->matrices);
-	free(tlk->current_partials_indexes);
-	free(tlk->stored_partials_indexes);
-	free(tlk->current_matrices_indexes);
-	free(tlk->stored_matrices_indexes);
-	
-	free(tlk->mapping);
-	free(tlk->update_nodes);
-	free(tlk->pattern_lk);
-	free(tlk->root_partials);
-	
-	free(tlk->upper_partial_indexes);
-
-	if ( tlk->bm != NULL && !shared_branchmodel ){
-		tlk->bm->free( tlk->bm, shared_tree );
-	}
-	else {
-		if( !shared_tree && tlk->tree != NULL) free_Tree( tlk->tree );
-	}
-
-	if ( !shared_sitemodel && tlk->sm != NULL) free_SiteModel( tlk->sm );
-	if ( !shared_sitepattern && tlk->sp != NULL) free_SitePattern( tlk->sp );
-	
-    if(tlk->root_frequencies != NULL)free(tlk->root_frequencies);
-	free(tlk);
-}
-
 SingleTreeLikelihood * clone_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 	SitePattern *sp = clone_SitePattern(tlk->sp);
 	SiteModel *sm   = clone_SiteModel(tlk->sm);
@@ -1121,26 +1077,6 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 		bm = clone_BranchModel(tlk->bm, tree, dp);
 	}
 	return clone_SingleTreeLikelihood_with( tlk, tree, sm, sp, bm  );
-}
-
-SingleTreeLikelihood * clone_SingleTreeLikelihood_share( SingleTreeLikelihood *tlk, bool share_sitepattern, bool share_sitemodel ){
-	SitePattern *sp = NULL;
-	SiteModel *sm = NULL;
-	if( share_sitepattern ) sp = tlk->sp;
-	else sp = clone_SitePattern(tlk->sp);
-	
-	if( share_sitemodel ) sm = tlk->sm;
-	else sm = clone_SiteModel(tlk->sm);
-	Tree* tree = clone_Tree(tlk->tree);
-	BranchModel* bm = NULL;
-	if(tlk->bm != NULL){
-		DiscreteParameter* dp = NULL;
-		if (tlk->bm->ssvs != NULL) {
-			dp = tlk->bm->ssvs->clone(tlk->bm->ssvs);
-		}
-		bm = clone_BranchModel(tlk->bm, tree, dp);
-	}
-	return clone_SingleTreeLikelihood_with( tlk, tree, sm, sp, bm );
 }
 
 static void _singletreellikelihood_copy(SingleTreeLikelihood *source, SingleTreeLikelihood *dest, Node *snode, Node *dnode){
@@ -1177,7 +1113,10 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	if ( tlk->scaling_factors != NULL ){
 		newtlk->scaling_factors = (double***)malloc(2*sizeof(double**));
 		newtlk->scaling_factors[0] = clone_dmatrix( tlk->scaling_factors[0], tlk->partials_dim, tlk->sp->count );
-		newtlk->scaling_factors[1] = clone_dmatrix( tlk->scaling_factors[1], tlk->partials_dim, tlk->sp->count );
+        newtlk->scaling_factors[1] = NULL;
+        if(tlk->scaling_factors[1] != NULL){
+            newtlk->scaling_factors[1] = clone_dmatrix( tlk->scaling_factors[1], tlk->partials_dim, tlk->sp->count );
+        }
 	}
 	
 	newtlk->scale = tlk->scale;
@@ -1213,7 +1152,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	newtlk->matrix_dim = tlk->matrix_dim;
 	newtlk->partials_dim = tlk->partials_dim;
 	
-	Node **nodes = Tree_get_nodes(tlk->tree, POSTORDER);
+	Node **nodes = Tree_get_nodes(newtlk->tree, POSTORDER);
 	
 	newtlk->use_upper = tlk->use_upper;
 	newtlk->calculate_upper = tlk->calculate_upper;
@@ -1226,46 +1165,44 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
     newtlk->use_SIMD = tlk->use_SIMD;
 #endif
-
-	newtlk->current_partials_indexes = clone_uivector(tlk->current_partials_indexes, 2*Tree_node_count(tlk->tree));
-	newtlk->stored_partials_indexes = clone_uivector(tlk->stored_partials_indexes, 2*Tree_node_count(tlk->tree));
-	newtlk->current_matrices_indexes = clone_uivector(tlk->current_matrices_indexes, 2*Tree_node_count(tlk->tree));
-	newtlk->stored_matrices_indexes = clone_uivector(tlk->stored_matrices_indexes, 2*Tree_node_count(tlk->tree));
-	
-	newtlk->partials = (double***)malloc( tlk->partials_dim*sizeof(double**) );
-	newtlk->partials[0] = (double**)malloc( tlk->partials_dim*sizeof(double*) );
-	newtlk->partials[1] = (double**)malloc( tlk->partials_dim*sizeof(double*) );
-
+    
+    size_t nodeCount = Tree_node_count(tlk->tree);
+    
+    allocate_storage(newtlk, 0);
+    memcpy(newtlk->current_matrices_indexes, tlk->current_matrices_indexes, 2*nodeCount*sizeof(unsigned));
+    memcpy(newtlk->current_partials_indexes, tlk->current_partials_indexes, 2*nodeCount*sizeof(unsigned));
 	int i = 0;
-	for ( ; i < Tree_node_count(tlk->tree); i++ ) {
-		if( Node_isleaf(nodes[i]) ){
-			newtlk->partials[0][Node_id( nodes[i] )] = NULL;
-			newtlk->partials[1][Node_id( nodes[i] )] = NULL;
-		}
-		else {
-			newtlk->partials[0][Node_id( nodes[i] )] = aligned16_malloc( tlk->partials_size * sizeof(double) );
-			newtlk->partials[1][Node_id( nodes[i] )] = aligned16_malloc( tlk->partials_size * sizeof(double) );
+	for ( ; i < nodeCount; i++ ) {
+		if( !Node_isleaf(nodes[i]) ){
 			memcpy(newtlk->partials[0][Node_id( nodes[i] )], tlk->partials[0][Node_id( nodes[i] )], tlk->partials_size * sizeof(double));
-			memcpy(newtlk->partials[1][Node_id( nodes[i] )], tlk->partials[1][Node_id( nodes[i] )], tlk->partials_size * sizeof(double));
 		}
 	}
 	for ( ; i < tlk->partials_dim; i++ ) {
-		newtlk->partials[0][i] = aligned16_malloc( tlk->partials_size * sizeof(double) );
-		newtlk->partials[1][i] = aligned16_malloc( tlk->partials_size * sizeof(double) );
-		memcpy(newtlk->partials[0][i], tlk->partials[i], tlk->partials_size * sizeof(double));
-		memcpy(newtlk->partials[1][i], tlk->partials[i], tlk->partials_size * sizeof(double));
+		memcpy(newtlk->partials[0][i], tlk->partials[0][i], tlk->partials_size * sizeof(double));
 	}
-	
-	newtlk->matrices = (double***)malloc( tlk->matrix_dim*sizeof(double**) );
-	newtlk->matrices[0] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
-	newtlk->matrices[1] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
 
 	for ( int i = 0; i < tlk->matrix_dim; i++ ) {
-		newtlk->matrices[0][i] = aligned16_malloc( tlk->matrix_size*tlk->sm->cat_count * sizeof(double) );
-		newtlk->matrices[1][i] = aligned16_malloc( tlk->matrix_size*tlk->sm->cat_count * sizeof(double) );
 		memcpy(newtlk->matrices[0][i], tlk->matrices[0][i], tlk->matrix_size*tlk->sm->cat_count * sizeof(double));
-		memcpy(newtlk->matrices[1][i], tlk->matrices[1][i], tlk->matrix_size*tlk->sm->cat_count * sizeof(double));
 	}
+    
+//    if(tlk->partials[1] != NULL){
+        allocate_storage(newtlk, 1);
+        memcpy(newtlk->stored_matrices_indexes, tlk->stored_matrices_indexes, 2*nodeCount*sizeof(unsigned));
+        memcpy(newtlk->stored_partials_indexes, tlk->stored_partials_indexes, 2*nodeCount*sizeof(unsigned));
+        i = 0;
+        for ( ; i < nodeCount; i++ ) {
+            if( !Node_isleaf(nodes[i]) ){
+                memcpy(newtlk->partials[1][Node_id( nodes[i] )], tlk->partials[1][Node_id( nodes[i] )], tlk->partials_size * sizeof(double));
+            }
+        }
+        for ( ; i < tlk->partials_dim; i++ ) {
+            memcpy(newtlk->partials[1][i], tlk->partials[1][i], tlk->partials_size * sizeof(double));
+        }
+
+        for ( int i = 0; i < tlk->matrix_dim; i++ ) {
+            memcpy(newtlk->matrices[1][i], tlk->matrices[1][i], tlk->matrix_size*tlk->sm->cat_count * sizeof(double));
+        }
+//    }
 	
 	newtlk->root_partials = (double*)malloc( newtlk->root_partials_size*sizeof(double) );
     assert(newtlk->root_partials);
@@ -1293,7 +1230,10 @@ void SingleTreeLikelihood_use_rescaling( SingleTreeLikelihood *tlk, bool use ){
 	if ( tlk->scaling_factors == NULL && use ) {
 		tlk->scaling_factors = (double***)malloc(2*sizeof(double**));
 		tlk->scaling_factors[0] = dmatrix(tlk->partials_dim, tlk->sp->count );
-		tlk->scaling_factors[1] = dmatrix(tlk->partials_dim, tlk->sp->count );
+        tlk->scaling_factors[1] = NULL;
+        if(tlk->partials[1] != NULL){
+            tlk->scaling_factors[1] = dmatrix(tlk->partials_dim, tlk->sp->count );
+        }
 	}
 }
 

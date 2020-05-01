@@ -128,14 +128,8 @@ void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk );
 
 void free_SingleTreeLikelihood( SingleTreeLikelihood *tlk );
 
-void free_SingleTreeLikelihood_share2( SingleTreeLikelihood *tlk, bool shared_tree, bool shared_sitemodel, bool shared_sitepattern, bool shared_branchmodel );
-
-void free_SingleTreeLikelihood_share( SingleTreeLikelihood *tlk, bool shared_sitepattern, bool shared_sitemodel );
-
 
 SingleTreeLikelihood * clone_SingleTreeLikelihood( SingleTreeLikelihood *tlk );
-
-SingleTreeLikelihood * clone_SingleTreeLikelihood_share( SingleTreeLikelihood *tlk, bool share_sitepattern, bool share_sitemodel );
 
 SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tlk, Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm);
 

@@ -14,6 +14,7 @@
 #include "mjson.h"
 #include "parameters.h"
 #include "simplex.h"
+#include "matrix.h"
 
 #include <gsl/gsl_rng.h>
 
@@ -36,7 +37,7 @@ typedef struct variational_block_t{
     bool use_entropy;
     gsl_rng* rng;
     bool initialized;
-    double* etas;
+    Vector* etas;
 }variational_block_t;
 
 typedef struct variational_t{

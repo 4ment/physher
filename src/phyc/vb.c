@@ -24,6 +24,79 @@
 #include "klpq.h"
 #include "klqp.h"
 
+variational_block_t* clone_VariationalBlock(variational_block_t* block, Hashtable* hash){
+    variational_block_t* clone = malloc(sizeof(variational_block_t));
+    
+    clone->posterior = NULL;
+    clone->simplex_count = 0;
+    clone->simplex_parameter_count = 0;
+    
+    if(block->simplices != NULL){
+        clone->simplices = malloc(block->simplex_count*sizeof(Model*));
+        clone->simplex_count = block->simplex_count;
+        clone->simplex_parameter_count = block->simplex_parameter_count;
+        
+        for (int i = 0; i < block->simplex_count; i++) {
+            if (Hashtable_exists(hash, block->simplices[i]->name)) {
+                clone->simplices[i] = Hashtable_get(hash, block->simplices[i]->name);
+                clone->simplices[i]->ref_count++; // it is decremented at the end using free
+            }
+            else{
+                clone->simplices[i] = block->simplices[i]->clone(block->simplices[i], hash);
+                Hashtable_add(hash, clone->simplices[i]->name, clone->simplices[i]);
+            }
+            Parameters_add_parameters(clone->parameters, ((Simplex*)clone->simplices[i])->parameters);
+        }
+    }
+    
+    clone->parameters = new_Parameters(Parameters_count(block->parameters));
+    for (int i = 0; i < Parameters_count(block->parameters); i++) {
+        char* name = Parameters_name(block->parameters, i);
+        if (Hashtable_exists(hash, name)) {
+            Parameters_add(clone->parameters, Hashtable_get(hash, name));
+        }
+        else{
+            Parameter* p = clone_Parameter(Parameters_at(block->parameters, i));
+            Parameters_move(clone->parameters, p);
+            Hashtable_add(hash, name, p);
+        }
+    }
+    
+    
+    clone->var_parameters = malloc(block->var_parameters_count*sizeof(Parameters*));
+    clone->var_parameters_count = block->var_parameters_count;
+    for(size_t j = 0; j < clone->var_parameters_count; j++){
+        clone->var_parameters[j] = new_Parameters(Parameters_count(block->var_parameters[j]));
+        Parameters_set_name2(clone->var_parameters[j], Parameters_name2(block->var_parameters[j]));
+        Hashtable_add(hash, Parameters_name2(clone->var_parameters[j]), clone->var_parameters[j]);
+        
+        for (int i = 0; i < Parameters_count(block->var_parameters[j]); i++) {
+            char* name = Parameters_name(block->var_parameters[j], i);
+            if (Hashtable_exists(hash, name)) {
+                Parameters_add(clone->var_parameters[j], Hashtable_get(hash, name));
+            }
+            else{
+                Parameter* p = clone_Parameter(Parameters_at(block->var_parameters[j], i));
+                Parameters_move(clone->var_parameters[j], p);
+                Hashtable_add(hash, name, p);
+            }
+        }
+    }
+    
+    clone->sample1 = block->sample1;
+    clone->sample2 = block->sample2;
+    clone->sample = block->sample;
+    clone->entropy = block->entropy;
+    clone->grad_elbo = block->grad_elbo;
+    clone->grad_entropy = block->grad_entropy;
+    clone->logP = block->logP;
+    clone->logQ = block->logQ;
+    clone->use_entropy = block->use_entropy;
+    clone->rng = block->rng;
+    clone->initialized = block->initialized;
+    clone->etas = clone_Vector(block->etas);
+    return clone;
+}
 
 variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* hash){
     variational_block_t* var = malloc(sizeof(variational_block_t));
@@ -107,7 +180,8 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
     }
     
     if (dist_string == NULL || strcasecmp(dist_string, "normal") == 0) {
-        var->etas = dvector(Parameters_count(var->parameters));
+        var->etas = new_Vector(Parameters_count(var->parameters));
+        Vector_resize(var->etas, Parameters_count(var->parameters));
         size_t mu_length = Parameters_count(var->var_parameters[0]);
         size_t sigma_length = Parameters_count(var->var_parameters[1]);
         if (var->var_parameters_count != 2 || mu_length != sigma_length) {
@@ -146,7 +220,8 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
         }
     }
     else if (dist_string == NULL || strcasecmp(dist_string, "multivariatenormal") == 0) {
-        var->etas = dvector(Parameters_count(var->parameters)*2); // etas and zetas
+        var->etas = new_Vector(Parameters_count(var->parameters)*2); // etas and zetas
+        Vector_resize(var->etas, Parameters_count(var->parameters)*2);
         size_t mu_length = Parameters_count(var->var_parameters[0]);
         size_t sigma_length = Parameters_count(var->var_parameters[1]);
         if (var->var_parameters_count != 2 || sigma_length != (mu_length*(mu_length-1))/2+mu_length) {
@@ -653,7 +728,7 @@ void free_Variational(variational_t* var){
             }
             free(block->var_parameters);
             free_Parameters(block->parameters);
-            if(block->etas != NULL) free(block->etas);
+            if(block->etas != NULL) free_Vector(block->etas);
             free(block);
         }
 //        var->posterior->free(var->posterior);
@@ -691,42 +766,61 @@ static Model* _variational_model_clone(Model* self, Hashtable *hash){
 	
 	Model* posterior = var->posterior->clone(var->posterior, hash);
 	Hashtable_add(hash, posterior->name, posterior);
+    
+    
+    variational_t* clone = malloc(sizeof(variational_t));
+    clone->posterior = posterior;
+    clone->parameters = NULL;
+    clone->var_parameters = NULL;
+    clone->blocks = NULL;
+    clone->block_count = 0;
 
-	Parameters* parameters = new_Parameters(Parameters_count(var->parameters));
-	for (int i = 0; i < Parameters_count(var->parameters); i++) {
-		char* name = Parameters_name(var->parameters, i);
-		if (Hashtable_exists(hash, name)) {
-			Parameters_add(parameters, Hashtable_get(hash, name));
-		}
-		else{
-			Parameter* p = clone_Parameter(Parameters_at(var->parameters, i));
-			Parameters_move(parameters, p);
-			Hashtable_add(hash, name, p);
-		}
-	}
+    // old
+    if(var->parameters != NULL){
+        clone->parameters = new_Parameters(Parameters_count(var->parameters));
+        for (int i = 0; i < Parameters_count(var->parameters); i++) {
+            char* name = Parameters_name(var->parameters, i);
+            if (Hashtable_exists(hash, name)) {
+                Parameters_add(clone->parameters, Hashtable_get(hash, name));
+            }
+            else{
+                Parameter* p = clone_Parameter(Parameters_at(var->parameters, i));
+                Parameters_move(clone->parameters, p);
+                Hashtable_add(hash, name, p);
+            }
+        }
+    }
 	
-	Parameters* var_parameters = new_Parameters(Parameters_count(var->var_parameters));
-	if (Parameters_name2(var->var_parameters) != NULL) {
-		Parameters_set_name2(var_parameters, Parameters_name2(var->var_parameters));
-	}
-	Hashtable_add(hash, Parameters_name2(var_parameters), var_parameters);
-	
-	for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
-		char* name = Parameters_name(var->var_parameters, i);
-		if (Hashtable_exists(hash, name)) {
-			Parameters_add(var_parameters, Hashtable_get(hash, name));
-		}
-		else{
-			Parameter* p = clone_Parameter(Parameters_at(var->var_parameters, i));
-			Parameters_move(var_parameters, p);
-			Hashtable_add(hash, name, p);
-		}
-	}
+    // old
+    if(var->var_parameters != NULL){
+        clone->var_parameters = new_Parameters(Parameters_count(var->var_parameters));
+        if (Parameters_name2(var->var_parameters) != NULL) {
+            Parameters_set_name2(clone->var_parameters, Parameters_name2(var->var_parameters));
+        }
+        Hashtable_add(hash, Parameters_name2(clone->var_parameters), clone->var_parameters);
+        
+        for (int i = 0; i < Parameters_count(var->var_parameters); i++) {
+            char* name = Parameters_name(var->var_parameters, i);
+            if (Hashtable_exists(hash, name)) {
+                Parameters_add(clone->var_parameters, Hashtable_get(hash, name));
+            }
+            else{
+                Parameter* p = clone_Parameter(Parameters_at(var->var_parameters, i));
+                Parameters_move(clone->var_parameters, p);
+                Hashtable_add(hash, name, p);
+            }
+        }
+    }
+    
+    if(var->blocks != 0){
+        clone->block_count = var->block_count;
+        clone->blocks = malloc(var->block_count*sizeof(variational_block_t*));
+        for(size_t i = 0; i < var->block_count; i++){
+            clone->blocks[i] = clone_VariationalBlock(var->blocks[i], hash);
+            clone->blocks[i]->posterior = posterior;
+        }
+    }
 
-	variational_t* clone = malloc(sizeof(variational_t));
-	clone->posterior = posterior;
-	clone->parameters = parameters;
-	clone->var_parameters = var_parameters;
 	clone->file = NULL;
 	clone->sample = var->sample;
 	clone->sample_some = var->sample_some;
@@ -740,6 +834,25 @@ static Model* _variational_model_clone(Model* self, Hashtable *hash){
 	clone->iter = var->iter;
 	clone->ready_to_sample = var->ready_to_sample;
 	clone->rng = var->rng;
+    clone->elbo_multi = var->elbo_multi;
+    
+    clone->simplex_count = var->simplex_count;
+    clone->simplices = NULL;
+    if(var->simplices != NULL){
+        clone->simplices = malloc(var->simplex_count*sizeof(Model*));
+        for (int i = 0; i < var->simplex_count; i++) {
+            if (Hashtable_exists(hash, var->simplices[i]->name)) {
+                clone->simplices[i] = Hashtable_get(hash, var->simplices[i]->name);
+                clone->simplices[i]->ref_count++; // it is decremented at the end using free
+            }
+            else{
+                clone->simplices[i] = var->simplices[i]->clone(var->simplices[i], hash);
+                Hashtable_add(hash, clone->simplices[i]->name, clone->simplices[i]);
+            }
+            Parameters_add_parameters(clone->parameters, ((Simplex*)clone->simplices[i])->parameters);
+        }
+    }
+    
 	Model* mclone = new_VariationalModel(self->name, clone);
 
 	return mclone;

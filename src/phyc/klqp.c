@@ -128,7 +128,7 @@ double variational_klqp_elbo(variational_t* var){
             variational_block_t* block = var->blocks[i];
             block->sample1(block, &jacobian);
             if(block->use_entropy){
-                logQ += block->logQ(block, block->etas);
+                logQ += block->logQ(block, Vector_data(block->etas));
             }
         }
         double logP = posterior->logP(posterior);
@@ -157,7 +157,7 @@ double variational_klqp_elbo_multi(variational_t* var){
             for(int i = 0; i < var->block_count; i++){
                 variational_block_t* block = var->blocks[i];
                 block->sample1(block, &jacobian);
-                logQ += block->logQ(block, block->etas);
+                logQ += block->logQ(block, Vector_data(block->etas));
             }
             double logP = posterior->logP(posterior);
             double ratio = logP - logQ + jacobian;
@@ -218,6 +218,7 @@ void variational_klqp_grad_elbo(variational_t* var, const Parameters* parameters
 
 void klqp_block_meanfield_normal_sample1(variational_block_t* var, double* jacobian){
     size_t dim = Parameters_count(var->parameters);
+    double* etas = Vector_data(var->etas);
     
     for (int j = 0; j < dim; j++) {
         Parameter* p = Parameters_at(var->parameters, j);
@@ -240,8 +241,8 @@ void klqp_block_meanfield_normal_sample1(variational_block_t* var, double* jacob
             //                    mu = log(Parameter_value(p)) + sigma*sigma;
             //                }
         }
-        var->etas[j] = rnorm();
-        double zeta = var->etas[j] * sigma + mu;
+        etas[j] = rnorm();
+        double zeta = etas[j] * sigma + mu;
         double theta = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), jacobian);
         Parameter_set_value(p, theta);
     }
@@ -290,14 +291,15 @@ void klqp_block_meanfield_normal_sample2(variational_block_t* var, const Paramet
     // not beeing optimized
     if (mu_idx == opt_param_dim) return;
     
+    double* etas = Vector_data(var->etas);
     
     for (int idx = 0; idx < dim; idx++) {
         Parameter* p = Parameters_at(var->parameters, idx);
         double mu = Parameters_value(var->var_parameters[0], idx);
         double sigma = Parameters_value(var->var_parameters[1], idx);
         
-        var->etas[idx] = rnorm();
-        double zeta = var->etas[idx] * sigma + mu;
+        etas[idx] = rnorm();
+        double zeta = etas[idx] * sigma + mu;
         double theta = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
         Parameter_set_value(p, theta);
     }
@@ -326,7 +328,7 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
     Model* posterior = var->posterior;
     size_t dim = Parameters_count(var->parameters);
     size_t simplex_parameter_count = var->simplex_parameter_count;
-    
+    double* etas = Vector_data(var->etas);
     int idx = 0;
     if (simplex_parameter_count > 0) {
         for(int s = 0; s < var->simplex_count; s++){
@@ -336,12 +338,12 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
                 double mu = Parameters_value(var->var_parameters[0], idx);
                 double sigma = Parameters_value(var->var_parameters[1], idx);
                 double dlogP = posterior->dlogP(posterior, p);
-                double zeta = var->etas[idx] * sigma + mu;
+                double zeta = etas[idx] * sigma + mu;
                 double gldits = 1.0/zeta + 1.0/(zeta - 1.0); // grad log det transform of stick
                 const double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
                 double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit + gldits;
                 grads[mu_idx + idx] += grad_mu;
-                grads[sigma_idx + idx] += grad_mu * var->etas[idx] * sigma;
+                grads[sigma_idx + idx] += grad_mu * etas[idx] * sigma;
                 idx++;
             }
         }
@@ -353,11 +355,11 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
         double sigma = Parameters_value(var->var_parameters[1], idx);
         
         double dlogP = posterior->dlogP(posterior, p);
-        double zeta = var->etas[idx]*sigma + mu;
+        double zeta = etas[idx]*sigma + mu;
         double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
         double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit;
         grads[mu_idx + idx] += grad_mu;
-        grads[sigma_idx + idx] += grad_mu * var->etas[idx] * sigma;
+        grads[sigma_idx + idx] += grad_mu * etas[idx] * sigma;
     }
 }
 
@@ -465,8 +467,9 @@ bool klqp_block_meanfield_normal_sample_some(variational_block_t* var, const Par
 
 void klqp_block_fullrank_normal_sample1(variational_block_t* var, double* jacobian){
     size_t dim = Parameters_count(var->parameters);
+    double* etas = Vector_data(var->etas);
     for (int j = 0; j < dim; j++) {
-        var->etas[j] = rnorm();
+        etas[j] = rnorm();
     }
     
     size_t row = 0;
@@ -475,7 +478,7 @@ void klqp_block_fullrank_normal_sample1(variational_block_t* var, double* jacobi
         // multiply L_j and eta
         for (int k = 0; k < j+1; k++) {
             if(Parameters_estimate(var->var_parameters[1], row)){
-                temp += Parameters_value(var->var_parameters[1], row)*var->etas[k];
+                temp += Parameters_value(var->var_parameters[1], row)*etas[k];
             }
             row++;
         }
@@ -519,9 +522,9 @@ double klqp_block_fullrank_normal_entropy(variational_block_t* var){
 // parameters are the variational parameters
 void klqp_block_fullrank_normal_sample2(variational_block_t* var, const Parameters* parameters){
     size_t dim = Parameters_count(var->parameters);
-    
+    double* etas = Vector_data(var->etas);
     for (int j = 0; j < dim; j++) {
-        var->etas[j] = rnorm();
+        etas[j] = rnorm();
     }
     
     size_t row = 0;
@@ -530,12 +533,12 @@ void klqp_block_fullrank_normal_sample2(variational_block_t* var, const Paramete
         // multiply L_j and eta
         for (int k = 0; k < j+1; k++) {
 //            if(Parameters_estimate(var->var_parameters[1], row)){
-                temp += Parameters_value(var->var_parameters[1], row)*var->etas[k];
+                temp += Parameters_value(var->var_parameters[1], row)*etas[k];
 //            }
             row++;
         }
         double zeta = temp + Parameters_value(var->var_parameters[0], j); // add mu
-        var->etas[j+dim] = zeta;
+        etas[j+dim] = zeta;
         Parameter* p = Parameters_at(var->parameters, j);
         double theta = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
         Parameter_set_value(p, theta);
@@ -562,6 +565,7 @@ void klqp_block_fullrank_normal_grad_elbo(variational_block_t* var, const Parame
         }
     }
     
+    double* etas = Vector_data(var->etas);
     Model* posterior = var->posterior;
     size_t simplex_parameter_count = var->simplex_parameter_count;
     size_t  dim = Parameters_count(var->parameters);
@@ -569,7 +573,7 @@ void klqp_block_fullrank_normal_grad_elbo(variational_block_t* var, const Parame
     for (int k = 0; k < dim; k++){
         Parameter* p = Parameters_at(var->parameters, k);
         double dlogP = posterior->dlogP(posterior, p);
-        double zeta = var->etas[dim+k];
+        double zeta = etas[dim+k];
         const double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
         double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit;
         if (k < simplex_parameter_count) {
@@ -577,7 +581,7 @@ void klqp_block_fullrank_normal_grad_elbo(variational_block_t* var, const Parame
         }
         grads[mu_idx + k] += grad_mu;
         for (int j = 0; j < k+1; j++) {
-            grads[sigma_idx + row] += grad_mu*var->etas[j];
+            grads[sigma_idx + row] += grad_mu*etas[j];
             row++;
         }
     }
@@ -666,8 +670,9 @@ double klqp_block_fullrank_normal_logQ(variational_block_t* var, double* values)
 
 void klqp_block_fullrank_normal_sample(variational_block_t* var, double* values){
     size_t dim = Parameters_count(var->parameters);
+    double* etas = Vector_data(var->etas);
     for (int j = 0; j < dim; j++) {
-        var->etas[j] = rnorm();
+        etas[j] = rnorm();
     }
     
     size_t row = 0;
@@ -676,7 +681,7 @@ void klqp_block_fullrank_normal_sample(variational_block_t* var, double* values)
         // multiply L_j and eta
         for (int k = 0; k < j+1; k++) {
             if(Parameters_estimate(var->var_parameters[1], row)){
-                temp += Parameters_value(var->var_parameters[1], row)*var->etas[k];
+                temp += Parameters_value(var->var_parameters[1], row)*etas[k];
             }
             row++;
         }

@@ -475,9 +475,9 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
     double lnl = mtlk->logP(mtlk);
     //double max = lnl;
     
-    SingleTreeLikelihood *tlk2 = clone_SingleTreeLikelihood_share(tlk, true, false);
+    Tree* tree2 = clone_Tree(tlk->tree);
     
-    Parsimony *parsimony = new_Parsimony(tlk2->sp, tlk2->tree);
+    Parsimony *parsimony = new_Parsimony(tlk->sp, tree2);
     double score = parsimony->calculate(parsimony);
     if(opt->verbosity > 0){
         printf("\nParsimony score: %f\n\n", score);
@@ -510,9 +510,9 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
     while ( !failed ) {
         
         //nodes = Tree_get_nodes(tlk->tree, POSTORDER);
-        Node *root = Tree_root(tlk2->tree);
+        Node *root = Tree_root(tree2);
         
-        Tree_init_depth(tlk2->tree);
+        Tree_init_depth(tree2);
         
         
         count = 0;
@@ -523,10 +523,10 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
             
             // The node we want to prune
             //Node *prune = Tree_get_node(tlk2->tree, POSTORDER, i);
-            Node *prune = Tree_node(tlk2->tree, i);
+            Node *prune = Tree_node(tree2, i);
             
             // we don't prune the root node and its right child
-            if ( Node_isroot(prune) || ( Node_isroot(Node_parent(prune)) && prune == Node_right(Tree_root(tlk2->tree))) ) continue;
+            if ( Node_isroot(prune) || ( Node_isroot(Node_parent(prune)) && prune == Node_right(Tree_root(tree2))) ) continue;
             
             for ( int j = 0; j < nNodes; j++ ) {
                 
@@ -534,10 +534,10 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
                 if( i == j ) continue;
                 
                 //Node *graft = Tree_get_node(tlk2->tree, POSTORDER, j);
-                Node *graft = Tree_node(tlk2->tree, j);
+                Node *graft = Tree_node(tree2, j);
                 
                 // we don't graft on the root node and its right child
-                if ( Node_isroot(graft) || ( Node_isroot(Node_parent(graft)) && graft == Node_right(Tree_root(tlk2->tree))) ) continue;
+                if ( Node_isroot(graft) || ( Node_isroot(Node_parent(graft)) && graft == Node_right(Tree_root(tree2))) ) continue;
                 
                 if( Node_isroot( Node_parent(prune) ) ){
                     
@@ -634,7 +634,7 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
                 
                 
                 // SPR
-                SPR_move(tlk2->tree, prune, graft);
+                SPR_move(tree2, prune, graft);
                 
                 
                 double spr_score = 0;
@@ -674,19 +674,19 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
                 
                 
                 if(rerooted){
-                    SPR_move(tlk2->tree, regraft, prune);
-                    Tree_reroot(tlk2->tree, n); // this function uses Tree_update_topology. should use Tree_set_topology_changed instead
+                    SPR_move(tree2, regraft, prune);
+                    Tree_reroot(tree2, n); // this function uses Tree_update_topology. should use Tree_set_topology_changed instead
                 }
                 else {
-                    SPR_move(tlk2->tree, prune, regraft);
+                    SPR_move(tree2, prune, regraft);
                 }
                 
                 Node *root  = Tree_root(tlk->tree);
-                Node *root2 = Tree_root(tlk2->tree);
+                Node *root2 = Tree_root(tree2);
                 
                 if( strcmp(Node_name(root->left), Node_name(root2->left) ) != 0  ){
                     Node_rotate(root2);
-                    Tree_set_topology_changed(tlk2->tree);
+                    Tree_set_topology_changed(tree2);
                 }
                 
                 if ( spr_score < score  ) {
@@ -717,8 +717,8 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
             
             // apply one by one until the score increases
             for ( int i = 0; i < count; i++ ) {
-                Node *prune = Tree_node(tlk2->tree, prunes[i]);
-                Node *graft = Tree_node(tlk2->tree, grafts[i]);
+                Node *prune = Tree_node(tree2, prunes[i]);
+                Node *graft = Tree_node(tree2, grafts[i]);
                 
                 if( prune == graft ) continue;
                 
@@ -757,7 +757,7 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
                 }
                 
                 
-                SPR_move(tlk2->tree, Tree_node(tlk2->tree, prunes[i]), Tree_node(tlk2->tree, grafts[i]));
+                SPR_move(tree2, Tree_node(tree2, prunes[i]), Tree_node(tree2, grafts[i]));
                 
                 double spr_score = 0;
                 
@@ -770,19 +770,19 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
                 if ( spr_score > score ) {
                     
                     if(rerooted){
-                        SPR_move(tlk2->tree, regraft, prune);
-                        Tree_reroot(tlk2->tree, n);
+                        SPR_move(tree2, regraft, prune);
+                        Tree_reroot(tree2, n);
                     }
                     else {
-                        SPR_move(tlk2->tree, prune, regraft);
+                        SPR_move(tree2, prune, regraft);
                     }
                     
                     Node *root  = Tree_root(tlk->tree);
-                    Node *root2 = Tree_root(tlk2->tree);
+                    Node *root2 = Tree_root(tree2);
                     
                     if( strcmp(Node_name(root->left), Node_name(root2->left) ) != 0  ){
                         Node_rotate(root2);
-                        Tree_set_topology_changed(tlk2->tree);
+                        Tree_set_topology_changed(tree2);
                     }
                     break;
                 }
@@ -825,7 +825,7 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
             }
             
             
-            Tree_copy_distances(tlk2->tree, tlk->tree);
+            Tree_copy_distances(tree2, tlk->tree);
             
             //Tree_print_newick(stdout, tlk2->tree, true);
             
@@ -842,8 +842,7 @@ double spr_optimize_bl_parsimony( struct TopologyOptimizer * opt ){
     free_Parsimony(parsimony);
     free_Optimizer(opt_bl);
 //    free_Parameters(oneparameter);
-    free_SingleTreeLikelihood_share(tlk2, true, false);
-    
+    free_Tree(tree2);
     free(branches);
     free(prunes);
     free(grafts);

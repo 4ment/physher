@@ -106,7 +106,7 @@ int Node_id( const Node *node );
 
 void Node_set_id( Node *node, const int id );
 
-int Node_class_id( Node *node );
+int Node_class_id( const Node *node );
 
 void Node_set_class_id( Node *node, const int class_id );
 

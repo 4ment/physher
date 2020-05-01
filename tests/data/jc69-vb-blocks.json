@@ -58,69 +58,19 @@
 	"id":"var",
 	"type": "variational",
 	"posterior": "&posterior",
-	"var" : "meanfield",
-	"distribution" : "normal",
 	"elbosamples": 100,
 	"gradsamples": 1,
-	"parameters": ["%tree.distances"],
-	"var_parameters": "var_tree.distances"
-},
-"physher":[
-	{
-		"id":"mlopt",
-		"type":"optimizer",
-		"algorithm":"meta",
-		"precision":0.001,
-		"max": 10000,
-		"model":"&treelikelihood",
-		"list":[
-			{				
-				"id":"optbl",
-				"type":"optimizer",
-				"algorithm":"serial",
-				"model":"&treelikelihood",
-				"treelikelihood": "&treelikelihood"
+	"distributions":[
+		{
+			"id": "block1",
+			"type": "block",
+			"distribution": "normal",
+			"x": "%tree.distances",
+			"parameters":{
+				"mu": {"id":"mu", "type":"parameter", "dimension": 17, "values":[0]},
+				"sigma": {"id":"sigma", "type":"parameter", "dimension": 17, "values":[1], "lower":0}
 			}
-		]
-	},
-	{
-		"id": "log1",
-		"type": "logger",
-		"models": "&treelikelihood"
-	},
-	{
-		"id":"metaopt",
-		"type":"optimizer",
-		"algorithm":"meta",
-		"precision":0.001,
-		"max": 10000,
-		"model":"&posterior",
-		"list":[
-			{				
-				"id":"optbl",
-				"type":"optimizer",
-				"algorithm":"serial",
-				"model":"&posterior",
-				"treelikelihood": "&treelikelihood"
-			}
-		]
-	},
-	{
-		"id": "log2",
-		"type": "logger",
-		"models": ["&posterior","&treelikelihood"]
-	},
-	{
-		"id":"sg",
-		"algorithm":"sg",
-		"type":"optimizer",
-		"tol": 0.001,
-		"eta": 0.1,
-		"threads": 4,
-		"model": "&var",
-		"max": 1000000,
-		"parameters": ["%var_tree.distances"],
-		"frequency_check": 100
-	}
-]
+		}
+	]
+}
 }

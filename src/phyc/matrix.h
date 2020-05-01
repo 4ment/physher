@@ -54,6 +54,10 @@ void cholesky(long N, double *A, double *diag);
 
 Vector *new_Vector( const size_t length );
 
+Vector * clone_Vector( const Vector* v );
+
+void Vector_resize( Vector *v, size_t size );
+
 int Vector_length( const Vector *v );
 
 void Vector_push( Vector *v, double value );

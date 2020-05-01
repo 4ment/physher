@@ -304,7 +304,7 @@ void Node_set_id( Node *node, const int id ){
 	node->id = id;
 }
 
-int Node_class_id( Node *node ){
+int Node_class_id( const Node *node ){
 	return node->class_id;
 }
 

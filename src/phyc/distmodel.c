@@ -141,7 +141,7 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	assert(clone);
 	clone->type = dm->type;
 	clone->parameters = NULL;
-    clone->parameter_count = 0;
+    clone->parameter_count = dm->parameter_count;
     
 	if(dm->parameter_count > 0){
         clone->parameters = malloc(sizeof(Parameters*)*dm->parameter_count);
@@ -690,6 +690,7 @@ static Model* _dist_model_clone( Model *self, Hashtable* hash ){
 	if(dm->parameters != NULL){
         params = malloc(sizeof(Parameters*)*dm->parameter_count);
 		for (int i = 0; i < dm->parameter_count; i++) {
+            params[i] = new_Parameters(Parameters_count(dm->parameters[i]));
             for (int j = 0; j < Parameters_count(dm->parameters[i]); j++) {
                 char* name = Parameters_name(dm->parameters[i], j);
                 if(Hashtable_exists(hash, name)){
@@ -800,7 +801,7 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* si
             Parameters_at(dm->parameters[i], j)->listeners->add( Parameters_at(dm->parameters[i], j)->listeners, model );
         }
     }
-	simplex->listeners->add(simplex->listeners, model);
+	if(simplex != NULL) simplex->listeners->add(simplex->listeners, model);
 	return model;
 }
 

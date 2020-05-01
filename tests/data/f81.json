@@ -2,7 +2,6 @@
 "model":{
 	"id":"treelikelihood",
 	"type": "treelikelihood",
-	"sse": true,
 	"sitepattern":{
 		"id":"patterns",
 		"type":"sitepattern",		
@@ -19,7 +18,7 @@
 		"substitutionmodel":{
 			"id":"sm",
 			"type":"substitutionmodel",
-			"model":"jc69",
+			"model":"f81",
 			"datatype":"nucleotide",
 			"frequencies":{
 				"id":"freqs",
@@ -37,7 +36,7 @@
 			"algorithm":"nj",
 			"model":"jc69",
 			"sitepattern": "&patterns"
-		}
+		},
 	}
 },
 "physher":[
@@ -55,6 +54,13 @@
 				"algorithm":"serial",
 				"model":"&treelikelihood",
 				"treelikelihood": "&treelikelihood"
+			},
+			{				
+				"id":"optfreqs",
+				"type":"optimizer",
+				"algorithm":"serial",
+				"model":"&treelikelihood",
+				"parameters":"$freqs"
 			}
 		]
 	},

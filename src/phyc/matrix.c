@@ -63,6 +63,28 @@ Vector * new_Vector( const size_t length ){
 	return v;
 }
 
+Vector * clone_Vector( const Vector* v ){
+    Vector *clone = (Vector *)malloc(sizeof(Vector));
+    clone->vector = clone_dvector(v->vector, v->count);
+    clone->count    = v->count;
+    clone->capacity = v->count;
+    return clone;
+}
+
+void Vector_resize( Vector *v, size_t size ){
+    if(size <= v->capacity){
+        v->count = size;
+    }
+    else if (size > v->count && size < v->capacity) {
+        v->count = size;
+    }
+    else if(size > v->capacity){
+        v->vector = realloc(v->vector, size*sizeof(double));
+        v->count = size;
+        v->capacity = size;
+    }
+}
+
 int Vector_length( const Vector *v ){
 	return v->count;
 }

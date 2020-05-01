@@ -22,9 +22,6 @@
 
 #include "topologyopt.h"
 #include "matrix.h"
-
-#include "pooledtreelikelihood.h"
-
 #include "treeio.h"
 
 

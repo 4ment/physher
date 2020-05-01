@@ -2,7 +2,6 @@
 "model":{
 	"id":"treelikelihood",
 	"type": "treelikelihood",
-	"sse": true,
 	"sitepattern":{
 		"id":"patterns",
 		"type":"sitepattern",		
@@ -19,12 +18,15 @@
 		"substitutionmodel":{
 			"id":"sm",
 			"type":"substitutionmodel",
-			"model":"jc69",
+			"model":"hky",
 			"datatype":"nucleotide",
 			"frequencies":{
 				"id":"freqs",
 				"type":"Simplex",
 				"values":[0.25,0.25,0.25,0.25] 
+			},
+			"rates":{
+				"kappa":{"id":"kappa", "type":"parameter", "value":1, "lower":0, "upper":"infinity"}
 			}
 		}	
 	},
@@ -55,6 +57,15 @@
 				"algorithm":"serial",
 				"model":"&treelikelihood",
 				"treelikelihood": "&treelikelihood"
+			},
+			{				
+				"id":"optfreqskappa",
+				"type":"optimizer",
+				"algorithm":"serial",
+				"model":"&treelikelihood",
+				"parameters":[
+					"&kappa", "$freqs"
+				]
 			}
 		]
 	},
