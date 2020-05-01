@@ -16,7 +16,6 @@
 #include "treelikelihood.h"
 #include "distmodel.h"
 #include "demographicmodels.h"
-#include "vartreelikelihood.h"
 
 
 double _compoundModel_logP(CompoundModel* cm){
@@ -446,24 +445,6 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			cm->add(cm, coalescent);
 			coalescent->free(coalescent);
 		}
-        else if(model_type == MODEL_VARIATIONAL_TREELIKELIHOOD){
-            Model* var = NULL;
-            if (child->node_type == MJSON_OBJECT) {
-                var = new_VariationalTreeLikelihoodModel_from_json(child, hash);
-                char* id = get_json_node_value_string(child, "id");
-                Hashtable_add(hash, id, var);
-            }
-            else if(child->node_type == MJSON_STRING){
-                char* ref = (char*)child->value;
-                var = Hashtable_get(hash, ref+1);
-                var->ref_count++;
-            }
-            else{
-                exit(10);
-            }
-            cm->add(cm, var);
-            var->free(var);
-        }
 		else{
 			printf("json CompoundModel unknown: (%s)\n", type);
 			exit(1);
