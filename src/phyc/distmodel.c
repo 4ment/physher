@@ -90,50 +90,27 @@ static void _free_partial_distribution(DistributionModel*dm){
 //}
 
 static DistributionModel* DistributionMode_clone(DistributionModel* dm){
-	DistributionModel* clone = (DistributionModel*)malloc(sizeof(DistributionModel));
-	assert(clone);
-	clone->x = NULL;
-	clone->simplex = NULL;
-	
-    clone->parameters = malloc(sizeof(Parameters*)*dm->parameter_count);
-    clone->parameter_count = 0;
-    for(size_t i = 0; i < dm->parameter_count; i++){
-        clone->parameters[i] = new_Parameters(Parameters_count(dm->parameters[i]));
-        for (int j = 0; j < Parameters_count(dm->parameters[i]); j++) {
-            Parameters_move(clone->parameters[i], clone_Parameter(Parameters_at(dm->parameters[i], j)));
+    Parameters** parameters = NULL;
+    Parameters* x = NULL;
+    Simplex* simplex = NULL;
+    
+    if(dm->parameters != NULL){
+        parameters = malloc(sizeof(Parameters*)*dm->parameter_count);
+        for(size_t i = 0; i < dm->parameter_count; i++){
+            parameters[i] = new_Parameters(Parameters_count(dm->parameters[i]));
+            for (int j = 0; j < Parameters_count(dm->parameters[i]); j++) {
+                Parameters_move(parameters[i], clone_Parameter(Parameters_at(dm->parameters[i], j)));
+            }
         }
-	}
+    }
 	if(dm->x != NULL){
-		clone->x = new_Parameters(Parameters_count(dm->x));
+		x = new_Parameters(Parameters_count(dm->x));
 	}
 	else if(dm->simplex != NULL){
-		clone->simplex = clone_Simplex(dm->simplex);
+		simplex = clone_Simplex(dm->simplex);
 	}
-	clone->logP = dm->logP;
-	clone->dlogP = dm->dlogP;
-	clone->d2logP = dm->d2logP;
-	clone->ddlogP = dm->ddlogP;
-	clone->sample = dm->sample;
-	clone->sample_evaluate = dm->sample_evaluate;
-	clone->clone = dm->clone;
-	clone->free = dm->free;
-	clone->logP_with_values= dm->logP_with_values;
-	clone->tempp = NULL;
-	clone->tempx = NULL;
-    if(dm->tempp != NULL){
-        size_t size = 0;
-        for(size_t i = 0; i < dm->parameter_count; i++){
-            size += Parameters_count(dm->parameters[i]);
-        }
-        clone->tempp = clone_dvector(dm->tempp, size);
-    }
-	if(dm->tempx != NULL) clone->tempx = clone_dvector(dm->tempx, Parameters_count(dm->x));
-	clone->rng = dm->rng;
-	clone->data = NULL;
-	clone->lp = dm->lp;
-	clone->need_update = dm->need_update;
-	clone->type = dm->type;
-	return clone;
+    
+	return clone_DistributionModel_with_parameters(dm, parameters, x, simplex);
 }
 
 DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm, Parameters** params, const Parameters* x, Simplex* simplex){
@@ -182,11 +159,13 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
     }
 	if(dm->tempx != NULL) clone->tempx = clone_dvector(dm->tempx, Parameters_count(dm->x));
 	clone->lp = dm->lp;
+    clone->stored_lp = dm->stored_lp;
 	clone->need_update = dm->need_update;
 	clone->shift = dm->shift;
 	clone->type = dm->type;
 	clone->parameterization = dm->parameterization;
 	clone->rng = dm->rng;
+    clone->data = NULL;
 	return clone;
 }
 
@@ -726,6 +705,7 @@ static Model* _dist_model_clone( Model *self, Hashtable* hash ){
 	clone->lp = self->lp;
 	clone->sample = self->sample;
 	clone->samplable = self->samplable;
+    clone->need_update = self->need_update;
 	return clone;
 }
 
@@ -778,30 +758,12 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 }
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex){
-	Model *model = new_Model(MODEL_DISTRIBUTION,name, dm);
+	Model *model = new_DistributionModel2(name, dm);
 	model->data = simplex;
-	if(simplex != NULL) simplex->ref_count++;
-	model->logP = _dist_model_logP;
-	model->dlogP = _dist_model_dlogP;
-	model->d2logP = _dist_model_d2logP;
-	model->ddlogP = _dist_model_ddlogP;
-	model->free = _dist_model_free;
-	model->clone = _dist_model_clone;
-	model->get_free_parameters = _dist_model_get_free_parameters;
-	model->store = _dist_model_store;
-	model->restore = _dist_model_restore;
-	model->update = _dist_model_handle_change;
-	model->handle_restore = _dist_model_handle_restore;
-	model->sample = _dist_model_sample;
-	model->sample_evaluate = _dist_model_sample_evaluate;
-	model->samplable = false;
-
-	for ( size_t i = 0; i < dm->parameter_count; i++ ) {
-        for ( size_t j = 0; j < Parameters_count(dm->parameters[i]); j++ ) {
-            Parameters_at(dm->parameters[i], j)->listeners->add( Parameters_at(dm->parameters[i], j)->listeners, model );
-        }
+    if(simplex != NULL){
+        simplex->ref_count++;
+        simplex->listeners->add(simplex->listeners, model);
     }
-	if(simplex != NULL) simplex->listeners->add(simplex->listeners, model);
 	return model;
 }
 

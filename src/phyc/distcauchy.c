@@ -8,6 +8,8 @@
 
 #include "distcauchy.h"
 
+#include <strings.h>
+
 #include <gsl/gsl_randist.h>
 
 #include "distmodel.h"

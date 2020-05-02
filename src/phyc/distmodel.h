@@ -84,6 +84,8 @@ DistributionModel* new_UniformTreeDistribution(Tree* tree);
 
 DistributionModel* new_DistributionModel(Parameters** p, size_t dim, Parameters* x);
 
+DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm, Parameters** params, const Parameters* x, Simplex* simplex);
+
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex);

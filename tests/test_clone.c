@@ -232,16 +232,16 @@ char* test_variational_blocks_clone(){
 	json_node* child = json->children[0];
 	Model* posterior = new_CompoundModel_from_json(child, hash);
 	Hashtable_add(hash, get_json_node_value_string(child, "id"), posterior);
-	double logP = posterior->logP(posterior);
 	
 	json_node* child1 = json->children[1];
-	Model* var = new_Variational_from_json(child1, hash);
+	Model* mvar = new_Variational_from_json(child1, hash);
+	variational_t* var = mvar->obj;
 	posterior->free(posterior);
+	double logP = var->posterior->logP(var->posterior);
 	
 	
 	
-	
-	Model* clone = var->clone(var, hash2);
+	Model* clone = mvar->clone(mvar, hash2);
 	
 	variational_t* clone_var = clone->obj;
 	Model* clone_posterior = clone_var->posterior;
@@ -250,14 +250,13 @@ char* test_variational_blocks_clone(){
 	
 	init_genrand(1);
 	gsl_rng_set(r, 1);
-	double logQ = var->logP(var);
-	var->free(var);
+	double logQ = mvar->logP(mvar);
+	mvar->free(mvar);
 	
 	init_genrand(1);
 	gsl_rng_set(r, 1);
 	double logQ2 = clone->logP(clone);
-	fprintf(stderr, "%f %f\n", logQ, logQ2);
-// 	mu_assert(logQ == logQ2, "logQ not matching");
+	mu_assert(logQ == logQ2, "logQ not matching");
 	
 	clone->free(clone);
 	free_Hashtable(hash);

@@ -8,6 +8,8 @@
 
 #include "distmultinormal.h"
 
+#include <strings.h>
+
 #include "distmodel.h"
 #include "matrix.h"
 #include "parametersio.h"

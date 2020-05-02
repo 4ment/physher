@@ -8,6 +8,8 @@
 
 #include "distbetaprime.h"
 
+#include <strings.h>
+
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_sf_gamma.h>
 
