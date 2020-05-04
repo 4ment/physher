@@ -257,16 +257,6 @@ static Model* _branch_model_clone( Model* self, Hashtable *hash ){
 	return clone;
 }
 
-
-static void _branch_model_get_free_parameters(Model* model, Parameters* parameters){
-	BranchModel* m = (BranchModel*)model->obj;
-	if (m->rates != NULL) {
-		Parameters_add_free_parameters(parameters, m->rates);
-	}
-	Model* mtree = ((Model**)model->data)[0];
-	mtree->get_free_parameters(mtree, parameters);
-}
-
 // BranchModel2 listen to the rate parameters
 Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model* ssvs){
 	Model *model = new_Model(MODEL_BRANCHMODEL, name, bm);
@@ -285,7 +275,6 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model*
 	model->restore = _branch_model_restore;
 	model->free = _branch_model_free;
 	model->clone = _branch_model_clone;
-	model->get_free_parameters = _branch_model_get_free_parameters;
 	Model** models = malloc(sizeof(Model*)*2);
 	models[0] = tree;
 	models[1] = ssvs;
@@ -347,11 +336,15 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
         //TODO: check that the number of parameters is equal to the number of branches -1
         DiscreteParameter* map = new_DiscreteParameter_with_postfix(DISCRETE_POSTFIX, Tree_node_count(tree));
         // assumes that root has the highest id
+        StringBuffer* buffer = new_StringBuffer(10);
         for (int i = 0; i < Tree_node_count(tree)-1; i++) {
             Node* node = Tree_node(tree, i);
             map->values[Node_id(node)] = i;
+            StringBuffer_set_string(buffer, mtree->name);
+            StringBuffer_append_format(buffer, ".%s", Parameters_name(ps, i));
             Parameters_at(ps, i)->id = Node_id(node);
         }
+        free_StringBuffer(buffer);
         bm = new_DiscreteClock_with_parameters(tree, ps, map);
         free_Parameters(ps);
         // add Paramters to hash

@@ -140,6 +140,7 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 	Model *mprop = models[1];
 	Model* mmclone = NULL;
 	Model* mpropclone = NULL;
+    Simplex* propclone = NULL;
 	// Susbtitution model may have been parsed already
 	if (Hashtable_exists(hash, mm->name)) {
 		mmclone = Hashtable_get(hash, mm->name);
@@ -150,14 +151,17 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 		Hashtable_add(hash, mmclone->name, mmclone);
 	}
 	
-	if (Hashtable_exists(hash, mprop->name)) {
-		mpropclone = Hashtable_get(hash, mprop->name);
-		mpropclone->ref_count++; // it is decremented at the end using free
-	}
-	else{
-		mpropclone = mm->clone(mprop, hash);
-		Hashtable_add(hash, mpropclone->name, mpropclone);
-	}
+    if(mprop != NULL){
+        if (Hashtable_exists(hash, mprop->name)) {
+            mpropclone = Hashtable_get(hash, mprop->name);
+            mpropclone->ref_count++; // it is decremented at the end using free
+        }
+        else{
+            mpropclone = mm->clone(mprop, hash);
+            Hashtable_add(hash, mpropclone->name, mpropclone);
+        }
+        propclone = mpropclone->obj;
+    }
 	
 	SiteModel* sm = (SiteModel*)self->obj;
 	Parameters* ps = new_Parameters(1);
@@ -184,7 +188,7 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 			Hashtable_add(hash, name, mu);
 		}
 	}
-	SiteModel* smclone = clone_SiteModel_with_parameters(sm, (SubstitutionModel*)mmclone->obj, (Simplex*)mpropclone->obj, ps, mu);
+	SiteModel* smclone = clone_SiteModel_with_parameters(sm, (SubstitutionModel*)mmclone->obj, propclone, ps, mu);
 	free_Parameters(ps);
 	free_Parameter(mu);
 	Model* clone = new_SiteModel2(self->name, smclone, mmclone, mpropclone);
@@ -193,16 +197,6 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 	if(mpropclone != NULL)mpropclone->free(mpropclone);
 	clone->print = self->print;
 	return clone;
-}
-
-static void _site_model_get_free_parameters(Model* model, Parameters* parameters){
-	SiteModel* m = (SiteModel*)model->obj;
-	if (m->rates != NULL) {
-		Parameters_add_free_parameters(parameters, m->rates);
-	}
-	Model** models = (Model**)model->data;
-	models[0]->get_free_parameters(models[0],parameters);
-	if(models[1] != NULL)models[1]->get_free_parameters(models[1],parameters);
 }
 
 // SubstitutionModel2 listen to the rate and freq parameters
@@ -234,7 +228,6 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel, Mode
 	model->restore = _site_model_restore;
 	model->free = _site_model_free;
 	model->clone = _site_model_clone;
-	model->get_free_parameters = _site_model_get_free_parameters;
 	model->data = data;
 	substmodel->ref_count++;
 	return model;
@@ -761,6 +754,7 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
 	newsm->get_rate        = sm->get_rate;
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
+    newsm->get_site_category = sm->get_site_category;
 	
 	newsm->distribution = sm->distribution;
 	newsm->invariant = sm->invariant;
@@ -811,6 +805,7 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionMo
 	newsm->get_rate        = sm->get_rate;
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
+    newsm->get_site_category = sm->get_site_category;
 	
 	return newsm;
 }

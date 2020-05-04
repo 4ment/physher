@@ -335,7 +335,6 @@ struct _Model {
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, int );
 	void (*handle_restore)( Model *, Model *, int );
-	void (*get_free_parameters)(Model*, Parameters*);
 	void (*reset)(Model*);
 	void (*sample)(Model*, double*, double* logP);
 	double (*sample_evaluate)(Model*);

@@ -148,11 +148,6 @@ static Model* _coalescent_model_clone( Model *self, Hashtable* hash ){
 }
 
 //MARK: TODO
-static void _coalescent_model_get_free_parameters(Model* model, Parameters* parameters){
-	error("todo _coalescent_model_get_free_parameters\n");
-}
-
-//MARK: TODO
 static void _coalescent_model_sample(Model* model, double* samples, double* logP){
 	error("todo _coalescent_model_sample\n");
 }
@@ -206,7 +201,6 @@ Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tre
 	model->ddlogP = _coalescent_model_ddlogP;
 	model->free = _coalescent_model_free;
 	model->clone = _coalescent_model_clone;
-	model->get_free_parameters = _coalescent_model_get_free_parameters;
 	model->store = _coalescent_model_store;
 	model->restore = _coalescent_model_restore;
 	model->sample = _coalescent_model_sample;
@@ -282,12 +276,28 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		intervalCount = times_node->child_count;
 		for(int i = 0; i < times_node->child_count; i++){
 			times[i] = atof(times_node->children[i]->value);
-			coalescent[i] = atof(coal_node->children[i]->value);
+			coalescent[i] = atoi(coal_node->children[i]->value);
 		}
 	}
 	
 	json_node* parameters_node = get_json_node(node, "parameters");
-	Parameters* ps = new_Parameters_from_json(parameters_node, hash);
+    Parameters* ps = new_Parameters(parameters_node->child_count);
+    
+    for (int i = 0; i < parameters_node->child_count; i++) {
+        json_node* p_node = parameters_node->children[i];
+        json_node* dim_node = get_json_node(p_node, "dimension");
+        if (dim_node != NULL) {
+            Parameters* multi_parameter = new_MultiParameter_from_json(p_node, hash);
+            Parameters_add_parameters(ps, multi_parameter);
+            Hashtable_add(hash, Parameters_name2(multi_parameter), multi_parameter);
+        }
+        else{
+            Parameter* parameter = new_Parameter_from_json(p_node, hash);
+            Parameters_add(ps, parameter);
+            Hashtable_add(hash, Parameter_name(parameter), parameter);
+        }
+        
+    }
 	
 	for (int i = 0; i < Parameters_count(ps); i++) {
 		Parameters_at(ps, i)->model = MODEL_COALESCENT;
@@ -491,16 +501,6 @@ static void _premultiply_proportions(Node* node, double* descendant, unsigned *m
     }
 }
 
-static void _get_lower(Node* node, double* lower){
-    if(!Node_isleaf(node)){
-        _get_lower(node->left, lower);
-        _get_lower(node->right, lower);
-    }
-    else{
-        *lower = dmax(Node_height(node), *lower);
-    }
-}
-
 double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
 	if(p != Parameters_at(coal->p, 0) && p->model != MODEL_TREE) return 0;
 	if ( coal->need_update_intervals ) {
@@ -524,7 +524,6 @@ double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
         size_t node_id = Node_id(node);
         size_t index = 0;
         double* proportion_derivatives = dvector(coal->n);
-        double lower = 0;
         double theta = Parameters_value(coal->p, 0);
         for(; index < coal->n; index++){
             if(node_id == coal->nodes[index]->index){
@@ -533,7 +532,7 @@ double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
         }
         unsigned *map = get_reparam_map(coal->tree);
         Parameters* reparams = get_reparams(coal->tree);
-        _get_lower(node, &lower);
+        double lower = Tree_lowers(coal->tree)[Node_id(node)];
         
         if (Node_isroot(node)) {
             proportion_derivatives[Node_id(node)] = 1;
@@ -609,6 +608,7 @@ Coalescent * new_ConstantCoalescent_with_parameter( Parameter* theta, int size )
 	coal->need_update = true;
 	coal->grid = NULL;
 	coal->groups = NULL;
+    coal->gradient = dvector(size);
 	
 	return coal;
 }
@@ -962,6 +962,45 @@ double _coalescent_skyride_calculate( Coalescent* coal ){
 	return coal->logP;
 }
 
+// parameterized as \Delta_i = t_{i+1} - t_i
+double _coalescent_skyride_calculate_deltas( Coalescent* coal ){
+    if ( coal->need_update_intervals ) {
+        _update_intervals(coal);
+    }
+    size_t parameter_count = Parameters_count(coal->p);
+    double zgam = Parameters_value(coal->p, parameter_count-2);
+    double tau = Parameters_value(coal->p, parameter_count-1);
+    double zeta = 0.015;
+    double gam = zgam/tau;
+    
+    if ( coal->need_update ) {
+        coal->logP = 0;
+        double logPopSize = NAN;
+        double popSize = NAN;
+        int index = 0;
+        for( int i = 0; i< coal->n; i++  ){
+            // t==0 for consecutive samling events
+            if(coal->times[i] != 0.0){
+                if (index == 0) {
+                    popSize = Parameters_value(coal->p, 0);
+                }
+                else{
+                    popSize = exp(zeta*gam*Parameters_value(coal->p, index) + logPopSize);
+                }
+                logPopSize = log(popSize);
+                if( coal->iscoalescent[i] ){
+                    coal->logP -= logPopSize;
+                    index++;
+                }
+                coal->logP -= coal->times[i]*choose(coal->lineages[i], 2)/popSize;
+            }
+            
+        }
+        coal->need_update = false;
+    }
+    return coal->logP;
+}
+
 double _skyride_calculate_dlogP( Coalescent* coal, const Parameter* p ){
 	int ii = 0;
     if(p->model == MODEL_TREE){
@@ -1016,7 +1055,7 @@ double _skyride_calculate_dlogP( Coalescent* coal, const Parameter* p ){
         double* proportion_derivatives = dvector(coal->n);
         unsigned *map = get_reparam_map(coal->tree);
         Parameters* reparams = get_reparams(coal->tree);
-        _get_lower(node, &lower);
+        lower = Tree_lowers(coal->tree)[Node_id(node)];
         size_t theta_index = 0;
         for(int i = 0; i < index; i++){
             if(coal->iscoalescent[i]){
@@ -1101,7 +1140,10 @@ Coalescent * new_SkyrideCoalescent_with_parameters(Parameters* parameters, int s
 	Parameters_add_parameters(coal->p, parameters);
 	coal->tree = NULL;
 	coal->type = COALESCENT_SKYRIDE;
-	coal->calculate = _coalescent_skyride_calculate;
+    coal->calculate = _coalescent_skyride_calculate;
+    if (Parameters_count(parameters) != size) {
+        coal->calculate = _coalescent_skyride_calculate_deltas;
+    }
 	coal->dlogP = _skyride_calculate_dlogP;
 	coal->d2logP = _skyride_calculate_d2logP;
 	coal->ddlogP = _coalescent_skyride_ddlogP;

@@ -126,6 +126,15 @@ Simplex* new_Simplex_with_values(const char* name, const double *x, size_t K){
     StringBuffer* buffer = new_StringBuffer(10);
 	size_t N = K-1;
 	double stick = 1;
+    double sum = 0;
+    for(int i = 0; i < K; i++){
+        sum += x[i];
+    }
+    if(fabs(sum - 1.0) > 0.0001) {
+        fprintf(stderr, "simplex %s does not sum to 1.0 (+- 0.0001)\n", name);
+        exit(1);
+    }
+
 	for(int i = 0; i < N; i++){
         StringBuffer_empty(buffer);
         StringBuffer_append_format(buffer, "%s.phi%d", name, i);
@@ -244,11 +253,6 @@ static Model* _simplex_model_clone(Model* self, Hashtable *hash){
 	return clone;
 }
 
-static void _simplex_get_free_parameters(Model* model, Parameters* parameters){
-	Simplex* simplex = (Simplex*)model->obj;
-	Parameters_add_free_parameters(parameters, simplex->parameters);
-}
-
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SimplexModel( const char* name, Simplex *simplex ){
 	Model *model = new_Model(MODEL_SIMPLEX, name, simplex);
@@ -266,7 +270,6 @@ Model * new_SimplexModel( const char* name, Simplex *simplex ){
 	model->restore = _simplex_model_restore;
 	model->free = _simplex_model_free;
 	model->clone = _simplex_model_clone;
-	model->get_free_parameters = _simplex_get_free_parameters;
 	return model;
 }
 
@@ -283,6 +286,7 @@ Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
 	
 	if(values != NULL){
 		double* x = dvector(values->child_count);
+        double sum = 0;
 		for (int i = 0; i < values->child_count; i++) {
 			json_node* child = values->children[i];
 			if(child->node_type != MJSON_PRIMITIVE){
@@ -290,7 +294,22 @@ Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
 				exit(1);
 			}
 			x[i] = atof((char*)child->value);
+            sum += x[i];
+            if(x[i] <= 0 || x[i] >= 1){
+                fprintf(stderr, "Each value in a simplex should be between 0 and 1 (id: %s)\n", id);
+                exit(1);
+            }
 		}
+        if(fabs(sum - 1.0) < 0.0001) {
+            for(int i = 0; i < values->child_count; i++){
+                 x[i] /= sum;
+            }
+        }
+        else{
+            fprintf(stderr, "simplex %s does not sum to 1.0 (+- 0.0001)\n", id);
+            exit(1);
+        }
+
 		simplex = new_Simplex_with_values(id, x, values->child_count);
 		free(x);
 	}

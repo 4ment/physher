@@ -261,10 +261,7 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
             double* descendant = dvector(Tree_node_count(tlk->tree));
             unsigned *map = get_reparam_map(tlk->tree);
             Parameters* reparams = get_reparams(tlk->tree);
-            double* lowers = dvector(Tree_node_count(tlk->tree));
-            if (!Tree_homochronous(tlk->tree)) {
-                collect_lowers(Tree_root(tlk->tree), lowers);
-            }
+            double* lowers = Tree_lowers(tlk->tree);
             _calculate_dlog_jacobian(node, node, &adjustement, descendant, map, reparams, lowers);
             free(lowers);
             free(descendant);
@@ -631,20 +628,6 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	return clone;
 }
 
-static void _treeLikelihood_model_get_free_parameters(Model* model, Parameters* parameters){
-	Model** list = (Model**)model->data;
-	Model* mtree = list[0];
-	Model* msm = list[1];
-	Model* mbm = list[2];
-	
-	mtree->get_free_parameters(mtree, parameters);
-	msm->get_free_parameters(msm, parameters);
-	if(mbm != NULL){
-		mbm->get_free_parameters(mbm, parameters);
-	}
-}
-
-
 // TreeLikelihood listen to the TreeModel, SiteModel, BranchModel
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm ){
 	Model *model = new_Model(MODEL_TREELIKELIHOOD,name, tlk);
@@ -662,7 +645,6 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	model->update = _treelikelihood_handle_change;
 	model->free = _treeLikelihood_model_free;
 	model->clone = _treeLikelihood_model_clone;
-	model->get_free_parameters = _treeLikelihood_model_get_free_parameters;
 	model->data = (Model**)malloc(sizeof(Model*)*3);
 	model->store = _singleTreeLikelihood_store;
 	model->restore = _singleTreeLikelihood_restore;

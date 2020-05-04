@@ -709,12 +709,6 @@ static Model* _dist_model_clone( Model *self, Hashtable* hash ){
 	return clone;
 }
 
-static void _dist_model_get_free_parameters(Model* model, Parameters* parameters){
-	DistributionModel* dm = (DistributionModel*)model->obj;
-	
-	Model* msimplex = (Model*)model->data;
-}
-
 static void _dist_model_sample(Model* model, double* samples, double* logP){
 	DistributionModel* dm = (DistributionModel*)model->obj;
 	dm->sample(dm, samples);
@@ -737,7 +731,6 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 	model->ddlogP = _dist_model_ddlogP;
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
-	model->get_free_parameters = _dist_model_get_free_parameters;
 	model->store = _dist_model_store;
 	model->restore = _dist_model_restore;
 	model->update = _dist_model_handle_change;

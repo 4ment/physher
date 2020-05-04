@@ -210,5 +210,12 @@ unsigned* get_reparam_map(Tree* tree);
 
 void collect_lowers(Node* node, double* lowers);
 
+void Tree_update_heights(Tree* tree);
+double Tree_node_height(Tree* tree, Node* node);
+double Tree_node_time_elapsed(Tree* tree, Node* node);
+double* Tree_lowers(Tree* tree);
+
+void init_heights_from_distances(Tree* atree);
+
 #endif
 

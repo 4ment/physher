@@ -208,15 +208,6 @@ static Model* _compound_model_clone( Model *self, Hashtable* hash ){
 	return clone;
 }
 
-static void _compound_model_get_free_parameters(Model* model, Parameters* parameters){
-	CompoundModel* cm = model->obj;
-	for(int i = 0; i < cm->count; i++){
-		Model* mm = (Model*)cm->models[i];
-		mm->get_free_parameters(mm, parameters);
-	}
-}
-
-
 CompoundModel* new_CompoundModel(){
 	CompoundModel* cm = (CompoundModel*)malloc(sizeof(CompoundModel));
 	assert(cm);
@@ -326,7 +317,6 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->ddlogP = _compoundModel_ddlogP2;
 	model->free = _compound_model_free;
 	model->clone = _compound_model_clone;
-	model->get_free_parameters = _compound_model_get_free_parameters;
 	model->store = _compoundModel_store;
 	model->restore = _compoundModel_restore;
 	model->samplable = true;

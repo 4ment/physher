@@ -868,13 +868,6 @@ static void _variational_model_gradient(Model *self, const Parameters* parameter
 	var->grad_elbofn(var, parameters, grad);
 }
 
-static void _variational_model_get_free_parameters(Model* self, Parameters* parameters){
-	variational_t* var = (variational_t*)self->obj;
-//	Parameters_add_free_parameters(parameters, var->var_parameters);
-	Parameters_add_parameters(parameters, var->var_parameters);
-
-}
-
 void _variational_model_reset(Model* self){
 	variational_t* var = (variational_t*)self->obj;
 	if(var->initialized){
@@ -959,7 +952,6 @@ Model* new_VariationalModel(const char* name, variational_t* var){
 	model->clone = _variational_model_clone;
 	model->logP = _variational_model_logP;
 	model->gradient = _variational_model_gradient;
-	model->get_free_parameters = _variational_model_get_free_parameters;
 	model->reset = _variational_model_reset;
 	model->print = _variational_print;
 	model->sample = _variational_model_sample;

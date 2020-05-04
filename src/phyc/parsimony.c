@@ -895,11 +895,6 @@ static Model* _parsimony_model_clone(Model* self, Hashtable* hash){
 	return clone;
 }
 
-static void _parsimony_model_get_free_parameters(Model* model, Parameters* parameters){
-	Model* mtree = model->data;
-	mtree->get_free_parameters(mtree, parameters);
-}
-
 Model * new_ParsimonyModel(char* name, Parsimony* parsimony, Model* tree){
 	Model *model = new_Model(MODEL_PARSIMONY, name, parsimony);
 	tree->listeners->add( tree->listeners, model );
@@ -910,7 +905,6 @@ Model * new_ParsimonyModel(char* name, Parsimony* parsimony, Model* tree){
 	model->full_logP = _parsimony_model_full_logP;
 	model->free = _parsimony_model_free;
 	model->clone = _parsimony_model_clone;
-	model->get_free_parameters = _parsimony_model_get_free_parameters;
 	return model;
 }
 

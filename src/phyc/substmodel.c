@@ -188,20 +188,6 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 	return clone;
 }
 
-
-static void _substitution_model_get_free_parameters(Model* model, Parameters* parameters){
-	SubstitutionModel* m = (SubstitutionModel*)model->obj;
-	Model** msimplex = (Model**)model->data;
-	if (m->rates != NULL) {
-		Parameters_add_free_parameters(parameters, m->rates);
-	}
-	msimplex[0]->get_free_parameters(msimplex[0], parameters);
-	
-	if(m->rates_simplex != NULL){
-		msimplex[1]->get_free_parameters(msimplex[1], parameters);
-	}
-}
-
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex ){
 	Model *model = new_Model(MODEL_SUBSTITUTION, name, sm);
@@ -232,7 +218,6 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 	model->restore = _substitution_model_restore;
 	model->free = _substitution_model_free;
 	model->clone = _substitution_model_clone;
-	model->get_free_parameters = _substitution_model_get_free_parameters;
 	return model;
 }
 

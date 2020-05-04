@@ -913,7 +913,6 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->listeners = new_ListenerList(1);
 	model->need_update = true;
 	model->clone = NULL;
-	model->get_free_parameters = NULL;
 	model->ref_count = 1;
 	model->reset = _dummy_reset;
 	model->restore = _dummy_restore;
