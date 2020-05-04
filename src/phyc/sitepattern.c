@@ -77,7 +77,7 @@ SitePattern * new_SitePattern( const Sequences *aln ){
 	int site, p;
 	for( site = 0; site < sp->nsites; site++ ){
 		for ( p = 0; p < sp->count; p++ ) {
-			if( compare_patterns( temp_patterns[site], sp->patterns[p], aln->size ) ){
+			if(memcmp(temp_patterns[site], sp->patterns[p], sizeof(uint8_t)*aln->size) == 0){
 				sp->weights[p] += 1.;
 				sp->indexes[site] = p;
 				break;
@@ -163,7 +163,7 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 	int site, p;
 	for( site = 0; site < sp->nsites; site++ ){
 		for ( p = 0; p < sp->count; p++ ) {
-			if( compare_patterns( temp_patterns[site], sp->patterns[p], aln->size ) ){
+			if(memcmp(temp_patterns[site], sp->patterns[p], sizeof(uint8_t)*aln->size) == 0){
 				sp->weights[p] += 1.;
 				sp->indexes[site] = p;
 				break;
@@ -249,7 +249,7 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 	int site, p;
 	for( site = 0; site < sp->nsites; site++ ){
 		for ( p = 0; p < sp->count; p++ ) {
-			if( compare_patterns( temp_patterns[site], sp->patterns[p], aln->size ) ){
+			if(memcmp( temp_patterns[site], sp->patterns[p], sizeof(uint8_t)*aln->size ) == 0){
 				sp->weights[p] += 1.;
 				sp->indexes[site] = p;
 				break;
@@ -439,7 +439,7 @@ SitePattern* SitePattern_merge( const SitePattern* sitePattern1, const SitePatte
 	for( int site = 0; site < sitePattern2->nsites; site++ ){
 		int p = 0;
 		for ( ; p < sp->count; p++ ) {
-			if( compare_patterns( sitePattern2->patterns[site], sp->patterns[p], sp->size ) ){
+			if(memcmp(sitePattern2->patterns[site], sp->patterns[p], sizeof(uint8_t)*sp->size) == 0){
 				sp->weights[p] += 1.;
 				sp->indexes[site] = p;// does not make sense
 				break;

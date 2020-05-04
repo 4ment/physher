@@ -774,8 +774,6 @@ void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
         tlk->current_partials_indexes = uivector(2*nodeCount);
         tlk->stored_matrices_indexes = NULL;
         tlk->stored_partials_indexes = NULL;
-        memset(tlk->current_matrices_indexes, 0, 2*nodeCount * sizeof(unsigned));
-        memset(tlk->current_partials_indexes, 0, 2*nodeCount * sizeof(unsigned));
         tlk->partials = (double***)malloc(2*sizeof(double**));
         tlk->partials[0] = (double**)malloc( tlk->partials_dim*sizeof(double*));
         tlk->partials[1] = NULL;
@@ -787,12 +785,10 @@ void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
             }
             else {
                 tlk->partials[0][Node_id( nodes[i] )] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
-                memset(tlk->partials[0][Node_id( nodes[i] )], 0.0, tlk->partials_size * sizeof(double));
             }
         }
         for ( ; i < tlk->partials_dim; i++ ) {
             tlk->partials[0][i] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
-            memset(tlk->partials[0][i], 0.0, tlk->partials_size * sizeof(double));
         }
         tlk->matrices = (double***)malloc( 2*sizeof(double**) );
         tlk->matrices[0] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
@@ -801,14 +797,11 @@ void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
         int mat_len = tlk->matrix_size*tlk->sm->cat_count;
         for ( int i = 0; i < tlk->matrix_dim; i++ ) {
             tlk->matrices[0][i] = aligned16_malloc( mat_len * sizeof(double) );
-            memset(tlk->matrices[0][i], 0.0, mat_len * sizeof(double));
         }
     }
     else{
         tlk->stored_matrices_indexes = uivector(nodeCount*2);
         tlk->stored_partials_indexes = uivector(Tree_node_count(tree)*2);
-        memset(tlk->stored_matrices_indexes, 0, 2*nodeCount * sizeof(unsigned));
-        memset(tlk->stored_partials_indexes, 0, 2*nodeCount * sizeof(unsigned));
         tlk->partials[1] = (double**)malloc( tlk->partials_dim*sizeof(double*));
         int i = 0;
         for ( ; i < Tree_node_count(tree); i++ ) {
@@ -817,19 +810,16 @@ void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
             }
             else {
                 tlk->partials[1][Node_id( nodes[i] )] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
-                memset(tlk->partials[1][Node_id( nodes[i] )], 0.0, tlk->partials_size * sizeof(double));
             }
         }
         for ( ; i < tlk->partials_dim; i++ ) {
             tlk->partials[1][i] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
-            memset(tlk->partials[1][i], 0.0, tlk->partials_size * sizeof(double));
         }
         tlk->matrices[1] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
         
         int mat_len = tlk->matrix_size*tlk->sm->cat_count;
         for ( int i = 0; i < tlk->matrix_dim; i++ ) {
             tlk->matrices[1][i] = aligned16_malloc( mat_len * sizeof(double) );
-            memset(tlk->matrices[1][i], 0.0, mat_len * sizeof(double));
         }
     }
 }
