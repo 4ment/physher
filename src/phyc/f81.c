@@ -22,7 +22,6 @@
 
 static void f81_p_t( SubstitutionModel *m, const double t, double *P );
 static void f81_p_t_transpose( SubstitutionModel *m, const double t, double *P );
-static double f81_pij_t( SubstitutionModel *m, const int i, const int j, const double t );
 
 static void f81_dp_dt( SubstitutionModel *m, const double t, double *P );
 static void f81_dp_dt_transpose( SubstitutionModel *m, const double t, double *P );
@@ -30,11 +29,8 @@ static void f81_d2p_dt2( SubstitutionModel *m, const double t, double *P );
 static void f81_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P );
 
 SubstitutionModel * new_F81(Simplex* freqs){
-    
-    SubstitutionModel *m = create_substitution_model("F81", JC69, DATA_TYPE_NUCLEOTIDE, freqs);
-    m->nstate = 4;
+    SubstitutionModel *m = create_nucleotide_model("F81", JC69, freqs);
 	
-    m->pij_t = f81_pij_t;
     m->p_t = f81_p_t;
     m->p_t_transpose = f81_p_t_transpose;
     m->dp_dt = f81_dp_dt;
@@ -42,13 +38,6 @@ SubstitutionModel * new_F81(Simplex* freqs){
     m->d2p_d2t = f81_d2p_dt2;
     m->d2p_d2t_transpose = f81_d2p_dt2_transpose;
     return m;
-}
-
-double f81_pij_t( SubstitutionModel *m, const int i, const int j, const double t ){
-	const double* freqs = m->simplex->get_values(m->simplex);
-    double temp =  exp(-t/(1.0 - freqs[0]*freqs[0] - freqs[1]*freqs[1] - freqs[2]*freqs[2] - freqs[3]*freqs[3]));
-    if(i == j) return temp + freqs[j]*(1.0-temp);
-    else       return freqs[j]*(1.0-temp);
 }
 
 void f81_p_t_rolled( SubstitutionModel *m, const double t, double *P ){

@@ -60,7 +60,7 @@ typedef struct SubstitutionModel{
 	unsigned int nstate;
 	char *name;
 	modeltype modeltype;
-	datatype dtype;
+	DataType* datatype;
 	EigenDecomposition *eigendcmp;
 	double **Q;
 	DiscreteParameter* model;
@@ -93,7 +93,6 @@ typedef struct SubstitutionModel{
 	void (*set_relative_frequency)( struct SubstitutionModel *, const double, const int );
 	void (*set_rate)( struct SubstitutionModel *, const double, const int );
 	
-	double (*pij_t)( struct SubstitutionModel *, const int, const int, const double );
 	void (*p_t)( struct SubstitutionModel *, const double, double * );
 	void (*p_t_transpose)( struct SubstitutionModel *, const double, double * );
     
@@ -126,7 +125,7 @@ void normalize_Q( double **m, const double *freqs, const int dim );
 
 Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash);
 
-SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, const datatype dtype, Simplex* freqs );
+SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, DataType* datatype, Simplex* freqs );
 
 SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname, Simplex* freqs );
 
@@ -134,7 +133,7 @@ SubstitutionModel * create_codon_model( const char *name, const modeltype modeln
 
 SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Simplex* freqs );
 
-SubstitutionModel * create_general_model( const char *name, const modeltype modelname, Simplex* freqs, size_t dim );
+SubstitutionModel * create_general_model( const char *name, const modeltype modelname, DataType* datatype, Simplex* freqs );
 
 
 SubstitutionModel * clone_substitution_model(SubstitutionModel *m);

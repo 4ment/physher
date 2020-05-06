@@ -23,6 +23,8 @@
 #include "substmodel.h"
 #include "discreteparameter.h"
 
-struct SubstitutionModel * new_GeneralModel_with_parameters( DiscreteParameter* model, const Parameters* rates, Simplex* freqs, int relativeTo, bool normalize );
+struct SubstitutionModel * new_GeneralJC69Model_with_parameters( DataType* datatype, Simplex* freqs_simplex, bool normalize );
+
+struct SubstitutionModel * new_GeneralModel_with_parameters( DataType* datatype, DiscreteParameter* model, const Parameters* rates, Simplex* freqs, int relativeTo, bool normalize );
 
 #endif /* gensubst_h */

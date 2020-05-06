@@ -37,7 +37,7 @@ static bool compare_patterns( const uint8_t *a, const uint8_t *b, const int n );
 
 static void _make_patterns( const Sequences *a, uint8_t **patterns, int start, int end, int every );
 static void _make_patterns_codon( const Sequences *aln, uint8_t **patterns, int start, int end );
-static void _make_patterns_generic( const Sequences *aln, uint8_t **patterns );
+static void _make_patterns_generic( const Sequences *aln, uint8_t **patterns, int start, int length );
 
 SitePattern * new_SitePattern( const Sequences *aln ){
 	SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );
@@ -55,9 +55,10 @@ SitePattern * new_SitePattern( const Sequences *aln ){
 		_make_patterns_codon(aln, temp_patterns, 0, aln->length);
 	}
 	else if ( aln->datatype->type == DATA_TYPE_GENERIC) {
-		sp->nsites = 1;
+		int length = aln->length;
+		sp->nsites = length/aln->datatype->symbolLength;
 		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns_generic( aln, temp_patterns );
+		_make_patterns_generic( aln, temp_patterns, 0, length );
 	}
 	else {
 		sp->nsites = aln->length;
@@ -141,9 +142,9 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 		_make_patterns_codon(aln, temp_patterns, start, length);
 	}
 	else if ( aln->datatype->type == DATA_TYPE_GENERIC) {
-		sp->nsites = 1;
+		sp->nsites = aln->length/aln->datatype->symbolLength;
 		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns_generic( aln, temp_patterns );
+		_make_patterns_generic( aln, temp_patterns, start, length );
 	}
 	else {
 		sp->nsites = length/every;
@@ -226,9 +227,9 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 		_make_patterns_codon(aln, temp_patterns, start, length);
 	}
 	else if ( aln->datatype->type == DATA_TYPE_GENERIC) {
-		sp->nsites = 1;
+		sp->nsites = aln->length/aln->datatype->symbolLength;
 		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns_generic( aln, temp_patterns );
+		_make_patterns_generic( aln, temp_patterns, start, length );
 	}
 	else {
 		sp->nsites = length/3*2;
@@ -663,13 +664,18 @@ void _make_patterns( const Sequences *aln, uint8_t **patterns, int start, int le
 	}
 }
 
-void _make_patterns_generic( const Sequences *aln, uint8_t **patterns ){
-    char *state = cvector(aln->length+1);
-    state[aln->length] = '\0';
-    for( int i = 0; i < aln->size; i++ ){
-        memcpy(state, aln->seqs[i]->seq, aln->length*sizeof(char));
-        patterns[0][i] = aln->datatype->encoding_string(aln->datatype, state);
-    }
+void _make_patterns_generic( const Sequences *aln, uint8_t **patterns, int start, int length ){
+	size_t symbolLength = aln->datatype->symbolLength;
+    char *state = cvector(symbolLength+1);
+    state[symbolLength] = '\0';
+	size_t pos = 0;
+	for( size_t site = start; site < length; site+=symbolLength ){
+		for( int i = 0; i < aln->size; i++ ){
+			memcpy(state, aln->seqs[i]->seq+site, symbolLength*sizeof(char));
+			patterns[pos][i] = aln->datatype->encoding_string(aln->datatype, state);
+		}
+		pos++;
+	}
     free(state);
 }
 

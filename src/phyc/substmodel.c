@@ -99,6 +99,7 @@ static void _substitution_model_free( Model *self ){
 			free(msimplex);
 		}
 		
+		free_DataType(m->datatype);
 		free(m->name);
 		if( m->eigendcmp != NULL ) free_EigenDecomposition(m->eigendcmp);
 		if( m->Q != NULL ) free_dmatrix(m->Q, m->nstate);
@@ -181,6 +182,8 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 		//TODO: use discreteparameter
 //		Hashtable_add(hash, mclone->model->name, mclone->model);
 	}
+	mclone->datatype = subst->datatype;
+	mclone->datatype->ref_count++;
 	Model *clone = new_SubstitutionModel2(self->name, mclone, msimplex_freq_clone, msimplex_rates_clone);
 	Hashtable_add(hash, clone->name, clone);
 	if(msimplex_freq_clone != NULL) msimplex_freq_clone->free(msimplex_freq_clone);
@@ -334,7 +337,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	if (structure_node != NULL) {
 		DiscreteParameter* dp = new_DiscreteParameterModel_from_json(model_node, hash);
 		check_constraints(rates, 0, INFINITY, 0.001, 1000);
-		SubstitutionModel* m = new_GeneralModel_with_parameters(dp, rates, freqs_simplex, -1, normalize);
+		SubstitutionModel* m = new_GeneralModel_with_parameters(datatype, dp, rates, freqs_simplex, -1, normalize);
 		Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex, mrates_simplex);
 
 		free_DataType(datatype);
@@ -347,6 +350,14 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	}
 	
 	char* model_string = (char*)model_node->value;
+	
+	if (datatype->type == DATA_TYPE_GENERIC) {
+		// datatype->ref_count already incremented
+		SubstitutionModel *m = new_GeneralJC69Model_with_parameters( datatype, freqs_simplex, normalize );
+		Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex, mrates_simplex);
+		if(mfreqs_simplex != NULL) mfreqs_simplex->free(mfreqs_simplex);
+		return mm;
+	}
 	
 	SubstitutionModel* m = SubstitutionModel_factory(model_string, datatype, freqs_simplex, rates_simplex, rates, assignment);
 	
@@ -780,32 +791,17 @@ static void _d2p_d2t_transpose( SubstitutionModel *m, const double t, double *P 
 	
 }
 
-static double _pij_t( SubstitutionModel *m, const int i, const int j, const double t ){
-	int k;
-	double pij = 0;
-	
-	if( m->need_update ){
-		m->update_Q (m);
-	}
-	
-	for ( k = 0; k < m->nstate; k++)
-		pij += exp( m->eigendcmp->eval[k] * t ) * m->eigendcmp->evec[i][k] * m->eigendcmp->Invevec[k][j];
-	
-	if( pij < DBL_MIN ) return DBL_MIN;
-	return pij;
-}
-
 #pragma mark -
 
 
-SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, const datatype dtype, Simplex* freqs ){
+SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, DataType* datatype, Simplex* freqs ){
     SubstitutionModel *m = (SubstitutionModel *)malloc( sizeof(SubstitutionModel) );
     assert(m);
     
     m->nstate = 0;
     m->name = String_clone(name);
     m->modeltype = modelname;
-    m->dtype = dtype;
+    m->datatype = datatype;
     
     // Parameters and Q matrix
     m->Q = NULL;
@@ -829,7 +825,6 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     m->set_rate = _set_rate;
     m->update_Q = foo_update;
     
-    m->pij_t = _pij_t;
     m->p_t   = _p_t;
     m->p_t_transpose   = _p_t_transpose;
     m->dp_dt   = _dp_dt;
@@ -856,7 +851,8 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
 }
 
 SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname, Simplex* freqs ){
-    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_NUCLEOTIDE, freqs);
+	DataType* datatype = new_NucleotideDataType();
+    SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
     m->nstate = 4;
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);
@@ -865,7 +861,8 @@ SubstitutionModel * create_nucleotide_model( const char *name, const modeltype m
 }
 
 SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code, Simplex* freqs ){
-    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_CODON, freqs);
+	DataType* datatype = new_CodonDataType(gen_code);
+    SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
     m->nstate = NUMBER_OF_CODONS[gen_code];
     m->gen_code = gen_code;
     m->Q = dmatrix(m->nstate, m->nstate);
@@ -875,7 +872,8 @@ SubstitutionModel * create_codon_model( const char *name, const modeltype modeln
 }
 
 SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Simplex* freqs ){
-    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_AMINO_ACID, freqs);
+	DataType* datatype = new_AminoAcidDataType();
+    SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
     m->nstate = 20;
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);
@@ -883,9 +881,9 @@ SubstitutionModel * create_aa_model( const char *name, const modeltype modelname
     return m;
 }
 
-SubstitutionModel * create_general_model( const char *name, const modeltype modelname, Simplex* freqs, size_t dim ){
-    SubstitutionModel *m = create_substitution_model(name, modelname, DATA_TYPE_GENERIC, freqs);
-    m->nstate = dim;
+SubstitutionModel * create_general_model( const char *name, const modeltype modelname, DataType* datatype, Simplex* freqs){
+    SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
+    m->nstate = freqs->K;
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);
     m->eigendcmp = new_EigenDecomposition(m->nstate);
@@ -902,12 +900,13 @@ void free_SubstitutionModel( SubstitutionModel *m){
     if( m->dQ != NULL ) free(m->dQ);
 	if(m->simplex != NULL) free_Simplex(m->simplex);
 	if(m->rates_simplex != NULL) free_Simplex(m->rates_simplex);
+	free_DataType(m->datatype);
 	free(m);
 }
 
 
 SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
-	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->dtype, clone_Simplex(m->simplex));
+	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->datatype, clone_Simplex(m->simplex));
 	clone->nstate = m->nstate;
 	if (m->rates_simplex != NULL) {
 		clone->rates_simplex = clone_Simplex(m->rates_simplex);
@@ -923,7 +922,6 @@ SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
 	clone->normalize = m->normalize;
 	
 	// Functions
-	clone->pij_t = m->pij_t;
 	clone->p_t   = m->p_t;
 	clone->p_t_transpose   = m->p_t_transpose;
 	
@@ -959,7 +957,7 @@ SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
 }
 
 SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Parameters* rates, Simplex* simplex){
-	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->dtype, simplex);
+	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->datatype, simplex);
 	clone->nstate = m->nstate;
 	clone->simplex = simplex;
 	
@@ -979,7 +977,6 @@ SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Pa
 	clone->normalize = m->normalize;
 	
 	// Functions
-	clone->pij_t = m->pij_t;
 	clone->p_t   = m->p_t;
 	clone->p_t_transpose   = m->p_t_transpose;
 	
@@ -1138,9 +1135,9 @@ void bufferize_aa_frequencies(StringBuffer *buffer, SubstitutionModel *m ){
 
 void print_frequencies(FILE *pfile, SubstitutionModel *m ){
 	StringBuffer *buffer = new_StringBuffer(100);
-	if( m->dtype == DATA_TYPE_NUCLEOTIDE ) bufferize_frequencies(buffer, m);
-    else if( m->dtype == DATA_TYPE_CODON ) bufferize_codon_frequencies(buffer, m);
-    else if( m->dtype == DATA_TYPE_AMINO_ACID ) bufferize_aa_frequencies(buffer, m);
+	if( m->datatype->type == DATA_TYPE_NUCLEOTIDE ) bufferize_frequencies(buffer, m);
+    else if( m->datatype->type == DATA_TYPE_CODON ) bufferize_codon_frequencies(buffer, m);
+    else if( m->datatype->type == DATA_TYPE_AMINO_ACID ) bufferize_aa_frequencies(buffer, m);
 	fprintf(pfile, "%s", buffer->c);
 	free_StringBuffer(buffer);
 }
@@ -1253,7 +1250,7 @@ void print_substitution_matrix( SubstitutionModel *sm, double t ){
 }
 
 void bufferize_rates( StringBuffer *buffer, const SubstitutionModel *m ){
-	if ( m->dtype == DATA_TYPE_NUCLEOTIDE ) {
+	if ( m->datatype->type == DATA_TYPE_NUCLEOTIDE ) {
 		if ( m->modeltype == GTR ) {
 			char *rates[] = {
 				"AC",
@@ -1295,7 +1292,7 @@ void bufferize_rates( StringBuffer *buffer, const SubstitutionModel *m ){
 			StringBuffer_append_format(buffer, "   GT: 1\n");
         }
 	}
-	else if( m->dtype == DATA_TYPE_CODON ){
+	else if( m->datatype->type == DATA_TYPE_CODON ){
 		if ( m->modeltype == GY94 ) {
 			StringBuffer_append_format(buffer, "   Kappa: %f\n", Parameters_value(m->rates, 0));
 			StringBuffer_append_format(buffer, "   Omega: %f\n", Parameters_value(m->rates, 1));

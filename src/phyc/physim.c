@@ -148,7 +148,7 @@ Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataT
     
     seqs->aligned  = true;
     seqs->datatype->genetic_code  = sm->m->gen_code;
-    seqs->datatype->type = sm->m->dtype;
+    seqs->datatype->type = sm->m->datatype->type;
     
     free(residue);
     free(p);
