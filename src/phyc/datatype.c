@@ -140,7 +140,6 @@ DataType* new_DataType_from_json(json_node* node, Hashtable* hash){
 			exit(1);
 		}
 	}
-	datatype->ref_count = 1;
 	return datatype;
 }
 
@@ -193,7 +192,6 @@ static int _encoding( DataType *datatype, char nuc){
 }
 
 DataType *new_GenericDataType( const char* name, size_t count, const char **states){
-	printf("new datatype\n");
     DataType *dataType = malloc(sizeof(DataType));
     assert(dataType);
     dataType->name = String_clone(name);
@@ -213,6 +211,7 @@ DataType *new_GenericDataType( const char* name, size_t count, const char **stat
     dataType->state_string    = _state_string;
     
     dataType->state_count = _state_count;
+	dataType->ref_count = 1;
     
     return dataType;
 }
@@ -260,6 +259,7 @@ DataType *new_NucleotideDataType(){
     dataType->state_string    = _state_string;
     
     dataType->state_count = _state_count;
+	dataType->ref_count = 1;
     
     return dataType;
 }
@@ -308,6 +308,7 @@ DataType *new_AminoAcidDataType(){
     dataType->state_string    = _state_string;
     
     dataType->state_count = _state_count;
+	dataType->ref_count = 1;
     
     return dataType;
 }
@@ -355,6 +356,7 @@ DataType *new_CodonDataType( int genetic_code ){
     dataType->state_string    = _codon_state_string;
     
     dataType->state_count = _state_count;
+	dataType->ref_count = 1;
     
     return dataType;
 }
