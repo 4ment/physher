@@ -104,20 +104,20 @@ SubstitutionModel * new_K80_with_parameters( Parameter* kappa ){
 }
 
 void k80_update_Q( SubstitutionModel *m ){
-	
+	if(!m->need_update) return;
 	//    m->Q[1][3] = m->Q[3][1] = m->Q[0][2] = m->Q[2][0] = Parameters_value(m->rates, 0)*0.25; // kappa
 	//    m->Q[0][1] = m->Q[1][0] = m->Q[0][3] = m->Q[3][0] = m->Q[1][2] = m->Q[2][1] = m->Q[2][3] = m->Q[3][2] = 0.25;
 	//update_eigen_system( m );
 	m->Q[1][3] = m->Q[3][1] = m->Q[0][2] = m->Q[2][0] = Parameters_value(m->rates, 0)/(Parameters_value(m->rates, 0)+2.0);
 	m->Q[0][1] = m->Q[1][0] = m->Q[0][3] = m->Q[3][0] = m->Q[1][2] = m->Q[2][1] = m->Q[2][3] = m->Q[3][2] = 1.0/(Parameters_value(m->rates, 0)+2.0);
 	m->Q[0][0] = m->Q[1][1] = m->Q[2][2] = m->Q[3][3] = -1;
-    EigenDecomposition_decompose(m->Q, m->eigendcmp);
     m->need_update = false;
 }
 
 void k80_dQ(SubstitutionModel *m, int index, double* mat, double t){
 	if( m->need_update ){
 		m->update_Q(m);
+		update_eigen_system(m);
 	}
 	
 	const double k = Parameters_value(m->rates, 0);

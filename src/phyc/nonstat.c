@@ -59,6 +59,7 @@ SubstitutionModel * new_NONSTATNucleotideModel_with_parameters( Simplex* freqs, 
 }
 
 void _nuc_unrestricted_nonstat_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
 	const double* freqs = m->get_frequencies(m);
     int index = 0;
     for ( int i = 0; i < 4; i++ ) {
@@ -79,6 +80,7 @@ void _nuc_unrestricted_nonstat_update_Q( SubstitutionModel *m ){
         }
     }
     
-    update_eigen_system( m );
+	make_zero_rows( m->Q, 4);
+	normalize_Q( m->Q, freqs, 4 );
     m->need_update = false;
 }

@@ -460,6 +460,7 @@ static void _p_t( SubstitutionModel *m, const double t, double *P ){
     
     if( m->need_update ){
         m->update_Q(m);
+		update_eigen_system(m);
     }
     
     int i,j,k;
@@ -502,6 +503,7 @@ static void _p_t_transpose( SubstitutionModel *m, const double t, double *P ){
     
     if( m->need_update ){
         m->update_Q(m);
+		update_eigen_system(m);
     }
     
     int i,j,k,l;
@@ -545,6 +547,7 @@ static void _aligned_p_t( SubstitutionModel *m, const double t, double *P ){
     
     if( m->need_update ){
         m->update_Q(m);
+		update_eigen_system(m);
     }
     
     int i,j,k;
@@ -588,6 +591,7 @@ static void _aligned_p_t_transpose( SubstitutionModel *m, const double t, double
     
     if( m->need_update ){
         m->update_Q(m);
+		update_eigen_system(m);
     }
     
     int i,j,k,l;
@@ -633,6 +637,7 @@ static void _dp_dt( SubstitutionModel *m, const double t, double *P ){
 	
 	if( m->need_update ){
 		m->update_Q(m);
+		update_eigen_system(m);
 	}
 	
 	int i,j,k;
@@ -663,6 +668,7 @@ static void _dp_dt_v2( SubstitutionModel *m, const double t, double *P ){
 	
 	if( m->need_update ){
 		m->update_Q(m);
+		update_eigen_system(m);
 	}
 	
 	int i,j,k;
@@ -706,6 +712,7 @@ static void _dp_dt_transpose( SubstitutionModel *m, const double t, double *P ){
 	
 	if( m->need_update ){
 		m->update_Q(m);
+		update_eigen_system(m);
 	}
 	
 	int i,j,k,l;
@@ -736,6 +743,7 @@ static void _d2p_d2t( SubstitutionModel *m, const double t, double *P ){
 	
 	if( m->need_update ){
 		m->update_Q(m);
+		update_eigen_system(m);
 	}
 	
 	int i,j,k;
@@ -766,6 +774,7 @@ static void _d2p_d2t_transpose( SubstitutionModel *m, const double t, double *P 
 	
 	if( m->need_update ){
 		m->update_Q(m);
+		update_eigen_system(m);
 	}
 	
 	int i,j,k,l;
@@ -1013,9 +1022,6 @@ SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Pa
 
 
 void update_eigen_system( SubstitutionModel *m ){
-	
-	make_zero_rows( m->Q, m->nstate);
-	normalize_Q( m->Q, m->get_frequencies(m), m->nstate );
     
     /*fprintf(stderr, "\n");
     print_frequencies(stderr, m);

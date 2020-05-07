@@ -76,6 +76,7 @@ SubstitutionModel * new_ReversibleNucleotideModel_with_parameters( const char* m
 }
 
 void nuc_sym_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
 	const unsigned* model = m->model->values;
 	const double* freqs = m->simplex->get_values(m->simplex);
     double temp;
@@ -93,7 +94,8 @@ void nuc_sym_update_Q( SubstitutionModel *m ){
         }
     }
     
-    update_eigen_system( m );
+    make_zero_rows( m->Q, 4);
+	normalize_Q( m->Q, freqs, 4 );
     m->need_update = false;
 }
 

@@ -28,6 +28,7 @@ static void _p_t_unrestricted( SubstitutionModel *m, const double t, double *P )
     
     if( m->need_update ){
         m->update_Q(m);
+		update_eigen_system(m);
     }
     
     matexp (m->Q, P, t, m->nstate, 10);
@@ -39,6 +40,7 @@ static void _p_t_transpose_unrestricted( SubstitutionModel *m, const double t, d
     
     if( m->need_update ){
         m->update_Q(m);
+		update_eigen_system(m);
     }
     int n = m->nstate;
     
@@ -260,6 +262,7 @@ int matexp (double **Q, double *P, double t, int n, int TimeSquare ) {
 }
 
 void _nuc_unrestricted_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
     int index = 0;
     for ( int i = 0; i < 4; i++ ) {
         for ( int j = 0; j < 4; j++ ) {
@@ -280,8 +283,6 @@ void _nuc_unrestricted_update_Q( SubstitutionModel *m ){
     QtoPi( m->Q, f, m->nstate);
 	m->simplex->set_values(m->simplex, f);
     normalize_Q( m->Q, f, m->nstate );
-    
-    EigenDecomposition_decompose(m->Q, m->eigendcmp);
     
     m->need_update = false;
 }

@@ -20,6 +20,20 @@
 
 #include "matrix.h"
 
+static void _wag_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
+	
+	const double* f = m->get_frequencies(m);
+	for ( int i = 0; i < m->nstate; i++ )  {
+		for ( int j = i + 1; j < m->nstate; j++ ) {
+			m->Q[i][j] = AMINO_ACID_MODEL_WAG[i][j] * f[j];
+			m->Q[j][i] = AMINO_ACID_MODEL_WAG[i][j] * f[i];
+		}
+	}
+	make_zero_rows( m->Q, 20);
+	normalize_Q( m->Q, f, 20 );
+	m->need_update = false;
+}
 
 SubstitutionModel * new_WAG(){
 	Simplex* freqs = new_Simplex("wag", 20);
@@ -35,18 +49,9 @@ SubstitutionModel * new_WAG_with_parameters( Simplex *freqs ){
 		freqs->set_values(freqs, AMINO_ACID_MODEL_WAG_FREQUENCIES);
 	}
     SubstitutionModel *m = create_aa_model("WAG", WAG, freqs);
-	
-	const double* f = m->get_frequencies(m);
-	
-    for ( int i = 0; i < m->nstate; i++ )  {
-        for ( int j = i + 1; j < m->nstate; j++ ) {
-            m->Q[i][j] = AMINO_ACID_MODEL_WAG[i][j] * f[j];
-            m->Q[j][i] = AMINO_ACID_MODEL_WAG[i][j] * f[i];
-        }
-    }
-    
+	m->update_Q = _wag_update_Q;
+	_wag_update_Q(m);
     update_eigen_system( m );
-    m->need_update = false;
     
     return m;
 }

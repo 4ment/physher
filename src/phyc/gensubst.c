@@ -68,6 +68,7 @@ bool isSymmetric(const unsigned *matrix, size_t dim){
 
 
 void _nonreversible_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
 	const double* freqs = m->simplex->get_values(m->simplex);
     int index = 0;
 	const unsigned* model = m->model->values;
@@ -84,12 +85,12 @@ void _nonreversible_update_Q( SubstitutionModel *m ){
     
     make_zero_rows( m->Q, m->nstate);
     if(m->normalize)normalize_Q( m->Q, freqs, m->nstate );
-    EigenDecomposition_decompose(m->Q, m->eigendcmp);
     
     m->need_update = false;
 }
 
 void _nonreversible_update_Q2( SubstitutionModel *m ){
+	if(!m->need_update) return;
 	const double* freqs = m->simplex->get_values(m->simplex);
     int index = 0;
 	const unsigned* model = m->model->values;
@@ -122,7 +123,6 @@ void _nonreversible_update_Q2( SubstitutionModel *m ){
     
     make_zero_rows( m->Q, m->nstate);
     if(m->normalize)normalize_Q( m->Q, freqs, m->nstate );
-    EigenDecomposition_decompose(m->Q, m->eigendcmp);
     
     m->need_update = false;
 }
@@ -178,6 +178,7 @@ void _general_jc69_d2p_dt2( SubstitutionModel *m, const double t, double *P ){
 }
 
 void _reversible_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
 	const unsigned* model = m->model->values;
 	double temp;
 	int index = 0;
@@ -219,7 +220,6 @@ void _reversible_update_Q( SubstitutionModel *m ){
 		}
 		make_zero_rows( m->Q, m->nstate);
 	}
-    EigenDecomposition_decompose(m->Q, m->eigendcmp);
     
     m->need_update = false;
 }
@@ -236,7 +236,6 @@ SubstitutionModel * new_GeneralModel_with_parameters( DataType* datatype, Discre
 	else{
         m = create_general_model("UREVGENERAL", NONREVERSIBLE, datatype, freqs);
         m->update_Q = _nonreversible_update_Q;
-        m->reversible = false;
     }
     m->normalize = normalize;
 	m->relativeTo = relativeTo;
@@ -261,89 +260,3 @@ SubstitutionModel * new_GeneralJC69Model_with_parameters( DataType* datatype, Si
 	m->update_Q(m);
     return m;
 }
-
-#pragma mark -
-#pragma mark Reversible
-
-
-static void _rev_update_Q( SubstitutionModel *m );
-static void _rev_relative_update_Q( SubstitutionModel *m );
-
-void _rev_update_Q( SubstitutionModel *m ){
-    int index = 0;
-    double temp;
-	const unsigned* model = m->model->values;
-    for ( int i = 0; i < m->nstate; i++ )  {
-        for ( int j = i + 1; j < m->nstate; j++ ) {
-            temp = Parameters_value(m->rates, model[index++]);
-            m->Q[i][j] = temp;// * freqs[j];
-            m->Q[j][i] = temp;// * freqs[i];
-        }
-    }
-    
-    make_zero_rows( m->Q, m->nstate);
-    //normalize_Q( m->Q, freqs, m->nstate );
-    
-    EigenDecomposition_decompose(m->Q, m->eigendcmp);
-    //update_eigen_system( m );
-    m->need_update = false;
-}
-
-void _rev_relative_update_Q( SubstitutionModel *m ){
-	const double* freqs = m->simplex->get_values(m->simplex);
-    int index = 0;
-	const unsigned* model = m->model->values;
-    for ( int i = 0; i < m->nstate; i++ ) {
-        for ( int j = i+1; j < m->nstate; j++, index++ ) {
-            if( i == m->nstate-2 && j == m->nstate-1 ){
-                m->Q[i][j] = m->Q[j][i] = 1;
-            }
-            else {
-                m->Q[i][j] = m->Q[j][i] = Parameters_value(m->rates, model[index]);
-            }
-        }
-    }
-    
-    double temp;
-    for ( int i = 0; i < m->nstate; i++ )  {
-        for ( int j = i + 1; j < m->nstate; j++ ) {
-            temp = m->Q[i][j];
-            m->Q[i][j] = temp * freqs[j];
-            m->Q[j][i] = temp * freqs[i];
-        }
-    }
-    
-    update_eigen_system( m );
-    m->need_update = false;
-}
-
-/******************************************************************************************************************************************************/
-#pragma mark -
-#pragma mark Non Reversible
-
-
-static void _genernal_update_Q( SubstitutionModel *m );
-
-
-void _genernal_update_Q( SubstitutionModel *m ){
-    int index = 0;
-	const unsigned* model = m->model->values;
-    for ( int i = 0; i < m->nstate; i++ )  {
-        int j = 0;
-        for ( ; j < i; j++ ) {
-            m->Q[i][j] = Parameters_value(m->rates, model[index++])/* * freqs[j]*/;
-        }
-        j++;
-        for ( ; j < m->nstate; j++ ) {
-            m->Q[i][j] = Parameters_value(m->rates, model[index++])/* * freqs[j]*/;
-        }
-    }
-    
-    make_zero_rows( m->Q, m->nstate);
-    //normalize_Q( m->Q, freqs, m->nstate );
-    
-    EigenDecomposition_decompose(m->Q, m->eigendcmp);
-    //update_eigen_system( m );
-    m->need_update = false;
-}
-

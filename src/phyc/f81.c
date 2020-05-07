@@ -20,6 +20,7 @@
 #include "nucsubst.h"
 #include "matrix.h"
 
+static void _f81_update_Q( SubstitutionModel *m );
 static void f81_p_t( SubstitutionModel *m, const double t, double *P );
 static void f81_p_t_transpose( SubstitutionModel *m, const double t, double *P );
 
@@ -31,6 +32,7 @@ static void f81_d2p_dt2_transpose( SubstitutionModel *m, const double t, double 
 SubstitutionModel * new_F81(Simplex* freqs){
     SubstitutionModel *m = create_nucleotide_model("F81", JC69, freqs);
 	
+	m->update_Q = _f81_update_Q;
     m->p_t = f81_p_t;
     m->p_t_transpose = f81_p_t_transpose;
     m->dp_dt = f81_dp_dt;
@@ -38,6 +40,24 @@ SubstitutionModel * new_F81(Simplex* freqs){
     m->d2p_d2t = f81_d2p_dt2;
     m->d2p_d2t_transpose = f81_d2p_dt2_transpose;
     return m;
+}
+
+void _f81_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
+	const double* freqs = m->get_frequencies(m);
+    for (size_t i = 0; i < 4; i++) {
+        for (size_t j = i+1; j < 4; j++){
+			m->Q[i][j] = freqs[j];
+			m->Q[j][i] = freqs[i];
+        }
+    }
+	m->Q[0][0] = freqs[1] + freqs[2] + freqs[3];
+	m->Q[1][1] = freqs[0] + freqs[2] + freqs[3];
+	m->Q[2][2] = freqs[0] + freqs[1] + freqs[3];
+	m->Q[3][3] = freqs[0] + freqs[1] + freqs[2];
+	
+	normalize_Q( m->Q, freqs, 4 );
+	m->need_update = false;
 }
 
 void f81_p_t_rolled( SubstitutionModel *m, const double t, double *P ){

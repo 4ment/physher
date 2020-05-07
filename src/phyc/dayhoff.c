@@ -19,6 +19,20 @@
 
 #include "matrix.h"
 
+static void _dayoff_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
+	const double* f = m->get_frequencies(m);
+	for ( int i = 0; i < m->nstate; i++ )  {
+		for ( int j = i + 1; j < m->nstate; j++ ) {
+			m->Q[i][j] = AMINO_ACID_MODEL_DAYHOFF[i][j] * f[j];
+			m->Q[j][i] = AMINO_ACID_MODEL_DAYHOFF[i][j] * f[i];
+		}
+	}
+	make_zero_rows( m->Q, 20);
+	normalize_Q( m->Q, f, 20 );
+	m->need_update = false;
+}
+
 SubstitutionModel * new_DAYHOFF(){
     Simplex* freqs = new_Simplex("dayoff", 20);
 	freqs->set_values(freqs, AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES);
@@ -33,17 +47,9 @@ SubstitutionModel * new_DAYHOFF_with_parameters( Simplex *freqs ){
 		freqs->set_values(freqs, AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES);
 	}
 	SubstitutionModel *m = create_aa_model("DAYHOFF", DAYHOFF, freqs);
-	
-	const double* f = freqs->get_values(freqs);
-	for ( int i = 0; i < m->nstate; i++ )  {
-		for ( int j = i + 1; j < m->nstate; j++ ) {
-			m->Q[i][j] = AMINO_ACID_MODEL_DAYHOFF[i][j] * f[j];
-			m->Q[j][i] = AMINO_ACID_MODEL_DAYHOFF[i][j] * f[i];
-		}
-	}
-	
-	update_eigen_system( m );
-	m->need_update = false;
+	m->update_Q = _dayoff_update_Q;
+	_dayoff_update_Q(m);
+	update_eigen_system(m);
 	
 	return m;
 }

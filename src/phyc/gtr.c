@@ -157,6 +157,7 @@ SubstitutionModel * new_GTR_with_simplexes( Simplex* freqs, Simplex* rates){
 }
 
 void gtr_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
 	double temp;
 	int index = 0;
 	const double* freqs = m->get_frequencies(m);
@@ -172,11 +173,13 @@ void gtr_update_Q( SubstitutionModel *m ){
 			m->Q[j][i] = temp * freqs[i];
 		}
 	}
-	update_eigen_system( m );
+	make_zero_rows( m->Q, 4);
+	normalize_Q( m->Q, freqs, 4 );
 	m->need_update = false;
 }
 
 void gtr_simplexes_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
 	int index = 0;
 	const double* freqs = m->simplex->get_values(m->simplex);
 	const double* rates = m->rates_simplex->get_values(m->rates_simplex);
@@ -187,7 +190,8 @@ void gtr_simplexes_update_Q( SubstitutionModel *m ){
 			index++;
 		}
 	}
-	update_eigen_system( m );
+	make_zero_rows( m->Q, 4);
+	normalize_Q( m->Q, freqs, 4 );
 	m->need_update = false;
 }
 
@@ -224,6 +228,7 @@ void gtr_dQ(SubstitutionModel *m, int index, double* mat, double t){
 	
 	if(m->need_update){
 		m->update_Q(m);
+		update_eigen_system(m);
 	}
 	double* Q = dvector(16);
 	

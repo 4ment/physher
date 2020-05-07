@@ -60,6 +60,7 @@ SubstitutionModel * new_MG94_with_parameters( Simplex* freqs, Parameter* alpha, 
 }
 
 static void _mg_update_Q( SubstitutionModel *m ){
+	if(!m->need_update) return;
     int i = 0;
     int j,jj;
     
@@ -131,6 +132,7 @@ static void _mg_update_Q( SubstitutionModel *m ){
         }
         i++;
     }
-    update_eigen_system( m );
+	make_zero_rows( m->Q, m->nstate);
+	normalize_Q( m->Q, freqs, m->nstate );
     m->need_update = false;
 }

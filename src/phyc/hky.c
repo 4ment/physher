@@ -46,8 +46,6 @@ static void _hky_dp_dt_transpose( SubstitutionModel *m, const double t, double *
 static void _hky_d2p_dt2( SubstitutionModel *m, const double t, double *P );
 static void _hky_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P );
 
-static void _foo_update( SubstitutionModel *m ){} // does not nothing
-
 static void _hky_dQ(SubstitutionModel *m, int index, double* mat, double t);
 
 SubstitutionModel * new_HKY(Simplex* freqs){
@@ -64,7 +62,7 @@ SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa
 	
 	SubstitutionModel *m = create_nucleotide_model("HKY", HKY, sfreqs);
 	
-	m->update_Q = _foo_update;
+	m->update_Q = hky_update_Q;
 	m->p_t = _hky_p_t;
 	m->p_t_transpose = _hky_p_t_transpose;
 	
@@ -83,7 +81,7 @@ SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, Parameter* kappa ){
 	
 	SubstitutionModel *m = create_nucleotide_model("HKY", HKY, freqs);
 	
-	m->update_Q = _foo_update;
+	m->update_Q = hky_update_Q;
 	m->p_t = _hky_p_t;
 	m->p_t_transpose = _hky_p_t_transpose;
 	
@@ -103,7 +101,7 @@ SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, Parameter* kappa ){
 
 
 void hky_update_Q( SubstitutionModel *model ){
-	
+	if( !model->need_update ) return;
     model->Q[1][3] = model->Q[3][1] = model->Q[0][2] = model->Q[2][0] = Parameters_value(model->rates, 0); // kappa
     model->Q[0][1] = model->Q[1][0] = model->Q[0][3] = model->Q[3][0] = model->Q[1][2] = model->Q[2][1] = model->Q[2][3] = model->Q[3][2] = 1.;
     
@@ -117,7 +115,8 @@ void hky_update_Q( SubstitutionModel *model ){
         }
     }
     
-    update_eigen_system( model );
+    make_zero_rows( model->Q, 4);
+	normalize_Q( model->Q, model->get_frequencies(model), 4 );
     model->need_update = false;
 }
 
