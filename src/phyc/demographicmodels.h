@@ -58,6 +58,7 @@ typedef struct Coalescent{
 	double* grid;
 	size_t gridCount;
 	DiscreteParameter* groups;
+    double* gradient;
 }Coalescent;
 
 
@@ -66,6 +67,10 @@ typedef struct Coalescent{
 Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash);
 
 void free_Coalescent( Coalescent *coalescent );
+
+Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree);
+
+Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tree, Model* groups);
 
 #pragma mark -
 

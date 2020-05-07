@@ -157,7 +157,7 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
             mpropclone->ref_count++; // it is decremented at the end using free
         }
         else{
-            mpropclone = mm->clone(mprop, hash);
+            mpropclone = mprop->clone(mprop, hash);
             Hashtable_add(hash, mpropclone->name, mpropclone);
         }
         propclone = mpropclone->obj;

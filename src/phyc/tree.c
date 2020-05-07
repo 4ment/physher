@@ -209,6 +209,7 @@ void init_parameter_arrays(Tree* atree){
 	check_tree(atree);
 
 	atree->distances = new_Parameters(Tree_node_count(atree)-2);
+	Parameters_set_name2(atree->distances, "distances"); // name might be overwritten when tree is instiated from json
 	Node* root = Tree_root(atree);
 	for (int i = 0; i < Tree_node_count(atree); i++) {
 		Node* node = Tree_node(atree, i);
@@ -218,6 +219,7 @@ void init_parameter_arrays(Tree* atree){
 	}
 	
 	atree->heights = new_Parameters(Tree_node_count(atree));
+	Parameters_set_name2(atree->heights, "heights");
 	for (int i = 0; i < Tree_node_count(atree); i++) {
 		Node* node = Tree_node(atree, i);
 		if(!Node_isleaf(node)){
@@ -226,6 +228,7 @@ void init_parameter_arrays(Tree* atree){
 	}
 	
 	atree->reparam = new_Parameters(Tree_node_count(atree));
+	Parameters_set_name2(atree->reparam, "reparam");
 	atree->map = uivector(Tree_node_count(atree));
     atree->lowers = dvector(Tree_node_count(atree));
     atree->need_update_height = true;
