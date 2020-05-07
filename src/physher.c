@@ -50,7 +50,9 @@
 #include "phyc/mc.h"
 #include "phyc/physim.h"
 #include "phyc/demographicmodels.h"
-#include "phyc/calculator.h"
+#include "phyc/asr.h"
+#include "phyc/ppsites.h"
+#include "phyc/cat.h"
 #include "phyc/sbn.h"
 
 #include "phyc/physhercmd.h"
@@ -109,6 +111,7 @@ int main(int argc, char* argv[]){
 		
 		// remove json_nodes containing "ignore": true
 		json_prune_ignored(json);
+        json_prune_underscored(json);
 	}
 
 	long seeed = time(NULL);
@@ -261,11 +264,17 @@ int main(int argc, char* argv[]){
 			printf("Simulating sequences...\n");
 			SimulateSequences_from_json(child, hash2);
 		}
-		else if(strcasecmp(type, "calculator") == 0){
-			calculatorModel_from_json(child, hash2);
-		}
 		else if(strcasecmp(type, "sbn") == 0){
 			SBN* sbn = new_SBN_from_json(child, hash2);
+		}
+		else if(strcasecmp(type, "asr") == 0){
+			asr_calculator_from_json(child, hash2);
+		}
+		else if(strcasecmp(type, "ppsite") == 0){
+			posteriors_sites_calculator_from_json(child, hash2);
+		}
+		else if(strcasecmp(type, "cat") == 0){
+			cat_estimator_from_json(child, hash2);
 		}
 	}
 	if(models != NULL){
