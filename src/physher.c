@@ -204,6 +204,11 @@ int main(int argc, char* argv[]){
 			logger->log(logger);
 			free_Logger(logger);
 		}
+        else if (strcasecmp(type, "dumper") == 0) {
+            struct Dumper* dumper = new_Dumper_from_json(child, hash2);
+            dumper->dump(dumper);
+            dumper->free(dumper);
+        }
 		else if(strcasecmp(type, "mcmc") == 0){
 			MCMC* mcmc = new_MCMC_from_json(child, hash2);
 			mcmc->run(mcmc);
