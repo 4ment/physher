@@ -132,6 +132,126 @@ void asr_marginal( SingleTreeLikelihood *tlk ){
 	tlk->use_upper = false;
 }
 
+// Method described in TreeTime paper
+void estimate_GTR(SingleTreeLikelihood* tlk){
+	asr_marginal(tlk);
+	size_t nstate = tlk->sp->nstate;
+	Node** nodes = Tree_get_nodes(tlk->tree, POSTORDER);
+	double* m = dvector(nstate);
+	double* T = dvector(nstate);
+	double** N = dmatrix(nstate, nstate);
+	size_t rootID = tlk->mapping[Tree_root(tlk->tree)->id];
+	for(int i = 0; i < tlk->sp->count; i++){
+		m[tlk->sp->patterns[i][rootID]]++;
+	}
+	
+	for (int k = 0; k < Tree_node_count(tlk->tree); k++) {
+		if(!Node_isleaf(nodes[k])){
+			Node* node = nodes[k];
+			size_t nodeID2 = Node_id(nodes[k]);
+			size_t nodeID = tlk->mapping[nodeID2];
+			size_t nodeLeftID = tlk->mapping[Node_id(nodes[k]->left)];
+			size_t nodeRightID = tlk->mapping[Node_id(nodes[k]->right)];
+			
+			for(size_t p = 0; p < tlk->sp->count; p++){
+//				int i = 0;
+////				size_t idxi = p*tlk->sp->count;
+//				for(; i < nstate; i++){
+//					if(tlk->sp->patterns[p][nodeID] == 1){
+//						T[i] += Node_distance(nodes[k]->left) + Node_distance(nodes[k]->right);
+//						break;
+//					}
+////					idxi++;
+//				}
+////				size_t idxj = p*tlk->sp->count;
+//				for(int j = 0; j < nstate; j++){
+//					if(tlk->sp->patterns[p][nodeLeftID] == 1){
+//						N[i][j]++;
+////						N[j][i]++;
+//						break;
+//					}
+////					idxj++;
+//				}
+////				idxj = p*tlk->sp->count;
+//				for(int j = 0; j < nstate; j++){
+//					if(tlk->sp->patterns[p][nodeRightID] == 1){
+//						N[i][j]++;
+////						N[j][i]++;
+//						break;
+//					}
+////					idxj++;
+//				}
+//				printf("%d %d\n", tlk->sp->patterns[p][nodeID], tlk->sp->patterns[p][nodeRightID]);
+//				printf("%d %d\n", tlk->sp->patterns[p][nodeID], tlk->sp->patterns[p][nodeLeftID]);
+				if(tlk->sp->patterns[p][nodeRightID] < nstate)
+				N[tlk->sp->patterns[p][nodeID]][tlk->sp->patterns[p][nodeRightID]]++;
+				if(tlk->sp->patterns[p][nodeLeftID] < nstate)
+				N[tlk->sp->patterns[p][nodeID]][tlk->sp->patterns[p][nodeLeftID]]++;
+			}
+		}
+	}
+
+	double** Q = dmatrix(nstate, nstate);
+	double* pi = dvector(nstate);
+	double pc = 0.1; // pseudo count
+	for (int i = 0; i < nstate; i++) {
+		pi[i] = 1.0/nstate;
+	}
+	for(int l = 0; l < 3; l++){
+		for (int i = 0; i < nstate; i++) {
+			for (int j = i+1; j < nstate; j++) {
+				Q[i][j] = Q[j][i] = (N[i][j] + N[j][i] + 2.0*pc)/(pi[i]*T[j] + pi[j]*T[i] + 2.0*pc);
+			}
+		}
+		double sum_pi = 0;
+		for (int i = 0; i < nstate; i++) {
+			double sum = 0;
+			for (int j = 0; j < nstate; j++) {
+				sum += N[i][j];
+			}
+			pi[i] = sum + m[i] + pc;
+			sum = 0;
+			double sum2 = 0;
+			for (int j = 0; j < nstate; j++) {
+				sum += Q[i][j]*T[j];
+				sum2 += m[j] + pc;
+			}
+			pi[i] /= sum + sum2;
+			sum_pi += pi[i];
+			Q[i][i] = 0;
+		}
+		
+		// normalize pi
+		for (int i = 0; i < nstate; i++) {
+			pi[i] /= sum_pi;
+		}
+		
+		double subst = 0.0;
+		for (int i = 0; i < nstate; i++) {
+			double sum = 0;
+			for (int j = 0; j < nstate; j++) {
+				Q[i][j] *= pi[j];
+				sum += Q[i][j];
+			}
+			Q[i][i] = -sum;
+			subst += sum*pi[i];
+		}
+
+		for (int i = 0; i < nstate; i++) {
+			for (int j = 0; j < nstate; j++) {
+				Q[i][j] /= subst;
+			}
+		}
+		print_dmatrix(stdout, Q, 4, 4, ',');
+		print_dvector(pi, 4);
+	}
+	free(pi);
+	free(T);
+	free(m);
+	free_dmatrix(N, nstate);
+	free_dmatrix(Q, nstate);
+}
+
 void asr_calculator_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
 		"algorithm",
