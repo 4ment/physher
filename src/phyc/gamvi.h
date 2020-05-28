@@ -11,6 +11,21 @@
 
 #include "vb.h"
 
+void klqp_block_meanfield_gamma_sample1(variational_block_t* var, double* jacobian);
+void klqp_block_meanfield_gamma_sample2(variational_block_t* var, const Parameters* parameters);
+
+double klqp_block_meanfield_gamma_entropy(variational_block_t* var);
+
+void klqp_block_meanfield_gamma_grad_elbo(variational_block_t* var, const Parameters* parameters, double* grads);
+void klqp_block_meanfield_gamma_grad_entropy(variational_block_t* var, const Parameters* parameters, double* grads);
+
+double klqp_block_meanfield_gamma_logP(variational_block_t* var, double* values);
+double klqp_block_meanfield_gamma_logQ(variational_block_t* var, double* values);
+
+void klqp_block_meanfield_gamma_sample(variational_block_t* var, double* values);
+bool klqp_block_meanfield_gamma_sample_some(variational_block_t* var, const Parameters* parameters, double* values);
+
+
 void grad_elbo_gamma_meanfield(variational_t* var, double* grads);
 
 double elbo_gamma_meanfield(variational_t* var);

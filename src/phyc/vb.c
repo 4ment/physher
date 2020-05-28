@@ -20,6 +20,7 @@
 #include "distmodel.h"
 
 #include "gamvi.h"
+#include "weibullvi.h"
 
 #include "klpq.h"
 #include "klqp.h"
@@ -219,7 +220,7 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
 //                var->grad_elbofn = grad_klpq_normal_meanfield;
         }
     }
-    else if (dist_string == NULL || strcasecmp(dist_string, "multivariatenormal") == 0) {
+    else if (strcasecmp(dist_string, "multivariatenormal") == 0) {
         var->etas = new_Vector(Parameters_count(var->parameters)*2); // etas and zetas
         Vector_resize(var->etas, Parameters_count(var->parameters)*2);
         size_t mu_length = Parameters_count(var->var_parameters[0]);
@@ -260,6 +261,84 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
 
         }
     }
+	else if (strcasecmp(dist_string, "gamma") == 0) {
+			var->etas = new_Vector(Parameters_count(var->parameters));
+			Vector_resize(var->etas, Parameters_count(var->parameters));
+			size_t shape_length = Parameters_count(var->var_parameters[0]);
+			size_t rate_length = Parameters_count(var->var_parameters[1]);
+			if (var->var_parameters_count != 2 || shape_length != rate_length) {
+				fprintf(stderr, "Meanfield gamma should have 2 parameter vectors of same length: shape (length: %zu) and rate (length: %zu)\n", shape_length, rate_length);
+				exit(2);
+			}
+			if (Parameters_count(var->var_parameters[0]) != Parameters_count(var->parameters)) {
+				fprintf(stderr, "The length of shape and rate (%zu) in meanfield model should be equal to the length of input parameters x (%zu)\n", shape_length, Parameters_count(var->parameters));
+				exit(2);
+			}
+			// check order: shape should be first, then rate
+			if (strcasecmp(parameters_node->children[0]->key, "shape") != 0) {
+				Parameters* temp = var->var_parameters[0];
+				var->var_parameters[0] = var->var_parameters[1];
+				var->var_parameters[1] = temp;
+			}
+			bool backward = get_json_node_value_bool(node, "backward", true); // true is KL(Q||P)
+			if(backward){
+				var->entropy = klqp_block_meanfield_gamma_entropy;
+				var->grad_elbo = klqp_block_meanfield_gamma_grad_elbo;
+				var->grad_entropy = klqp_block_meanfield_gamma_grad_entropy;
+				var->sample = klqp_block_meanfield_gamma_sample;
+				var->sample1 = klqp_block_meanfield_gamma_sample1;
+				var->sample2 = klqp_block_meanfield_gamma_sample2;
+	//            var->sample_some = klqp_block_meanfield_normal_sample_some;
+	//            var->finalize = klqp_meanfield_normal_finalize;
+				var->logP = klqp_block_meanfield_gamma_logP;
+				var->logQ = klqp_block_meanfield_gamma_logQ;
+	//            var->parameters_logP = klqp_block_meanfield_normal_logP_parameters;
+	//            var->print = klqp_meanfield_normal_log_samples;
+			}
+			else{
+	//                var->elbofn = klpq_normal_meanfield;
+	//                var->grad_elbofn = grad_klpq_normal_meanfield;
+			}
+		}
+	else if (strcasecmp(dist_string, "weibull") == 0) {
+		var->etas = new_Vector(Parameters_count(var->parameters));
+		Vector_resize(var->etas, Parameters_count(var->parameters));
+		size_t scale_length = Parameters_count(var->var_parameters[0]);
+		size_t shape_length = Parameters_count(var->var_parameters[1]);
+		if (var->var_parameters_count != 2 || scale_length != shape_length) {
+			fprintf(stderr, "Meanfield weibull should have 2 parameter vectors of same length: scale (length: %zu) and shape (length: %zu)\n", scale_length, shape_length);
+			exit(2);
+		}
+		if (Parameters_count(var->var_parameters[0]) != Parameters_count(var->parameters)) {
+			fprintf(stderr, "The length of scale and shape (%zu) in meanfield model should be equal to the length of input parameters x (%zu)\n", scale_length, Parameters_count(var->parameters));
+			exit(2);
+		}
+		// check order: scale should be first, then shape
+		if (strcasecmp(parameters_node->children[0]->key, "scale") != 0) {
+			Parameters* temp = var->var_parameters[0];
+			var->var_parameters[0] = var->var_parameters[1];
+			var->var_parameters[1] = temp;
+		}
+		bool backward = get_json_node_value_bool(node, "backward", true); // true is KL(Q||P)
+		if(backward){
+			var->entropy = klqp_block_meanfield_weibull_entropy;
+			var->grad_elbo = klqp_block_meanfield_weibull_grad_elbo;
+			var->grad_entropy = klqp_block_meanfield_weibull_grad_entropy;
+			var->sample = klqp_block_meanfield_weibull_sample;
+			var->sample1 = klqp_block_meanfield_weibull_sample1;
+			var->sample2 = klqp_block_meanfield_weibull_sample2;
+//            var->sample_some = klqp_block_meanfield_normal_sample_some;
+//            var->finalize = klqp_meanfield_normal_finalize;
+			var->logP = klqp_block_meanfield_weibull_logP;
+			var->logQ = klqp_block_meanfield_weibull_logQ;
+//            var->parameters_logP = klqp_block_meanfield_normal_logP_parameters;
+//            var->print = klqp_meanfield_normal_log_samples;
+		}
+		else{
+//                var->elbofn = klpq_normal_meanfield;
+//                var->grad_elbofn = grad_klpq_normal_meanfield;
+		}
+	}
     else{
         fprintf(stderr, "distribution %s not recognized\n", dist_string);
         exit(1);

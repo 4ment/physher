@@ -124,15 +124,15 @@ double variational_klqp_elbo(variational_t* var){
     for (int i = 0; i < var->elbo_samples; i++) {
         double jacobian = 0.0;
         double logQ = 0.0;
-        for(int i = 0; i < var->block_count; i++){
-            variational_block_t* block = var->blocks[i];
+        for(int j = 0; j < var->block_count; j++){
+            variational_block_t* block = var->blocks[j];
             block->sample1(block, &jacobian);
-            if(block->use_entropy){
+            if(!block->use_entropy){
                 logQ += block->logQ(block, Vector_data(block->etas));
             }
         }
         double logP = posterior->logP(posterior);
-        if(!isinf(logP))elbo += logP + jacobian;
+        if(!isinf(logP))elbo += logP -logQ + jacobian;
         else inf_count++;
         
         if(isinf(elbo) || isnan(elbo)){
@@ -344,6 +344,13 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
                 double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit + gldits;
                 grads[mu_idx + idx] += grad_mu;
                 grads[sigma_idx + idx] += grad_mu * etas[idx] * sigma;
+				
+				if(!var->use_entropy){
+					double sigma2 = sigma*sigma;
+					grads[mu_idx + idx] -= -(mu - zeta)/sigma2;
+					grads[sigma_idx + idx] -= (mu*mu - sigma2 -2.0*mu*zeta + zeta*zeta)/(sigma2*sigma);
+				}
+				
                 idx++;
             }
         }
@@ -360,6 +367,12 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
         double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit;
         grads[mu_idx + idx] += grad_mu;
         grads[sigma_idx + idx] += grad_mu * etas[idx] * sigma;
+		
+		if(!var->use_entropy){
+			double sigma2 = sigma*sigma;
+			grads[mu_idx + idx] -= -(mu - zeta)/sigma2;
+			grads[sigma_idx + idx] -= (mu*mu - sigma2 -2.0*mu*zeta + zeta*zeta)/(sigma2*sigma);
+		}
     }
 }
 
@@ -402,9 +415,8 @@ double klqp_block_meanfield_normal_logQ(variational_block_t* var, double* values
     size_t dim = Parameters_count(var->parameters);
     double logP = 0;
     for (size_t i = 0; i < dim; i++) {
-        double mu = Parameters_value(var->var_parameters[0], i);
         double sd = Parameters_value(var->var_parameters[1], i);
-        logP += dnorml(values[i], mu, sd);
+		logP += log(gsl_ran_gaussian_pdf(values[i]*sd, sd));
     }
     return logP;
 }

@@ -15,6 +15,42 @@
 #include "transforms.h"
 #include "klqp.h"
 
+double variational_klpq_elbo(variational_t* var){
+    double elbo = 0;
+    Model* posterior = var->posterior;
+    int inf_count = 0;
+	double sum = -DBL_MAX;
+	double* logw = dvector(var->elbo_samples); // log weights
+    
+    for (int i = 0; i < var->elbo_samples; i++) {
+        double jacobian = 0.0;
+        double logQ = 0.0;
+        for(int j = 0; j < var->block_count; j++){
+            variational_block_t* block = var->blocks[j];
+            block->sample1(block, &jacobian);
+            logQ += block->logQ(block, Vector_data(block->etas));
+            
+        }
+        double logP = posterior->logP(posterior);
+		if(!isinf(logP)){
+			logw[i] = logP -logQ + jacobian;
+			sum = logaddexp(logw[i], sum);
+		}
+        else inf_count++;
+        
+        if(isinf(elbo) || isnan(elbo)){
+			free(logw);
+            return elbo;
+        }
+    }
+	
+	for (int i = 0; i < var->elbo_samples; i++) {
+		elbo += exp(logw[i]-sum) * logw[i];
+	}
+	free(logw);
+    return -elbo;
+}
+
 double klpq_normal_meanfield(variational_t* var){
 	if (var->initialized == false) {
 		klqp_meanfield_normal_init(var);
