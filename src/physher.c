@@ -54,6 +54,7 @@
 #include "phyc/ppsites.h"
 #include "phyc/cat.h"
 #include "phyc/sbn.h"
+#include "phyc/vartreelikelihood.h"
 
 #include "phyc/physhercmd.h"
 
@@ -173,6 +174,9 @@ int main(int argc, char* argv[]){
 			else if(model_type == MODEL_TREELIKELIHOOD){
 				models[index] = new_TreeLikelihoodModel_from_json(child, hash2);
 			}
+            else if(model_type == MODEL_VARIATIONAL_TREELIKELIHOOD){
+                models[index] = new_VariationalTreeLikelihoodModel_from_json(child, hash2);
+            }
 			else if(model_type == MODEL_PARSIMONY){
 				models[index] = new_ParsimonyModel_from_json(child, hash2);
 			}
