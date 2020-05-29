@@ -61,8 +61,6 @@ static double _calculate( SingleTreeLikelihood *tlk );
 
 double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 
-static bool _calculate_partials_noexp_integrate( SingleTreeLikelihood *tlk, Node *n  );
-
 void calculate_dldp_uppper_reparam( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods );
 double calculate_dl_dr(SingleTreeLikelihood* tlk, double* pattern_likelihoods);
 double calculate_dl_dr_discrete(SingleTreeLikelihood* tlk, Node* node, double* pattern_likelihoods);
@@ -1401,8 +1399,6 @@ double _calculate_simple( SingleTreeLikelihood *tlk ){
 		return tlk->lk;
 	}
 	
-	//tlk->update_partials = update_partials_noexp_integrate_4;
-	//_calculate_partials_noexp_integrate( tlk, Tree_root(tlk->tree) );
 	_calculate_partials( tlk, Tree_root(tlk->tree) );
 	int nodeID = Node_id(Tree_root(tlk->tree));
 	if(tlk->sm->integrate){
@@ -1596,7 +1592,7 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
 				}
 			}
 			
-			if (!tlk->use_upper) {
+			if (!tlk->use_upper && tlk->partials[1] != NULL) {
 				tlk->current_matrices_indexes[Node_id(n)] = 1 - tlk->current_matrices_indexes[Node_id(n)];
 				tlk->current_matrices_indexes[Node_id(n)+Tree_node_count(tlk->tree)] = tlk->current_matrices_indexes[Node_id(n)];
 			}
@@ -1639,7 +1635,7 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
 			int indx_child1 = Node_id(Node_left(n));
 			int indx_child2 = Node_id(Node_right(n));
 
-			if (!tlk->use_upper) {
+			if (!tlk->use_upper && tlk->partials[1] != NULL) {
 				tlk->current_partials_indexes[Node_id(n)] = 1 - tlk->current_partials_indexes[Node_id(n)];
 				tlk->current_partials_indexes[Node_id(n)+Tree_node_count(tlk->tree)] = tlk->current_partials_indexes[Node_id(n)];
 			}
@@ -1659,65 +1655,6 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
 				tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
 				
 			}
-			updated = true;
-		}
-	}
-	return updated;
-}
-
-bool _calculate_partials_noexp_integrate( SingleTreeLikelihood *tlk, Node *n  ){
-	bool updated = false;
-	
-	if( tlk->update_nodes[ Node_id(n) ] && !Node_isroot(n) ){
-		// a bit hackish here, for local optimization of clades
-		if ( tlk->node_id == -1 || Node_id(n) != tlk->node_id ) {
-			
-			double bl = 0;
-			if( tlk->bm == NULL || !Tree_is_time_mode(tlk->tree) ){
-				bl = Node_distance(n);
-			}
-			else{
-				bl = tlk->bm->get(tlk->bm, n) * (Node_height(Node_parent(n)) - Node_height(n) );
-				
-				if(bl < 0 ){
-					fprintf(stderr, "calculate_partials: %s branch length = %f rate = %f height = %f - parent height [%s]= %f (%f)\n", n->name, bl, tlk->bm->get(tlk->bm, n), Node_height(n), n->parent->name, Node_height(Node_parent(n)), Node_distance(n));
-					exit(1);
-				}
-			}
-			
-			if( tlk->sm->m->need_update ){
-				tlk->sm->m->update_Q(tlk->sm->m);
-			}
-			
-			// precompute exp(lambda_i*bl). dim = cat_count*nstate
-			// it would be better to precompute u_{x,i}exp(lambda_i*bl) instead but dimension would be  dim = cat_count*nstate *nstate
-			for ( int c = 0; c < tlk->sm->cat_count; c++ ) {
-				for ( int i = 0; i < tlk->sm->nstate ; i++ ) {
-					tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][c*tlk->sm->nstate+i] = exp(tlk->sm->m->eigendcmp->eval[i] * bl * tlk->sm->get_rate(tlk->sm, c) );
-				}
-			}
-			
-			updated = true;
-		}
-	}
-	
-	if( !Node_isleaf(n) ){
-		bool update_child1 = _calculate_partials_noexp_integrate( tlk, Node_left(n) );
-		bool update_child2 = _calculate_partials_noexp_integrate( tlk, Node_right(n) );
-		
-		if( update_child1 || update_child2 ){
-			int indx_child1 = Node_id(Node_left(n));
-			int indx_child2 = Node_id(Node_right(n));
-			
-			tlk->update_partials( tlk, Node_id(n), indx_child1, indx_child1, indx_child2, indx_child2);
-			
-			// a bit hackish here, for local optimization of clades
-			if( Node_isroot(n) || Node_id(n) == tlk->node_id ){
-				tlk->integrate_partials(tlk, tlk->partials[tlk->current_partials_indexes[Node_id(n)]][Node_id(n)], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
-				
-				tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
-			}
-			
 			updated = true;
 		}
 	}

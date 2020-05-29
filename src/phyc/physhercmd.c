@@ -79,6 +79,7 @@ json_node* create_json_distance(Hashtable* options){
 	char* seq_file = Hashtable_get(options, "sequences");
 	char* model_string = Hashtable_get(options, "model");
 	char* datatype = Hashtable_get(options, "datatype");
+    char* stem = Hashtable_get(options, "stem");
 	bool nucleotide = true;
 	if (strlen(datatype) != 0 && strcasecmp(datatype, "aa") == 0) {
 		nucleotide = false;
@@ -130,7 +131,6 @@ json_node* create_json_distance(Hashtable* options){
 	add_json_node_string(jsequences, "id", "sequences");
 	add_json_node_string(jsequences, "type", "alignment");
 	add_json_node_string(jsequences, "file", seq_file);
-	add_json_node_string(jsequences, "datatype", (nucleotide ? "nucleotide": "aa"));
 	
 	// physher
 	json_node* jphysher = create_json_node_array(jroot, "physher");
@@ -141,7 +141,11 @@ json_node* create_json_distance(Hashtable* options){
 	add_json_node(jphysher, jlogger);
 	add_json_node_string(jlogger, "id", "log");
 	add_json_node_string(jlogger, "type", "logger");
-	add_json_node_string(jlogger, "tree", "&tree");
+	add_json_node_string(jlogger, "models", "&tree");
+    add_json_node_bool(jlogger, "tree", true);
+    if(strcmp(stem, "") != 0){
+        add_json_node_string(jlogger, "file", stem);
+    }
 	
 	return jroot;
 }
@@ -774,7 +778,7 @@ void create_json_site_pattern(Hashtable* options, Hashtable* nodes){
 		StringBuffer_append_format(buffer, "&%s", get_json_node_value_string(dt, "id"));
 		add_json_node(jsitepatterns, dt);
 		dt->parent = jsitepatterns;
-		add_json_node_string(jsequences, "datatype", buffer->c);
+		add_json_node_string(jsitepatterns, "datatype", buffer->c);
 		free_StringBuffer(buffer);
 	}
 	
@@ -900,6 +904,60 @@ Hashtable * extract_arguments(int argc, char* argv[]){
 	return hash;
 }
 
+void create_json_vb_block(Hashtable* options, Hashtable* nodes, json_node* jvb){
+    json_node* jblock = create_json_node_object(jvb, "modelvb");
+    add_json_node_string(jblock, "id", "block");
+    add_json_node_string(jblock, "type", "block");
+    add_json_node_string(jblock, "posterior", "&posterior");
+    add_json_node_size_t(jblock, "elbosamples", 100);
+    add_json_node_size_t(jblock, "gradsamples", 1);
+    add_json_node(jvb, jblock);
+}
+
+void create_json_vb(Hashtable* options, Hashtable* nodes){
+    json_node* jroot = Hashtable_get(nodes, "jroot");
+    json_node* jvb = create_json_node_object(jroot, "modelvb");
+    add_json_node_string(jvb, "id", "variational");
+    add_json_node_string(jvb, "type", "variational");
+    add_json_node_string(jvb, "posterior", "&posterior");
+    add_json_node_size_t(jvb, "elbosamples", 100);
+    add_json_node_size_t(jvb, "gradsamples", 1);
+    add_json_node(jroot, jvb);
+    Hashtable_add(nodes, "jvb", jvb);
+    json_node* jdistributions = create_json_node_object(jvb, "distributions");
+    add_json_node(jvb, jdistributions);
+    jdistributions->node_type = MJSON_ARRAY;
+//    Hashtable_add(nodes, "jdistributions", jdistributions);
+    /*
+     
+     "posterior": "&variationaltreelikelihood",
+     "elbosamples": 100,
+     "gradsamples": 1,
+     "_elbomulti": 10,
+     "distributions":[
+         {
+             "id": "block1",
+             "type": "block",
+             "distribution": "normal",
+             "x": "%tree.scalers2",
+             "parameters":{
+                 "mu": {"id":"mu2", "type":"parameter", "dimension": 68, "values":[0]},
+                 "sigma": {"id":"sigma2", "type":"parameter", "dimension": 68, "values":[1], "lower":0}
+             }
+         },
+         {
+             "id": "block2",
+             "type": "block",
+             "distribution": "normal",
+             "x": "%rate",
+             "parameters":{
+                 "mu": {"id":"mu.rate", "type":"parameter", "dimension": 136, "values":[0]},
+                 "sigma": {"id":"sigma.rate", "type":"parameter", "dimension": 136, "values":[1], "lower":0}
+             }
+         }
+     */
+}
+
 json_node* create_json_file(int argc, char* argv[]){
 	
 	Hashtable* options = extract_arguments(argc, argv);
@@ -957,7 +1015,7 @@ json_node* create_json_file(int argc, char* argv[]){
 	json_node* node = create_json_tree("{'id':'log','type':'logger','models':'&sitemodel'}");
 	add_json_node(jphysher, node);
 	
-	json_node* tree_node = create_json_tree("{'id':'logtree','type':'logger','models':'&tree'}");
+	json_node* tree_node = create_json_tree("{'id':'logtree','type':'logger','models':'&tree', 'tree': true}");
 	add_json_node(jphysher, tree_node);
 	
 	json_node* tlk_node = create_json_tree("{'id':'logtree','type':'logger','models':'&treelikelihood'}");
