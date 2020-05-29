@@ -185,6 +185,143 @@ void _parse_description( Node *node, const char *newick, int *i,  bool containBL
 	free_StringBuffer(buffer);
 }
 
+void initialize_stored_nodes(Tree* tree){
+	if(tree->topology_changed) Tree_update_topology(tree);
+
+	Node** nodes = Tree_nodes(tree);
+	for (int i = 0; i < Tree_node_count(tree); i++) {
+		Node* n = nodes[i];
+		tree->stored_nodes[i]->class_id = n->class_id;
+		tree->stored_nodes[i]->depth = n->depth;
+		tree->stored_nodes[i]->distance = n->distance;
+		tree->stored_nodes[i]->height = n->height;
+		tree->stored_nodes[i]->info = n->info;
+		if(!Node_isleaf(n)){
+			tree->stored_nodes[i]->left = tree->stored_nodes[n->left->id];
+			tree->stored_nodes[i]->right = tree->stored_nodes[n->right->id];
+		}
+		if(!Node_isroot(n)){
+			tree->stored_nodes[i]->parent = tree->stored_nodes[n->parent->id];
+		}
+		tree->stored_nodes[i]->poly = n->poly;
+		tree->stored_nodes[i]->time = n->time;
+		tree->stored_nodes[i]->preorder_idx = n->preorder_idx;
+		tree->stored_nodes[i]->postorder_idx = n->postorder_idx;
+		tree->stored_nodes[i]->annotation = n->annotation;
+		tree->stored_nodes[i]->name = n->name;
+	}
+}
+
+
+void update_parameter_arrays(Tree* tree, Node* focal){
+	tree->nodes = realloc( tree->nodes, tree->nNodes * sizeof(Node*) );
+	tree->postorder = realloc( tree->nodes, tree->nNodes * sizeof(Node*) );
+	tree->preorder = realloc( tree->nodes, tree->nNodes * sizeof(Node*) );
+	tree->stored_nodes = realloc( tree->stored_nodes, tree->nNodes * sizeof(Node*) );
+
+	Node **nodes = Tree_get_nodes(tree, POSTORDER);
+
+	for(int i = 0; i < 2; i++){
+		tree->stored_nodes[i+tree->nNodes-2] = new_EmptyNode();
+		tree->stored_nodes[i+tree->nNodes-2]->id = i+tree->nNodes-2;
+	}
+
+	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
+		if(Node_isleaf(nodes[i])){
+			// new node
+			if(Node_id(nodes[i]) == -1){
+				nodes[i]->id = tree->nTips-1;
+				nodes[i]->class_id = tree->nTips-1;
+				Parameters_add(tree->distances, nodes[i]->distance);
+				Parameters_add(tree->heights, nodes[i]->height);
+			}
+		}
+		// new node
+		else if(Node_id(nodes[i]) == -1){
+			nodes[i]->id = tree->nNodes-1;
+			Parameters_add(tree->distances, nodes[i]->distance);
+			Parameters_add(tree->heights, nodes[i]->height);
+		}
+		nodes[i]->distance->id = nodes[i]->id;
+		nodes[i]->height->id = nodes[i]->id;
+		tree->nodes[ nodes[i]->id ] = nodes[i];
+	}
+
+	tree->map = realloc(tree->map, Tree_node_count(tree)*sizeof(unsigned));
+    tree->lowers = realloc(tree->lowers, Tree_node_count(tree)*sizeof(double));
+    tree->need_update_height = true;
+    //TODO: deal with map and lowers
+//	Node** nodes2 = Tree_get_nodes(atree, PREORDER);
+//	int count = 0;
+//	for (int i = 0; i < Tree_node_count(atree); i++) {
+//		Node* node = nodes2[i];
+//		Parameter* p = NULL;
+//		if(Node_isroot(node)){
+//			p = new_Parameter(node->name, Node_height(node), new_Constraint(0, INFINITY));
+//			p->model = MODEL_TREE;
+//			Parameters_move(atree->reparam, p);
+//            p->id = -Node_id(node)-1;
+//			atree->map[Node_id(node)] = count++;
+//		}
+//		else if(!Node_isleaf(node)){
+//			p = new_Parameter(node->name, Node_height(node)/Node_height(Node_parent(nodes2[i])), new_Constraint(0.00001, 0.9999));
+//			p->model = MODEL_TREE;
+//			Parameters_move(atree->reparam, p);
+//			p->id = -Node_id(node)-1;
+//			atree->map[Node_id(node)] = count++;
+//        }
+//	}
+
+	initialize_stored_nodes(tree);
+}
+
+void Tree_insert_taxon(Tree* tree, Node* focal, const char* name){
+	Node_insert_taxon(focal, name);
+	tree->nNodes += 2;
+	tree->nTips += 1;
+	Node* newNode = Node_parent(focal);
+	Node_rename(newNode, tree->nNodes);
+
+	update_parameter_arrays(tree, focal);
+	// update new nodes indexes
+	// make tree listen to new node parameters
+	// update reparam
+	// update array (postorder..)
+	// update class_ids node_ids
+    Tree_set_topology_changed(tree);
+}
+
+void TreeModel_insert_taxon(Model* model, Node* focal, const char* taxonName){
+	Tree* tree = model->obj;
+	char* name = model->name;
+
+	Tree_insert_taxon(tree, focal, taxonName);
+	Node* newNodes[2];
+	newNodes[0] = Node_sibling(focal);
+	newNodes[1] = Node_parent(focal);
+
+	StringBuffer* buffer = new_StringBuffer(10);
+
+	for(int i = 0; i < 2; i++){
+		StringBuffer_set_string(buffer, name);
+		StringBuffer_append_strings(buffer, 2, ".", newNodes[i]->distance->name);
+		Parameter_set_name(newNodes[i]->distance, buffer->c);
+		StringBuffer_set_string(buffer, name);
+		StringBuffer_append_strings(buffer, 2, ".", newNodes[i]->height->name);
+		Parameter_set_name(newNodes[i]->height, buffer->c);
+		newNodes[i]->distance->listeners->add(newNodes[i]->distance->listeners, model);
+		newNodes[i]->height->listeners->add(newNodes[i]->height->listeners, model);
+
+		//TODO: deal with that
+//		StringBuffer_set_string(buffer, name);
+//		StringBuffer_append_strings(buffer, 2, ".", Parameters_name(tree->reparam, i));
+//		Parameter_set_name(Parameters_at(tree->reparam, i), buffer->c);
+//		Parameters_at(tree->reparam,i)->listeners->add(Parameters_at(tree->reparam, i)->listeners, model);
+	}
+
+	free_StringBuffer(buffer);
+}
+
 void init_parameter_arrays(Tree* atree){
 	Node **nodes = Tree_get_nodes(atree, POSTORDER);
 	atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
@@ -194,15 +331,16 @@ void init_parameter_arrays(Tree* atree){
 	int nTips = 0;
 	int nInternals = 0;
 	for ( int i = 0; i < Tree_node_count(atree); i++ ) {
-		nodes[i]->id = i;
-		nodes[i]->distance->id = i;
-		nodes[i]->height->id = i;
 		if( Node_isleaf(nodes[i]) ){
 			nodes[i]->class_id = nTips++;
+			nodes[i]->id = nodes[i]->class_id;
 		}
 		else {
 			nodes[i]->class_id = nInternals++;
+			nodes[i]->id = nodes[i]->class_id + atree->nTips;
 		}
+		nodes[i]->distance->id = nodes[i]->id;
+		nodes[i]->height->id = nodes[i]->id;
 		atree->nodes[ nodes[i]->id ] = nodes[i];
 	}
 	
@@ -261,28 +399,7 @@ void init_parameter_arrays(Tree* atree){
 		atree->stored_nodes[i]->id = n->id;
 	}
 
-	if(atree->topology_changed) Tree_update_topology(atree);
-	for (int i = 0; i < Tree_node_count(atree); i++) {
-		Node* n = atree->nodes[i];
-		atree->stored_nodes[i]->class_id = n->class_id;
-		atree->stored_nodes[i]->depth = n->depth;
-		atree->stored_nodes[i]->distance = n->distance;
-		atree->stored_nodes[i]->height = n->height;
-		atree->stored_nodes[i]->info = n->info;
-		if(!Node_isleaf(n)){
-			atree->stored_nodes[i]->left = atree->stored_nodes[n->left->id];
-			atree->stored_nodes[i]->right = atree->stored_nodes[n->right->id];
-		}
-		if(!Node_isroot(n)){
-			atree->stored_nodes[i]->parent = atree->stored_nodes[n->parent->id];
-		}
-		atree->stored_nodes[i]->poly = n->poly;
-		atree->stored_nodes[i]->time = n->time;
-		atree->stored_nodes[i]->preorder_idx = n->preorder_idx;
-		atree->stored_nodes[i]->postorder_idx = n->postorder_idx;
-		atree->stored_nodes[i]->annotation = n->annotation;
-		atree->stored_nodes[i]->name = n->name;
-	}
+	initialize_stored_nodes(atree);
 }
 
 void Tree_save(Tree* tree){

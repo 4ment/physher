@@ -118,6 +118,7 @@ TopologyOptimizer* new_TopologyOptimizer_from_json(json_node* node, Hashtable* h
 		"failures",
 		"model",
 		"move",
+		"online",
 		"radius",
 		"treelikelihood",
 		"threads",
@@ -126,6 +127,7 @@ TopologyOptimizer* new_TopologyOptimizer_from_json(json_node* node, Hashtable* h
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
 	char* algorithm_string = get_json_node_value_string(node, "move");
+	char* online_string = get_json_node_value_string(node, "online");
 	char* criterion = get_json_node_value_string(node, "criterion");
 	int verbosity = get_json_node_value_int(node, "verbosity", 1);
 	//	int maxiter = get_json_node_value_int(node, "maxiter", 100);

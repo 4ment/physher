@@ -99,6 +99,11 @@ struct _SingleTreeLikelihood{
     bool use_upper;
     Node *node_upper;
 	bool tripod;
+
+	// online stuff
+	int new_node_id;
+	int new_taxon_id;
+	double new_taxon_bl;
 	
     calculate_upper_t calculate_upper;
 	
@@ -122,6 +127,8 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash);
 
 
 SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm );
+
+SingleTreeLikelihood * new_SingleTreeLikelihoodOnline( Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm, bool online );
 
 // does not free tree, branchmodel, sitemodel
 void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk );

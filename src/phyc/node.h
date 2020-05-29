@@ -136,6 +136,8 @@ void Node_removeChild( Node *parent, Node *node);
 
 bool Node_addChild( Node *parent, Node *node);
 
+void Node_insert_taxon(Node* focal, const char* name);
+
 void Node_add_listener( Node *node, Model *model );
 
 void Node_print( Node *node );

@@ -492,6 +492,17 @@ bool Node_addChild( Node *parent, Node *node){
 	return false;
 }
 
+void Node_insert_taxon(Node* focal, const char* name){
+	Node* parent = focal->parent;
+	Node* newNode = new_Node(parent, NULL, -1);
+	Node* newTaxon = new_Node(newNode, name, -1);
+	Node_addChild(newNode, newTaxon);
+	Node_addChild(newNode, focal);
+	Node_removeChild(parent, focal);
+	Node_addChild(parent, newNode);
+	Node_set_parent(focal, newNode);
+}
+
 void Node_add_listener( Node *node, Model *model ){
 	
 }

@@ -39,6 +39,8 @@ typedef struct _Tree Tree;
 
 Model * new_TreeModel( const char* name, Tree *tree );
 
+void TreeModel_insert_taxon(Model* model, Node* focal, const char* taxonName);
+
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash);
 
 Tree * new_Tree( const char *nexus, bool containBL );

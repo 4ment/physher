@@ -32,6 +32,7 @@
 #include "frpmrn.h"
 #include "gradascent.h"
 #include "topologyopt.h"
+#include "onlineopt.h"
 #include "tree.h"
 #include "treelikelihood.h"
 
@@ -103,6 +104,12 @@ struct _Optimizer{
 
 opt_result topology_optimize(TopologyOptimizer* topopt, double *fmin){
 	*fmin = -topopt->optimize(topopt);
+	return OPT_SUCCESS;
+}
+
+
+opt_result online_optimize(OnlineOptimizer* onlineopt, double *fmin){
+	*fmin = -onlineopt->optimize(onlineopt);
 	return OPT_SUCCESS;
 }
 
@@ -339,6 +346,10 @@ void free_Optimizer( Optimizer *opt ){
 	if(opt->algorithm == OPT_TOPOLOGY){
 		TopologyOptimizer* topopt = opt->data;
 		free_TopologyOptimizer(topopt);
+	}
+	else if(opt->algorithm == OPT_ONLINE){
+		OnlineOptimizer* onlineopt = opt->data;
+		onlineopt->free(onlineopt);
 	}
 	opt->data = NULL;
 	free_Parameters(opt->parameters);
@@ -724,6 +735,11 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	if(strcasecmp(algorithm_string, "topology") == 0){
 		Optimizer* opt = new_Optimizer(OPT_TOPOLOGY);
 		opt->data = new_TopologyOptimizer_from_json(node, hash);
+		return opt;
+	}
+	else if(strcasecmp(algorithm_string, "online") == 0){
+		Optimizer* opt = new_Optimizer(OPT_TOPOLOGY);
+		opt->data = new_OnlineOptimizer_from_json(node, hash);
 		return opt;
 	}
 	
