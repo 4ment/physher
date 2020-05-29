@@ -872,29 +872,28 @@ void _tree_handle_change( Model *self, Model *model, int index ){
 		if(index < 0){
 			int realIndex = -index-1;
             tree->need_update_height = true;
-            self->listeners->fire( self->listeners, self, realIndex );
             
-//			Node* node = Tree_node(tree, realIndex);
-//			if(tree->homochronous){
-//				if (Node_isroot(node)) {
-//					Node_set_height(node, Parameters_value(tree->reparam, tree->map[Node_id(node)]));
-//					set_times(tree, node->left);
-//					set_times(tree, node->right);
-//				}
-//				else{
-//					set_times(tree, node);
-//				}
-//			}
-//			else{
-//				if (Node_isroot(node)) {
-//					Node_set_height(node, Parameters_value(tree->reparam, tree->map[Node_id(node)]));
-//					set_times_heterochronous(tree, node->left, tree->lowers);
-//					set_times_heterochronous(tree, node->right, tree->lowers);
-//				}
-//				else{
-//					set_times_heterochronous(tree, node, tree->lowers);
-//				}
-//			}
+			Node* node = Tree_node(tree, realIndex);
+			if(tree->homochronous){
+				if (Node_isroot(node)) {
+					Node_set_height(node, Parameters_value(tree->reparam, tree->map[Node_id(node)]));
+					set_times(tree, node->left);
+					set_times(tree, node->right);
+				}
+				else{
+					set_times(tree, node);
+				}
+			}
+			else{
+				if (Node_isroot(node)) {
+					Node_set_height(node, Parameters_value(tree->reparam, tree->map[Node_id(node)]));
+					set_times_heterochronous(tree, node->left, tree->lowers);
+					set_times_heterochronous(tree, node->right, tree->lowers);
+				}
+				else{
+					set_times_heterochronous(tree, node, tree->lowers);
+				}
+			}
 			// do not fire since heights are going to do it
 			return;
 		}
@@ -1539,6 +1538,7 @@ void pretorder_generic( Tree *tree, void *data, void (*action)( Node *node, void
 
 void Tree_set_topology_changed( Tree *tree ){
     tree->topology_changed = true;
+	tree->need_update_height = true;
 }
 
 bool Tree_topology_changed( const Tree *tree ){
