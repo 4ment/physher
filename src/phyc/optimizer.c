@@ -642,6 +642,10 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 			result = topology_optimize(opt->data, fmin);
 			break;
 		}
+		case OPT_ONLINE:{
+			result = online_optimize(opt->data, fmin);
+			break;
+		}
 		default:
 			result = -100;
 			break;
@@ -738,7 +742,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		return opt;
 	}
 	else if(strcasecmp(algorithm_string, "online") == 0){
-		Optimizer* opt = new_Optimizer(OPT_TOPOLOGY);
+		Optimizer* opt = new_Optimizer(OPT_ONLINE);
 		opt->data = new_OnlineOptimizer_from_json(node, hash);
 		return opt;
 	}

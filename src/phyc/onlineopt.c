@@ -24,6 +24,9 @@ void exhaustive_online_unrooted(OnlineOptimizer* online){
 	SingleTreeLikelihood* tlk = online->treelikelihood->obj;
 	Model** models = online->treelikelihood->data;
 	Tree* tree = tlk->tree;
+	Node* root = Tree_root(tree);
+	int highestNodeIndex = Tree_node_count(tree) - 1;
+	Node* right = Node_right(root);
 	
 	for (size_t index = 0; index < online->indexes_count; index++) {
 		int tipCount = Tree_tip_count(tree);
@@ -31,13 +34,16 @@ void exhaustive_online_unrooted(OnlineOptimizer* online){
 		char* taxonName = tlk->sp->names[online->indexes[index]];
 		//update everything but should it be the whole model like compound
 		online->treelikelihood->logP(online->treelikelihood);
+		SingleTreeLikelihood_update_uppers(tlk);
 		tlk->mapping[tipCount] = get_sequence_index(tlk->sp, taxonName);
 		Node** nodes = Tree_nodes(tree);// topology should update and so is this array
 		Node* bestFocal = NULL;
 		double bestScore = -INFINITY;
+		highestNodeIndex++;
+		
 		for (size_t i = 0; i < nodeCount; i++) {
-			if(!Node_isroot(nodes[i])){
-				double score = _calculate_insertion_at_node(online, nodes[i], tipCount, nodeCount);
+			if(nodes[i] != root && nodes[i] != right){
+				double score = _calculate_insertion_at_node(online, nodes[i], tipCount, highestNodeIndex);
 				if (score > bestScore) {
 					bestScore = score;
 					bestFocal = nodes[i];
@@ -45,6 +51,12 @@ void exhaustive_online_unrooted(OnlineOptimizer* online){
 			}
 		}
 		TreeModel_insert_taxon(models[0], bestFocal, taxonName);
+		double bl = Node_distance(bestFocal);
+		Node_set_distance(bestFocal, bl);
+		Node_set_distance(Node_parent(bestFocal), bl);
+		Node_set_distance(Node_sibling(bestFocal), online->new_taxon_bl);
+		//the last 3 set_distance will set corresponding partials to be updated
+		printf("== %s %f\n", Node_name(bestFocal), bestScore);
 		tlk->new_taxon_id = tlk->new_node_id = -1;
 		tlk->use_upper = false;
 		tlk->node_upper = NULL;
@@ -79,6 +91,7 @@ double _OnlineOptimizer_optimize(OnlineOptimizer* online){
 
 OnlineOptimizer* new_OnlineOptimizer_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
+		"algorithm",
 		"branchlength",
 		"criterion",// exhaustive...
 		"model",
@@ -145,5 +158,28 @@ OnlineOptimizer* new_OnlineOptimizer_from_json(json_node* node, Hashtable* hash)
 	opt->optimize = _OnlineOptimizer_optimize;
 	opt->free = _free_OnlineOptimizer;
 	
+	
+	SingleTreeLikelihood* tlk = opt->treelikelihood->obj;
+	bool* in = malloc(tlk->sp->size*sizeof(bool));
+	int count = tlk->sp->size;
+	Node** nodes = Tree_nodes(tlk->tree);
+	for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+		if(Node_isleaf(nodes[i])){
+			int index = get_sequence_index(tlk->sp, Node_name(nodes[i]));
+			if(index != -1){
+				in[index] = true;
+				count--;
+			}
+		}
+	}
+	
+	opt->indexes = malloc(count*sizeof(size_t));
+	for (int i = 0; i < tlk->sp->size; i++) {
+		if(!in[i]){
+			printf("%s\n", tlk->sp->names[i]);
+			opt->indexes[opt->indexes_count++] = i;
+		}
+	}
+	free(in);
 	return opt;
 }

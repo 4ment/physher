@@ -215,8 +215,8 @@ void initialize_stored_nodes(Tree* tree){
 
 void update_parameter_arrays(Tree* tree, Node* focal){
 	tree->nodes = realloc( tree->nodes, tree->nNodes * sizeof(Node*) );
-	tree->postorder = realloc( tree->nodes, tree->nNodes * sizeof(Node*) );
-	tree->preorder = realloc( tree->nodes, tree->nNodes * sizeof(Node*) );
+	tree->postorder = realloc( tree->postorder, tree->nNodes * sizeof(Node*) );
+	tree->preorder = realloc( tree->preorder, tree->nNodes * sizeof(Node*) );
 	tree->stored_nodes = realloc( tree->stored_nodes, tree->nNodes * sizeof(Node*) );
 
 	Node **nodes = Tree_get_nodes(tree, POSTORDER);
@@ -244,7 +244,7 @@ void update_parameter_arrays(Tree* tree, Node* focal){
 		}
 		nodes[i]->distance->id = nodes[i]->id;
 		nodes[i]->height->id = nodes[i]->id;
-		tree->nodes[ nodes[i]->id ] = nodes[i];
+		tree->nodes[i] = nodes[i];
 	}
 
 	tree->map = realloc(tree->map, Tree_node_count(tree)*sizeof(unsigned));
@@ -281,7 +281,7 @@ void Tree_insert_taxon(Tree* tree, Node* focal, const char* name){
 	tree->nTips += 1;
 	Node* newNode = Node_parent(focal);
 	Node_rename(newNode, tree->nNodes);
-
+	tree->topology_changed = true;
 	update_parameter_arrays(tree, focal);
 	// update new nodes indexes
 	// make tree listen to new node parameters
@@ -322,7 +322,7 @@ void TreeModel_insert_taxon(Model* model, Node* focal, const char* taxonName){
 	free_StringBuffer(buffer);
 }
 
-void init_parameter_arrays(Tree* atree){
+void init_parameter_arrays_reserved(Tree* atree, size_t reserved_tip_count){
 	Node **nodes = Tree_get_nodes(atree, POSTORDER);
 	atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
 	atree->stored_nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
@@ -337,11 +337,14 @@ void init_parameter_arrays(Tree* atree){
 		}
 		else {
 			nodes[i]->class_id = nInternals++;
-			nodes[i]->id = nodes[i]->class_id + atree->nTips;
+			nodes[i]->id = nodes[i]->class_id + reserved_tip_count;
 		}
 		nodes[i]->distance->id = nodes[i]->id;
 		nodes[i]->height->id = nodes[i]->id;
-		atree->nodes[ nodes[i]->id ] = nodes[i];
+		//FIXME: check that it is not breaking things
+		// it breaks _singleTreeLikelihood_dlogP
+//		atree->nodes[ nodes[i]->id ] = nodes[i];
+		atree->nodes[i] = nodes[i];
 	}
 	
 	check_tree(atree);
@@ -400,6 +403,10 @@ void init_parameter_arrays(Tree* atree){
 	}
 
 	initialize_stored_nodes(atree);
+}
+
+void init_parameter_arrays(Tree* atree){
+	init_parameter_arrays_reserved(atree, atree->nTips);
 }
 
 void Tree_save(Tree* tree){
@@ -618,7 +625,7 @@ void init_heights_from_distances(Tree* atree){
 	}
 }
 
-Tree * new_Tree( const char *nexus, bool containBL ){
+Tree * new_Tree_reserved( const char *nexus, bool containBL, size_t reserved_tip_count ){
 	Tree *atree = (Tree *)malloc(sizeof(Tree));
 	assert(atree);
 	atree->root = NULL;
@@ -815,11 +822,16 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	
 	Tree_update_topology(atree);
 	
-	init_parameter_arrays(atree);
+	reserved_tip_count = reserved_tip_count == 0 ? atree->nTips : reserved_tip_count;
+	init_parameter_arrays_reserved(atree, reserved_tip_count);
 	
 	free_StringBuffer(buffer);
 	
 	return atree;
+}
+
+Tree * new_Tree( const char *nexus, bool containBL ){
+	return new_Tree_reserved(nexus, containBL, 0);
 }
 
 Tree * new_Tree2( Node *root, bool containBL ){
@@ -1184,6 +1196,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		"init",
 		"file",
 		"heights", // height parameters
+		"online",
 		"parameters", // distance parameters
 		"newick",
 		"reparam", // reparametrization
@@ -1196,6 +1209,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	json_node* init_node = get_json_node(node, "init");
 	json_node* dates_node = get_json_node(node, "dates");
 	bool time_tree = get_json_node_value_bool(node, "time", false);
+	int online_tip_count = get_json_node_value_int(node, "online", 0);
 	
 	Model* mtree = NULL;
 	Tree* tree = NULL;
@@ -1203,12 +1217,12 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	if (newick_node != NULL || file_node != NULL) {
 		if (newick_node != NULL){
 			char* newick = (char*)newick_node->value;
-			tree = new_Tree(newick, !time_tree);
+			tree = new_Tree_reserved(newick, !time_tree, online_tip_count);
 		}
 		else{
 			const char* filename = (const char*)file_node->value;
 			char* tree_string = readTree(filename);
-			tree = new_Tree( tree_string, !time_tree );
+			tree = new_Tree_reserved( tree_string, !time_tree, online_tip_count );
 			free(tree_string);
 		}
 		// parse date dictionary for dated trees
