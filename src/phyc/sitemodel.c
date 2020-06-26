@@ -271,6 +271,33 @@ int _get_site_category(SiteModel* sm, const int pattern){
 	return 0;
 }
 
+void _no_gradient( SiteModel *sm, const double* ingrad, double* grad ){
+
+}
+
+void _weibull_gradient( SiteModel *sm, const double* ingrad, double* grad ){
+	double derivsum = 0;
+	double sum = 0;
+	double cat = sm->cat_count;
+	double* proportions = sm->get_proportions(sm);
+	double shape = Parameters_value(sm->rates, 0);
+
+	for (int i = 0; i < cat; i++) {
+		double prob = (2.0*i + 1.0)/(2.0*cat);
+		derivsum += -pow(-log(1.0 - prob), 1.0/shape) * log(-log(1.0 - prob))/shape/shape*proportions[i];
+		sum += pow(-log(1.0 - prob), 1.0/shape)*proportions[i];
+	}
+
+	double shape_gradient = 0;
+	for (int i = 0; i < cat; i++) {
+		double prob = (2.0*i + 1.0)/(2.0*cat);
+		double deriv = -pow(-log(1.0 - prob), 1.0/shape) * log(-log(1.0 - prob))/shape/shape;
+		double deriv_rate = deriv/sum - (pow(-log(1.0 - prob), 1.0/shape)*derivsum)/sum/sum;
+		shape_gradient += ingrad[i] * deriv_rate * proportions[i];
+	}
+	grad[0] = shape_gradient;
+}
+
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
 SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, Simplex* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad){
@@ -308,6 +335,7 @@ SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameter
 	
 	sm->cat_rates       = dvector(sm->cat_count);
 	sm->cat_proportions = dvector(sm->cat_count);
+	sm->gradient = _no_gradient;
 	
 	if (distribution == DISTRIBUTION_UNIFORM) {
 		sm->get_rate        = _get_rate;
@@ -331,6 +359,9 @@ SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameter
 		sm->get_proportions = _get_proportions_gamma;
 	}
     
+	if (distribution == DISTRIBUTION_WEIBULL) {
+		sm->gradient = _weibull_gradient;
+	}
 	sm->integrate   = true;
 	sm->need_update = true;
 	
