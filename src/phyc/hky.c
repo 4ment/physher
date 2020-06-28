@@ -46,7 +46,7 @@ static void _hky_dp_dt_transpose( SubstitutionModel *m, const double t, double *
 static void _hky_d2p_dt2( SubstitutionModel *m, const double t, double *P );
 static void _hky_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P );
 
-static void _hky_dQ(SubstitutionModel *m, int index, double* mat, double t);
+static void _hky_dPdp(SubstitutionModel *m, int index, double* mat, double t);
 
 SubstitutionModel * new_HKY(Simplex* freqs){
 	Parameter* kappa = new_Parameter_with_postfix("hky.kappa", "model", 3, new_Constraint(0.0001, 100) );
@@ -69,7 +69,7 @@ SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa
 	m->dp_dt = _hky_dp_dt;
 	m->dp_dt_transpose = _hky_dp_dt_transpose;
 	
-	m->dPdp = _hky_dQ;
+	m->dPdp = _hky_dPdp;
 	m->dQ = dvector(16);
 	
 	m->rates = new_Parameters( 1 );
@@ -88,7 +88,7 @@ SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, Parameter* kappa ){
 	m->dp_dt = _hky_dp_dt;
 	m->dp_dt_transpose = _hky_dp_dt_transpose;
 	
-	m->dPdp = _hky_dQ;
+	m->dPdp = _hky_dPdp;
 	m->dQ = dvector(16);
 	
 	m->rates = new_Parameters( 1 );
@@ -101,7 +101,6 @@ SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, Parameter* kappa ){
 
 
 void hky_update_Q( SubstitutionModel *model ){
-	if( !model->need_update ) return;
     model->Q[1][3] = model->Q[3][1] = model->Q[0][2] = model->Q[2][0] = Parameters_value(model->rates, 0); // kappa
     model->Q[0][1] = model->Q[1][0] = model->Q[0][3] = model->Q[3][0] = model->Q[1][2] = model->Q[2][1] = model->Q[2][3] = model->Q[3][2] = 1.;
     
@@ -116,8 +115,65 @@ void hky_update_Q( SubstitutionModel *model ){
     }
     
     make_zero_rows( model->Q, 4);
-	normalize_Q( model->Q, model->get_frequencies(model), 4 );
-    model->need_update = false;
+	model->norm = normalize_Q( model->Q, model->get_frequencies(model), 4 );
+}
+
+void _hky_update_eigen(SubstitutionModel* m){
+	double kappa = Parameters_value(m->rates, 0);
+	
+	double pi_a = m->simplex->get_value(m->simplex, 0);
+	double pi_c = m->simplex->get_value(m->simplex, 1);
+	double pi_g = m->simplex->get_value(m->simplex, 2);
+	double pi_t = m->simplex->get_value(m->simplex, 3);
+	
+	double pi_r = pi_a + pi_g;
+	double pi_y = pi_c + pi_t;
+	double *v = m->eigendcmp->eval;
+	double **evec = m->eigendcmp->evec;
+	double **invevec = m->eigendcmp->Invevec;
+	
+	double beta = -1.0 / (2.0 * (pi_r*pi_y + kappa * (pi_a*pi_g + pi_c*pi_t)));
+	v[0] = 0;
+	v[1] = beta;
+	v[2] = beta*(1 + pi_y*(kappa - 1));
+	v[3] = beta*(1 + pi_r*(kappa - 1));
+	
+	for(int i = 0; i < 4; i++){
+		memset(invevec[i], 0, sizeof(double)*4);
+		memset(evec[i], 0, sizeof(double)*4);
+	}
+
+	invevec[0][0] = pi_a;
+	invevec[0][1] = pi_c;
+	invevec[0][2] = pi_g;
+	invevec[0][3] = pi_t;
+	
+	invevec[1][0] =  pi_a*pi_y;
+	invevec[1][1] = -pi_c*pi_r;
+	invevec[1][2] =  pi_g*pi_y;
+	invevec[1][3] = -pi_t*pi_r;
+	
+	invevec[2][1] =  1;
+	invevec[2][3] = -1;
+
+	invevec[3][0] =  1;
+	invevec[3][2] = -1;
+
+	evec[0][0] =  1;
+	evec[1][0] =  1;
+	evec[2][0] =  1;
+	evec[3][0] =  1;
+
+	evec[0][1]  =  1./pi_r;
+	evec[1][1]  = -1./pi_y;
+	evec[2][1]  =  1./pi_r;
+	evec[3][1]  = -1./pi_y;
+
+	evec[1][2]  =  pi_t/pi_y;
+	evec[3][2]  = -pi_c/pi_y;
+
+	evec[0][3] =  pi_g/pi_r;
+	evec[2][3] = -pi_a/pi_r;
 }
 
 void hky_update_Q2( SubstitutionModel *m ){
@@ -434,7 +490,66 @@ void _hky_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P ) {
     P[15] = r2 * (freqs[3] * (R/Y) * exp1 + (freqs[1]/Y) * k12 * exp21); //T, U
 }
 
-static void _hky_dQ(SubstitutionModel *m, int index, double* mat, double t){
+static void _hky_dQdp(SubstitutionModel *m, size_t index){
+	double *dQ = m->dQ;
+	size_t stateCount = m->nstate;
+	memset(dQ, 0.0, sizeof(double)*stateCount*stateCount);
+	
+	if(m->need_update){
+		hky_update_Q(m);
+		_hky_update_eigen(m);
+		m->need_update = false;
+	}
+
+	const double* frequencies = m->simplex->get_values(m->simplex);
+	double norm = m->norm;
+	double dnorm = 0;
+	if(index == 0){
+		dQ[0]  = -frequencies[2];
+		dQ[2]  =  frequencies[2];
+		dQ[5]  = -frequencies[3];
+		dQ[7]  =  frequencies[3];
+		dQ[8]  =  frequencies[0];
+		dQ[10] = -frequencies[0];
+		dQ[13] =  frequencies[1];
+		dQ[15] = -frequencies[1];
+		dnorm = normalizing_constant_Q_flat(dQ, frequencies, 4);
+	}
+	else{
+		dQ[2] = dQ[7] = dQ[8] = dQ[13] = Parameters_value(m->rates, 0); // kappa
+		dQ[1] = dQ[3] = dQ[4] = dQ[6] = dQ[9] = dQ[11] = dQ[12] = dQ[14] = 1.;
+		double dF[4];
+		m->simplex->gradient(m->simplex, index-1, dF);
+		build_Q_flat(dQ, dF, stateCount);
+		
+		for (size_t i = 0; i < stateCount; i++) {
+			dnorm -= dQ[i*stateCount+i]*frequencies[i] + m->Q[i][i]*norm*dF[i];
+		}
+	}
+
+	for(size_t i = 0; i < stateCount; i++){
+		for(size_t j = 0; j < stateCount; j++){
+			// (dQ . norm - norm_dQ . Q)/norm^2
+			dQ[i*stateCount + j] = (dQ[i*stateCount + j] - m->Q[i][j]*dnorm)/norm;
+		}
+	}
+}
+
+void _hky_dPdp(SubstitutionModel *m, int index, double* mat, double t){
+	if(m->need_update){
+		hky_update_Q(m);
+		_hky_update_eigen(m);
+		m->need_update = false;
+		m->dQ_need_update = true;
+	}
+	if(m->dQ_need_update){
+		_hky_dQdp(m, index);
+		m->dQ_need_update = false;
+	}
+	dPdp_with_dQdp(m, m->dQ, mat, t);
+}
+
+static void _hky_dPdp_old(SubstitutionModel *m, int index, double* mat, double t){
 	
 	double *x = m->dQ;
 	

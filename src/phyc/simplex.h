@@ -28,6 +28,7 @@ struct _Simplex{
 	void (*set_values)(Simplex*, const double*);
 	
 	void (*set_parameter_value)(Simplex*, int, double);
+	void (*gradient)(Simplex*, size_t, double*);
 	bool need_update;
 };
 

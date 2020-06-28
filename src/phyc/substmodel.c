@@ -429,6 +429,48 @@ const double * get_frequencies( SubstitutionModel *m ){
 }
 
 
+// not normalized
+void build_Q_flat(double* Q, const double* freqs, size_t stateCount){
+    for ( size_t i = 0; i < stateCount; i++ )  {
+        for ( size_t j = 0; j < stateCount; j++ ) {
+            Q[i*stateCount+j] *= freqs[j];
+        }
+    }
+    
+    for ( size_t i = 0; i < stateCount; i++ )  {
+		double sum = 0.0;
+		Q[i*stateCount+i] = 0;
+		for ( size_t j = 0; j < stateCount; j++ ) {
+			sum += Q[i*stateCount+j];
+		}
+		Q[i*stateCount+i] = -sum;
+	}
+}
+
+//MARK: derivatives
+
+void dPdp_with_dQdp(SubstitutionModel *m, double* dQ, double* dP, double t){
+	size_t stateCount = m->nstate;
+	double *v = m->eigendcmp->eval;
+	double* xx = dvector(stateCount*stateCount);
+	Matrix_mult3(dP, (const double**)m->eigendcmp->Invevec, m->dQ, stateCount, stateCount, stateCount, stateCount);
+	Matrix_mult4(xx, dP, (const double**)m->eigendcmp->evec, stateCount, stateCount, stateCount, stateCount);
+	// up to now the above operations can be recycled across branches
+	for(size_t i = 0; i < stateCount; i++){
+		for(size_t j = 0; j < stateCount; j++){
+			if(v[i] != v[j]){
+				dP[i*stateCount+j] = xx[i*stateCount+j]*(exp(v[i]*t) - exp(v[j]*t))/(v[i]-v[j]);
+			}
+			else{
+				dP[i*stateCount+j] = xx[i*stateCount+j]*t*exp(v[i]*t);
+			}
+		}
+	}
+	Matrix_mult3(xx, (const double**)m->eigendcmp->evec, dP, stateCount, stateCount, stateCount, stateCount);
+	Matrix_mult4(dP, xx, (const double**)m->eigendcmp->Invevec, stateCount, stateCount, stateCount, stateCount);
+	free(xx);
+}
+
 #pragma mark -
 #pragma mark Private functions
 
@@ -1046,17 +1088,32 @@ void update_eigen_system( SubstitutionModel *m ){
     
 }
 
-void normalize_Q( double **q, const double *freqs, const int dim ) {
+double normalizing_constant_Q( double **q, const double *freqs, size_t dim ) {
 	double subst = 0.0;
 	
-	for (int i = 0; i < dim; i++) {
+	for (size_t i = 0; i < dim; i++) {
 		subst += -q[i][i]*freqs[i];
 	}
-	for (int i = 0; i < dim; i++) {
-		for (int j = 0; j < dim; j++) {
-			q[i][j] /= subst;
+	return subst;
+}
+
+double normalizing_constant_Q_flat( double *q, const double *freqs, size_t dim ) {
+	double subst = 0.0;
+	
+	for (size_t i = 0; i < dim; i++) {
+		subst += -q[i*dim+i]*freqs[i];
+	}
+	return subst;
+}
+
+double normalize_Q( double **q, const double *freqs, size_t dim ) {
+	double normalizingConstant = normalizing_constant_Q(q, freqs, dim);
+	for (size_t i = 0; i < dim; i++) {
+		for (size_t j = 0; j < dim; j++) {
+			q[i][j] /= normalizingConstant;
 		}
 	}
+	return normalizingConstant;
 }
 
 void make_zero_rows( double **q, const int dim ) {

@@ -81,6 +81,8 @@ typedef struct SubstitutionModel{
 	unsigned gen_code;
     bool reversible;
     bool normalize;
+	 // keep track of normalizing constant for derivatives
+	double norm;
 	
 	void (*update_Q)( struct SubstitutionModel * );
 	
@@ -119,9 +121,14 @@ void update_eigen_system( SubstitutionModel *m );
 
 void check_frequencies( const double *freqs, const int dim );
 
+void build_Q_flat(double* Q, const double* freqs, size_t stateCount);
+
 void make_zero_rows( double **q, const int dim );
 
-void normalize_Q( double **m, const double *freqs, const int dim );
+double normalizing_constant_Q( double **q, const double *freqs, size_t dim );
+double normalizing_constant_Q_flat( double *q, const double *freqs, size_t dim );
+
+double normalize_Q( double **m, const double *freqs, size_t dim );
 
 Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash);
 
@@ -144,7 +151,9 @@ void free_SubstitutionModel( SubstitutionModel *m);
 
 double get_frequency( SubstitutionModel *m, int pos );
 
+//MARK: derivatives
 
+void dPdp_with_dQdp(SubstitutionModel *m, double* dQ, double* dP, double t);
 
 #pragma mark -
 #pragma mark misc

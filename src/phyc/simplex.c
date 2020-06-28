@@ -103,6 +103,53 @@ double get_value(Simplex* simplex, int i){
 	return simplex->values[i];
 }
 
+// dp/dphi_index
+void _simplex_gradient(Simplex* simplex, size_t index, double* gradient){
+	double* freqs = simplex->get_values(simplex);
+	memset(gradient, 0, sizeof(double)*simplex->K);
+	
+	double p = Parameters_value(simplex->parameters, index);
+	gradient[index] = freqs[index]/p;
+	double cum = gradient[index];
+	for (size_t i = index+1; i <simplex->K-1; i++) {
+//		for (size_t j = 0; j < i; j++) {
+//			gradient[i] -= gradient[j];
+//		}
+//		gradient[i] *= Parameters_value(simplex->parameters, i);
+		gradient[i] = -cum*Parameters_value(simplex->parameters, i);
+		cum += gradient[i];
+	}
+//	for (size_t j = 0; j < simplex->K-1; j++) {
+//		gradient[simplex->K-1] -= gradient[j];
+//	}
+	gradient[simplex->K-1] = -cum;
+}
+
+void _simplex4_gradient(Simplex* simplex, size_t index, double* gradient){
+	double* freqs = simplex->get_values(simplex);
+	double p0 = Parameters_value(simplex->parameters, 0);
+	double p1 = Parameters_value(simplex->parameters, 1);
+	double p2 = Parameters_value(simplex->parameters, 2);
+	if (index == 0) {
+		gradient[0] = 1.0;
+		gradient[1] = -p1;
+		gradient[2] = -p2 + p1*p2;
+		gradient[3] = -1.0 + p1 - gradient[2];
+	}
+	else if (index == 1) {
+		gradient[0] = 0;
+		gradient[1] = 1.0 - p0; //freqs[1]/p1;
+		gradient[2] = -(1.0 - p0)*p2;
+		gradient[3] = -1.0 + p0 - gradient[2];
+	}
+	else if (index == 2) {
+		gradient[0] = 0;
+		gradient[1] = 0;
+		gradient[2] = freqs[2]/p2; //((p0 - 1)*p1 - p0 + 1);
+		gradient[3] = -gradient[2];
+	}
+}
+
 // x is a simplex of dimension K
 //Simplex* new_Simplex_with_parameters(const Parameters *x){
 //	Simplex* simplex = (Simplex*)malloc(sizeof(Simplex));
@@ -150,6 +197,7 @@ Simplex* new_Simplex_with_values(const char* name, const double *x, size_t K){
 	simplex->get_value = get_value;
 	simplex->set_values = set_values;
 	simplex->set_parameter_value = set_parameter_value;
+	simplex->gradient = _simplex_gradient;
 	simplex->need_update = true;
 	return simplex;
 }
@@ -181,6 +229,7 @@ Simplex* new_Simplex(const char* name, size_t K){
 	simplex->get_value = get_value;
 	simplex->set_values = set_values;
 	simplex->set_parameter_value = set_parameter_value;
+	simplex->gradient = _simplex_gradient;
 	simplex->need_update = true;
 	return simplex;
 }
