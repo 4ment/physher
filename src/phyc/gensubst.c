@@ -84,7 +84,8 @@ void _nonreversible_update_Q( SubstitutionModel *m ){
     }
     
     make_zero_rows( m->Q, m->nstate);
-    if(m->normalize)normalize_Q( m->Q, freqs, m->nstate );
+	m->normalize = 1;
+    if(m->normalize) m->norm = normalize_Q( m->Q, freqs, m->nstate );
     
     m->need_update = false;
 }
@@ -122,7 +123,8 @@ void _nonreversible_update_Q2( SubstitutionModel *m ){
     }
     
     make_zero_rows( m->Q, m->nstate);
-    if(m->normalize)normalize_Q( m->Q, freqs, m->nstate );
+	m->norm = 1;
+    if(m->normalize)m->norm = normalize_Q( m->Q, freqs, m->nstate );
     
     m->need_update = false;
 }
@@ -182,6 +184,7 @@ void _reversible_update_Q( SubstitutionModel *m ){
 	const unsigned* model = m->model->values;
 	double temp;
 	int index = 0;
+	m->normalize = 1;
 	
 	if(m->simplex != NULL){
 		const double* freqs = m->simplex->get_values(m->simplex);
@@ -201,7 +204,7 @@ void _reversible_update_Q( SubstitutionModel *m ){
 		}
 		make_zero_rows( m->Q, m->nstate);
 		if(m->normalize)
-			normalize_Q( m->Q, freqs, m->nstate );
+			m->normalize = normalize_Q( m->Q, freqs, m->nstate );
 	}
 	else{
 		for ( int i = 0; i < m->nstate; i++ )  {

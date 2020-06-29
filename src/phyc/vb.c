@@ -120,6 +120,7 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
 
     var->sample = NULL;
     var->var_parameters = NULL;
+	var->parameters = new_Parameters(2);
 
     var->simplex_count = 0;
     var->simplex_parameter_count = 0;
@@ -158,7 +159,11 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
 
     var->posterior = NULL; // set by variational_t
     json_node* x_node = get_json_node(node, "x");
-    var->parameters = distmodel_get_x(id, x_node, hash);
+	if(x_node != NULL){
+		Parameters* parameters = distmodel_get_x(id, x_node, hash);
+		Parameters_add_parameters(var->parameters, parameters);
+		free_Parameters(parameters);
+	}
     
     var->var_parameters = malloc(parameters_node->child_count*sizeof(Parameters*));
     var->var_parameters_count = parameters_node->child_count;
