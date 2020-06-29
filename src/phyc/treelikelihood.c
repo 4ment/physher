@@ -275,16 +275,26 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 	else if(p->model == MODEL_SUBSTITUTION){
 		// Substitution model parameter
 		int idx = 0;
-		for (; idx < Parameters_count(tlk->sm->m->rates); idx++) {
-			if(Parameters_at(tlk->sm->m->rates, idx) == p) break;
+		size_t rateCount;
+		if(tlk->sm->m->rates_simplex == NULL){
+			rateCount = Parameters_count(tlk->sm->m->rates);
+			for (; idx < rateCount; idx++) {
+				if(Parameters_at(tlk->sm->m->rates, idx) == p) break;
+			}
 		}
-		if(idx >= Parameters_count(tlk->sm->m->rates)){
+		else{
+			rateCount = tlk->sm->m->rates_simplex->K - 1;
+			for (; idx < rateCount; idx++) {
+				if(Parameters_at(tlk->sm->m->rates_simplex->parameters, idx) == p) break;
+			}
+		}
+		if(idx >= rateCount){
 			for (int ii = 0; ii < Parameters_count(tlk->sm->m->simplex->parameters); idx++, ii++) {
 				if(Parameters_at(tlk->sm->m->simplex->parameters, ii) == p) break;
 			}
 		}
 		
-		if(idx < Parameters_count(tlk->sm->m->rates)+Parameters_count(tlk->sm->m->simplex->parameters)){
+		if(idx < rateCount + Parameters_count(tlk->sm->m->simplex->parameters)){
 			dlogP = calculate_dlnl_dQ( tlk, idx, pattern_likelihoods );
 //			printf("dlogP: %f finite diff: %f (%d %s)\n", dlogP, Model_first_derivative(self, p, 0.0001), idx, p->name);
 		}
@@ -2367,40 +2377,30 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
     
     double dlnldQ = 0;
     tlk->sm->m->dQ_need_update = true;
+	
+	size_t rateCount = tlk->sm->m->rates_simplex == NULL ? Parameters_count(tlk->sm->m->rates) : tlk->sm->m->rates_simplex->K - 1;
     
-    const int freqIndex = index - Parameters_count(tlk->sm->m->rates);
 	const double* freqs = tlk->get_root_frequencies(tlk);
-	const double phi1 = Parameters_value(tlk->sm->m->simplex->parameters, 0);
-	const double phi2 = Parameters_value(tlk->sm->m->simplex->parameters, 1);
-	const double phi3 = Parameters_value(tlk->sm->m->simplex->parameters, 2);
 	
     // Frequencies
-    if(index >= Parameters_count(tlk->sm->m->rates)){
-		double dphi1[4] = {1, -phi2, (phi2-1)*phi3, -(phi2 - 1)*phi3 + phi2 - 1};
-		double dphi2[4] = {0, -phi1+1, (phi1-1.0)*phi3, -(phi1 - 1)*phi3 + phi1 - 1};
-		double dphi3[4] = {0, 0, (phi1 - 1)*phi2 - phi1 + 1, -(phi1 - 1)*phi2 + phi1 - 1};
-		double* dphi;
-		if (freqIndex == 0) {
-			dphi = dphi1;
-		}
-		else if (freqIndex == 1) {
-			dphi = dphi2;
-		}
-		else{
-			dphi = dphi3;
+    if(index >= rateCount){
+		size_t freqIndex = index - rateCount;
+		if(freqs != tlk->root_frequencies){
+			double* dphi = dvector(tlk->sm->nstate);
+			tlk->sm->m->simplex->gradient(tlk->sm->m->simplex, freqIndex, dphi);
+			
+			//calculate_dpartials_dfreqs(tlk, index, dpartials, pattern_likelihoods);
+			int v = 0;
+			for ( int k = 0; k < patternCount; k++ ) {
+				pattern_dlnl[k] = 0;
+				for (int jj = 0; jj < nstate; jj++) {
+					pattern_dlnl[k] += dphi[jj]*tlk->root_partials[v];
+					v++;
+				}
+			}
+			free(dphi);
 		}
 		
-        //calculate_dpartials_dfreqs(tlk, index, dpartials, pattern_likelihoods);
-        int v = 0;
-        for ( int k = 0; k < patternCount; k++ ) {
-            pattern_dlnl[k] = 0;
-            for (int jj = 0; jj < nstate; jj++) {
-                    pattern_dlnl[k] += dphi[jj]*tlk->root_partials[v];
-				
-                v++;
-            }
-        }
-        
         for ( int j = 0; j < Tree_node_count(tlk->tree); j++ ) {
             Node *n = nodes[j];
             const int nodeId = Node_id(n);
@@ -2438,7 +2438,7 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 			tlk->calculate_branch_likelihood(tlk, spare_partials, tlk->upper_partial_indexes[nodeId], nodeId, tempMatrixId );
 			tlk->integrate_partials(tlk, spare_partials, tlk->sm->get_proportions(tlk->sm), root_partials );
 			
-            v = 0;
+            size_t v = 0;
             for ( int k = 0; k < patternCount; k++ ) {
                 for (int jj = 0; jj < nstate; jj++) {
 					pattern_dlnl[k] += freqs[jj]*root_partials[v];

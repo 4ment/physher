@@ -46,6 +46,7 @@
  
  ***************/
 
+static void _gtr_dPdp(SubstitutionModel *m, int index, double* mat, double t);
 
 /*! Initialize a general time reversible matrix.
  *  Return a Q matrix (pi+freq)
@@ -98,7 +99,7 @@ SubstitutionModel * new_GTR_with_parameters( Simplex* freqs, Parameter* ac, Para
 	
 	m->update_Q = gtr_update_Q;
 	
-	m->dPdp = gtr_dQ;
+	m->dPdp = _gtr_dPdp;
 	m->dQ = dvector(16);
 	m->relativeTo = -1;
 	
@@ -148,7 +149,7 @@ SubstitutionModel * new_GTR_with_simplexes( Simplex* freqs, Simplex* rates){
 	
 	m->update_Q = gtr_simplexes_update_Q;
 	
-	m->dPdp = gtr_dQ;
+	m->dPdp = _gtr_dPdp;
 	m->dQ = dvector(16);
 	
 	m->rates_simplex = rates;
@@ -174,7 +175,7 @@ void gtr_update_Q( SubstitutionModel *m ){
 		}
 	}
 	make_zero_rows( m->Q, 4);
-	normalize_Q( m->Q, freqs, 4 );
+	m->norm = normalize_Q( m->Q, freqs, 4 );
 	m->need_update = false;
 }
 
@@ -191,7 +192,7 @@ void gtr_simplexes_update_Q( SubstitutionModel *m ){
 		}
 	}
 	make_zero_rows( m->Q, 4);
-	normalize_Q( m->Q, freqs, 4 );
+	m->norm = normalize_Q( m->Q, freqs, 4 );
 	m->need_update = false;
 }
 
@@ -222,244 +223,92 @@ void nuc_sym_update_Q_unnormalized( SubstitutionModel *m, double* mat ){
 	}
 }
 
-void gtr_dQ(SubstitutionModel *m, int index, double* mat, double t){
-	
-	double *x = m->dQ;
-	
-	if(m->need_update){
-		m->update_Q(m);
-		update_eigen_system(m);
-	}
-	double* Q = dvector(16);
-	
-	nuc_sym_update_Q_unnormalized(m, Q);
-	
-	if(m->dQ_need_update){
-		const double a = Parameters_value(m->rates, 0);
-		const double b = Parameters_value(m->rates, 1);
-		const double c = Parameters_value(m->rates, 2);
-		const double d = Parameters_value(m->rates, 3);
-		const double e = Parameters_value(m->rates, 4);
-		
-		const double pi_a = m->simplex->get_value(m->simplex, 0);
-		const double pi_c = m->simplex->get_value(m->simplex, 1);
-		const double pi_g = m->simplex->get_value(m->simplex, 2);
-		const double pi_t = m->simplex->get_value(m->simplex, 3);
-		
-		const double phi1 = Parameters_value(m->simplex->parameters, 0);
-		const double phi2 = Parameters_value(m->simplex->parameters, 1);
-		const double phi3 = Parameters_value(m->simplex->parameters, 2);
-		
-		const double norm = (a*pi_c + b*pi_g + c*pi_t)*pi_a + (a*pi_a + d*pi_g + e*pi_t)*pi_c + (b*pi_a + d*pi_c + pi_t)*pi_g + (c*pi_a + e*pi_c + pi_g)*pi_t;
-		const double norm2 = norm*norm;
-		
-		memset(x, 0, sizeof(double)*16);
-		// derivative of norm with respect to a
-		if(index == 0){
-			x[0] = 2.0*(a*pi_c + b*pi_g + c*pi_t)*pi_a*pi_c/norm2 - pi_c/norm;
-			x[1] = -(2.0*a*pi_a*pi_c*pi_c)/norm2 + pi_c/norm;
-			x[2] = -(2.0*b*pi_a*pi_c*pi_g)/norm2;
-			x[3] = -(2.0*c*pi_a*pi_c*pi_t)/norm2;
-			
-			x[4] = -2.0*a*pi_a*pi_a*pi_c/norm2 + pi_a/norm;
-			x[5] = 2.0*(a*pi_a + d*pi_g + e*pi_t)*pi_a*pi_c/norm2 - pi_a/norm;
-			x[6] = -2.0*d*pi_a*pi_c*pi_g/norm2;
-			x[7] = -2.0*e*pi_a*pi_c*pi_t/norm2;
-			
-			x[8] = -2.0*b*pi_a*pi_a*pi_c/norm2;
-			x[9] = -2.0*d*pi_a*pi_c*pi_c/norm2;
-			x[10] = 2.0*(b*pi_a + d*pi_c + pi_t)*pi_a*pi_c/norm2;
-			x[11] = -2.0*pi_a*pi_c*pi_t/norm2;
-			
-			x[12] = -2.0*c*pi_a*pi_a*pi_c/norm2;
-			x[13] = -2.0*e*pi_a*pi_c*pi_c/norm2;
-			x[14] = -2.0*pi_a*pi_c*pi_g/norm2;
-			x[15] = 2.0*(c*pi_a + e*pi_c + pi_g)*pi_a*pi_c/norm2;
-		}
-		// derivative of norm with respect to b
-		else if(index == 1){
-			x[0] = 2.0*(a*pi_c + b*pi_g + c*pi_t)*pi_a*pi_g/norm2 - pi_g/norm;
-			x[1] = -2.0*a*pi_a*pi_c*pi_g/norm2;
-			x[2] = -2.0*b*pi_a*pi_g*pi_g/norm2 + pi_g/norm;
-			x[3] = -2*c*pi_a*pi_g*pi_t/norm2;
-			
-			x[4] = -2.0*a*pi_a*pi_a*pi_g/norm2;
-			x[5] = 2.0*(a*pi_a + d*pi_g + e*pi_t)*pi_a*pi_g/norm2;
-			x[6] = -2.0*d*pi_a*pi_g*pi_g/norm2;
-			x[7] = -2.0*e*pi_a*pi_g*pi_t/norm2;
-			
-			x[8] = -2.0*b*pi_a*pi_a*pi_g/norm2 + pi_a/norm;
-			x[9] = -2.0*d*pi_a*pi_c*pi_g/norm2;
-			x[10] = 2.0*(b*pi_a + d*pi_c + pi_t)*pi_a*pi_g/norm2 - pi_a/norm;
-			x[11] = -2.0*pi_a*pi_g*pi_t/norm2;
-			
-			x[12] = -2*c*pi_a*pi_a*pi_g/norm2;
-			x[13] = -2*e*pi_a*pi_c*pi_g/norm2;
-			x[14] = -2*pi_a*pi_g*pi_g/norm2;
-			x[15] = 2*(c*pi_a + e*pi_c + pi_g)*pi_a*pi_g/norm2;
-		}
-		// derivative of norm with respect to c
-		else if(index == 2){
-			x[0] = 2.0*(a*pi_c + b*pi_g + c*pi_t)*pi_a*pi_t/norm2 - pi_t/norm;
-			x[1] = -2.0*a*pi_a*pi_c*pi_t/norm2;
-			x[2] = -2.0*b*pi_a*pi_g*pi_t/norm2;
-			x[3] = -2.0*c*pi_a*pi_t*pi_t/norm2 + pi_t/norm;
-			
-			x[4] = -2.0*a*pi_a*pi_a*pi_t/norm2;
-			x[5] = 2.0*(a*pi_a + d*pi_g + e*pi_t)*pi_a*pi_t/norm2;
-			x[6] = -2.0*d*pi_a*pi_g*pi_t/norm2;
-			x[7] = -2.0*e*pi_a*pi_t*pi_t/norm2;
-			
-			x[8] = -2.0*b*pi_a*pi_a*pi_t/norm2;
-			x[9] = -2.0*d*pi_a*pi_c*pi_t/norm2;
-			x[10] = 2.0*(b*pi_a + d*pi_c + pi_t)*pi_a*pi_t/norm2;
-			x[11] = -2.0*pi_a*pi_t*pi_t/norm2;
-			
-			x[12] = -2.0*c*pi_a*pi_a*pi_t/norm2 + pi_a/norm;
-			x[13] = -2.0*e*pi_a*pi_c*pi_t/norm2;
-			x[14] = -2.0*pi_a*pi_g*pi_t/norm2;
-			x[15] = 2.0*(c*pi_a + e*pi_c + pi_g)*pi_a*pi_t/norm2 - pi_a/norm;
-		}
-		// derivative of norm with respect to d
-		else if(index == 3){
-			x[0] = 2.0*(a*pi_c + b*pi_g + c*pi_t)*pi_c*pi_g/norm2;
-			x[1] = -2.0*a*pi_c*pi_c*pi_g/norm2;
-			x[2] = -2.0*b*pi_c*pi_g*pi_g/norm2;
-			x[3] = -2.0*c*pi_c*pi_g*pi_t/norm2;
-			
-			x[4] = -2.0*a*pi_a*pi_c*pi_g/norm2;
-			x[5] = 2.0*(a*pi_a + d*pi_g + e*pi_t)*pi_c*pi_g/norm2 - pi_g/norm;
-			x[6] = -2.0*d*pi_c*pi_g*pi_g/norm2 + pi_g/norm;
-			x[7] = -2.0*e*pi_c*pi_g*pi_t/norm2;
-			
-			x[8] = -2.0*b*pi_a*pi_c*pi_g/norm2;
-			x[9] = -2.0*d*pi_c*pi_c*pi_g/norm2 + pi_c/norm;
-			x[10] = 2.0*(b*pi_a + d*pi_c + pi_t)*pi_c*pi_g/norm2 - pi_c/norm;
-			x[11] = -2.0*pi_c*pi_g*pi_t/norm2;
-			
-			x[12] = -2.0*c*pi_a*pi_c*pi_g/norm2;
-			x[13] = -2.0*e*pi_c*pi_c*pi_g/norm2;
-			x[14] = -2.0*pi_c*pi_g*pi_g/norm2;
-			x[15] = 2.0*(c*pi_a + e*pi_c + pi_g)*pi_c*pi_g/norm2;
-		}
-		// derivative of norm with respect to e
-		else if(index == 4){
-			x[0] = 2*(a*pi_c + b*pi_g + c*pi_t)*pi_c*pi_t/norm2;
-			x[1] = -2*a*pi_c*pi_c*pi_t/norm2;
-			x[2] = -2*b*pi_c*pi_g*pi_t/norm2;
-			x[3] = -2*c*pi_c*pi_t*pi_t/norm2;
-			
-			x[4] = -2*a*pi_a*pi_c*pi_t/norm2;
-			x[5] = 2*(a*pi_a + d*pi_g + e*pi_t)*pi_c*pi_t/norm2 - pi_t/norm;
-			x[6] = -2*d*pi_c*pi_g*pi_t/norm2;
-			x[7] = -2*e*pi_c*pi_t*pi_t/norm2 + pi_t/norm;
-			
-			x[8] = -2*b*pi_a*pi_c*pi_t/norm2;
-			x[9] = -2*d*pi_c*pi_c*pi_t/norm2;
-			x[10] = 2*(b*pi_a + d*pi_c + pi_t)*pi_c*pi_t/norm2;
-			x[11] = -2*pi_c*pi_t*pi_t/norm2;
-			
-			x[12] = -2*c*pi_a*pi_c*pi_t/norm2;
-			x[13] = -2*e*pi_c*pi_c*pi_t/norm2 + pi_c/norm;
-			x[14] = -2*pi_c*pi_g*pi_t/norm2;
-			x[15] = 2*(c*pi_a + e*pi_c + pi_g)*pi_c*pi_t/norm2 - pi_c/norm;
-		}
-		// dQdphi1
-		else if(index == 5){
-			double dnorm = -4.0*(e*phi1 - e)*phi2*phi2 - 4.0*((phi1 - 1.0)*phi2*phi2 - 2.0*(phi1 - 1.0)*phi2 + phi1 - 1.0)*phi3*phi3 - 4.0*c*phi1 - 2.0*(2.0*(a - c - e)*phi1 - a + c + 2.0*e)*phi2 - 2.0*(2.0*((d - e - 1.0)*phi1 - d + e + 1.0)*phi2*phi2 + 2.0*(b - c - 1.0)*phi1 - (2.0*(b - c + d - e - 2.0)*phi1 - b + c - 2.0*d + 2.0*e + 4.0)*phi2 - b + c + 2.0)*phi3 + 2.0*c;
-			double ratio = dnorm/norm2;
-			x[0] = (-b*(phi2 - 1)*phi3 + ((phi2 - 1)*phi3 - phi2 + 1)*c + a*phi2)/norm - ratio*Q[0];
-			x[1] = (-a*phi2)/norm - ratio*Q[1];
-			x[2] = (b*(phi2 - 1)*phi3)/norm - ratio*Q[2];
-			x[3] = (-((phi2 - 1)*phi3 - phi2 + 1)*c)/norm - ratio*Q[3];
-			
-			x[4] = a/norm - ratio*Q[4];
-			x[5] = (-d*(phi2 - 1)*phi3 + ((phi2 - 1)*phi3 - phi2 + 1)*e - a)/norm - ratio*Q[5];
-			x[6] = (d*(phi2 - 1)*phi3)/norm - ratio*Q[6];
-			x[7] = (-((phi2 - 1)*phi3 - phi2 + 1)*e)/norm - ratio*Q[7];
-			
-			x[8] = b/norm - ratio*Q[8];
-			x[9] = -d*phi2/norm - ratio*Q[9];
-			x[10] = (d*phi2 + (phi2 - 1)*phi3 - b - phi2 + 1)/norm - ratio*Q[10];
-			x[11] = (-(phi2 - 1)*phi3 + phi2 - 1)/norm - ratio*Q[11];
-			
-			x[12] = c/norm - ratio*Q[12];
-			x[13] = -e*phi2/norm - ratio*Q[13];
-			x[14] = (phi2 - 1)*phi3/norm - ratio*Q[14];
-			x[15] = (e*phi2 - (phi2 - 1)*phi3 - c)/norm - ratio*Q[15];
-		}
-		// dQdphi2
-		else if(index == 6){
-			const double dnorm = -2*(a - c - e)*phi1*phi1 + 4*(phi1*phi1 - (phi1*phi1 - 2*phi1 + 1)*phi2 - 2*phi1 + 1)*phi3*phi3 + 2*(a - c - 2*e)*phi1 - 4*(e*phi1*phi1 - 2*e*phi1 + e)*phi2 + 2*((b - c + d - e - 2)*phi1*phi1 - (b - c + 2*d - 2*e - 4)*phi1 - 2*((d - e - 1)*phi1*phi1 - 2*(d - e - 1)*phi1 + d - e - 1)*phi2 + d - e - 2)*phi3 + 2*e;
-			double ratio = dnorm/norm2;
-			x[0] = (-b*(phi1 - 1)*phi3 + ((phi1 - 1)*phi3 - phi1 + 1)*c + a*(phi1 - 1))/norm - ratio*Q[0];
-			x[1] = -a*(phi1 - 1)/norm - ratio*Q[1];
-			x[2] = b*(phi1 - 1)*phi3/norm - ratio*Q[2];
-			x[3] = -((phi1 - 1)*phi3 - phi1 + 1)*c/norm - ratio*Q[3];
-			
-			x[4] = -ratio*Q[4];
-			x[5] = (-d*(phi1 - 1)*phi3 + ((phi1 - 1)*phi3 - phi1 + 1)*e)/norm - ratio*Q[5];
-			x[6] = d*(phi1 - 1)*phi3/norm - ratio*Q[6];
-			x[7] = -((phi1 - 1)*phi3 - phi1 + 1)*e/norm - ratio*Q[7];
-			
-			x[8] = -ratio*Q[8];
-			x[9] = -d*(phi1 - 1)/norm - ratio*Q[9];
-			x[10] = (d*(phi1 - 1) + (phi1 - 1)*phi3 - phi1 + 1)/norm - ratio*Q[10];
-			x[11] = (-(phi1 - 1)*phi3 + phi1 - 1)/norm - ratio*Q[11];
-			
-			x[12] = -ratio*Q[12];
-			x[13] = -e*(phi1 - 1)/norm - ratio*Q[13];
-			x[14] = (phi1 - 1)*phi3/norm - ratio*Q[14];
-			x[15] = (e*(phi1 - 1) - (phi1 - 1)*phi3)/norm - ratio*Q[15];
-			
-		}// dQdphi3
-		else if(index == 7){
-			const double dnorm = -2*(b - c - 1)*phi1*phi1 - 2*((d - e - 1)*phi1*phi1 - 2*(d - e - 1)*phi1 + d - e - 1)*phi2*phi2 + 2*(b - c - 2)*phi1 + 2*((b - c + d - e - 2)*phi1*phi1 - (b - c + 2*d - 2*e - 4)*phi1 + d - e - 2)*phi2 - 4*((phi1*phi1 - 2*phi1 + 1)*phi2*phi2 + phi1*phi1 - 2*(phi1*phi1 - 2*phi1 + 1)*phi2 - 2*phi1 + 1)*phi3 + 2;
-			const double ratio = dnorm/norm2;
-			x[0] = (-((phi1 - 1)*phi2 - phi1 + 1)*b + ((phi1 - 1)*phi2 - phi1 + 1)*c)/norm - ratio*Q[0];
-			x[1] = - ratio*Q[1];
-			x[2] = ((phi1 - 1)*phi2 - phi1 + 1)*b/norm - ratio*Q[2];
-			x[3] = -((phi1 - 1)*phi2 - phi1 + 1)*c/norm - ratio*Q[3];
-			
-			x[4] = - ratio*Q[4];
-			x[5] = (-((phi1 - 1)*phi2 - phi1 + 1)*d + ((phi1 - 1)*phi2 - phi1 + 1)*e)/norm - ratio*Q[5];
-			x[6] = ((phi1 - 1)*phi2 - phi1 + 1)*d/norm - ratio*Q[6];
-			x[7] = -((phi1 - 1)*phi2 - phi1 + 1)*e/norm - ratio*Q[7];
-			
-			x[8] = - ratio*Q[8];
-			x[9] = - ratio*Q[9];
-			x[10] = ((phi1 - 1)*phi2 - phi1 + 1)/norm - ratio*Q[10];
-			x[11] = (-(phi1 - 1)*phi2 + phi1 - 1)/norm - ratio*Q[11];
-			
-			x[12] = - ratio*Q[12];
-			x[13] = - ratio*Q[13];
-			x[14] = ((phi1 - 1)*phi2 - phi1 + 1)/norm - ratio*Q[14];
-			x[15] = (-(phi1 - 1)*phi2 + phi1 - 1)/norm - ratio*Q[15];
-		}
-		else{
-			exit(1);
-		}
-		//m->dQ_need_update = false;
-	}
-	
-	free(Q);
-	
-	const double *v = m->eigendcmp->eval;
-	double xx[16];
-	Matrix_mult3(mat, (const double**)m->eigendcmp->Invevec, x, 4,4,4,4);
-	Matrix_mult4(xx, mat, (const double**)m->eigendcmp->evec, 4,4,4,4);
-	// up to now the above operations can be recycled across branches
-	for(int i = 0; i < 4; i++){
-		for(int j = 0; j < 4; j++){
-			if(v[i] != v[j]){
-				mat[i*4+j] = xx[i*4+j]*(exp(v[i]*t) - exp(v[j]*t))/(v[i]-v[j]);
-			}
-			else{
-				mat[i*4+j] = xx[i*4+j]*t*exp(v[i]*t);
-			}
+void gtr_setup_rates(double* Q, const double* rates, size_t dim){
+	size_t index = 0;
+	for (size_t i = 0; i < dim; i++) {
+		Q[i*dim+i] = 0;
+		for (size_t j = i + 1; j < dim; j++) {
+			Q[i*dim+j] = Q[j*dim+i] = rates[index++];
 		}
 	}
-	Matrix_mult3(xx, (const double**)m->eigendcmp->evec, mat, 4,4,4,4);
-	Matrix_mult4(mat, xx, (const double**)m->eigendcmp->Invevec, 4,4,4,4);
 }
 
+void gtr_setup_rates_relative(double* Q, Parameters* rates, size_t dim, size_t relativeTo){
+	size_t index = 0;
+	double rate;
+	for (size_t i = 0; i < dim; i++) {
+		Q[i*dim+i] = 0;
+		for (size_t j = i + 1; j < dim; j++) {
+			if(relativeTo != index){
+				rate = Parameters_value(rates, index++);
+			}
+			else{
+				rate = 1;
+			}
+			Q[i*dim+j] = Q[j*dim+i] = rate;
+		}
+	}
+}
+
+static void _gtr_dQdp(SubstitutionModel *m, size_t index){
+	double *dQ = m->dQ;
+	size_t stateCount = m->nstate;
+	memset(dQ, 0.0, sizeof(double)*stateCount*stateCount);
+	if(m->need_update){
+		m->update_Q(m);
+	}
+
+	const double* frequencies = m->simplex->get_values(m->simplex);
+	double norm = m->norm;
+	double dnorm = 0;
+	if(m->rates_simplex != NULL && index < m->rates_simplex->K - 1){
+		double dR[6];
+		m->rates_simplex->gradient(m->rates_simplex, index, dR);
+		gtr_setup_rates(dQ, dR, stateCount);
+		build_Q_flat(dQ, frequencies, stateCount);
+		dnorm = normalizing_constant_Q_flat(dQ, frequencies, stateCount);
+	}
+	else if(m->rates_simplex == NULL && index < Parameters_count(m->rates)){
+		double dR[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+		dR[index] = 1.0;
+		gtr_setup_rates(dQ, dR, stateCount);
+		build_Q_flat(dQ, frequencies, stateCount);
+		dnorm = normalizing_constant_Q_flat(dQ, frequencies, stateCount);
+	}
+	else{
+		size_t rateCount = m->rates_simplex == NULL ? Parameters_count(m->rates) : m->rates_simplex->K - 1;
+		if(m->rates_simplex != NULL){
+			const double* rates = m->rates_simplex->get_values(m->rates_simplex);
+			gtr_setup_rates(dQ, rates, stateCount);
+		}
+		else{
+			gtr_setup_rates_relative(dQ, m->rates, stateCount, m->relativeTo);
+		}
+		double dF[4];
+		m->simplex->gradient(m->simplex, index - rateCount, dF);
+		build_Q_flat(dQ, dF, stateCount);
+		
+		for (size_t i = 0; i < stateCount; i++) {
+			dnorm -= dQ[i*stateCount+i]*frequencies[i] + m->Q[i][i]*norm*dF[i];
+		}
+	}
+
+	for(size_t i = 0; i < stateCount; i++){
+		for(size_t j = 0; j < stateCount; j++){
+			// (dQ . norm - norm_dQ . Q)/norm^2
+			dQ[i*stateCount + j] = (dQ[i*stateCount + j] - m->Q[i][j]*dnorm)/norm;
+		}
+	}
+}
+
+static void _gtr_dPdp(SubstitutionModel *m, int index, double* mat, double t){
+	if(m->need_update){
+		m->update_Q(m);
+		m->dQ_need_update = true;
+	}
+	if(m->dQ_need_update){
+		_gtr_dQdp(m, index);
+		m->dQ_need_update = false;
+	}
+	dPdp_with_dQdp(m, m->dQ, mat, t);
+}
