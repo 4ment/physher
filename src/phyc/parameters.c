@@ -875,6 +875,7 @@ static double _fulllogP(Model *model){return model->logP(model);}
 static double _dlogP(Model *model, const Parameter* p){return 0;}
 static double _d2logP(Model *model, const Parameter* p){return 0;}
 static double _ddlogP(Model *self, const Parameter* p1, const Parameter* p2){return 0;}
+static void _dummy_prepare_gradient(Model *model, const Parameters* ps){ }
 static void _dummy_reset(Model* m){}
 static void _dummy_restore(Model* m){}
 static void _dummy_store(Model* m){}
@@ -923,6 +924,7 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->sample_evaluate = _dummy_sample_evaluate;
 	model->samplable = false;
 	model->print = NULL;
+	model->prepare_gradient = _dummy_prepare_gradient;
     model->jsonize = _dummy_jsonize;
 	return model;
 }

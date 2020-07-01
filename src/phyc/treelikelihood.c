@@ -65,6 +65,8 @@ void calculate_dldp_uppper_reparam( SingleTreeLikelihood *tlk, Node *node, doubl
 double calculate_dl_dr(SingleTreeLikelihood* tlk, double* pattern_likelihoods);
 double calculate_dl_dr_discrete(SingleTreeLikelihood* tlk, Node* node, double* pattern_likelihoods);
 
+void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads );
+
 #pragma mark -
 #pragma mark TreeLikelihoodModel
 
@@ -143,6 +145,124 @@ double _singleTreeLikelihood_full_logP(Model *self){
 	SingleTreeLikelihood_update_all_nodes(tlk);
 	self->lp = tlk->calculate(tlk);
 	return self->lp;
+}
+
+// Set flags for gradient calculation and initialize gradient vector
+void _model_prepare_gradient(Model* self, Parameters*ps){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+	
+	size_t paramCount = Parameters_count(ps);
+	bool prepare_tree = false;
+	bool prepare_subsitution_model = false;
+	bool prepare_site_model = false;
+	bool prepare_branch_model = false;
+	tlk->prepared_gradient = 0;
+	double gradient_length = 0;
+	for (size_t i = 0; i < paramCount; i++) {
+		Parameter* p = Parameters_at(ps, i);
+		if (p->model == MODEL_TREE && !prepare_tree) {
+			prepare_tree = true;
+			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_TREE;
+			gradient_length += Tree_node_count(tlk->tree) - 1;
+		}
+		else if (p->model == MODEL_SITEMODEL && !prepare_site_model) {
+			prepare_site_model = true;
+			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_SITE_MODEL;
+			gradient_length += Parameters_count(tlk->sm->rates);
+		}
+		else if (p->model == MODEL_BRANCHMODEL && !prepare_branch_model) {
+			prepare_branch_model = true;
+			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_BRANCH_MODEL;
+			gradient_length += Parameters_count(tlk->bm->rates);
+		}
+		else if (p->model == MODEL_SUBSTITUTION && !prepare_subsitution_model) {
+			prepare_subsitution_model = true;
+			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;
+			gradient_length += tlk->sm->m->rates_simplex == NULL ? Parameters_count(tlk->sm->m->rates) : tlk->sm->m->rates_simplex->K - 1;
+			gradient_length += tlk->sm->m->simplex->K - 1;
+		}
+		else{
+			fprintf(stderr, "Parameter not recognized in treelikleihood _model_prepare_gradient\n%s\n", Parameter_name(p));
+			exit(3);
+		}
+		
+		if(tlk->gradient == NULL){
+			tlk->gradient = calloc(gradient_length, sizeof(double));
+			tlk->gradient_length = gradient_length;
+		}
+		else if (tlk->gradient_length < gradient_length) {
+			tlk->gradient = realloc(tlk->gradient, sizeof(double)* gradient_length);
+			tlk->gradient_length = gradient_length;
+		}
+	}
+	if(tlk->gradient_length > 0){
+		double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
+				
+		if(tlk->update_upper){
+			double logP = tlk->calculate(tlk); // make sure it is updated
+			if (isnan(logP) || isinf(logP)) {
+	//				return logP;
+			}
+			update_upper_partials(tlk, Tree_root(tlk->tree));
+			
+			for (int i = 0; i < tlk->sp->count; i++) {
+				pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
+			}
+			tlk->update_upper = false;
+		}
+		SingleTreeLikelihood_gradient(tlk, tlk->gradient);
+	}
+}
+
+double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+	int prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE;
+	int prepare_site_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SITE_MODEL;
+	int prepare_branch_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_BRANCH_MODEL;
+	int prepare_subsitution_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;
+	size_t offset = 0;
+	
+	if(prepare_tree){
+		if (p->model == MODEL_TREE) {
+			if (p->id < 0) {
+				int realIndex = -p->id-1;
+				return tlk->gradient[realIndex-Tree_tip_count(tlk->tree)];
+			}
+			else if(Tree_is_time_mode(tlk->tree)){
+				return tlk->gradient[p->id-Tree_tip_count(tlk->tree)];
+			}
+			else if(!Tree_is_time_mode(tlk->tree)){
+				return tlk->gradient[p->id];
+			}
+		}
+		if(!Tree_is_time_mode(tlk->tree)){
+			offset += Tree_node_count(tlk->tree) - 1;
+		}
+		else{
+			offset += Tree_node_count(tlk->tree) - Tree_tip_count(tlk->tree);
+		}
+	}
+	if (prepare_site_model) {
+		if (p->model == MODEL_SITEMODEL) {
+			if (Parameters_count(tlk->sm->rates) != 0 && p == Parameters_at(tlk->sm->rates, 0)) {
+				return tlk->gradient[offset + p->id];
+			}
+		}
+		offset += Parameters_count(tlk->sm->rates);
+	}
+	if (prepare_branch_model) {
+		if (p->model == MODEL_BRANCHMODEL) {
+			return tlk->gradient[offset + p->id];
+		}
+		offset += Parameters_count(tlk->bm->rates);
+	}
+	if (prepare_subsitution_model) {
+		if (p->model == MODEL_SUBSTITUTION) {
+			return tlk->gradient[offset + p->id];
+		}
+	}
+	
+	return 0;
 }
 
 double calculate_log_jacobian(Node* node, double* logP){
@@ -990,6 +1110,9 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 	tlk->get_root_frequencies = get_root_frequencies;
 
 	tlk->tripod = false;
+	tlk->gradient = NULL;
+	tlk->gradient_length = 0;
+	tlk->prepared_gradient = 0;
 	return tlk;
 }
 
@@ -1033,7 +1156,7 @@ void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk ){
 	
 	free(tlk->upper_partial_indexes);
 	if(tlk->root_frequencies != NULL)free(tlk->root_frequencies);
-	
+	if(tlk->gradient != NULL) free(tlk->gradient);
 	free(tlk);
 }
 
@@ -1198,6 +1321,12 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 
 	newtlk->reparametrized = tlk->reparametrized;
 	
+	newtlk->gradient = NULL;
+	if(tlk->gradient != NULL){
+		newtlk->gradient = clone_dvector(tlk->gradient, tlk->gradient_length);
+		newtlk->gradient_length = tlk->gradient_length;
+		newtlk->prepared_gradient = tlk->prepared_gradient;
+	}
 	return newtlk;
 }
 
@@ -3372,7 +3501,12 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
 	for (int i = 0; i < tlk->sp->count; i++) {
 		pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
 	}
-
+	
+	bool prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE;
+	bool prepare_site_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SITE_MODEL;
+	bool prepare_branch_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_BRANCH_MODEL;
+	bool prepare_subsitution_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;
+	
 	size_t nodeCount = Tree_node_count(tlk->tree);
 	size_t catCount = tlk->sm->cat_count;
 	double* cat_branch_gradient = dvector(nodeCount*catCount);
@@ -3391,49 +3525,49 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
 	size_t offset = 0;
 
 	// calculate per category gradient and gradient of branch lengths
-	for(size_t i = 0; i < nodeCount; i++){
-		Node* node = nodes[i];
-		if(!Node_isroot(node)){
-			gradient_cat_branch_lengths(tlk, cat_branch_gradient + node->id*catCount, pattern_likelihoods);
+	if (prepare_branch_model || prepare_tree || prepare_site_model) {
+		for(size_t i = 0; i < nodeCount; i++){
+			Node* node = nodes[i];
+			if(!Node_isroot(node)){
+				gradient_cat_branch_lengths(tlk, cat_branch_gradient + node->id*catCount, pattern_likelihoods);
 
+			}
 		}
 	}
 
+	double grad_sitemodel;
 	if(catCount > 1){
-		double grad_sitemodel;
-		gradient_discrete_sitemodel(tlk, cat_branch_gradient, branch_lengths, &grad_sitemodel);
-
-		gradient_branch_length_from_cat_inplace(tlk, cat_branch_gradient);
-
-		if (time_mode) {
-			gradient_ratios(tlk, cat_branch_gradient, grads);
-			offset += nodeCount - Tree_tip_count(tlk->tree);
+		if (prepare_site_model) {
+			gradient_discrete_sitemodel(tlk, cat_branch_gradient, branch_lengths, &grad_sitemodel);
 		}
-		else{
-			memcpy(grads, cat_branch_gradient, sizeof(double)*nodeCount);
-			offset += nodeCount;
+
+		if (prepare_branch_model || prepare_tree) {
+			gradient_branch_length_from_cat_inplace(tlk, cat_branch_gradient);
 		}
+	}
+	
+	if (prepare_tree && time_mode) {
+		gradient_ratios(tlk, cat_branch_gradient, grads);
+		offset += nodeCount - Tree_tip_count(tlk->tree);
+	}
+	else if (prepare_tree){
+		memcpy(grads, cat_branch_gradient, sizeof(double)*nodeCount);
+		offset += nodeCount;
+	}
+	
+	if (prepare_site_model) {
 		grads[offset++] = grad_sitemodel;
 	}
-	else{
-		if (time_mode) {
-			gradient_ratios(tlk, cat_branch_gradient, grads);
-			offset += nodeCount - Tree_tip_count(tlk->tree);
-		}
-		else{
-			memcpy(grads, cat_branch_gradient, sizeof(double)*nodeCount);
-			offset += nodeCount;
-		}
-	}
+	
 
-	if (time_mode) {
+	if (prepare_branch_model && time_mode) {
 		gradient_clock(tlk, cat_branch_gradient, grads + offset);
 		offset += Parameters_count(tlk->bm->rates);
 	}
 
-	if(tlk->sm->m->modeltype == GTR && Parameters_count(tlk->sm->m->rates) == 5){
+//	if(tlk->sm->m->modeltype == GTR && Parameters_count(tlk->sm->m->rates) == 5){
+	if(prepare_subsitution_model){
 		gradient_PMatrix(tlk, pattern_likelihoods, grads+offset);
-		offset += Parameters_count(tlk->sm->m->rates);
 	}
 
 	free(branch_lengths);

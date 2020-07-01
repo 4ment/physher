@@ -32,6 +32,10 @@
 
 static double TWENTY_DOUBLE_ONES[20] = {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
 
+#define TREELIKELIHOOD_FLAG_TREE               1 << 0
+#define TREELIKELIHOOD_FLAG_SITE_MODEL         1 << 1
+#define TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL 1 << 2
+#define TREELIKELIHOOD_FLAG_BRANCH_MODEL       1 << 3
 
 struct _SingleTreeLikelihood;
 
@@ -110,6 +114,10 @@ struct _SingleTreeLikelihood{
 	const double* (*get_root_frequencies)(SingleTreeLikelihood*);
 	double* root_frequencies;
 	bool reparametrized;
+	
+	int prepared_gradient;
+	double* gradient;
+	size_t gradient_length;
 };
 
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm );
