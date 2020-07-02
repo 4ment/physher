@@ -513,6 +513,15 @@ Model* new_Variational_from_json2(json_node* node, Hashtable* hash){
     if (init_node != NULL) {
         variational_load(var, init_node->value);
     }
+	
+	// Collect every parameter and inform posterior about gradient calculation
+	Parameters* x = new_Parameters(10);
+	for (size_t i = 0; i < var->block_count; i++) {
+		variational_block_t* block = var->blocks[i];
+		Parameters_add_parameters(x, block->parameters);
+	}
+	var->posterior->prepare_gradient(var->posterior, x);
+	free_Parameters(x);
     
     return new_VariationalModel(id, var);
 }
@@ -776,6 +785,10 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	var->initialized = false;
 	var->ready_to_sample = false;
 	var->iter = 0;
+	
+	// Inform posterior about gradient calculation
+	var->posterior->prepare_gradient(var->posterior, var->parameters);
+	
 	if (filename != NULL) {
 		var->file = fopen(filename, "w");
 		fprintf(var->file, "iteration");

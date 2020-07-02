@@ -55,6 +55,7 @@ static double _get_rate_discrete( SiteModel *sm, const int index );
 static double _get_proportion_discrete( SiteModel *sm, const int index );
 static double *_get_proportions_discrete( SiteModel *sm );
 
+static double icdf_weibull_1(double p, double k);
 
 static void _site_model_handle_change( Model *self, Model *model, int index ){
 	SiteModel *sm = (SiteModel*)self->obj;
@@ -275,27 +276,87 @@ void _no_gradient( SiteModel *sm, const double* ingrad, double* grad ){
 
 }
 
-void _weibull_gradient( SiteModel *sm, const double* ingrad, double* grad ){
+double _no_derivative( SiteModel *sm, const double* ingrad, Parameter* p ){
+	return 0;
+}
+
+double _weibull_shape_derivative( SiteModel *sm, const double* ingrad ){
 	double derivsum = 0;
 	double sum = 0;
-	double cat = sm->cat_count;
+	size_t catCount = sm->cat_count;
+	size_t variableCat = sm->proportions != NULL ? catCount - 1 : catCount;
 	double* proportions = sm->get_proportions(sm);
 	double shape = Parameters_value(sm->rates, 0);
-
-	for (int i = 0; i < cat; i++) {
-		double prob = (2.0*i + 1.0)/(2.0*cat);
-		derivsum += -pow(-log(1.0 - prob), 1.0/shape) * log(-log(1.0 - prob))/shape/shape*proportions[i];
-		sum += pow(-log(1.0 - prob), 1.0/shape)*proportions[i];
+	double shape2 = shape*shape;
+	size_t j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
+	for (size_t i = 0; i < variableCat; i++, j++) {
+		double prob = (2.0*i + 1.0)/(2.0*variableCat);
+		derivsum += -pow(-log(1.0 - prob), 1.0/shape) * log(-log(1.0 - prob))/shape2*proportions[j];
+		sum += pow(-log(1.0 - prob), 1.0/shape)*proportions[j];
 	}
 
 	double shape_gradient = 0;
-	for (int i = 0; i < cat; i++) {
-		double prob = (2.0*i + 1.0)/(2.0*cat);
-		double deriv = -pow(-log(1.0 - prob), 1.0/shape) * log(-log(1.0 - prob))/shape/shape;
+	j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
+	for (size_t i = 0; i < variableCat; i++, j++) {
+		double prob = (2.0*i + 1.0)/(2.0*variableCat);
+		double deriv = -pow(-log(1.0 - prob), 1.0/shape) * log(-log(1.0 - prob))/shape2;
 		double deriv_rate = deriv/sum - (pow(-log(1.0 - prob), 1.0/shape)*derivsum)/sum/sum;
-		shape_gradient += ingrad[i] * deriv_rate * proportions[i];
+		shape_gradient += ingrad[j] * deriv_rate * proportions[j];
 	}
-	grad[0] = shape_gradient;
+	return shape_gradient;
+}
+
+double _weibull_inv_derivative( SiteModel *sm, const double* ingrad ){
+	double* proportions = sm->get_proportions(sm);
+	
+	// with Weibull
+	if(Parameters_count(sm->rates) > 0){
+		size_t catCount = sm->cat_count;
+		size_t variableCatCount = catCount - 1;
+		double shape = Parameters_value(sm->rates, 0);
+		double mean_cat_rate = 0; // mean unormalized of weibull
+		double mean_rate = 0; // mean of weibull + invariant
+		for (size_t i = 0; i < variableCatCount; i++) {
+			double prob = (2.0*i + 1.0)/(2.0*variableCatCount);
+			double unorm_rate = icdf_weibull_1(prob, shape);
+			mean_cat_rate += unorm_rate;
+			mean_rate += unorm_rate * proportions[i+1];
+		}
+		mean_cat_rate /= variableCatCount;
+		double mean_rate2 = mean_rate*mean_rate;
+		double pinv_gradient = 0;
+		for (size_t i = 0; i < variableCatCount; i++) {
+			double prob = (2.0*i + 1.0)/(2.0*variableCatCount);
+			double unorm_rate = icdf_weibull_1(prob, shape);
+			pinv_gradient += ingrad[i+1] * unorm_rate * mean_cat_rate /mean_rate2;
+		}
+		pinv_gradient *= (1.0 - proportions[0])/variableCatCount;
+		return ingrad[0] + pinv_gradient;
+	}
+	// +I only
+	else{
+		return ingrad[0] + ingrad[1]/(1.0 - proportions[0]);
+	}
+}
+
+double _weibull_derivative( SiteModel *sm, const double* ingrad, Parameter* p ){
+	// pinv
+	if(sm->proportions != NULL && Parameters_at(sm->proportions->parameters, 0) == p){
+		return _weibull_inv_derivative(sm, ingrad);
+	}
+	else{
+		return _weibull_shape_derivative(sm, ingrad);
+	}
+	return 0;
+}
+void _weibull_gradient( SiteModel *sm, const double* ingrad, double* grad ){
+	size_t offset = 0;
+	if(Parameters_count(sm->rates) > 0){
+		grad[offset++] = _weibull_shape_derivative(sm, ingrad);
+	}
+	if(sm->proportions != NULL){
+		grad[offset] = _weibull_inv_derivative(sm, ingrad);
+	}
 }
 
 // (Gamma or/and Invariant) or one rate
@@ -336,6 +397,7 @@ SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameter
 	sm->cat_rates       = dvector(sm->cat_count);
 	sm->cat_proportions = dvector(sm->cat_count);
 	sm->gradient = _no_gradient;
+	sm->derivative = _no_derivative;
 	
 	if (distribution == DISTRIBUTION_UNIFORM) {
 		sm->get_rate        = _get_rate;
@@ -359,8 +421,10 @@ SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameter
 		sm->get_proportions = _get_proportions_gamma;
 	}
     
-	if (distribution == DISTRIBUTION_WEIBULL) {
+	if (distribution == DISTRIBUTION_WEIBULL ||
+		(distribution == DISTRIBUTION_DISCRETE && Parameters_count(sm->proportions->parameters) == 2)) {
 		sm->gradient = _weibull_gradient;
+		sm->derivative = _weibull_derivative;
 	}
 	sm->integrate   = true;
 	sm->need_update = true;
@@ -791,6 +855,8 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
 	newsm->invariant = sm->invariant;
 	newsm->quadrature = sm->quadrature;
 	
+	newsm->gradient = sm->gradient;
+	newsm->derivative = sm->derivative;
 	return newsm;
 }
 
@@ -838,6 +904,8 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionMo
 	newsm->get_proportions = sm->get_proportions;
     newsm->get_site_category = sm->get_site_category;
 	
+	newsm->gradient = sm->gradient;
+	newsm->derivative = sm->derivative;
 	return newsm;
 }
 

@@ -55,6 +55,7 @@ typedef struct SiteModel{
 	
 	int (*get_site_category)( struct SiteModel *, const int );
 	void (*gradient)(struct SiteModel *, const double* ingrad, double* grad);
+	double (*derivative)(struct SiteModel *, const double* ingrad, Parameter* p);
 	
 	unsigned cat_count;
 	double *cat_rates;
