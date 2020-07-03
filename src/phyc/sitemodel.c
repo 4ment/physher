@@ -308,34 +308,27 @@ double _weibull_shape_derivative( SiteModel *sm, const double* ingrad ){
 
 double _weibull_inv_derivative( SiteModel *sm, const double* ingrad ){
 	double* proportions = sm->get_proportions(sm);
+	assert(proportions[0] == Parameters_value(sm->proportions->parameters, 0));
 	
 	// with Weibull
 	if(Parameters_count(sm->rates) > 0){
-		size_t catCount = sm->cat_count;
-		size_t variableCatCount = catCount - 1;
+		size_t variableCatCount = sm->cat_count - 1;
 		double shape = Parameters_value(sm->rates, 0);
-		double mean_cat_rate = 0; // mean unormalized of weibull
-		double mean_rate = 0; // mean of weibull + invariant
+		double sum_rate = 0;
 		for (size_t i = 0; i < variableCatCount; i++) {
 			double prob = (2.0*i + 1.0)/(2.0*variableCatCount);
-			double unorm_rate = icdf_weibull_1(prob, shape);
-			mean_cat_rate += unorm_rate;
-			mean_rate += unorm_rate * proportions[i+1];
+			sum_rate += icdf_weibull_1(prob, shape);
 		}
-		mean_cat_rate /= variableCatCount;
-		double mean_rate2 = mean_rate*mean_rate;
 		double pinv_gradient = 0;
 		for (size_t i = 0; i < variableCatCount; i++) {
 			double prob = (2.0*i + 1.0)/(2.0*variableCatCount);
-			double unorm_rate = icdf_weibull_1(prob, shape);
-			pinv_gradient += ingrad[i+1] * unorm_rate * mean_cat_rate /mean_rate2;
+			pinv_gradient += ingrad[i+1] * icdf_weibull_1(prob, shape);
 		}
-		pinv_gradient *= (1.0 - proportions[0])/variableCatCount;
-		return ingrad[0] + pinv_gradient;
+		return ingrad[0] + pinv_gradient/(sum_rate*proportions[1]);
 	}
 	// +I only
 	else{
-		return ingrad[0] + ingrad[1]/(1.0 - proportions[0]);
+		return ingrad[0] + ingrad[1]/proportions[1];
 	}
 }
 
@@ -421,8 +414,9 @@ SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameter
 		sm->get_proportions = _get_proportions_gamma;
 	}
     
+	// Discrete gamma or prop of invariant or both
 	if (distribution == DISTRIBUTION_WEIBULL ||
-		(distribution == DISTRIBUTION_DISCRETE && Parameters_count(sm->proportions->parameters) == 2)) {
+		(distribution == DISTRIBUTION_DISCRETE && Parameters_count(sm->proportions->parameters) == 1)) {
 		sm->gradient = _weibull_gradient;
 		sm->derivative = _weibull_derivative;
 	}
@@ -1065,6 +1059,10 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			}
 			if (parameters_node == NULL || Parameters_count(rates) == props_simplex->K) {
 				invariant = true;
+				// simple +I model
+				if (parameters_node == NULL || Parameters_count(rates) == 0){
+					cat = 1; // cat will be incremented in the constructor to include invariant
+				}
 			}
 		}
 		else{

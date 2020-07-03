@@ -823,6 +823,12 @@ void free_Variational(variational_t* var){
             for (int j = 0; j < block->var_parameters_count; j++) {
                 free_Parameters(block->var_parameters[j]);
             }
+			if(block->simplices != NULL){
+				for (int j = 0; j < block->simplex_count; j++) {
+					block->simplices[j]->free(block->simplices[j]);
+				}
+				free(block->simplices);
+			}
             free(block->var_parameters);
             free_Parameters(block->parameters);
             if(block->etas != NULL) free_Vector(block->etas);
