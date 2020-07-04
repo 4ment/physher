@@ -108,8 +108,10 @@ opt_result optimize_stochastic_gradient_adapt(Parameters* parameters, opt_func f
 			
 			OptStopCriterion stop_local = *stop; // copy
 			stop_local.iter_max = 50;
-			stop_local.frequency_check = 1;
+			stop_local.frequency_check = 0;
+			fprintf(stdout, "Trying eta: %f ", etas[i]);
 			optimize_stochastic_gradient(parameters, f, grad_f, etas[i], data, &stop_local, 0, elbos+i);
+			fprintf(stdout, "ELBO: %f\n", elbos[i]);
 		}
 		
 		for (size_t i = 0; i < Parameters_count(parameters); i++) {
@@ -124,12 +126,6 @@ opt_result optimize_stochastic_gradient_adapt(Parameters* parameters, opt_func f
 				elbo_max_index = i;
 			}
 		}
-		printf("-------\n");
-		printf("eta\telbo\n");
-		for (int i = 0; i < eta_count; i++) {
-			printf("%f\t%f\n", etas[i], elbos[i]);
-		}
-		printf("-------\n");
 		free(elbos);
 	
 		if (isinf(elbo_max)) {
@@ -321,14 +317,19 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 	int max_conv = 3;
 	int conv = 0;
 	stop->iter = 0;
-	double *elbos = calloc(stop->iter_max/eval_elbo, sizeof(double));
+	double *elbos = NULL;
+	if(eval_elbo > 0){
+		elbos = calloc(stop->iter_max/eval_elbo, sizeof(double));
+	}
 	double* grads = calloc(dim, sizeof(double));
 	double *history_grad_squared = calloc(dim, sizeof(double));
 	
 	opt_result result = OPT_SUCCESS;
 	
-	double elbo0 = f(parameters, NULL, data);
-	if(verbose > 0)  printf("%zu ELBO: %f\n", stop->iter, elbo0);
+	if(eval_elbo > 0){
+		double elbo0 = f(parameters, NULL, data);
+		if(verbose > 0)  printf("%zu ELBO: %f\n", stop->iter, elbo0);
+	}
 	
 	signal(SIGINT, sgd_signal_callback_handler);
 	sgd_interrupted = false;
@@ -336,6 +337,10 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 	
 	while(stop->iter++ < stop->iter_max){
 		grad_f(parameters, grads, data);
+		if(isnan(grads[0])){
+			result = OPT_FAIL;
+			break;
+		}
 		
 		double eta_scaled = eta / sqrt(stop->iter);
 		
@@ -363,7 +368,7 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 			}
 		}
 		
-		if (stop->iter % eval_elbo == 0) {
+		if (eval_elbo != 0 && stop->iter % eval_elbo == 0) {
 			//            for (int j = 0; j < dim; j++) {
 			//                Parameter* p = Parameters_at(var->parameters, j);
 			//                //Parameter_set_value(p, exp(parameters[i]));
@@ -409,8 +414,11 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 		}
 	}
 	free(grads);
-	free(elbos);
+	if(elbos != NULL) free(elbos);
 	free(history_grad_squared);
+	if(eval_elbo == 0){
+		*fmin = f(parameters, NULL, data);
+	}
 	
 	return result;
 }

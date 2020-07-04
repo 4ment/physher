@@ -324,7 +324,7 @@ double _weibull_inv_derivative( SiteModel *sm, const double* ingrad ){
 			double prob = (2.0*i + 1.0)/(2.0*variableCatCount);
 			pinv_gradient += ingrad[i+1] * icdf_weibull_1(prob, shape);
 		}
-		return ingrad[0] + pinv_gradient/(sum_rate*proportions[1]);
+		return ingrad[0] + pinv_gradient/(sum_rate*(1.0 - proportions[0]));
 	}
 	// +I only
 	else{
@@ -1039,6 +1039,10 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				fprintf(stderr, "Cannot not recognize quadrature method %s\n", method);
 				exit(13);
 			}
+		}
+		// Weibull with I
+		else if (discretization_node == NULL && props_simplex != NULL && props_simplex->K == 2) {
+			invariant = true;
 		}
 		
 		if (distribution == DISTRIBUTION_DISCRETE) {

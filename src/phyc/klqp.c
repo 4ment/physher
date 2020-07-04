@@ -132,12 +132,14 @@ double variational_klqp_elbo(variational_t* var){
             }
         }
         double logP = posterior->logP(posterior);
-        if(!isinf(logP))elbo += logP -logQ + jacobian;
-        else inf_count++;
-        
-        if(isinf(elbo) || isnan(elbo)){
-            return elbo;
-        }
+        if(!isinf(logP) && !isnan(logP))elbo += logP -logQ + jacobian;
+		else{
+			inf_count++;
+			i--;
+		}
+		if (inf_count == 10) {
+			return elbo;
+		}
     }
     return elbo/(var->elbo_samples-inf_count) + entropy;
 }
@@ -161,7 +163,7 @@ double variational_klqp_elbo_multi(variational_t* var){
             }
             double logP = posterior->logP(posterior);
             double ratio = logP - logQ + jacobian;
-            if(!isinf(ratio)) elbos[k-inf_count] = ratio;
+            if(!isinf(ratio) && !isnan(ratio)) elbos[k-inf_count] = ratio;
             else inf_count++;
         }
         if(inf_count == var->elbo_multi){
@@ -187,7 +189,7 @@ double variational_klqp_elbo_multi(variational_t* var){
 void variational_klqp_grad_elbo(variational_t* var, const Parameters* parameters, double* grads){
     size_t dim = Parameters_count(parameters);
     memset(grads, 0, sizeof(double)*Parameters_count(parameters));
-    
+	size_t failures = 0;
     for (int i = 0; i < var->grad_samples; i++) {
         // sample within each block. etas should be stored for jacobians
         for(int j = 0; j < var->block_count; j++){
@@ -195,10 +197,21 @@ void variational_klqp_grad_elbo(variational_t* var, const Parameters* parameters
             block->sample2(block, parameters);
         }
         
-        for(int j = 0; j < var->block_count; j++){
+		size_t j = 0;
+        for( ; j < var->block_count; j++){
             variational_block_t* block = var->blocks[j];
             block->grad_elbo(block, parameters, grads);
+			if (isnan(grads[0])) {
+				failures++;
+				break;
+			}
         }
+		if (j != var->block_count) {
+			i--;
+			if (failures == 10) {
+				break;
+			}
+		}
     }
     
     for (int j = 0; j < dim; j++) {

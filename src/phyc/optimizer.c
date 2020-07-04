@@ -625,6 +625,9 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 			else{
 				result = OPT_FAIL;
 			}
+			if (result == OPT_FAIL) {
+				fprintf(stderr, "Stochastic gradient ascent failed\n");
+			}
             break;
         }
 		case OPT_TOPOLOGY:{
