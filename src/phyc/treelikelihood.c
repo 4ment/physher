@@ -177,6 +177,9 @@ void _model_prepare_gradient(Model* self, const Parameters* ps){
 			if(tlk->sm->proportions != NULL){
 				gradient_length += Parameters_count(tlk->sm->proportions->parameters);
 			}
+			if(tlk->sm->mu != NULL){
+				gradient_length++;
+			}
 		}
 		else if (p->model == MODEL_BRANCHMODEL && !prepare_branch_model) {
 			prepare_branch_model = true;
@@ -2180,6 +2183,7 @@ void update_all_partials(SingleTreeLikelihood *tlk, Node* node){
 	_update_upper_partials_efficient(tlk, Tree_root(tlk->tree), flags, false);
 	free(flags);
 }
+//#define INCLUDE_ROOT_FREQS 1
 
 // calculate upper partials as used by derivatives
 void update_upper_partials(SingleTreeLikelihood *tlk, Node* node){
@@ -2200,6 +2204,18 @@ void update_upper_partials(SingleTreeLikelihood *tlk, Node* node){
 		}
 		else{
 			tlk->update_partials(tlk, tlk->upper_partial_indexes[idNode], idSibling, idSibling, -1, -1);
+#ifdef INCLUDE_ROOT_FREQS
+			const double* freqs = tlk->get_root_frequencies(tlk);
+			double* partials = tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[idNode]]][tlk->upper_partial_indexes[idNode]];
+			for(size_t i = 0; i < tlk->cat_count; i++){
+				for(size_t k = 0; k < tlk->pattern_count; k++){
+					for(size_t j = 0; j < tlk->sm->nstate; j++){
+						*partials *= freqs[j];
+						partials++;
+					}
+				}
+			}
+#endif
 		}
 	}
 	
@@ -2609,7 +2625,11 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
             size_t v = 0;
             for ( int k = 0; k < patternCount; k++ ) {
                 for (int jj = 0; jj < nstate; jj++) {
+#ifndef INCLUDE_ROOT_FREQS
 					pattern_dlnl[k] += freqs[jj]*root_partials[v];
+#else
+					pattern_dlnl[k] += root_partials[v];
+#endif
                     v++;
                 }
             }
@@ -2662,8 +2682,11 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 			
             for ( int k = 0; k < patternCount; k++ ) {
                 for ( i = 0; i < nstate; i++ ) {
-                    
+#ifndef INCLUDE_ROOT_FREQS
                     pattern_dlnl[k] += freqs[i] * root_partials[v];
+#else
+					pattern_dlnl[k] += root_partials[v];
+#endif
                     v++;
                 }
                 
@@ -3440,7 +3463,11 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 			for ( size_t k = 0; k < patternCount; k++ ) {
 				double temp = 0;
 				for ( size_t i = 0; i < nstate; i++ ) {
+#ifndef INCLUDE_ROOT_FREQS
 					temp += freqs[i] * *partialsPtr++;
+#else
+					temp += *partialsPtr++;
+#endif
 				}
 				cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
 

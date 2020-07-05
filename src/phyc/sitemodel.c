@@ -1104,14 +1104,14 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	}
 	char* id_string = get_json_node_value_string(node, "id");
 	
-	Model* msm = new_SiteModel2(id_string, sm, mm, mprops_simplex);
-	
 	if (mu_node != NULL) {
 		sm->mu = new_Parameter_from_json(mu_node, hash);
 		sm->mu->model = MODEL_SITEMODEL;
 		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
 	}
+	
+	Model* msm = new_SiteModel2(id_string, sm, mm, mprops_simplex);
 	
 	mm->free(mm);
 	if(mprops_simplex != NULL) mprops_simplex->free(mprops_simplex);

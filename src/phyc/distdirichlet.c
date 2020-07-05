@@ -170,7 +170,8 @@ Model* new_DirichletDistributionModel_from_json(json_node* node, Hashtable* hash
     char* file = get_json_node_value_string(node, "file");
     Parameters** parameters = NULL;
     size_t parameters_dim = 0;
-
+	DistributionModel* dm = NULL;
+	
     // empirical
     if (file != NULL) {
         Simplex* simplex = msimplex->obj;
@@ -212,10 +213,11 @@ Model* new_DirichletDistributionModel_from_json(json_node* node, Hashtable* hash
         free(variances);
         free(names);
         free_StringBuffer(buffer);
+		dm = new_DirichletDistributionModel_with_parameters(parameters, msimplex->obj);
     }
     // Flat dirichlet
     else if(get_json_node(node, "parameters") == NULL){
-        
+        dm = new_FlatDirichletDistributionModel(msimplex->obj);
     }
     else{
         json_node* parameters_node = get_json_node(node, "parameters");
@@ -226,9 +228,8 @@ Model* new_DirichletDistributionModel_from_json(json_node* node, Hashtable* hash
         }
 
         parameters = distmodel_get_parameters(id, parameters_node, hash, &parameters_dim);
+		dm = new_DirichletDistributionModel_with_parameters(parameters, msimplex->obj);
     }
-    
-    DistributionModel* dm = new_DirichletDistributionModel_with_parameters(parameters, msimplex->obj);
     
     dm->parameterization = 0;
     dm->shift = get_json_node_value_double(node, "shift", dm->shift);

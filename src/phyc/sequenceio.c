@@ -489,8 +489,12 @@ Sequences* new_Sequences_from_json(json_node* node, Hashtable* hash){
 	Sequences* sequences = NULL;
 	
 	if(sequences_node != NULL){
+		sequences = new_Sequences(sequences_node->child_count);
 		for (int i = 0; i < sequences_node->child_count; i++) {
 			json_node* child = sequences_node->children[i];
+			char* taxon = child->key;
+			char* sequence = child->value;
+			Sequences_add(sequences, new_Sequence(taxon, sequence));
 		}
 	}
 	else if(file_node != NULL){

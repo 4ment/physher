@@ -849,34 +849,45 @@ Parameters** distmodel_get_parameters(const char* who, json_node* parameters_nod
     return parameters;
 }
 
+void distmodel_get_ref(const char* ref, Hashtable* hash, Parameters* parameters){
+	if (ref[0] == '&') {
+		Parameter* p = Hashtable_get(hash, ref+1);
+		Parameters_add(parameters, p);
+	}
+	else if (ref[0] == '%') {
+		// slicing
+		if (ref[strlen(ref)-1] == ']') {
+			get_parameters_slice(ref+1, parameters, hash);
+		}
+		else{
+			Parameters* ps = Hashtable_get(hash, ref+1);
+			Parameters_add_parameters(parameters, ps);
+		}
+	}
+	// simplex
+	else if (ref[0] == '$') {
+		Model* msimplex = Hashtable_get(hash, ref+1);
+		Simplex* simplex = msimplex->obj;
+		Parameters_add_parameters(parameters, simplex->parameters);
+	}
+}
+
 Parameters* distmodel_get_x(const char* who, json_node* node, Hashtable* hash){
 //void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* parameters){
     Parameters* parameters = new_Parameters(1);
     // it's a ref
     if(node->node_type == MJSON_STRING){
         char* ref = (char*)node->value;
-        if (ref[0] == '&') {
-            Parameter* p = Hashtable_get(hash, ref+1);
-            Parameters_add(parameters, p);
-        }
-        else if (ref[0] == '%') {
-            // slicing
-            if (ref[strlen(ref)-1] == ']') {
-                get_parameters_slice(ref+1, parameters, hash);
-            }
-            else{
-                Parameters* ps = Hashtable_get(hash, ref+1);
-                Parameters_add_parameters(parameters, ps);
-            }
-        }
-        // simplex
-        else if (ref[0] == '$') {
-            Model* msimplex = Hashtable_get(hash, ref+1);
-            Simplex* simplex = msimplex->obj;
-            Parameters_add_parameters(parameters, simplex->parameters);
-        }
+		distmodel_get_ref(ref, hash, parameters);
         Parameters_set_name2(parameters, ref+1);
     }
+	else if(node->node_type == MJSON_ARRAY){
+		for (int i = 0; i < node->child_count; i++) {
+			json_node* child = node->children[i];
+			char* ref = (char*)child->value;
+			distmodel_get_ref(ref, hash, parameters);
+		}
+	}
     else if(node->node_type == MJSON_OBJECT){
         json_node* p_node_dimension = get_json_node(node, "dimension");
         if(p_node_dimension != NULL ){

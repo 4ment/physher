@@ -276,6 +276,13 @@ double _compoundModel_full_logP2(Model *self){
 	return self->lp;
 }
 
+void _compoundModel_prepare_gradient(Model* self, const Parameters* ps){
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	for (size_t i = 0; i < cm->count; i++) {
+		cm->models[i]->prepare_gradient(cm->models[i], ps);
+	}
+}
+
 double _compoundModel_dlogP2(Model *self, const Parameter* p){
 	CompoundModel* cm = (CompoundModel*)self->obj;
 	return cm->dlogP(cm, p);
@@ -319,6 +326,7 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->clone = _compound_model_clone;
 	model->store = _compoundModel_store;
 	model->restore = _compoundModel_restore;
+	model->prepare_gradient = _compoundModel_prepare_gradient;
 	model->samplable = true;
 	for (int i = 0; i < cm->count; i++) {
 		if (!cm->models[i]->samplable) {
