@@ -3648,8 +3648,17 @@ void gradient_branch_length_from_cat_inplace(SingleTreeLikelihood* tlk, double* 
 	}
 }
 
-void gradient_ratios(SingleTreeLikelihood* tlk, const double* branch_gradient, double* gradient){
-
+void gradient_heights(SingleTreeLikelihood* tlk, const double* branch_gradient, double* gradient){
+	size_t nodeCount = Tree_node_count(tlk->tree);
+	Node** nodes = Tree_get_nodes(tlk->tree, PREORDER);
+	for(size_t i = 1; i < nodeCount; i++){
+		Node* node = nodes[i];
+		double nodeGradient = branch_gradient[node->id] * tlk->bm->get(tlk->bm, node);
+		if(!Node_isleaf(node)){
+			gradient[node->class_id] = -nodeGradient;
+		}
+		gradient[node->parent->class_id] += nodeGradient;
+	}
 }
 
 // compute gradient wrt every parameter
