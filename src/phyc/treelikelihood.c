@@ -192,15 +192,14 @@ void _model_prepare_gradient(Model* self, const Parameters* ps){
 			gradient_length += tlk->sm->m->rates_simplex == NULL ? Parameters_count(tlk->sm->m->rates) : tlk->sm->m->rates_simplex->K - 1;
 			gradient_length += tlk->sm->m->simplex->K - 1;
 		}
-		
-		if(tlk->gradient == NULL){
-			tlk->gradient = calloc(gradient_length, sizeof(double));
-			tlk->gradient_length = gradient_length;
-		}
-		else if (tlk->gradient_length < gradient_length) {
-			tlk->gradient = realloc(tlk->gradient, sizeof(double)* gradient_length);
-			tlk->gradient_length = gradient_length;
-		}
+	}
+	if(tlk->gradient == NULL){
+		tlk->gradient = calloc(gradient_length, sizeof(double));
+		tlk->gradient_length = gradient_length;
+	}
+	else if (tlk->gradient_length < gradient_length) {
+		tlk->gradient = realloc(tlk->gradient, sizeof(double)* gradient_length);
+		tlk->gradient_length = gradient_length;
 	}
 }
 
@@ -210,6 +209,9 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 	if(tlk->gradient_length == 0) return 0.0;
 			
 	if(tlk->update_upper){
+		if(Tree_is_time_mode(tlk->tree)){
+			Tree_update_heights(tlk->tree);
+		}
 		double logP = tlk->calculate(tlk); // make sure it is updated
 		if (isnan(logP) || isinf(logP)) {
 //				return logP;
@@ -1579,7 +1581,9 @@ double _calculate_simple( SingleTreeLikelihood *tlk ){
 	if( !tlk->update ){
 		return tlk->lk;
 	}
-	
+	if(Tree_is_time_mode(tlk->tree)){
+		Tree_update_heights(tlk->tree);
+	}
 	_calculate_partials( tlk, Tree_root(tlk->tree) );
 	int nodeID = Node_id(Tree_root(tlk->tree));
 	if(tlk->sm->integrate){
@@ -3424,7 +3428,7 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 		double bl = Node_distance(node);
 		const int nodeId = Node_id(node);
 		if (tlk->bm != NULL) {
-			bl *= tlk->bm->get(tlk->bm, node);
+			bl = Node_time_elapsed(node) * tlk->bm->get(tlk->bm, node);
 		}
 
 		for (size_t c = 0; c < catCount; c++) {
@@ -3595,7 +3599,7 @@ void gradient_clock(SingleTreeLikelihood* tlk, const double* branch_gradient, do
 		for(size_t i = 0; i < nodeCount; i++){
 			Node* node = Tree_node(tlk->tree, i);
 			if(!Node_isroot(node)){
-				gradient[0] += branch_gradient[node->id] * Node_distance(node);
+				gradient[0] += branch_gradient[node->id] * Node_time_elapsed(node);
 			}
 		}
 	}
@@ -3603,7 +3607,7 @@ void gradient_clock(SingleTreeLikelihood* tlk, const double* branch_gradient, do
 		for(size_t i = 0; i < nodeCount; i++){
 			Node* node = Tree_node(tlk->tree, i);
 			if(!Node_isroot(node)){
-				gradient[node->id] = branch_gradient[node->id] * Node_distance(node);
+				gradient[node->id] = branch_gradient[node->id] * Node_time_elapsed(node);
 			}
 		}
 	}
@@ -3681,13 +3685,16 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
 	double* branch_lengths = dvector(nodeCount);
 	// calculate per category gradient and gradient of branch lengths
 	Node** nodes = Tree_nodes(tlk->tree);
-	for(size_t i = 0; i < nodeCount; i++){
-		branch_lengths[nodes[i]->id] = Node_distance(nodes[i]);
-	}
+	
 	bool time_mode = Tree_is_time_mode(tlk->tree);
 	if (time_mode) {
 		for(size_t i = 0; i < nodeCount; i++){
-			branch_lengths[nodes[i]->id] *= tlk->bm->get(tlk->bm, nodes[i]);
+			branch_lengths[nodes[i]->id] = Node_time_elapsed(nodes[i]) * tlk->bm->get(tlk->bm, nodes[i]);
+		}
+	}
+	else{
+		for(size_t i = 0; i < nodeCount; i++){
+			branch_lengths[nodes[i]->id] = Node_distance(nodes[i]);
 		}
 	}
 	if(tlk->sm->mu != NULL){
