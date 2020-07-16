@@ -36,6 +36,7 @@
 #include "distnormal.h"
 #include "distmultinormal.h"
 #include "distlognormal.h"
+#include "distoneonx.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
@@ -205,40 +206,6 @@ DistributionModel* new_DistributionModel(Parameters** p, size_t dim, Parameters*
 	dm->tempx = NULL;
 	dm->tempp = NULL;
 	dm->need_update = true;
-	return dm;
-}
-
-double DistributionModel_log_one_on_x(DistributionModel* dm){
-	return -log(Parameters_value(dm->x, 0));
-}
-
-double DistributionModel_log_one_on_x_with_values(DistributionModel* dm, const double* values){
-	return -log(values[0]);
-}
-
-double DistributionModel_dlog_one_on_x(DistributionModel* dm, const Parameter* p){
-	if (strcmp(Parameter_name(p), Parameters_name(dm->x, 0)) == 0) {
-		return -1.0/Parameters_value(dm->x, 0);
-	}
-	return 0;
-}
-
-double DistributionModel_d2log_one_on_x(DistributionModel* dm, const Parameter* p){
-	if (strcmp(Parameter_name(p), Parameters_name(dm->x, 0)) == 0) {
-		return 1.0/Parameters_value(dm->x, 0)/Parameters_value(dm->x, 0);
-	}
-	return 0;
-}
-
-DistributionModel* new_OneOnXDistributionModel(Parameters* x){
-	DistributionModel* dm = new_DistributionModel(NULL, 0, x);
-	dm->type = DISTRIBUTION_ONE_ON_X;
-	dm->logP = DistributionModel_log_one_on_x;
-	dm->logP_with_values = DistributionModel_log_one_on_x_with_values;
-	dm->dlogP = DistributionModel_dlog_one_on_x;
-	dm->d2logP = DistributionModel_d2log_one_on_x;
-	dm->ddlogP = DistributionModel_ddlog_0;
-	dm->clone = DistributionMode_clone;
 	return dm;
 }
 
@@ -969,6 +936,9 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
     }
     else if (strcasecmp(d_string, "halfnormal") == 0){
         return new_HalfNormalDistributionModel_from_json(node, hash);
+    }
+    else if (strcasecmp(d_string, "oneonx") == 0){
+        return new_OneOnXDistributionModel_from_json(node, hash);
     }
     
 	char* id = get_json_node_value_string(node, "id");
