@@ -513,7 +513,7 @@ void _update_intervals(Coalescent* coal){
 	memset(coal->times, 0, Tree_node_count(coal->tree)*sizeof(double));
 	memset(coal->iscoalescent, 0, Tree_node_count(coal->tree)*sizeof(bool));
 	memset(coal->lineages, 0, Tree_node_count(coal->tree)*sizeof(int));
-	
+	Tree_update_heights(coal->tree);
 	size_t nodeCount = Tree_node_count(coal->tree);
 	for (int i = 0; i < nodeCount; i++) {
 		coal->nodes[i]->index = Node_id(nodes[i]);
@@ -615,7 +615,7 @@ double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
         }
     }
     else{
-        Node* node = Tree_node(coal->tree, -p->id-1);
+        Node* node = Tree_node_from_parameter(coal->tree, p);
         size_t node_id = Node_id(node);
         size_t index = 0;
         double* proportion_derivatives = dvector(coal->n);
@@ -1113,7 +1113,7 @@ double _skyride_calculate_dlogP( Coalescent* coal, const Parameter* p ){
         }
     }
     else{
-        Node* node = Tree_node(coal->tree, -p->id-1);
+        Node* node = Tree_node_from_parameter(coal->tree, p);
         size_t node_id = Node_id(node);
         size_t index = 0;
         double lower = 0;

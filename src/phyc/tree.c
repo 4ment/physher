@@ -33,6 +33,7 @@
 
 #include "distancematrix.h"
 #include "treeio.h"
+#include "treetransform.h"
 
 struct _Tree{
 	Node *root;
@@ -48,10 +49,8 @@ struct _Tree{
 	bool time_mode;
 	Parameters* distances;
 	Parameters* heights;
-	Parameters* reparam;
-	unsigned* map;
 	bool homochronous;
-    double* lowers;
+	TreeTransform* tt;
     bool need_update_height;
 };
 
@@ -69,11 +68,11 @@ void check_tree( Tree *tree ){
 #pragma mark Tree
 
 Parameters* get_reparams(Tree* tree){
-	return tree->reparam;
+	return tree->tt->parameters;
 }
 
 unsigned* get_reparam_map(Tree* tree){
-	return tree->map;
+	return tree->tt->map;
 }
 
 // called just after a ) or a leaf name
@@ -227,32 +226,7 @@ void init_parameter_arrays(Tree* atree){
 		}
 	}
 	
-	atree->reparam = new_Parameters(Tree_node_count(atree));
-	Parameters_set_name2(atree->reparam, "reparam");
-	atree->map = uivector(Tree_node_count(atree));
-    atree->lowers = dvector(Tree_node_count(atree));
     atree->need_update_height = true;
-    
-	Node** nodes2 = Tree_get_nodes(atree, PREORDER);
-	int count = 0;
-	for (int i = 0; i < Tree_node_count(atree); i++) {
-		Node* node = nodes2[i];
-		Parameter* p = NULL;
-		if(Node_isroot(node)){
-			p = new_Parameter(node->name, Node_height(node), new_Constraint(0, INFINITY));
-			p->model = MODEL_TREE;
-			Parameters_move(atree->reparam, p);
-            p->id = -Node_id(node)-1;
-			atree->map[Node_id(node)] = count++;
-		}
-		else if(!Node_isleaf(node)){
-			p = new_Parameter(node->name, Node_height(node)/Node_height(Node_parent(nodes2[i])), new_Constraint(0.00001, 0.9999));
-			p->model = MODEL_TREE;
-			Parameters_move(atree->reparam, p);
-			p->id = -Node_id(node)-1;
-			atree->map[Node_id(node)] = count++;
-        }
-	}
 	
 	// create stored nodes
 	for (int i = 0; i < Tree_node_count(atree); i++) {
@@ -319,51 +293,14 @@ void Tree_revert(Tree* tree){
 	}
 }
 
-// do not call on root
-void set_times(Tree* tree, Node* node){
-    if(!Node_isleaf(node)){
-        double h = Node_height(Node_parent(node));
-        double s = Parameters_value(tree->reparam, tree->map[Node_id(node)]);
-        Node_set_height(node, h*s);
-        set_times(tree, node->left);
-        set_times(tree, node->right);
-    }
-}
-
-// do not call on root
-void set_times_heterochronous(Tree* tree, Node* node, double* lowers){
-    if(!Node_isleaf(node)){
-        double h = Node_height(Node_parent(node));
-        double s = Parameters_value(tree->reparam, tree->map[Node_id(node)]);
-        double lower = lowers[Node_id(node)];
-        Node_set_height(node, lower + (h - lower)*s);
-        set_times_heterochronous(tree, node->left, lowers);
-        set_times_heterochronous(tree, node->right, lowers);
-    }
-}
-
-void _update_heights_from_ratios(Tree* tree){
-    Node* root = Tree_root(tree);
-    if(tree->homochronous){
-        Node_set_height(root, Parameters_value(tree->reparam, tree->map[Node_id(root)]));
-        set_times(tree, root->left);
-        set_times(tree, root->right);
-    }
-    else{
-        Node_set_height(root, Parameters_value(tree->reparam, tree->map[Node_id(root)]));
-        set_times_heterochronous(tree, root->left, tree->lowers);
-        set_times_heterochronous(tree, root->right, tree->lowers);
-    }
-    tree->need_update_height = false;
-}
 
 void Tree_update_heights(Tree* tree){
     if(tree->need_update_height || tree->topology_changed){
         if( tree->topology_changed ){
             Tree_update_topology(tree);
-            collect_lowers(tree->root, tree->lowers);
+			tree->tt->update_lowers(tree->tt);
         }
-        _update_heights_from_ratios(tree);
+        tree->tt->update(tree->tt);
         tree->need_update_height = false;
     }
 }
@@ -381,9 +318,9 @@ double Tree_node_time_elapsed(Tree* tree, Node* node){
 double* Tree_lowers(Tree* tree){
     if( tree->topology_changed ){
         Tree_update_topology(tree);
-        collect_lowers(tree->root, tree->lowers);
+        tree->tt->update_lowers(tree->tt);
     }
-    return tree->lowers;
+    return tree->tt->lowers;
 }
 
 void init_dates(Tree* atree, json_node* dates_node){
@@ -453,12 +390,13 @@ void init_heights_from_distances(Tree* atree){
 		for (int i = 0; i < Tree_node_count(atree); i++) {
 			Node* node = nodes[i];
 			if(Node_isroot(node)){
-				Parameter* p = Parameters_at(atree->reparam, atree->map[Node_id(node)]);
+				Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
 				Parameter_set_value_quietly(p, Node_height(node));
 			}
 			else if(!Node_isleaf(node)){
-				Parameter* p = Parameters_at(atree->reparam, atree->map[Node_id(node)]);
-				Parameter_set_value_quietly(p, Node_height(node)/Node_height(Node_parent(node)));
+				Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+				double s = atree->tt->inverse_transform(atree->tt, node);
+				Parameter_set_value_quietly(p, s);
 			}
 		}
 	}
@@ -484,8 +422,7 @@ void init_heights_from_distances(Tree* atree){
 		for (int i = 0; i < Tree_node_count(atree); i++) {
 			Node* node = nodes[i];
 			if(Node_isroot(node)){
-				Parameter* p = Parameters_at(atree->reparam, atree->map[Node_id(node)]);
-				Constraint_set_lower(p->cnstr, atree->lowers[Node_id(node)]);
+				Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
 //                Constraint_set_lower(p->cnstr, Constraint_lower(node->height->cnstr));
 //				Constraint_set_flower(p->cnstr, Constraint_lower(node->height->cnstr));
 //				Constraint_set_upper(p->cnstr, Constraint_upper(node->height->cnstr));
@@ -493,8 +430,8 @@ void init_heights_from_distances(Tree* atree){
 				Parameter_set_value_quietly(p, Node_height(node));
 			}
 			else if(!Node_isleaf(node)){
-				Parameter* p = Parameters_at(atree->reparam, atree->map[Node_id(node)]);
-				double s = (Node_height(node) - atree->lowers[Node_id(node)])/(Node_height(Node_parent(node)) - atree->lowers[Node_id(node)]);
+				Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+				double s = atree->tt->inverse_transform(atree->tt, node);
 				Parameter_set_value_quietly(p, s);
 			}
 		}
@@ -699,6 +636,7 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	Tree_update_topology(atree);
 	
 	init_parameter_arrays(atree);
+	atree->tt = new_HeightTreeTransform(atree);
 	
 	free_StringBuffer(buffer);
 	
@@ -718,7 +656,6 @@ Tree * new_Tree2( Node *root, bool containBL ){
 	atree->dated = false;
 	atree->time_mode = false;
 	atree->homochronous = true;
-    atree->lowers = NULL;
     atree->need_update_height = false;
 	
 	_Tree_count_nodes(root, &atree->nTips, &atree->nNodes);
@@ -730,6 +667,7 @@ Tree * new_Tree2( Node *root, bool containBL ){
 	Tree_update_topology(atree);
     
     init_parameter_arrays(atree);
+	atree->tt = new_HeightTreeTransform(atree);
 	
 	return atree;
 }
@@ -869,34 +807,45 @@ void _tree_handle_change( Model *self, Model *model, int index ){
 	Tree *tree = (Tree*)self->obj;
 	if ( tree->time_mode ) {
 		// using reparametrization
-		if(index < 0){
-			int realIndex = -index-1;
-            tree->need_update_height = true;
-            
-			Node* node = Tree_node(tree, realIndex);
-			if(tree->homochronous){
-				if (Node_isroot(node)) {
-					Node_set_height(node, Parameters_value(tree->reparam, tree->map[Node_id(node)]));
-					set_times(tree, node->left);
-					set_times(tree, node->right);
-				}
-				else{
-					set_times(tree, node);
-				}
-			}
-			else{
-				if (Node_isroot(node)) {
-					Node_set_height(node, Parameters_value(tree->reparam, tree->map[Node_id(node)]));
-					set_times_heterochronous(tree, node->left, tree->lowers);
-					set_times_heterochronous(tree, node->right, tree->lowers);
-				}
-				else{
-					set_times_heterochronous(tree, node, tree->lowers);
-				}
-			}
-			// do not fire since heights are going to do it
+		if(model != NULL){
+//			Node* n = tree->tt->map_to_node[index];
+			tree->need_update_height = true;
+			// notify treelikelihood but _tree_handle_change will be triggered again when heights need to be updated
+			self->listeners->fire( self->listeners, self, index );
 			return;
 		}
+		
+		
+//		if(index < 0){
+//			int realIndex = -index-1;
+//            tree->need_update_height = true;
+//			// notify treelikelihood but _tree_handle_change will be triggered again when heights need to be updated
+//			self->listeners->fire( self->listeners, self, realIndex );
+//
+////			Node* node = Tree_node(tree, realIndex);
+////			if(tree->homochronous){
+////				if (Node_isroot(node)) {
+////					Node_set_height(node, Parameters_value(tree->reparam, tree->map[Node_id(node)]));
+////					set_times(tree, node->left);
+////					set_times(tree, node->right);
+////				}
+////				else{
+////					set_times(tree, node);
+////				}
+////			}
+////			else{
+////				if (Node_isroot(node)) {
+////					Node_set_height(node, Parameters_value(tree->reparam, tree->map[Node_id(node)]));
+////					set_times_heterochronous(tree, node->left, tree->lowers);
+////					set_times_heterochronous(tree, node->right, tree->lowers);
+////				}
+////				else{
+////					set_times_heterochronous(tree, node, tree->lowers);
+////				}
+////			}
+//			// do not fire since heights are going to do it
+//			return;
+//		}
 		Node *node = Tree_node(tree, index);
 		// constrain lower bound of parent
 		if( !Node_isroot(node) ) {
@@ -921,9 +870,9 @@ static void _tree_model_store(Model* self){
 		Parameter_store(Tree_node(tree, i)->distance);
 		Parameter_store(Tree_node(tree, i)->height);
 	}
-	
-	for (int i = 0; i < Parameters_count(tree->reparam); i++) {
-		Parameter_store(Parameters_at(tree->reparam, i));
+	//TODO: make treetransform store
+	for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
+		Parameter_store(Parameters_at(tree->tt->parameters, i));
 	}
 }
 
@@ -947,8 +896,9 @@ static void _tree_model_restore(Model* self){
 		}
 	}
 	
-	for (int i = 0; i < Parameters_count(tree->reparam); i++) {
-		Parameter* r = Parameters_at(tree->reparam, i);
+	//TODO: make treetransform restore
+	for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
+		Parameter* r = Parameters_at(tree->tt->parameters, i);
 		if (Parameter_changed(r)) {
 			Parameter_restore_quietly(r);
 		}
@@ -970,7 +920,12 @@ static void _tree_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free tree model %s\n", self->name);
 		Tree *tree = (Tree*)self->obj;
-		free_Tree(tree);
+		free_Tree_for_model(tree);
+		// tree transform
+		if(self->data != NULL){
+			Model* mtt = self->data;
+			mtt->free(mtt);
+		}
 		free_Model(self);
 	}
 	else{
@@ -1019,7 +974,7 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 		}
 	}
 	clone->print = self->print;
-	
+	//TODO: clone treetransform
 	return clone;
 }
 
@@ -1042,12 +997,12 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 		tree->nodes[i]->distance->listeners->add(tree->nodes[i]->distance->listeners, model);
 		tree->nodes[i]->height->listeners->add(tree->nodes[i]->height->listeners, model);
 	}
-	for (int i = 0; i < Parameters_count(tree->reparam); i++) {
-		StringBuffer_set_string(buffer, name);
-		StringBuffer_append_strings(buffer, 2, ".", Parameters_name(tree->reparam, i));
-		Parameter_set_name(Parameters_at(tree->reparam, i), buffer->c);
-		Parameters_at(tree->reparam,i)->listeners->add(Parameters_at(tree->reparam, i)->listeners, model);
-	}
+//	for (int i = 0; i < Parameters_count(tree->reparam); i++) {
+//		StringBuffer_set_string(buffer, name);
+//		StringBuffer_append_strings(buffer, 2, ".", Parameters_name(tree->reparam, i));
+//		Parameter_set_name(Parameters_at(tree->reparam, i), buffer->c);
+//		Parameters_at(tree->reparam,i)->listeners->add(Parameters_at(tree->reparam, i)->listeners, model);
+//	}
 	
 	free_StringBuffer(buffer);
 	model->update = _tree_handle_change;
@@ -1106,7 +1061,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 		// initialize heights from distances read from newick file
 		if(tree->time_mode){
-            collect_lowers(tree->root, tree->lowers);
+			tree->tt->update_lowers(tree->tt);
 			init_heights_from_distances(tree);
 		}
 		char* id = get_json_node_value_string(node, "id");
@@ -1135,7 +1090,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			tree->rooted = time_tree;
 		}
         if(time_tree)
-            collect_lowers(tree->root, tree->lowers);
+			tree->tt->update_lowers(tree->tt);
         
 		// initialize heights from distances read from newick file
 		if(tree->time_mode){
@@ -1174,11 +1129,25 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 		
 		p = get_json_node_value_string(node, "reparam");
+		
+		StringBuffer* buffer = new_StringBuffer(10);
+		Model* mtt = new_TreeTransformModel("sdfadfasdf", tree->tt, mtree);
+		mtree->data = mtt;
+		mtt->ref_count++;
+		mtt->listeners->add( mtt->listeners, mtree );
+		char* id = get_json_node_value_string(node, "id");
+		for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
+			StringBuffer_set_string(buffer, id);
+			StringBuffer_append_strings(buffer, 2, ".", Parameters_name(tree->tt->parameters, i));
+			Parameter_set_name(Parameters_at(tree->tt->parameters, i), buffer->c);
+		}
+		free_StringBuffer(buffer);
+		
 		if (p != NULL) {
-			Parameters_set_name2(tree->reparam, p);
-			Hashtable_add(hash, Parameters_name2(tree->reparam), tree->reparam);
-			for (int i = 0; i < Parameters_count(tree->reparam); i++) {
-				Hashtable_add(hash, Parameters_name(tree->reparam, i), Parameters_at(tree->reparam, i));
+			Parameters_set_name2(tree->tt->parameters, p);
+			Hashtable_add(hash, Parameters_name2(tree->tt->parameters), tree->tt->parameters);
+			for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
+				Hashtable_add(hash, Parameters_name(tree->tt->parameters, i), Parameters_at(tree->tt->parameters, i));
 			}
 		}
 		
@@ -1200,7 +1169,8 @@ static void free_Tree_aux( Node *n ){
 	}
 }
 
-void free_Tree( Tree *t){
+// does not free treetransform, the free method of the tree model will do it
+void free_Tree_for_model( Tree *t){
 	for (int i = 0; i < t->nNodes; i++) {
 		free(t->stored_nodes[i]);
 	}
@@ -1213,11 +1183,12 @@ void free_Tree( Tree *t){
 	free(t->nodes);
 	free_Parameters(t->distances);
 	free_Parameters(t->heights);
-	free_Parameters(t->reparam);
-	free(t->map);
-    if(t->lowers != NULL)free(t->lowers);
 	free(t);
-	t = NULL;
+}
+
+void free_Tree( Tree *t){
+	free_TreeTransform(t->tt);
+	free_Tree_for_model(t);
 }
 
 Node * clone_Tree_aux( Tree *tree, const Node *node, Node *parent ){
@@ -1274,7 +1245,7 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
 	newTree->need_update_height = tree->need_update_height;
 	
 	init_parameter_arrays(newTree);
-    memcpy(newTree->lowers, newTree->lowers, Tree_node_count(newTree)*sizeof(double));
+	newTree->tt = new_HeightTreeTransform(newTree);
 	
 	return newTree;
 }
@@ -2488,7 +2459,34 @@ bool Tree_is_time_mode(Tree* tree){
 }
 
 #pragma mark -
+#pragma mark TreeTransform
+
+void Tree_node_transform_jvp(Tree* tree, const double* input, double* output){
+	tree->tt->jvp(tree->tt, input, output);
+}
+
+void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient){
+	tree->tt->log_jacobian_gradient(tree->tt, gradient);
+}
+
+#pragma mark -
 #pragma mark Misc
+
+Node* Tree_node_from_parameter(Tree* tree, Parameter* p){
+	// reparam
+	if (p->name[strlen(p->name)-1] == 'm') {
+		return tree->tt->map_to_node[p->id];
+	}
+	// distance
+	else if(p->name[strlen(p->name)-1] == 'e'){
+		return Tree_node(tree, p->id);
+	}
+	// height
+	else if (p->name[strlen(p->name)-1] == 't'){
+		return Tree_node(tree, p->id);
+	}
+	return NULL;
+}
 
 //FIXME: should also update height parameters...
 void Tree_reroot( Tree *tree, Node *node ){

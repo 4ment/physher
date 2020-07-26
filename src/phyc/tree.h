@@ -48,6 +48,7 @@ Tree * new_Tree2( Node *root, bool containBL );
 void Tree_init_heights ( Tree *atree );
 
 void free_Tree( Tree *t);
+void free_Tree_for_model( Tree *t);
 
 Tree * clone_Tree( const Tree *tree );
 
@@ -208,7 +209,9 @@ bool Tree_is_time_mode(Tree* tree);
 Parameters* get_reparams(Tree* tree);
 unsigned* get_reparam_map(Tree* tree);
 
-void collect_lowers(Node* node, double* lowers);
+void Tree_node_transform_jvp(Tree* tree, const double* input, double* output);
+void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient);
+Node* Tree_node_from_parameter(Tree* tree, Parameter* p);
 
 void Tree_update_heights(Tree* tree);
 double Tree_node_height(Tree* tree, Node* node);

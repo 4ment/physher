@@ -19,7 +19,9 @@ typedef struct TreeTransform {
     Parameters* parameters;
     double* lowers;
     unsigned* map;
+    Node** map_to_node;
     Parameter* (*parameter_of_node)(struct TreeTransform*, Node*);
+    Node* (*node_of_parameter)(struct TreeTransform*, Parameter*);
     double (*inverse_transform)(struct TreeTransform*, Node*);
     void (*update)(struct TreeTransform*);
     void (*update_lowers)(struct TreeTransform*);
@@ -31,5 +33,7 @@ typedef struct TreeTransform {
 TreeTransform* new_HeightTreeTransform(Tree* tree);
 
 void free_TreeTransform(TreeTransform* tt);
+
+Model* new_TreeTransformModel(const char* name, TreeTransform* coalescent, Model* tree);
 
 #endif /* treetransform_h */

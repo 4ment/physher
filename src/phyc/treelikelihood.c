@@ -50,8 +50,6 @@
 #include <immintrin.h>
 #endif
 
-#define OPTIMIZATION_PRECISION 0.01
-
 
 // MARK:  Private function declaration
 
@@ -167,7 +165,7 @@ void _model_prepare_gradient(Model* self, const Parameters* ps){
 				gradient_length += Tree_node_count(tlk->tree);
 			}
 			else{
-				gradient_length += Tree_node_count(tlk->tree) - Tree_tip_count(tlk->tree);
+				gradient_length += Tree_tip_count(tlk->tree) - 1;
 			}
 		}
 		else if (p->model == MODEL_SITEMODEL && !prepare_site_model) {
@@ -235,22 +233,13 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 	
 	if(prepare_tree){
 		if (p->model == MODEL_TREE) {
-			if (p->id < 0) {
-				int realIndex = -p->id-1;
-				return tlk->gradient[realIndex-Tree_tip_count(tlk->tree)];
-			}
-			else if(Tree_is_time_mode(tlk->tree)){
-				return tlk->gradient[p->id-Tree_tip_count(tlk->tree)];
-			}
-			else if(!Tree_is_time_mode(tlk->tree)){
-				return tlk->gradient[p->id];
-			}
+			return tlk->gradient[p->id];
 		}
 		if(!Tree_is_time_mode(tlk->tree)){
 			offset += Tree_node_count(tlk->tree);
 		}
 		else{
-			offset += Tree_node_count(tlk->tree) - Tree_tip_count(tlk->tree);
+			offset += Tree_tip_count(tlk->tree) - 1;
 		}
 	}
 	if (prepare_site_model) {
@@ -423,7 +412,6 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
             Parameters* reparams = get_reparams(tlk->tree);
             double* lowers = Tree_lowers(tlk->tree);
             _calculate_dlog_jacobian(node, node, &adjustement, descendant, map, reparams, lowers);
-            free(lowers);
             free(descendant);
 		}
 		// distances
@@ -809,7 +797,7 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	
 	model->logP = _singleTreeLikelihood_logP;
 	model->full_logP = _singleTreeLikelihood_full_logP;
-	model->dlogP = _singleTreeLikelihood_dlogP;
+	model->dlogP = _singleTreeLikelihood_dlogP_prepared;
 	model->d2logP = _singleTreeLikelihood_d2logP;
 	model->ddlogP = _singleTreeLikelihood_ddlogP;
 	model->update = _treelikelihood_handle_change;
@@ -3665,6 +3653,19 @@ void gradient_heights(SingleTreeLikelihood* tlk, const double* branch_gradient, 
 	}
 }
 
+
+// \partial log(L)/\partial r_i &= \partial log(L)/\partial h_i \partial h_i\partial r_i
+// &= \sum_j \partial log(L)/\partial b_i  \partial b_i/\partial h_i \partial h_i\partial r_i
+void gradient_ratios(SingleTreeLikelihood* tlk, const double* branch_gradient, double* gradient){
+	double* height_gradient = dvector(Tree_tip_count(tlk->tree) - 1);
+	gradient_heights(tlk, branch_gradient, height_gradient);
+	//jvp and jacobian
+	Tree_node_transform_jvp(tlk->tree, height_gradient, gradient);
+	Tree_node_transform_jacobian_gradient(tlk->tree, gradient);
+//	node_transform_jvp(tlk->tree, height_gradient, gradient, true);
+	free(height_gradient);
+}
+
 // compute gradient wrt every parameter
 // derivative are concatenated in this order:
 // (branch length or ratios), site model, clock model, susbtitution model
@@ -3730,7 +3731,7 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
 	
 	if (prepare_tree && time_mode) {
 		gradient_ratios(tlk, cat_branch_gradient, grads);
-		offset += nodeCount - Tree_tip_count(tlk->tree);
+		offset += Tree_tip_count(tlk->tree) - 1;
 	}
 	else if (prepare_tree){
 		memcpy(grads, cat_branch_gradient, sizeof(double)*nodeCount);

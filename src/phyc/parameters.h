@@ -48,6 +48,7 @@ typedef enum model_t{
 	MODEL_SITEMODEL,
 	MODEL_SUBSTITUTION,
 	MODEL_TREE,
+	MODEL_TREE_TRANSFORM,
 	MODEL_TREELIKELIHOOD,
     MODEL_VARIATIONAL,
     MODEL_VARIATIONAL_TREELIKELIHOOD
@@ -65,6 +66,7 @@ static const char* model_type_strings[] = {
 	"sitemodel",
 	"substitutionmodel",
 	"tree",
+	"treetransform",
 	"treelikelihood",
     "variational",
     "variationaltreelikelihood"
