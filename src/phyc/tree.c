@@ -1133,7 +1133,6 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		StringBuffer* buffer = new_StringBuffer(10);
 		Model* mtt = new_TreeTransformModel("sdfadfasdf", tree->tt, mtree);
 		mtree->data = mtt;
-		mtt->ref_count++;
 		mtt->listeners->add( mtt->listeners, mtree );
 		char* id = get_json_node_value_string(node, "id");
 		for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {

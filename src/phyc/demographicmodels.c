@@ -387,7 +387,7 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
         }
         else{
             Parameter* parameter = new_Parameter_from_json(p_node, hash);
-            Parameters_add(ps, parameter);
+            Parameters_move(ps, parameter);
             Hashtable_add(hash, Parameter_name(parameter), parameter);
         }
         
