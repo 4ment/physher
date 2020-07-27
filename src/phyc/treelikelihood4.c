@@ -312,8 +312,8 @@ void partials_states_and_states_4( const SingleTreeLikelihood *tlk, int idx1, co
 	for ( int l = 0; l < tlk->cat_count; l++ ) {
 		
         for ( k = 0; k < tlk->pattern_count; k++ ) {
-			state1 = tlk->sp->patterns[k][idx1];
-			state2 = tlk->sp->patterns[k][idx2];
+			state1 = tlk->sp->patterns[idx1][k];
+			state2 = tlk->sp->patterns[idx2][k];
 			
 			//w = l * tlk->matrix_size;
 			w = u;
@@ -360,7 +360,7 @@ void partials_states_4( const SingleTreeLikelihood *tlk, int idx1, const double 
 	for ( int l = 0; l < tlk->cat_count; l++ ) {
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
-			state1 = tlk->sp->patterns[k][idx1];
+			state1 = tlk->sp->patterns[idx1][k];
 			
 			w = u;
 			
@@ -398,8 +398,8 @@ void partials_states_and_states_noexp_integrate_4( const SingleTreeLikelihood *t
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
-			state2 = tlk->sp->patterns[k][idx2];
+			state1 = tlk->sp->patterns[idx1][k];
+			state2 = tlk->sp->patterns[idx2][k];
     
 			if (state1 < 4 && state2 < 4) {
                 
@@ -465,9 +465,9 @@ static void _partials_tip_and_tip_4_ancestral( const SingleTreeLikelihood *tlk, 
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
-			state2 = tlk->sp->patterns[k][idx2];
-			state3 = tlk->sp->patterns[k][idx3];
+			state1 = tlk->sp->patterns[idx1][k];
+			state2 = tlk->sp->patterns[idx2][k];
+			state3 = tlk->sp->patterns[idx3][k];
 						
             int p = u + nstate * state3;
             
@@ -515,7 +515,7 @@ void partials_states_and_undefined_4( const SingleTreeLikelihood *tlk, int idx1,
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
+			state1 = tlk->sp->patterns[idx1][k];
 			
 			if ( state1 < 4) {
 				
@@ -608,7 +608,7 @@ void partials_states_and_undefined_noexp_integrate_4( const SingleTreeLikelihood
         
         for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state1 = tlk->sp->patterns[k][idx1];
+            state1 = tlk->sp->patterns[idx1][k];
             
             if ( state1 < 4) {
                 
@@ -663,9 +663,9 @@ static void _partials_tip_and_internal_4_ancestral( const SingleTreeLikelihood *
         
         for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state1 = tlk->sp->patterns[k][idx1];
-            state2 = tlk->sp->patterns[k][idx2];
-            state3 = tlk->sp->patterns[k][idx3];
+            state1 = tlk->sp->patterns[idx1][k];
+            state2 = tlk->sp->patterns[idx2][k];
+            state3 = tlk->sp->patterns[idx3][k];
             
             int p = w + nstate * state3;
             
@@ -704,8 +704,8 @@ static void _partials_tip_and_internal_4_ancestral2( const SingleTreeLikelihood 
         
         for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state1 = tlk->sp->patterns[k][idx1];
-            state2 = tlk->sp->patterns[k][idx2];
+            state1 = tlk->sp->patterns[idx1][k];
+            state2 = tlk->sp->patterns[idx2][k];
             
             w = l * 16;
             
@@ -937,9 +937,9 @@ static void _partials_internal_and_internal_4_ancestral( const SingleTreeLikelih
         
         for ( k = 0; k < sp_count; k++ ) {
             
-            state1 = tlk->sp->patterns[k][idx1];
-            state2 = tlk->sp->patterns[k][idx2];
-            state3 = tlk->sp->patterns[k][idx3];
+            state1 = tlk->sp->patterns[idx1][k];
+            state2 = tlk->sp->patterns[idx2][k];
+            state3 = tlk->sp->patterns[idx3][k];
             
             int p = w + nstate * state3;
             
@@ -977,8 +977,8 @@ static void _partials_internal_and_internal_4_ancestral2( const SingleTreeLikeli
         
         for ( k = 0; k < sp_count; k++ ) {
             
-            state1 = tlk->sp->patterns[k][idx1];
-            state2 = tlk->sp->patterns[k][idx2];
+            state1 = tlk->sp->patterns[idx1][k];
+            state2 = tlk->sp->patterns[idx2][k];
             
             w = l * 16;
             
@@ -1132,8 +1132,8 @@ void partials_states_and_states_4_openmp( const SingleTreeLikelihood *tlk, int i
         int l = lk / tlk->pattern_count;
         int k = lk % tlk->pattern_count;
         
-        int state1 = tlk->sp->patterns[k][idx1];
-        int state2 = tlk->sp->patterns[k][idx2];
+        int state1 = tlk->sp->patterns[idx1][k];
+        int state2 = tlk->sp->patterns[idx2][k];
         
         int w = l * tlk->matrix_size;
         
@@ -1184,7 +1184,7 @@ void partials_states_and_undefined_4_openmp( const SingleTreeLikelihood *tlk, in
         int w = l * tlk->matrix_size;
         int v = (l*tlk->pattern_count + k) * 4;
         
-        int state1 = tlk->sp->patterns[k][idx1];
+        int state1 = tlk->sp->patterns[idx1][k];
         
         double sum;
     
@@ -1498,8 +1498,8 @@ void partials_states_and_states_4_SSE( const SingleTreeLikelihood *tlk, int idx1
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
-			state2 = tlk->sp->patterns[k][idx2];
+			state1 = tlk->sp->patterns[idx1][k];
+			state2 = tlk->sp->patterns[idx2][k];
 			
 			w = tlk->sm->get_site_category(tlk->sm, k)*16 + u;
 			
@@ -1569,7 +1569,7 @@ void partials_states_4_SSE( const SingleTreeLikelihood *tlk, int idx1, const dou
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
+			state1 = tlk->sp->patterns[idx1][k];
 			u = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
 			
 			if (state1 < 4) {
@@ -1610,7 +1610,7 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
+			state1 = tlk->sp->patterns[idx1][k];
 			w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
 			
 			
@@ -2077,7 +2077,7 @@ static void _calculate_branch_likelihood_upper_undefined_SSE(SingleTreeLikelihoo
 		for(int k = 0; k < tlk->pattern_count; k++) {
 			__m128d p1 = _mm_load_pd(partials+v);
 			__m128d p2 = _mm_load_pd(partials+v+2);
-			int state = tlk->sp->patterns[k][upperPartialsIndex];
+			int state = tlk->sp->patterns[upperPartialsIndex][k];
 			
 			if(state < 4){
 				__m128d* m = (__m128d*)&matrices[l * 16 + state*4];
@@ -2129,7 +2129,7 @@ static void _calculate_branch_likelihood_state_SSE(SingleTreeLikelihood *tlk, do
 		const double* mat = &matrices[l*16];
 		int u = 0;
 		for(int k = 0; k < tlk->pattern_count; k++) {
-			const int state = tlk->sp->patterns[k][partialsIndex];
+			const int state = tlk->sp->patterns[partialsIndex][k];
 			if(state < 4){
 				m1 = (__m128d*)&mat[state*4];
 				*rp = _mm_add_pd(*rp, _mm_mul_pd(weight, _mm_mul_pd(*m1, *up))); rp++; m1++; up++;
@@ -2238,7 +2238,7 @@ static void _calculate_branch_partials_upper_undefined_SSE(SingleTreeLikelihood 
 		for(int k = 0; k < tlk->pattern_count; k++) {
 			__m128d p1 = _mm_load_pd(&partials[v]);
 			__m128d p2 = _mm_load_pd(&partials[v+2]);
-			int state = tlk->sp->patterns[k][upperPartialsIndex];
+			int state = tlk->sp->patterns[upperPartialsIndex][k];
 			
 			if(state < 4){
 				__m128d* m = (__m128d*)&matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l * 16 + state*4];
@@ -2285,7 +2285,7 @@ static void _calculate_branch_partials_state_SSE(SingleTreeLikelihood *tlk, doub
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < tlk->pattern_count; k++) {
 			const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l*16];
-			const int state = tlk->sp->patterns[k][partialsIndex];
+			const int state = tlk->sp->patterns[partialsIndex][k];
 			if(state < 4){
 				m1 = (__m128d*)&transMatrixPtr[state*4];
 				*rp = _mm_mul_pd(*m1, *up); rp++; m1++; up++;
@@ -2518,8 +2518,8 @@ void integrate_partials_4_AVX( const SingleTreeLikelihood *tlk, const double *in
             
             for ( k = 0; k < tlk->pattern_count; k++ ) {
                 
-                state1 = tlk->sp->patterns[k][idx1];
-                state2 = tlk->sp->patterns[k][idx2];
+                state1 = tlk->sp->patterns[idx1][k];
+                state2 = tlk->sp->patterns[idx2][k];
                 
                 w = u;
                 
@@ -2584,7 +2584,7 @@ void integrate_partials_4_AVX( const SingleTreeLikelihood *tlk, const double *in
             
             for ( k = 0; k < tlk->pattern_count; k++ ) {
                 
-                state1 = tlk->sp->patterns[k][idx1];
+                state1 = tlk->sp->patterns[idx1][k];
                 
                 
                 p2v0 = _mm256_load_pd(&partials2[v]);
@@ -2729,7 +2729,7 @@ void integrate_partials_4_AVX( const SingleTreeLikelihood *tlk, const double *in
             
             for ( k = 0; k < tlk->pattern_count; k++ ) {
                 
-                state1 = tlk->sp->patterns[k][idx1];
+                state1 = tlk->sp->patterns[idx1][k];
                 
                 
                 p2v0 = _mm256_load_pd(&partials2[v]);
@@ -3208,7 +3208,7 @@ static void _calculate_branch_likelihood_undefined2(SingleTreeLikelihood *tlk, d
 		const double weight = tlk->sm->get_proportion(tlk->sm, l);
 		for(int k = 0; k < tlk->pattern_count; k++) {
 			const double* partialsChildPtr = partials+v;
-			int state = tlk->sp->patterns[k][idx];
+			int state = tlk->sp->patterns[idx][k];
 			
 			if(state < 4){
 				const double* transMatrixPtr = &matrices[l*16+state*tlk->sm->nstate];
@@ -3294,7 +3294,7 @@ static void _calculate_branch_likelihood_state(SingleTreeLikelihood *tlk, double
 		int u = 0;
 		const double weight = tlk->sm->get_proportion(tlk->sm, l);
 		for(int k = 0; k < tlk->pattern_count; k++) {
-            int state = tlk->sp->patterns[k][partialsIndex];
+            int state = tlk->sp->patterns[partialsIndex][k];
             if(state < 4){
                 int w =  l * 16 + state;
 
@@ -3325,7 +3325,7 @@ static void _calculate_branch_likelihood_state2(SingleTreeLikelihood *tlk, doubl
         const double weight = tlk->sm->get_proportion(tlk->sm, l);
         for(int k = 0; k < tlk->pattern_count; k++) {
             const double* partialsChildPtr = partials+v;
-            int state = tlk->sp->patterns[k][upperPartialsIndex];
+            int state = tlk->sp->patterns[upperPartialsIndex][k];
             const double* transMatrixPtr = NULL;
             double sum;
             
@@ -3443,7 +3443,7 @@ static void _calculate_branch_partials_state(SingleTreeLikelihood *tlk, double* 
 	int v = 0;
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < tlk->pattern_count; k++) {
-			int state = tlk->sp->patterns[k][partialsIndex];
+			int state = tlk->sp->patterns[partialsIndex][k];
 			if(state < 4){
 				int w =  tlk->sm->get_site_category(tlk->sm, k) + l * 16 + state;
 				
@@ -3473,7 +3473,7 @@ static void _calculate_branch_partials_state2(SingleTreeLikelihood *tlk, double*
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < tlk->pattern_count; k++) {
 			const double* partialsChildPtr = partials+v;
-			int state = tlk->sp->patterns[k][upperPartialsIndex];
+			int state = tlk->sp->patterns[upperPartialsIndex][k];
 			const double* transMatrixPtr = NULL;
 			double sum;
 			
@@ -3565,7 +3565,7 @@ static void _update_upper_partials_state( SingleTreeLikelihood *tlk, const doubl
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state = tlk->sp->patterns[k][ sibling_index ];
+            state = tlk->sp->patterns[ sibling_index ][k];
             
 //			w2 = w = l * 16;
             
@@ -3824,7 +3824,7 @@ static void _update_upper_partials_root_and_state( const SingleTreeLikelihood *t
 		
 		for ( int k = 0; k < tlk->pattern_count; k++ ) {
 
-            state1 = tlk->sp->patterns[k][idx1];
+            state1 = tlk->sp->patterns[idx1][k];
             
 			w = l * 16;
             
@@ -3965,7 +3965,7 @@ static void _partial_lower_upper_leaf( const SingleTreeLikelihood *tlk, const do
 	for ( int l = 0; l < tlk->cat_count; l++ ) {
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
-			state = tlk->sp->patterns[k][idx];
+			state = tlk->sp->patterns[idx][k];
             
 			w = l * 16;
             if( state < 4 ){
@@ -4023,7 +4023,7 @@ static void _update_upper_partials_state_sse2( SingleTreeLikelihood *tlk, const 
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state = tlk->sp->patterns[k][ sibling_index ];
+            state = tlk->sp->patterns[ sibling_index ][k];
             
 			w2 = w = l * 16;
             
@@ -4101,7 +4101,7 @@ static void _update_upper_partials_state_sse( SingleTreeLikelihood *tlk, const d
         
         for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state = tlk->sp->patterns[k][ sibling_index ];
+            state = tlk->sp->patterns[ sibling_index ][k];
             
             w = l * 16;
             __m128d pu = _mm_set1_pd(partials_upper[v]);
@@ -4368,7 +4368,7 @@ static void _update_upper_partials_root_and_state_sse( const SingleTreeLikelihoo
 		
 		for ( int k = 0; k < tlk->pattern_count; k++ ) {
 			
-            state1 = tlk->sp->patterns[k][idx1];
+            state1 = tlk->sp->patterns[idx1][k];
             
 			w = l * 16;
             
@@ -4506,7 +4506,7 @@ static void _partial_lower_upper_leaf_sse( const SingleTreeLikelihood *tlk, cons
 		p = proportions[l];
         
 		for ( k = 0; k < sp_count; k++ ) {
-			state = tlk->sp->patterns[k][idx];
+			state = tlk->sp->patterns[idx][k];
             
 			w = l * 16;
             

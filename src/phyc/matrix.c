@@ -888,6 +888,12 @@ unsigned int *clone_uivector( const unsigned int * v, const size_t n ){
 	return clone;	
 }
 
+uint8_t *clone_u8ivector( const uint8_t* v, const size_t n ){
+	uint8_t *clone = malloc(n*sizeof(uint8_t));
+	memcpy(clone, v, n*sizeof( uint8_t) );
+	return clone;
+}
+
 char *clone_cvector( const char *v, const size_t n ){
 	char *clone = cvector( n );
 	memcpy(clone, v, n*sizeof(char) );

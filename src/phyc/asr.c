@@ -72,7 +72,7 @@ void _marginal_reconstruction( SingleTreeLikelihood *tlk ){
 				
 				if ( j == 0 ) {
 					for ( int i = 0; i < sp_count; i++ ) {
-						sp->patterns[i][index] = 0;
+						sp->patterns[index][i] = 0;
 					}
 					memcpy(Lj, spare_pattern_lk, sp_count*sizeof(double));
 				}
@@ -80,7 +80,7 @@ void _marginal_reconstruction( SingleTreeLikelihood *tlk ){
 					for ( int i = 0; i < sp_count; i++ ) {
 						if( spare_pattern_lk[i] > Lj[i] ){
 							Lj[i] = spare_pattern_lk[i];
-							sp->patterns[i][index] = j;
+							sp->patterns[index][i] = j;
 						}
 					}
 				}
@@ -114,8 +114,9 @@ void asr_marginal( SingleTreeLikelihood *tlk ){
 	
 	// could be called multiple times
     if( tlk->sp->size != node_count ){
-        for ( int i = 0; i < tlk->sp->count; i++ ) {
-            sp->patterns[i] = realloc(sp->patterns[i], node_count*sizeof(uint8_t));
+		sp->patterns = realloc(sp->patterns, node_count*sizeof(uint8_t*));
+        for ( size_t i = tip_count; i < node_count; i++ ) {
+            sp->patterns[i] = realloc(sp->patterns[i], tlk->sp->count*sizeof(uint8_t));
         }
         sp->size = Tree_node_count(tlk->tree);
         sp->names = realloc(sp->names, node_count*sizeof(char*));
@@ -142,7 +143,7 @@ void estimate_GTR(SingleTreeLikelihood* tlk){
 	double** N = dmatrix(nstate, nstate);
 	size_t rootID = tlk->mapping[Tree_root(tlk->tree)->id];
 	for(int i = 0; i < tlk->sp->count; i++){
-		m[tlk->sp->patterns[i][rootID]]++;
+		m[tlk->sp->patterns[rootID][i]]++;
 	}
 	
 	for (int k = 0; k < Tree_node_count(tlk->tree); k++) {
@@ -183,10 +184,10 @@ void estimate_GTR(SingleTreeLikelihood* tlk){
 //				}
 //				printf("%d %d\n", tlk->sp->patterns[p][nodeID], tlk->sp->patterns[p][nodeRightID]);
 //				printf("%d %d\n", tlk->sp->patterns[p][nodeID], tlk->sp->patterns[p][nodeLeftID]);
-				if(tlk->sp->patterns[p][nodeRightID] < nstate)
-				N[tlk->sp->patterns[p][nodeID]][tlk->sp->patterns[p][nodeRightID]]++;
-				if(tlk->sp->patterns[p][nodeLeftID] < nstate)
-				N[tlk->sp->patterns[p][nodeID]][tlk->sp->patterns[p][nodeLeftID]]++;
+				if(tlk->sp->patterns[nodeRightID][p] < nstate)
+				N[tlk->sp->patterns[nodeID][p]][tlk->sp->patterns[nodeRightID][p]]++;
+				if(tlk->sp->patterns[nodeLeftID][p] < nstate)
+				N[tlk->sp->patterns[nodeID][p]][tlk->sp->patterns[nodeLeftID][p]]++;
 			}
 		}
 	}

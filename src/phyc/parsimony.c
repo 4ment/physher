@@ -210,8 +210,8 @@ void _update( Parsimony *parsimony ){
             
                 memset(parsimony->stateSets[ nodes[i]->id ], 0, sizeof(int8_t)*nstate*sp_count);
                 for ( int j = 0; j < sp_count; j++ ) {
-                    if( patterns[j][ idx ] < nstate ){
-                        parsimony->stateSets[ nodes[i]->id ][j*nstate+patterns[j][idx] ] = 1;
+                    if( patterns[idx][j] < nstate ){
+                        parsimony->stateSets[ nodes[i]->id ][j*nstate+patterns[idx][j] ] = 1;
                     }
                     else {
                         for ( int k = 0; k < nstate; k++ ) {
@@ -370,7 +370,7 @@ static void _reconstruct( Parsimony *parsimony ) {
                 int idx = get_sequence_index(parsimony->sp, nodes[i]->name);
                 
                 for ( int j = 0; j < sp_count; j++ ) {
-                    parsimony->states[j][nodes[i]->id] = patterns[j][idx];
+                    parsimony->states[j][nodes[i]->id] = patterns[idx][j];
                 }
             }
         }

@@ -33,96 +33,33 @@
 
 #include "datatype.h"
 
-static bool compare_patterns( const uint8_t *a, const uint8_t *b, const int n );
+static void _make_patterns( const Sequences *a, Hashtable* hash, int start, int end, int every );
+static void _make_patterns_codon( const Sequences *aln, Hashtable* hash, int start, int end );
+static void _make_patterns_generic( const Sequences *aln, Hashtable* hash, int start, int length );
 
-static void _make_patterns( const Sequences *a, uint8_t **patterns, int start, int end, int every );
-static void _make_patterns_codon( const Sequences *aln, uint8_t **patterns, int start, int end );
-static void _make_patterns_generic( const Sequences *aln, uint8_t **patterns, int start, int length );
+typedef struct uint8vec{
+	uint8_t* values;
+	size_t length;
+}uint8vec;
+
+unsigned int hashtable_hash_uint8_t(const void* data) {
+	const uint8vec* vec = data;
+	const uint8_t* values = vec->values;
+	unsigned int hash = values[0];
+	for(int i = 1; i < vec->length; i++){
+		hash ^= values[i] + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+	}
+	return hash;
+}
+
+static bool hashtable_compare_uint8_t( const void *key1, const void *key2 ){
+	const uint8vec* k1 = (uint8vec*)key1;
+	const uint8vec* k2 = (uint8vec*)key2;
+	return memcmp(k1->values, k2->values, k1->length*sizeof(uint8_t)) == 0;
+}
 
 SitePattern * new_SitePattern( const Sequences *aln ){
-	SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );
-	assert(sp);
-	sp->id = 0;
-	
-	sp->datatype = aln->datatype;
-	sp->datatype->ref_count++;
-	uint8_t **temp_patterns = NULL;
-	sp->nstate = sp->datatype->state_count(sp->datatype);
-	
-	if ( aln->datatype->type == DATA_TYPE_CODON) {
-		sp->nsites = aln->length/3;
-		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns_codon(aln, temp_patterns, 0, aln->length);
-	}
-	else if ( aln->datatype->type == DATA_TYPE_GENERIC) {
-		int length = aln->length;
-		sp->nsites = length/aln->datatype->symbolLength;
-		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns_generic( aln, temp_patterns, 0, length );
-	}
-	else {
-		sp->nsites = aln->length;
-		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns( aln, temp_patterns, 0, aln->length, 1 );
-	}
-	
-	assert(sp->nsites);
-	sp->patterns = (uint8_t**)malloc(sp->nsites * sizeof(uint8_t *) );
-	assert(sp->patterns);
-	sp->indexes = ivector(sp->nsites);
-	sp->weights = dvector(sp->nsites);
-	sp->count = 0;
-	sp->size = aln->size;
-	
-	
-	int site, p;
-	for( site = 0; site < sp->nsites; site++ ){
-		for ( p = 0; p < sp->count; p++ ) {
-			if(memcmp(temp_patterns[site], sp->patterns[p], sizeof(uint8_t)*aln->size) == 0){
-				sp->weights[p] += 1.;
-				sp->indexes[site] = p;
-				break;
-			}
-		}
-		if( p == sp->count ){
-			sp->weights[sp->count] = 1.;
-			sp->patterns[sp->count] = (uint8_t*)malloc(aln->size * sizeof(uint8_t) );
-			assert(sp->patterns[sp->count]);
-			memcpy( sp->patterns[sp->count], temp_patterns[site], aln->size * sizeof(uint8_t) );
-			sp->indexes[site] = sp->count;
-			sp->count++;
-		}
-	}
-	assert(sp->count);
-	sp->weights  = realloc(sp->weights, sp->count * sizeof(double) );
-	sp->patterns = realloc(sp->patterns, sp->count * sizeof(uint8_t*) );
-	
-	//	//
-	//	sp->patterns2 = (uint8_t**)malloc(aln->size * sizeof(uint8_t *) );
-	//	for ( int i = 0; i < aln->size; i++ ) {
-	//		sp->patterns2[i] = (uint8_t*)calloc(sp->count, sizeof(uint8_t) );
-	//	}
-	//	for ( int i = 0; i < sp->count; i++ ) {
-	//		for ( int j = 0; j < aln->size ; j++ ) {
-	//			sp->patterns2[j][i] = sp->patterns[i][j];
-	//		}
-	//	}
-	//	//
-	
-	sp->names = (char**)malloc( aln->size * sizeof(char*) );
-	assert(sp->names);
-	
-	for ( int i = 0; i < aln->size; i++) {
-		sp->names[i] = String_clone( aln->seqs[i]->name );
-	}
-	
-	for ( int i = 0; i < sp->nsites; i++) {
-		free(temp_patterns[i]);
-	}
-	free(temp_patterns);
-	sp->ref_count = 1;
-	
-	return sp;
+	return new_SitePattern2(aln, 0, aln->length, 1);
 }
 
 
@@ -133,67 +70,51 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 	
 	sp->datatype = aln->datatype;
 	sp->datatype->ref_count++;
-	uint8_t **temp_patterns = NULL;
 	sp->nstate = sp->datatype->state_count(sp->datatype);
+	
+	Hashtable* hash = new_Hashtable( 100, &hashtable_hash_uint8_t, hashtable_compare_uint8_t, HASHTABLE_KEY_REFERENCE);
+	hashtable_set_key_ownership(hash, true);
+	hashtable_set_value_ownership(hash, true);
 	
 	if ( aln->datatype->type == DATA_TYPE_CODON) {
 		sp->nsites = length/3;
-		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns_codon(aln, temp_patterns, start, length);
+		_make_patterns_codon(aln, hash, start, length);
 	}
 	else if ( aln->datatype->type == DATA_TYPE_GENERIC) {
 		sp->nsites = aln->length/aln->datatype->symbolLength;
-		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns_generic( aln, temp_patterns, start, length );
+		_make_patterns_generic( aln, hash, start, length );
 	}
 	else {
 		sp->nsites = length/every;
-		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns( aln, temp_patterns, start, length, every );
+		_make_patterns( aln, hash, start, length, every );
 	}
 	
-	assert(sp->nsites);
-	sp->patterns = (uint8_t**)malloc(sp->nsites * sizeof(uint8_t *) );
-	assert(sp->patterns);
-	sp->indexes = ivector(sp->nsites);
-	sp->weights = dvector(sp->nsites);
-	sp->count = 0;
+	sp->count = Hashtable_length(hash);
 	sp->size = aln->size;
+	sp->indexes = ivector(sp->count);
+	sp->weights = dvector(sp->count);
 	
+	Hashtable_init_iterator(hash);
+	HashEntry *entry = NULL;
 	
-	int site, p;
-	for( site = 0; site < sp->nsites; site++ ){
-		for ( p = 0; p < sp->count; p++ ) {
-			if(memcmp(temp_patterns[site], sp->patterns[p], sizeof(uint8_t)*aln->size) == 0){
-				sp->weights[p] += 1.;
-				sp->indexes[site] = p;
-				break;
-			}
-		}
-		if( p == sp->count ){
-			sp->weights[sp->count] = 1.;
-			sp->patterns[sp->count] = (uint8_t*)malloc(aln->size * sizeof(uint8_t) );
-			assert(sp->patterns[sp->count]);
-			memcpy( sp->patterns[sp->count], temp_patterns[site], aln->size * sizeof(uint8_t) );
-			sp->indexes[site] = sp->count;
-			sp->count++;
-		}
+	sp->patterns = malloc(sizeof(uint8_t*)*sp->size);
+	for(size_t i = 0; i < aln->size; i++){
+		sp->patterns[i] = malloc(sizeof(uint8_t)*sp->count);
 	}
-	assert(sp->count);
-	sp->weights  = realloc(sp->weights, sp->count * sizeof(double) );
-	sp->patterns = realloc(sp->patterns, sp->count * sizeof(uint8_t*) );
 	
-	//	//
-	//	sp->patterns2 = (uint8_t**)malloc(aln->size * sizeof(uint8_t *) );
-	//	for ( int i = 0; i < aln->size; i++ ) {
-	//		sp->patterns2[i] = (uint8_t*)calloc(sp->count, sizeof(uint8_t) );
-	//	}
-	//	for ( int i = 0; i < sp->count; i++ ) {
-	//		for ( int j = 0; j < aln->size ; j++ ) {
-	//			sp->patterns2[j][i] = sp->patterns[i][j];
-	//		}
-	//	}
-	//	//
+	size_t index = 0;
+	while ( (entry = Hashtable_next(hash) ) != NULL ) {
+		const uint8vec *vec = HashEntry_key(entry);
+		const uint8_t *pattern = vec->values;
+		const int *counter = HashEntry_value(entry);
+		sp->weights[index] = *counter;
+		for(size_t i = 0; i < aln->size; i++){
+			sp->patterns[i][index] = pattern[i];
+		}
+		sp->indexes[index] = -1;
+		index++;
+		free(vec->values);
+	}
 	
 	sp->names = (char**)malloc( aln->size * sizeof(char*) );
 	assert(sp->names);
@@ -201,11 +122,7 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 	for ( int i = 0; i < aln->size; i++) {
 		sp->names[i] = String_clone( aln->seqs[i]->name );
 	}
-	
-	for ( int i = 0; i < sp->nsites; i++) {
-		free(temp_patterns[i]);
-	}
-	free(temp_patterns);
+	free_Hashtable(hash);
 	sp->ref_count = 1;
 	
 	return sp;
@@ -218,68 +135,52 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 	
 	sp->datatype = aln->datatype;
 	sp->datatype->ref_count++;
-	uint8_t **temp_patterns = NULL;
 	sp->nstate = sp->datatype->state_count(sp->datatype);
+	
+	Hashtable* hash = new_Hashtable( 100, &hashtable_hash_uint8_t, hashtable_compare_uint8_t, HASHTABLE_KEY_REFERENCE);
+	hashtable_set_key_ownership(hash, true);
+	hashtable_set_value_ownership(hash, true);
 	
 	if ( aln->datatype->type == DATA_TYPE_CODON) {
 		sp->nsites = length/3;
-		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns_codon(aln, temp_patterns, start, length);
+		_make_patterns_codon(aln, hash, start, length);
 	}
 	else if ( aln->datatype->type == DATA_TYPE_GENERIC) {
 		sp->nsites = aln->length/aln->datatype->symbolLength;
-		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns_generic( aln, temp_patterns, start, length );
+		_make_patterns_generic( aln, hash, start, length );
 	}
 	else {
 		sp->nsites = length/3*2;
-		temp_patterns = ui8matrix( sp->nsites, aln->size);
-		_make_patterns( aln, temp_patterns, start+a, length, 3 );
-		_make_patterns( aln, temp_patterns+length/3, start+b, length, 3 );
+		_make_patterns( aln, hash, start+a, length, 3 );
+		_make_patterns( aln, hash, start+b, length, 3 );
 	}
 	
-	assert(sp->nsites);
-	sp->patterns = (uint8_t**)malloc(sp->nsites * sizeof(uint8_t *) );
-	assert(sp->patterns);
-	sp->indexes = ivector(sp->nsites);
-	sp->weights = dvector(sp->nsites);
-	sp->count = 0;
+	sp->count = Hashtable_length(hash);
 	sp->size = aln->size;
+	sp->indexes = ivector(sp->count);
+	sp->weights = dvector(sp->count);
 	
+	Hashtable_init_iterator(hash);
+	HashEntry *entry = NULL;
 	
-	int site, p;
-	for( site = 0; site < sp->nsites; site++ ){
-		for ( p = 0; p < sp->count; p++ ) {
-			if(memcmp( temp_patterns[site], sp->patterns[p], sizeof(uint8_t)*aln->size ) == 0){
-				sp->weights[p] += 1.;
-				sp->indexes[site] = p;
-				break;
-			}
-		}
-		if( p == sp->count ){
-			sp->weights[sp->count] = 1.;
-			sp->patterns[sp->count] = (uint8_t*)malloc(aln->size * sizeof(uint8_t) );
-			assert(sp->patterns[sp->count]);
-			memcpy( sp->patterns[sp->count], temp_patterns[site], aln->size * sizeof(uint8_t) );
-			sp->indexes[site] = sp->count;
-			sp->count++;
-		}
+	sp->patterns = malloc(sizeof(uint8_t*)*sp->size);
+	for(size_t i = 0; i < aln->size; i++){
+		sp->patterns[i] = malloc(sizeof(uint8_t)*sp->count);
 	}
-	assert(sp->count);
-	sp->weights  = realloc(sp->weights, sp->count * sizeof(double) );
-	sp->patterns = realloc(sp->patterns, sp->count * sizeof(uint8_t*) );
 	
-	//	//
-	//	sp->patterns2 = (uint8_t**)malloc(aln->size * sizeof(uint8_t *) );
-	//	for ( int i = 0; i < aln->size; i++ ) {
-	//		sp->patterns2[i] = (uint8_t*)calloc(sp->count, sizeof(uint8_t) );
-	//	}
-	//	for ( int i = 0; i < sp->count; i++ ) {
-	//		for ( int j = 0; j < aln->size ; j++ ) {
-	//			sp->patterns2[j][i] = sp->patterns[i][j];
-	//		}
-	//	}
-	//	//
+	size_t index = 0;
+	while ( (entry = Hashtable_next(hash) ) != NULL ) {
+		const uint8vec *vec = HashEntry_key(entry);
+		const uint8_t *pattern = vec->values;
+		const int *counter = HashEntry_value(entry);
+		sp->weights[index] = *counter;
+		for(size_t i = 0; i < aln->size; i++){
+			sp->patterns[i][index] = pattern[i];
+		}
+		sp->indexes[index] = -1;
+		index++;
+		free(vec->values);
+	}
 	
 	sp->names = (char**)malloc( aln->size * sizeof(char*) );
 	assert(sp->names);
@@ -287,11 +188,7 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 	for ( int i = 0; i < aln->size; i++) {
 		sp->names[i] = String_clone( aln->seqs[i]->name );
 	}
-	
-	for ( int i = 0; i < sp->nsites; i++) {
-		free(temp_patterns[i]);
-	}
-	free(temp_patterns);
+	free_Hashtable(hash);
 	sp->ref_count = 1;
 	
 	return sp;
@@ -300,7 +197,7 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 void free_SitePattern( SitePattern *sp ){
 	if(sp->ref_count == 1){
 		if(sp->patterns != NULL ){
-			free_ui8matrix(sp->patterns, sp->count);
+			free_ui8matrix(sp->patterns, sp->size);
 			free(sp->weights);
 		}
 		if(sp->indexes != NULL)free(sp->indexes);
@@ -328,9 +225,9 @@ SitePattern * clone_SitePattern( const SitePattern *sp ){
     newsp->datatype = sp->datatype;
 	newsp->datatype->ref_count++;
     
-    newsp->patterns = ui8matrix(sp->count, sp->size);
-    for ( int p = 0; p < sp->count; p++ ) {
-        memcpy(newsp->patterns[p], sp->patterns[p], sp->size * sizeof(uint8_t));
+    newsp->patterns = ui8matrix(sp->size, sp->count);
+    for ( int p = 0; p < sp->size; p++ ) {
+        memcpy(newsp->patterns[p], sp->patterns[p], sp->count * sizeof(uint8_t));
     }
     
     newsp->indexes = clone_ivector( sp->indexes, sp->nsites);
@@ -353,27 +250,20 @@ SitePattern * clone_SitePattern( const SitePattern *sp ){
     return newsp;
 }
 
-static bool _compare_patterns_indexes( const uint8_t *a, const uint8_t *b, int n, const int *indexes ){
-	for ( int i = 0; i < n; i++) {
-		if( a[ indexes[i] ] != b[i] ) return false;
-	}
-	return true;
-}
-
 
 //SitePattern * SitePattern_subset( const SitePattern *original, const int *indexes, int size ){
 //	SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );
 //	assert(sp);
 //	sp->id = original->id+1;
 //	sp->datatype = original->datatype;
-//	
+//
 //	sp->patterns = (uint8_t**)malloc(original->count * sizeof(uint8_t *) );
 //	//sp->indexes = ivector(original->nsites);
 //	sp->weights = dvector(original->count);
 //	sp->count = 0;
 //	sp->size  = size;
 //    sp->nstate = original->nstate;
-//	
+//
 //	for ( int i = 0; i < original->nsites; i++ ) {
 //		int pos = original->indexes[i];
 //		int p = 0;
@@ -393,17 +283,17 @@ static bool _compare_patterns_indexes( const uint8_t *a, const uint8_t *b, int n
 //			//memcpy( sp->patterns[sp->count], original->patterns[rpos], original->size * sizeof(uint8_t) );
 //			sp->indexes[i] = sp->count++;
 //		}
-//		
+//
 //	}
-//	
+//
 //	sp->nsites = original->nsites;
-//	
+//
 //	sp->weights  = realloc(sp->weights, sp->count * sizeof(double) );
 //	sp->patterns = realloc(sp->patterns, sp->count * sizeof(char*) );
-//	
+//
 //	sp->names = (char**)malloc( sp->size * sizeof(char*) );
 //	assert(sp->names);
-//	
+//
 //	for ( int i = 0; i < sp->size; i++) {
 //		sp->names[i] = String_clone( original->names[ indexes[i] ] );
 //	}
@@ -519,7 +409,7 @@ SitePattern ** SitePattern_split( const SitePattern *sitePattern, const int coun
 		sps[i]->indexes = ivector(sitePattern->nsites);
 		p += sps[i]->count;
 		sps[i]->ref_count = 1;
-	}	
+	}
 	
 	return sps;
 }
@@ -557,7 +447,7 @@ Sequences * SitePattern_to_Sequences( const SitePattern *sp ){
 //Sequences * SitePattern_to_Sequences( const SitePattern *sp ){
 //    Sequences *sequences = new_Sequences(sp->size);
 //    StringBuffer *buff = new_StringBuffer(sp->nsites);
-//    
+//
 //    // that's an inefficient loop
 //    for ( int j = 0; j < sp->size; j++ ) {
 //        StringBuffer_empty(buff);
@@ -573,27 +463,18 @@ Sequences * SitePattern_to_Sequences( const SitePattern *sp ){
 //            else {
 //                StringBuffer_append_char( buff, sp->datatype->state(sp->datatype,sp->patterns[i][j]) );
 //            }
-//            
+//
 //        }
 //        Sequence *seq = new_Sequence(sp->names[j], buff->c);
 //        Sequences_add(sequences, seq);
 //    }
 //    sequences->aligned  = true;
 //    sequences->datatype = sp->datatype;
-//    
+//
 //    free_StringBuffer(buff);
 //    return sequences;
 //}
 
-
-
-bool compare_patterns( const uint8_t *a, const uint8_t *b, const int n ){
-	int i;
-	for ( i = 0; i < n; i++) {
-		if( a[i] != b[i] ) return false;
-	}
-	return true;
-}
 
 int get_sequence_index( const SitePattern *sp, const char *name ){
 	int i;
@@ -654,36 +535,68 @@ double unconstrained_lk( const SitePattern *sp, const unsigned int count){
 	return ulk;
 }
 
-void _make_patterns( const Sequences *aln, uint8_t **patterns, int start, int length, int every ){
-	int j = 0;
+void _make_patterns( const Sequences *aln, Hashtable* hash, int start, int length, int every ){
+	uint8vec* pattern = malloc(sizeof(uint8vec));
+	pattern->length = aln->size;
+	pattern->values = malloc(sizeof(uint8_t)*pattern->length);
+	
 	for( int site = start; site < length; site+=every ){
 		for( int i = 0; i < aln->size; i++ ){
-			patterns[j][i] = aln->datatype->encoding(aln->datatype, aln->seqs[i]->seq[site]);
+			pattern->values[i] = aln->datatype->encoding(aln->datatype, aln->seqs[i]->seq[site]);
 		}
-		j++;
+		HashEntry* entry = Hashtable_get_entry(hash, pattern);
+		if (entry != NULL) {
+			int* counter = HashEntry_value(entry);
+			(*counter)++;
+		}
+		else{
+			uint8vec* vec = malloc(sizeof(uint8vec));
+			vec->length = pattern->length;
+			vec->values = clone_u8ivector(pattern->values, pattern->length);
+			Hashtable_add(hash, vec, new_Int(1));
+		}
 	}
+	free(pattern->values);
+	free(pattern);
 }
 
-void _make_patterns_generic( const Sequences *aln, uint8_t **patterns, int start, int length ){
+void _make_patterns_generic( const Sequences *aln, Hashtable* hash, int start, int length ){
 	size_t symbolLength = aln->datatype->symbolLength;
+	uint8vec* pattern = malloc(sizeof(uint8vec));
+	pattern->length = aln->size;
+	pattern->values = malloc(sizeof(uint8_t)*pattern->length);
     char *state = cvector(symbolLength+1);
     state[symbolLength] = '\0';
-	size_t pos = 0;
-	for( size_t site = start; site < length; site+=symbolLength ){
+	
+	for( int site = start; site < length; site+=symbolLength ){
 		for( int i = 0; i < aln->size; i++ ){
 			memcpy(state, aln->seqs[i]->seq+site, symbolLength*sizeof(char));
-			patterns[pos][i] = aln->datatype->encoding_string(aln->datatype, state);
+			pattern->values[i] = aln->datatype->encoding_string(aln->datatype, state);
 		}
-		pos++;
+		HashEntry* entry = Hashtable_get_entry(hash, pattern);
+		if (entry != NULL) {
+			int* counter = HashEntry_value(entry);
+			(*counter)++;
+		}
+		else{
+			uint8vec* vec = malloc(sizeof(uint8vec));
+			vec->length = pattern->length;
+			vec->values = clone_u8ivector(pattern->values, pattern->length);
+			Hashtable_add(hash, vec, new_Int(1));
+		}
 	}
-    free(state);
+	free(state);
+	free(pattern->values);
+	free(pattern);
 }
 
 
-void _make_patterns_codon( const Sequences *aln, uint8_t **patterns, int start, int length ){
+void _make_patterns_codon( const Sequences *aln, Hashtable* hash, int start, int length ){
 	int i;
 	assert(length % 3 == 0);
-	int pos = 0;
+	uint8vec* pattern = malloc(sizeof(uint8vec));
+	pattern->length = aln->size;
+	pattern->values = malloc(sizeof(uint8_t)*pattern->length);
     
     DataType *nuctype = nucleotide_datatype();//SINGLETON_DATATYPE_NUCLEOTIDE;
     
@@ -700,28 +613,33 @@ void _make_patterns_codon( const Sequences *aln, uint8_t **patterns, int start, 
 			}*/
 			
 			if ( n1 > 3 || n2 > 3 || n3 > 3 ) {
-				patterns[pos][i] = 65;
+				pattern->values[i] = 65;
 			}
 			else {
-				patterns[pos][i] = n1*16+n2*4+n3;
+				pattern->values[i] = n1*16+n2*4+n3;
 				
 				for ( int j = 0; j < n1*16+n2*4+n3; j++ ) {
 					if ( GENETIC_CODE_TABLES[aln->datatype->genetic_code][j] == '*' ) {
-						patterns[pos][i]--;
+						pattern->values[i]--;
 					}
 				}
 				
 			}
 		}
-		pos++;
+		HashEntry* entry = Hashtable_get_entry(hash, pattern);
+		if (entry != NULL) {
+			int* counter = HashEntry_value(entry);
+			(*counter)++;
+		}
+		else{
+			uint8vec* vec = malloc(sizeof(uint8vec));
+			vec->length = pattern->length;
+			vec->values = clone_u8ivector(pattern->values, pattern->length);
+			Hashtable_add(hash, vec, new_Int(1));
+		}
 	}
-	
-//	for( int j = 0; j < aln->size; j++ ){
-//		for ( int i = 0; i < aln->length/3; i++ ) {
-//			fprintf(stdout, "%d ", patterns[i][j]);
-//		}
-//		fprintf(stdout, "\n");
-//	}
+	free(pattern->values);
+	free(pattern);
 }
 
 void SitePattern_sort( SitePattern *sitepattern, int *ordering ){
@@ -741,8 +659,8 @@ double ** SitePattern_rates( const SitePattern *sp ){
         for ( int j = i+1; j < sp->size; j++ ) {
     
             for ( int k = 0; k < sp->count; k++ ) {
-				int p1 = sp->patterns[k][i];
-				int p2 = sp->patterns[k][j];
+				int p1 = sp->patterns[i][k];
+				int p2 = sp->patterns[j][k];
 				if(p1 < sp->nstate && p2 < sp->nstate ){
 					if( p1 != p2 ){
 						mat[p1][p2] += sp->weights[k];
@@ -765,14 +683,14 @@ double ** SitePattern_rates( const SitePattern *sp ){
 unsigned SitePattern_polymorphic_count(SitePattern *sp){
     unsigned polymorphisms = 0;
     for ( int i = 0; i < sp->count; i++ ) {
-        uint8_t p = sp->patterns[i][0];
+        uint8_t p = sp->patterns[0][i];
 		int j = 0;
-		while (j < sp->size && sp->patterns[i][j] >= sp->nstate) {
-			p = sp->patterns[i][j];
+		while (j < sp->size && sp->patterns[j][i] >= sp->nstate) {
+			p = sp->patterns[j][i];
 			j++;
 		}
         for ( ; j < sp->size; j++ ) {
-            if( p != sp->patterns[i][j] && sp->patterns[i][j] < sp->nstate) break;
+            if( p != sp->patterns[j][i] && sp->patterns[j][i] < sp->nstate) break;
         }
         if( j != sp->size ){
             polymorphisms += sp->weights[i];
@@ -842,6 +760,19 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		}
 		free_DataType(datatype);
 		free_Sequences(sequences);
+		
+		json_node* seq_node = get_json_node(alignment_node, "sequences");
+		if(seq_node != NULL){
+			size_t j = 0;
+			for ( ; j < alignment_node->child_count; j++) {
+				if(alignment_node->children[j] == seq_node) break;
+			}
+			for ( ; j < alignment_node->child_count; j++) {
+				alignment_node->children[j] = alignment_node->children[j+1];
+			}
+			alignment_node->child_count--;
+			json_free_tree(seq_node);
+		}
 	}
 	else{
 		fprintf(stderr, "No `alignment' provided in sitepattern object\n");

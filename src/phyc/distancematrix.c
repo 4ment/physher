@@ -118,8 +118,8 @@ void _distance_raw_patterns(const SitePattern *patterns, double **matrix){
 			int n = 0;
 			
 			for ( int site = 0; site < patterns->count; site++) {
-				n1 = patterns->patterns[site][i];
-				n2 = patterns->patterns[site][j];
+				n1 = patterns->patterns[i][site];
+				n2 = patterns->patterns[j][site];
 				if(n1 < 4 && n2 < 4){
 					if( n1 != n2 ){
 						d += patterns->weights[site];
@@ -237,8 +237,8 @@ void _distance_jc69_patterns(const SitePattern *patterns, double **matrix){
 			n = 0;
 			
 			for ( int site = 0; site < patterns->count; site++) {
-				n1 = patterns->patterns[site][i];
-				n2 = patterns->patterns[site][j];
+				n1 = patterns->patterns[i][site];
+				n2 = patterns->patterns[j][site];
 				if(n1 < 4 && n2 < 4){
 					if( n1 != n2 ){
 						d += patterns->weights[site];
@@ -353,8 +353,8 @@ void _distance_k2p_patterns(const SitePattern *patterns, double **matrix){
 			transition = transversion = n = 0;
 			
 			for ( int site = 0; site < patterns->count; site++) {
-				n1 = patterns->patterns[site][i];
-				n2 = patterns->patterns[site][j];
+				n1 = patterns->patterns[i][site];
+				n2 = patterns->patterns[j][site];
 				if(n1 < 4 && n2 < 4){
 					if( IS_TRANSITION[n1][n2]){
 						transition += patterns->weights[site];
@@ -453,8 +453,8 @@ void _distance_aa_kimura_patterns(const SitePattern *patterns, double **matrix){
 			n = d = 0;
 			
 			for ( int site = 0; site < patterns->count; site++) {
-				n1 = patterns->patterns[site][i];
-				n2 = patterns->patterns[site][j];
+				n1 = patterns->patterns[i][site];
+				n2 = patterns->patterns[j][site];
 				if ( n1 < datatype->state_count(datatype) && n2 < datatype->state_count(datatype) ) {
 					if( n1 != n2 ){
 						d+= patterns->weights[site];
@@ -541,8 +541,8 @@ void _hamming_distance_patterns(const SitePattern *patterns, double **matrix){
 			double d = 0;
 			
 			for ( int site = 0; site < patterns->count; site++) {
-				n1 = patterns->patterns[site][i];
-				n2 = patterns->patterns[site][j];
+				n1 = patterns->patterns[i][site];
+				n2 = patterns->patterns[j][site];
 				if( n1 != n2 ){
 					d += patterns->weights[site];
 				}

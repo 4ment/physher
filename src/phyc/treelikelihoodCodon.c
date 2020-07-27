@@ -454,7 +454,7 @@ void partials_states_and_undefined_codon( const SingleTreeLikelihood *tlk, int i
 			
 			m2 = matrices2 + w;
 			
-			state1 = tlk->sp->patterns[k][idx1];
+			state1 = tlk->sp->patterns[idx1][k];
 			
 			if ( state1 < nstate ) {
 #ifndef _TRANSPOSE_
@@ -836,8 +836,8 @@ void partials_states_and_states_codon( const SingleTreeLikelihood *tlk, int idx1
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
-			state2 = tlk->sp->patterns[k][idx2];
+			state1 = tlk->sp->patterns[idx1][k];
+			state2 = tlk->sp->patterns[idx2][k];
 			
 			w = u;
 			
@@ -1236,8 +1236,8 @@ void partials_states_and_states_codon_openmp( const SingleTreeLikelihood *tlk, i
         int l = lk / tlk->pattern_count;
         int k = lk % tlk->pattern_count;
         
-        int state1 = tlk->sp->patterns[k][idx1];
-        int state2 = tlk->sp->patterns[k][idx2];
+        int state1 = tlk->sp->patterns[idx1][k];
+        int state2 = tlk->sp->patterns[idx2][k];
         
         int w = l * tlk->matrix_size;
         
@@ -1499,7 +1499,7 @@ void partials_states_and_undefined_codon_openmp( const SingleTreeLikelihood *tlk
         int v = (l*tlk->pattern_count + k) * nstate;
         const double *m2 = matrices2 + w;
         
-        int state1 = tlk->sp->patterns[k][idx1];
+        int state1 = tlk->sp->patterns[idx1][k];
         
         const double *p2 = NULL;
         double *pPartials = partials3+v;
@@ -2640,8 +2640,8 @@ void partials_states_and_states_codon_SSE( const SingleTreeLikelihood *tlk, int 
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
-			state2 = tlk->sp->patterns[k][idx2];
+			state1 = tlk->sp->patterns[idx1][k];
+			state2 = tlk->sp->patterns[idx2][k];
 			
 			w = u;
 			
@@ -2911,8 +2911,8 @@ void partials_states_and_states_codon_odd_SSE( const SingleTreeLikelihood *tlk, 
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
-			state2 = tlk->sp->patterns[k][idx2];
+			state1 = tlk->sp->patterns[idx1][k];
+			state2 = tlk->sp->patterns[idx2][k];
 			
 			w = u;
 			
@@ -3182,7 +3182,7 @@ void partials_states_and_undefined_codon_SSE( const SingleTreeLikelihood *tlk, i
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
+			state1 = tlk->sp->patterns[idx1][k];
             
 			m2 = matrices2 + w;
 			
@@ -3615,7 +3615,7 @@ void partials_states_and_undefined_codon_odd_SSE( const SingleTreeLikelihood *tl
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
+			state1 = tlk->sp->patterns[idx1][k];
             
 			m2 = matrices2 + w; // matrices2 is padded
 			
@@ -5130,8 +5130,8 @@ void partials_states_and_states_codon_AVX( const SingleTreeLikelihood *tlk, int 
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
-			state2 = tlk->sp->patterns[k][idx2];
+			state1 = tlk->sp->patterns[idx1][k];
+			state2 = tlk->sp->patterns[idx2][k];
 			
 			w = u;
 			
@@ -5319,7 +5319,7 @@ void partials_states_and_undefined_codon_AVX( const SingleTreeLikelihood *tlk, i
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			state1 = tlk->sp->patterns[k][idx1];
+			state1 = tlk->sp->patterns[idx1][k];
             
 			m2 = matrices2 + w;
 			
@@ -5824,7 +5824,7 @@ static void _update_upper_partials_state( SingleTreeLikelihood *tlk, const doubl
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state = tlk->sp->patterns[k][ sibling_index ];
+            state = tlk->sp->patterns[ sibling_index ][k];
             
             w2 = l * tlk->matrix_size;
             
@@ -5928,7 +5928,7 @@ static void _update_upper_partials_state2( SingleTreeLikelihood *tlk, const doub
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state = tlk->sp->patterns[k][ sibling_index ];
+            state = tlk->sp->patterns[ sibling_index ][k];
             
             w = l * tlk->matrix_size;
             
@@ -6036,7 +6036,7 @@ static void _update_upper_partials_state3( SingleTreeLikelihood *tlk, const doub
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state = tlk->sp->patterns[k][ sibling_index ];
+            state = tlk->sp->patterns[ sibling_index ][k];
             
             w2 = w = l * tlk->matrix_size;
 
@@ -6402,7 +6402,7 @@ static void _update_upper_partials_root_and_state( const SingleTreeLikelihood *t
 		
 		for ( int k = 0; k < tlk->pattern_count; k++ ) {
 			
-            state1 = tlk->sp->patterns[k][idx1];
+            state1 = tlk->sp->patterns[idx1][k];
             
 			w = l * tlk->matrix_size;
             
@@ -6634,7 +6634,7 @@ static void _partial_lower_upper_leaf( const SingleTreeLikelihood *tlk, const do
 	for ( int l = 0; l < cat_count; l++ ) {
 		
 		for ( k = 0; k < sp_count; k++ ) {
-			state = tlk->sp->patterns[k][idx];
+			state = tlk->sp->patterns[idx][k];
             
 			w = l * matrix_size;
             const double *pPartials_u = &partials_upper[v];
@@ -6819,7 +6819,7 @@ static void _update_upper_partials_state_sse_codon( SingleTreeLikelihood *tlk, c
         
         for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state = tlk->sp->patterns[k][ sibling_index ];
+            state = tlk->sp->patterns[ sibling_index ][k];
             
             w2 = l * tlk->matrix_size;
             
@@ -6925,7 +6925,7 @@ static void _update_upper_partials_state_sse_codon2( SingleTreeLikelihood *tlk, 
         
         for ( k = 0; k < tlk->pattern_count; k++ ) {
             
-            state = tlk->sp->patterns[k][ sibling_index ];
+            state = tlk->sp->patterns[ sibling_index ][k];
             
             w = l * tlk->matrix_size + nstate * state;
             
@@ -7294,7 +7294,7 @@ static void _update_upper_partials_root_and_state_sse_codon( const SingleTreeLik
         
         for ( int k = 0; k < tlk->pattern_count; k++ ) {
             
-            state1 = tlk->sp->patterns[k][idx1];
+            state1 = tlk->sp->patterns[idx1][k];
             
             w = l * tlk->matrix_size + state1 * nstate;
             
@@ -7535,7 +7535,7 @@ static void _partial_lower_upper_leaf_sse_codon2( const SingleTreeLikelihood *tl
     for ( int l = 0; l < cat_count; l++ ) {
         
         for ( k = 0; k < sp_count; k++ ) {
-            state = tlk->sp->patterns[k][idx];
+            state = tlk->sp->patterns[idx][k];
             p = 0;
             w = l * matrix_size + nstate*state;
             int j = 60;
@@ -7737,7 +7737,7 @@ static void _partial_lower_upper_leaf_sse_codon( const SingleTreeLikelihood *tlk
     for ( int l = 0; l < cat_count; l++ ) {
         
         for ( k = 0; k < sp_count; k++ ) {
-            state = tlk->sp->patterns[k][idx];
+            state = tlk->sp->patterns[idx][k];
             
             w = l * matrix_size + state * nstate;
             const double *pPartials_u = &partials_upper[v];

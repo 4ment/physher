@@ -101,17 +101,7 @@ Sequences * Sequences_jackknife_n( const Sequences *sequences, int n ){
 
 
 #pragma mark *** SitePattern ***
-
-void printit(SitePattern *sp){
-    for ( int i = 0; i < sp->count; i++ ) {
-        for ( int j = 0; j < sp->size; j++ ) {
-            printf("%d,", sp->patterns[i][j]);
-        }
-        printf("\n");
-    }
-    printf("\n");
-}
-
+//TODO: Check indexing of patterns is correct
 SitePattern * SitePattern_bootstrap( const SitePattern *original ){
     SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );
     assert(sp);
@@ -123,7 +113,7 @@ SitePattern * SitePattern_bootstrap( const SitePattern *original ){
     assert(original->nsites > 0);
     
     sp->id = original->id+1;
-    sp->patterns = (uint8_t**)malloc(original->count * sizeof(uint8_t *) );
+    sp->patterns = (uint8_t**)malloc(original->size * sizeof(uint8_t *) );
     assert(sp->patterns);
     sp->indexes = NULL;
     sp->weights = dvector(original->count);
@@ -135,33 +125,26 @@ SitePattern * SitePattern_bootstrap( const SitePattern *original ){
     for ( int i = 0; i < original->count; i++) {
         tot += original->weights[i];
     }
-    
-    for ( int i = 0; i < original->nsites; i++ ) {
-        int rpos = roulette_wheel2(original->weights, original->count, tot);
-        int p = 0;
-        for ( ; p < sp->count; p++ ) {
-            
-            if( memcmp(original->patterns[rpos], sp->patterns[p], original->size*sizeof(uint8_t)) == 0 ){
-                sp->weights[p] += 1.;
-                //sp->indexes[i] = p;
-                break;
-            }
-        }
-        if( p == sp->count ){
-            sp->weights[sp->count] = 1.;
-            sp->patterns[sp->count] = (uint8_t*)malloc(original->size * sizeof(uint8_t) );
-            assert(sp->patterns);
-            memcpy( sp->patterns[sp->count], original->patterns[rpos], original->size * sizeof(uint8_t) );
-            //sp->indexes[i] = sp->count;
-            sp->count++;
-        }
-        
-    }
-    
+	int* counter = ivector(original->count);
+	int included = 0;
+	for ( int i = 0; i < original->nsites; i++ ) {
+		int rpos = roulette_wheel2(original->weights, original->count, tot);
+		if(counter[rpos] == 0) included++;
+		counter[rpos]++;
+	}
+	for ( int i = 0; i < original->size; i++ ) {
+		sp->patterns[i] = malloc(sizeof(uint8_t)*included);
+		size_t index = 0;
+		for ( int j = 0; j < original->count; j++ ) {
+			if (counter[j] > 0) {
+				sp->weights[index] = original->weights[j];
+				sp->patterns[i][index++] = original->patterns[i][j];
+			}
+		}
+		
+	}
+	free(counter);
     sp->nsites = original->nsites;
-    
-    sp->weights  = realloc(sp->weights, sp->count * sizeof(double) );
-    sp->patterns = realloc(sp->patterns, sp->count * sizeof(uint8_t*) );
     
     sp->names = (char**)malloc( original->size * sizeof(char*) );
     assert(sp->names);
@@ -182,19 +165,18 @@ SitePattern * SitePattern_jackknife( const SitePattern *original, int index ){
         sp->nsites--;
     }
     else {
-        free(sp->patterns[index]);
-        sp->patterns[index] = NULL;
-
-        int p = index+1;
-        for ( ; p < sp->count; p++ ) {
-            sp->patterns[p-1] = sp->patterns[p];
+		for(size_t i = 0; i < sp->size; i++){
+			for (size_t p = index+1; p < sp->count; p++ ) {
+				sp->patterns[i][p-1] = sp->patterns[i][p];
+			}
+		}
+        for (size_t p = index+1; p < sp->count; p++ ) {
             sp->weights[p-1] = sp->weights[p];
         }
-        
         sp->nsites--;
         sp->count--;
-        sp->weights  = realloc(sp->weights, sp->count * sizeof(double) );
-        sp->patterns = realloc(sp->patterns, sp->count * sizeof(uint8_t*) );
+//        sp->weights  = realloc(sp->weights, sp->count * sizeof(double) );
+//        sp->patterns = realloc(sp->patterns, sp->count * sizeof(uint8_t*) );
 //        index--;
 //        for ( p = 0; p < original->nsites; p++ ) {
 //            if( sp->indexes[p] > index ){
@@ -232,6 +214,7 @@ SitePattern * SitePattern_jackknife_n( SitePattern *original, int n){
 
 
 // if a weight == 0 then it is removed
+//TODO: patterns indexing is wrong
 SitePattern * SitePattern_reweight( const SitePattern *original, const double *weights ){
     SitePattern *sp = clone_SitePattern(original);
     

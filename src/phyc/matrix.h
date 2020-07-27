@@ -238,6 +238,7 @@ bool * bvector( const size_t n );
 
 int    *clone_ivector( const int * v, const size_t n );
 unsigned int *clone_uivector( const unsigned int * v, const size_t n );
+uint8_t *clone_u8ivector( const uint8_t* v, const size_t n );
 char *clone_cvector( const char *v, const size_t n );
 bool * clone_bvector( const bool *v, const size_t n );
 
