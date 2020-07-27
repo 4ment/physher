@@ -52,6 +52,7 @@ struct _SingleTreeLikelihood{
 	
 	int cat_count;
 	int pattern_count;
+	bool use_tip_states;
 	
 	int *mapping; // index of node to index of sequence (-1 if no sequence)
 	
@@ -129,7 +130,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash);
 #pragma mark SingleTreeLikelihood
 
 
-SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm );
+SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm, bool use_tip_states );
 
 // does not free tree, branchmodel, sitemodel
 void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk );
@@ -146,12 +147,6 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 double SingleTreeLikelihood_calculate_at_node( SingleTreeLikelihood *tlk, const Node *node );
 
 
-void SingleTreeLikelihood_copy_partials( SingleTreeLikelihood *src, SingleTreeLikelihood *dst );
-
-void SingleTreeLikelihood_rearrange_partials( SingleTreeLikelihood *tlk );
-void SingleTreeLikelihood_rearrange( SingleTreeLikelihood *tlk, Node *node1, Node *node2 );
-
-
 void SingleTreeLikelihood_update_all_nodes( SingleTreeLikelihood *tlk );
 
 void SingleTreeLikelihood_update_one_node( SingleTreeLikelihood *tlk, const Node *node );
@@ -162,8 +157,6 @@ void SingleTreeLikelihood_update_Q(SingleTreeLikelihood* tlk, Node* n);
 
 bool SingleTreeLikelihood_rescaling( SingleTreeLikelihood *tlk );
 void SingleTreeLikelihood_use_rescaling( SingleTreeLikelihood *tlk, bool use );
-
-int SingleTreeLikelihood_df_count( const SingleTreeLikelihood *stlk );
 
 double getLogScalingFactor( const SingleTreeLikelihood *tlk, int pattern );
 
@@ -176,10 +169,6 @@ const double* get_root_frequencies(SingleTreeLikelihood* tlk);
 
 const double* get_root_frequencies_fixed(SingleTreeLikelihood* tlk);
 
-
-void SingleTreeLikelihood_add_height( SingleTreeLikelihood *tlk, Node *node, double value );
-void SingleTreeLikelihood_scaler( SingleTreeLikelihood *tlk, Node *node, const double scaler );
-void SingleTreeLikelihood_scale_root( SingleTreeLikelihood *tlk, const double scaler );
 
 void SingleTreeLikelihood_set_nthreads( SingleTreeLikelihood *tlk, int nthreads );
 

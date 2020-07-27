@@ -23,7 +23,7 @@
 
 typedef enum datatype{ DATA_TYPE_NUCLEOTIDE, DATA_TYPE_CODON, DATA_TYPE_AMINO_ACID, DATA_TYPE_GENERIC} datatype;
 
-static const int8_t NUCLEOTIDE_AMBIGUITY_STATES[18][4] = {
+static const double NUCLEOTIDE_AMBIGUITY_STATES[18][4] = {
 	// A
     {1,0,0,0},
     // C
@@ -78,6 +78,7 @@ typedef struct DataType{
     
     int (*encoding_string)( struct DataType *, const char *);
     const char * (*state_string)( const struct DataType *, int  );
+	void (*partial)(const struct DataType *, int, double*);
     
     int (*state_count)( struct DataType *  );
     int8_t genetic_code;

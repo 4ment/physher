@@ -37,6 +37,8 @@ static void _make_patterns( const Sequences *a, Hashtable* hash, int start, int 
 static void _make_patterns_codon( const Sequences *aln, Hashtable* hash, int start, int end );
 static void _make_patterns_generic( const Sequences *aln, Hashtable* hash, int start, int length );
 
+static void _sitepattern_get_partials(const SitePattern* sp, size_t taxonIndex, double* partials);
+
 typedef struct uint8vec{
 	uint8_t* values;
 	size_t length;
@@ -71,6 +73,7 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 	sp->datatype = aln->datatype;
 	sp->datatype->ref_count++;
 	sp->nstate = sp->datatype->state_count(sp->datatype);
+	sp->get_partials = _sitepattern_get_partials;
 	
 	Hashtable* hash = new_Hashtable( 100, &hashtable_hash_uint8_t, hashtable_compare_uint8_t, HASHTABLE_KEY_REFERENCE);
 	hashtable_set_key_ownership(hash, true);
@@ -136,6 +139,7 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 	sp->datatype = aln->datatype;
 	sp->datatype->ref_count++;
 	sp->nstate = sp->datatype->state_count(sp->datatype);
+	sp->get_partials = _sitepattern_get_partials;
 	
 	Hashtable* hash = new_Hashtable( 100, &hashtable_hash_uint8_t, hashtable_compare_uint8_t, HASHTABLE_KEY_REFERENCE);
 	hashtable_set_key_ownership(hash, true);
@@ -224,6 +228,7 @@ SitePattern * clone_SitePattern( const SitePattern *sp ){
     newsp->id++;
     newsp->datatype = sp->datatype;
 	newsp->datatype->ref_count++;
+	newsp->get_partials = sp->get_partials;
     
     newsp->patterns = ui8matrix(sp->size, sp->count);
     for ( int p = 0; p < sp->size; p++ ) {
@@ -256,6 +261,7 @@ SitePattern * clone_SitePattern( const SitePattern *sp ){
 //	assert(sp);
 //	sp->id = original->id+1;
 //	sp->datatype = original->datatype;
+//	sp->get_partials = _sitepattern_get_partials;
 //
 //	sp->patterns = (uint8_t**)malloc(original->count * sizeof(uint8_t *) );
 //	//sp->indexes = ivector(original->nsites);
@@ -307,6 +313,7 @@ SitePattern* SitePattern_merge( const SitePattern* sitePattern1, const SitePatte
 	
 	sp->datatype = clone_DataType(sitePattern1->datatype);
 	sp->nstate = sp->datatype->state_count(sp->datatype);
+	sp->get_partials = _sitepattern_get_partials;
 	
 	sp->size = sitePattern1->size;
 	sp->nsites = sitePattern1->nsites + sitePattern2->nsites;
@@ -378,6 +385,7 @@ SitePattern ** SitePattern_split( const SitePattern *sitePattern, const int coun
         
         sps[i]->datatype = clone_DataType(sitePattern->datatype);
         sps[i]->nstate = sitePattern->nstate;
+		sps[i]->get_partials = _sitepattern_get_partials;
 		
 		if ( i == count -1 ) {
 			sps[i]->count = last_chunk_size;
@@ -482,6 +490,16 @@ int get_sequence_index( const SitePattern *sp, const char *name ){
 		if( strcmp(name, sp->names[i] ) == 0 ) return i;
 	}
 	return -1;
+}
+
+void _sitepattern_get_partials(const SitePattern* sp, size_t taxonIndex, double* partials){
+	size_t patternLength = sp->count;
+	uint8_t* taxonPatterns = sp->patterns[taxonIndex];
+	double* pPartials = partials;
+	for (size_t i = 0; i < patternLength; i++) {
+		sp->datatype->partial(sp->datatype, taxonPatterns[i], pPartials);
+		pPartials += sp->datatype->stateCount;
+	}
 }
 
 int frequencies( const SitePattern *sp, double *freqs, const uint8_t nstate ){

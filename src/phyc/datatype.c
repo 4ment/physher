@@ -32,6 +32,7 @@ static int  _nucleotide_encoding( DataType *datatype, char nuc);
 static char _nucleotide_state( DataType *datatype, int encoding);
 static int _nucleotide_encoding_string( DataType *datatype, const char *nuc);
 static const char * _nucleotide_state_string( const DataType *datatype, int encoding);
+static void _nucleotide_partial(const struct DataType *datatype, int encoding, double* partial);
 
 static int  _aa_encoding( DataType *datatype, char nuc);
 static char _aa_state( DataType *datatype, int encoding);
@@ -162,6 +163,7 @@ DataType * clone_DataType(const DataType *dataType){
     
     newDataType->encoding_string = dataType->encoding_string;
     newDataType->state_string    = dataType->state_string;
+	newDataType->partial    = dataType->partial;
     newDataType->state_count = dataType->state_count;
 	newDataType->ref_count = 1;
     return newDataType;
@@ -191,6 +193,19 @@ static int _encoding( DataType *datatype, char nuc){
     return i;
 }
 
+static void _generic_partial(const DataType *datatype, int encoding, double* partial){
+	size_t stateCount = datatype->stateCount;
+	if(encoding >= stateCount){
+		for (size_t j = 0; j < stateCount; j++) {
+			partial[j] = 1.0;
+		}
+	}
+	else{
+		memset(partial, 0.0, stateCount*sizeof(double));
+		partial[stateCount] = 1.0;
+	}
+}
+
 DataType *new_GenericDataType( const char* name, size_t count, const char **states){
     DataType *dataType = malloc(sizeof(DataType));
     assert(dataType);
@@ -209,6 +224,7 @@ DataType *new_GenericDataType( const char* name, size_t count, const char **stat
     
     dataType->encoding_string = _encoding_string;
     dataType->state_string    = _state_string;
+	dataType->partial = _generic_partial;
     
     dataType->state_count = _state_count;
 	dataType->ref_count = 1;
@@ -257,6 +273,7 @@ DataType *new_NucleotideDataType(){
     
     dataType->encoding_string = _nucleotide_encoding_string;
     dataType->state_string    = _state_string;
+	dataType->partial = _nucleotide_partial;
     
     dataType->state_count = _state_count;
 	dataType->ref_count = 1;
@@ -284,6 +301,9 @@ const char * _nucleotide_state_string( const DataType *datatype, int encoding){
     return NUCLEOTIDES_STRING[encoding];
 }
 
+void _nucleotide_partial(const struct DataType *datatype, int encoding, double* partial){
+	memcpy(partial, NUCLEOTIDE_AMBIGUITY_STATES[encoding], sizeof(double)*4);
+}
 
 #pragma mark-
 #pragma mark Amino acid
@@ -306,6 +326,7 @@ DataType *new_AminoAcidDataType(){
     
     dataType->encoding_string = _aa_encoding_string;
     dataType->state_string    = _state_string;
+	dataType->partial = _generic_partial;
     
     dataType->state_count = _state_count;
 	dataType->ref_count = 1;
@@ -354,6 +375,7 @@ DataType *new_CodonDataType( int genetic_code ){
     
     dataType->encoding_string = _codon_encoding_string;
     dataType->state_string    = _codon_state_string;
+	dataType->partial = _generic_partial;
     
     dataType->state_count = _state_count;
 	dataType->ref_count = 1;
