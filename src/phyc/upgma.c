@@ -105,7 +105,7 @@ Tree * new_UPGMA( const char **taxa, size_t dim, double **matrix ){
     free(nodes);
     free(alias);
     free(h);
-	Tree* tree = new_Tree2(node, false);
+	Tree* tree = new_Tree2(node);
 	Tree_set_rooted(tree, true);
     return tree;
 }
@@ -227,7 +227,7 @@ Tree * new_UPGMA_float( const Sequences *sequences, float **_matrix ){
     free(nodes);
     free(alias);
     free(h);
-	Tree* tree = new_Tree2(node, false);
+	Tree* tree = new_Tree2(node);
 	Tree_set_rooted(tree, true);
 	return tree;
 }

@@ -365,6 +365,9 @@ void init_dates(Tree* atree, json_node* dates_node){
 }
 
 void init_heights_from_distances(Tree* atree){
+	atree->time_mode = true;
+	atree->rooted = true;
+	
 	if(atree->homochronous){
 		Node **nodes = Tree_get_nodes(atree, POSTORDER);
 		for ( int i = 0; i < Tree_node_count(atree); i++) {
@@ -384,6 +387,7 @@ void init_heights_from_distances(Tree* atree){
 			}
 		}
 		Tree_constraint_heights(atree);
+		atree->tt->update_lowers(atree->tt);
 		
 		// initialize reparam from height parameters
 		nodes = Tree_get_nodes(atree, PREORDER);
@@ -416,6 +420,7 @@ void init_heights_from_distances(Tree* atree){
 			}
 		}
 		Tree_constraint_heights(atree);
+		atree->tt->update_lowers(atree->tt);
 		
 		// initialize reparam from height parameters
 		nodes = Tree_get_nodes(atree, PREORDER);
@@ -643,7 +648,7 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	return atree;
 }
 
-Tree * new_Tree2( Node *root, bool containBL ){
+Tree * new_Tree2( Node *root ){
 	Tree *atree = (Tree *)malloc(sizeof(Tree));
 	assert(atree);
 	atree->root = root;
@@ -1003,6 +1008,9 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 //		Parameter_set_name(Parameters_at(tree->reparam, i), buffer->c);
 //		Parameters_at(tree->reparam,i)->listeners->add(Parameters_at(tree->reparam, i)->listeners, model);
 //	}
+	Model* mtt = new_TreeTransformModel("TreeTransformModel", tree->tt, model);
+	model->data = mtt;
+	mtt->listeners->add( mtt->listeners, model );
 	
 	free_StringBuffer(buffer);
 	model->update = _tree_handle_change;
@@ -1131,9 +1139,6 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		p = get_json_node_value_string(node, "reparam");
 		
 		StringBuffer* buffer = new_StringBuffer(10);
-		Model* mtt = new_TreeTransformModel("sdfadfasdf", tree->tt, mtree);
-		mtree->data = mtt;
-		mtt->listeners->add( mtt->listeners, mtree );
 		char* id = get_json_node_value_string(node, "id");
 		for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
 			StringBuffer_set_string(buffer, id);

@@ -45,7 +45,7 @@ struct _Tree * new_NJ2( const char **taxa, size_t dim, double **matrix ){
     Node *root = cluster(nodes, matrix, dim);
     free(nodes);
     
-    return new_Tree2(root, false);
+    return new_Tree2(root);
 }
 
 
@@ -312,7 +312,7 @@ struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix ){
     free(alias);
     free(r);
     
-    return new_Tree2(node, false);
+    return new_Tree2(node);
 }
 
 void findMinIndexes_float( float **matrix, int ncluster, float *r, int *alias, int *imin, int *jmin){
@@ -419,7 +419,7 @@ struct _Tree * new_NJ_float( const char **taxa, size_t dim, float **matrix ){
     free(alias);
     free(r);
     
-    return new_Tree2(node, false);
+    return new_Tree2(node);
 }
 
 Tree* create_NJ_from_json( json_node* node, Hashtable* hash ){

@@ -43,7 +43,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash);
 
 Tree * new_Tree( const char *nexus, bool containBL );
 
-Tree * new_Tree2( Node *root, bool containBL );
+Tree * new_Tree2( Node *root );
 
 void Tree_init_heights ( Tree *atree );
 
