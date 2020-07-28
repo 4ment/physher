@@ -24,6 +24,9 @@
 #include "discreteparameter.h"
 #include "utils.h"
 
+#define COALESCENT_FLAG_TREE         1 << 0
+#define COALESCENT_FLAG_THETA        1 << 1
+
 typedef enum demography{
 	COALESCENT_CONSTANT,
 	COALESCENT_EXPONENTIAL,
@@ -58,7 +61,10 @@ typedef struct Coalescent{
 	double* grid;
 	size_t gridCount;
 	DiscreteParameter* groups;
-    double* gradient;
+	
+	int prepared_gradient;
+	double* gradient;
+	size_t gradient_length;
 }Coalescent;
 
 

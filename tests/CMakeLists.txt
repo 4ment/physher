@@ -33,7 +33,7 @@ add_test (NAME Test_coalescent
 		COMMAND test_coalescent)
 
 
-find_program(VALGRIND "valgrind" REQUIRED)
+find_program(VALGRIND "valgrind")
 set( CTEST_MEMORYCHECK_COMMAND valgrind )
 set( CTEST_MEMORYCHECK_COMMAND_OPTIONS "--tool=callgrind -v" )
 

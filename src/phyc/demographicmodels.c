@@ -31,6 +31,10 @@
 
 #pragma mark Coalescent
 
+static void _constant_calculate_gradient( Coalescent* coal );
+static void _skyride_calculate_gradient( Coalescent* coal );
+static void _skygrid_calculate_gradient( Coalescent* coal );
+
 Coalescent * create_Coalescent(demography type, size_t size);
 
 void coalescentToLineage(Coalescent* c){
@@ -100,6 +104,76 @@ static double _coalescent_model_dlogP(Model *self, const Parameter* p){
 	return mc->dlogP(mc, p);
 }
 
+// Set flags for gradient calculation
+void _coalescent_model_prepare_gradient(Model* self, const Parameters* ps){
+	Coalescent* coal = (Coalescent*)self->obj;
+	size_t paramCount = Parameters_count(ps);
+	bool prepare_tree = false;
+	bool prepare_theta = false;
+	coal->prepared_gradient = 0;
+	size_t gradient_length = 0;
+	for (size_t i = 0; i < paramCount; i++) {
+		Parameter* p = Parameters_at(ps, i);
+		if (p->model == MODEL_COALESCENT && !prepare_theta) {
+			prepare_theta = true;
+			coal->prepared_gradient |= COALESCENT_FLAG_THETA;
+			gradient_length += Parameters_count(coal->p);
+		}
+		else if (p->model == MODEL_TREE && !prepare_tree) {
+			prepare_tree = true;
+			coal->prepared_gradient |= COALESCENT_FLAG_TREE;
+			gradient_length += Tree_tip_count(coal->tree) - 1;
+		}
+	}
+	if(coal->gradient == NULL){
+		coal->gradient = calloc(gradient_length, sizeof(double));
+		coal->gradient_length = gradient_length;
+	}
+	else if (coal->gradient_length < gradient_length) {
+		coal->gradient = realloc(coal->gradient, sizeof(double)* gradient_length);
+		coal->gradient_length = gradient_length;
+	}
+}
+
+double _coalescent_model_dlogP_prepared(Model *self, const Parameter* p){
+	Coalescent* coal = (Coalescent*)self->obj;
+	
+	if(coal->gradient_length == 0) return 0.0;
+	if ( coal->need_update_intervals){
+		coal->update_intervals(coal);
+	}
+	if (coal->need_update) {
+		coal->need_update = false;
+		if(coal->type == COALESCENT_CONSTANT){
+			_constant_calculate_gradient(coal);
+		}
+		else if(coal->type == COALESCENT_SKYRIDE){
+			_skyride_calculate_gradient(coal);
+		}
+		else if(coal->type == COALESCENT_SKYGRID){
+			_skygrid_calculate_gradient(coal);
+		}
+	}
+	
+	int prepare_tree = coal->prepared_gradient & COALESCENT_FLAG_TREE;
+	int prepare_theta = coal->prepared_gradient & COALESCENT_FLAG_THETA;
+	size_t offset = 0;
+	
+	if (prepare_theta) {
+		if (p->model == MODEL_COALESCENT) {
+			return coal->gradient[p->id];
+		}
+		offset += Parameters_count(coal->p);
+	}
+	
+	if(prepare_tree){
+		if (p->model == MODEL_TREE) {
+			return coal->gradient[offset + p->id];
+		}
+	}
+	return 0;
+}
+
 static double _coalescent_model_d2logP(Model *self, const Parameter* p){
 	Coalescent* mc = (Coalescent*)self->obj;
 	return mc->d2logP(mc, p);
@@ -117,7 +191,7 @@ static void _coalescent_model_free( Model *self ){
 		free_Parameters(mc->p);
 		free(mc->lineages);
 		if(mc->nodes){
-			for (int i = 0; i < Tree_node_count(mc->tree); i++) {
+			for (int i = 0; i < mc->n; i++) {
 				free(mc->nodes[i]);
 			}
 			free(mc->nodes);
@@ -216,8 +290,8 @@ static Model* _coalescent_model_clone( Model *self, Hashtable* hash ){
 	
 	if(mtreeclone != NULL){
 		clone->tree = mtreeclone->obj;
-		clone->nodes = malloc(Tree_node_count(clone->tree)*sizeof(double_int_pair_t*));
-		for (int i = 0; i < Tree_node_count(clone->tree); i++) {
+		clone->nodes = malloc(size*sizeof(double_int_pair_t*));
+		for (int i = 0; i < size; i++) {
 			clone->nodes[i] = malloc(sizeof(double_int_pair_t));
 		}
 		clone->need_update_intervals = true;
@@ -290,7 +364,7 @@ Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tre
 	
 	model->logP = _coalescent_model_logP;
 	model->full_logP = _coalescent_model_full_logP;
-	model->dlogP = _coalescent_model_dlogP;
+	model->dlogP = _coalescent_model_dlogP_prepared;
 	model->d2logP = _coalescent_model_d2logP;
 	model->ddlogP = _coalescent_model_ddlogP;
 	model->free = _coalescent_model_free;
@@ -302,6 +376,7 @@ Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tre
 	
 	model->update = _coalescent_model_handle_change;
 	model->handle_restore = _coalescent_model_handle_restore;
+	model->prepare_gradient = _coalescent_model_prepare_gradient;
 	
 	model->data = NULL;
 	if(tree != NULL || groups != NULL){
@@ -392,10 +467,6 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
         }
         
     }
-	
-	for (int i = 0; i < Parameters_count(ps); i++) {
-		Parameters_at(ps, i)->model = MODEL_COALESCENT;
-	}
 	
 	if(strcasecmp(model, "constant") == 0){
 		if(tree != NULL)
@@ -491,7 +562,7 @@ void free_Coalescent( Coalescent *coalescent ){
 	free_Parameters(coalescent->p);
 	free(coalescent->lineages);
 	if(coalescent->nodes != NULL){
-		for (int i = 0; i < Tree_node_count(coalescent->tree); i++) {
+		for (int i = 0; i < coalescent->n; i++) {
 			free(coalescent->nodes[i]);
 		}
 		free(coalescent->nodes);
@@ -560,6 +631,80 @@ void _update_intervals(Coalescent* coal){
 	coal->need_update = true;
 }
 
+void _update_intervals_grid(Coalescent* coal){
+	Node **nodes = Tree_get_nodes(coal->tree, POSTORDER);
+	size_t nodeCount = Tree_node_count(coal->tree);
+	size_t points_count = nodeCount + coal->gridCount;
+	memset(coal->times, 0, points_count*sizeof(double));
+	memset(coal->iscoalescent, 0, points_count*sizeof(bool));
+	memset(coal->lineages, 0, points_count*sizeof(int));
+	Tree_update_heights(coal->tree);
+	size_t i = 0;
+	for ( ; i < nodeCount; i++) {
+		coal->nodes[i]->index = Node_id(nodes[i]);
+		coal->nodes[i]->value = Node_height(nodes[i]);
+	}
+	for (size_t j = 0; j < coal->gridCount; j++, i++) {
+		coal->nodes[i]->index = -1;
+		coal->nodes[i]->value = coal->grid[j];
+	}
+	qsort(coal->nodes, points_count, sizeof(struct double_int_pair_t*), cmp_double_int_pair_asc);
+	
+	// never starts with a grid point
+	Node* node = nodes[coal->nodes[0]->index];
+	double start = coal->nodes[0]->value;
+	int lineageCount = 0;
+	double finish;
+	
+	for (size_t i = 0; i < points_count; i++) {
+		finish = coal->nodes[i]->value;
+		coal->lineages[i] = lineageCount;
+		
+		// not a grid point
+		if (coal->nodes[i]->index >= 0) {
+			node = nodes[coal->nodes[i]->index];
+			// sampling event
+			if (Node_isleaf(node)) {
+				lineageCount++;
+			}
+			// coalescent event
+			else {
+				coal->iscoalescent[i] = true;
+				lineageCount--;
+			}
+		}
+		coal->times[i] = finish - start;
+		start = finish;
+	}
+	
+	coal->n = points_count;
+	coal->need_update_intervals = false;
+	coal->need_update = true;
+}
+
+
+static void _premultiply_proportions(Node* node, double* descendant, unsigned *map, Parameters* reparams){
+    if(!Node_isleaf(node)){
+		size_t node_id = Node_id(node);
+        descendant[node_id] = descendant[Node_id(node->parent)]*Parameters_value(reparams, map[node_id]);
+        _premultiply_proportions(node->left, descendant, map, reparams);
+        _premultiply_proportions(node->right, descendant, map, reparams);
+    }
+}
+
+void height_gradient_from_interval_gradient(Coalescent* coal, const double* interval_gradient, double* height_gradient){
+	Node** nodes = Tree_nodes(coal->tree);
+	size_t i = 1;
+	for( ; i < coal->n - 1; i++){
+		if(coal->iscoalescent[i]){
+			size_t node_class_id = Node_class_id(nodes[coal->nodes[i]->index]);
+			height_gradient[node_class_id] += interval_gradient[i];
+			height_gradient[node_class_id] -= interval_gradient[i+1];
+		}
+	}
+	height_gradient[Node_class_id(Tree_root(coal->tree))] += interval_gradient[i];
+}
+
 #pragma mark -
 #pragma mark Constant coalescent
 
@@ -587,13 +732,40 @@ double _constant_calculate( Coalescent* coal ){
 	return coal->logP;
 }
 
+void _constant_calculate_gradient( Coalescent* coal ){
+	size_t offset = 0;
+	double* chooses = dvector(coal->n);
+	for( int i = 0; i< coal->n; i++  ){
+		chooses [i] = choose(coal->lineages[i], 2);
+	}
 
-static void _premultiply_proportions(Node* node, double* descendant, unsigned *map, Parameters* reparams){
-    if(!Node_isleaf(node)){
-        descendant[Node_id(node)] = descendant[Node_id(node->parent)]*Parameters_value(reparams, map[Node_id(node)]);
-        _premultiply_proportions(node->left, descendant, map, reparams);
-        _premultiply_proportions(node->right, descendant, map, reparams);
+    if(coal->prepared_gradient & COALESCENT_FLAG_THETA){
+        double theta = Parameters_value(coal->p, 0);
+        double theta2 = theta*theta;
+		double dlogP = 0;
+        for( int i = 0; i< coal->n; i++  ){
+            dlogP += chooses[i] * coal->times[i] /theta2;
+			if (coal->iscoalescent[i]) {
+				dlogP -= 1.0/theta;
+			}
+        }
+		coal->gradient[0] = dlogP;
+		offset++;
     }
+	
+	if(coal->prepared_gradient & COALESCENT_FLAG_TREE){
+		double theta = Parameters_value(coal->p, 0);
+		double* interval_gradient = dvector(coal->n);
+		double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
+		for(size_t i = 0; i < coal->n; i++){
+			interval_gradient[i] = -chooses[i]/theta;
+		}
+		height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
+		Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
+		free(interval_gradient);
+		free(height_gradient);
+	}
+	free(chooses);
 }
 
 double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
@@ -679,7 +851,7 @@ double _constant_calculate_ddlogP( Coalescent* coal, const Parameter* p1, const 
 	return 0.0;
 }
 
-Coalescent * create_Coalescent(demography type, size_t size){
+Coalescent * create_GridCoalescent(demography type, size_t size, size_t grid_count){
 	Coalescent *coal = (Coalescent*)malloc(sizeof(Coalescent));
 	assert(coal);
 	coal->p = NULL;
@@ -689,15 +861,20 @@ Coalescent * create_Coalescent(demography type, size_t size){
 	coal->dlogP = NULL;
 	coal->d2logP = NULL;
 	coal->ddlogP = NULL;
-	coal->update_intervals = _update_intervals;
-	coal->lineages = ivector(size);
-	coal->times = dvector(size);
+	if(grid_count == 0){
+		coal->update_intervals = _update_intervals;
+	}
+	else{
+		coal->update_intervals = _update_intervals_grid;
+	}
+	coal->lineages = ivector(size + grid_count);
+	coal->times = dvector(size + grid_count);
 	coal->nodes = NULL;
-	coal->stored_lineages = ivector(size);
-	coal->stored_times = dvector(size);
-	coal->iscoalescent = bvector(size);
-	coal->stored_iscoalescent = bvector(size);
-	coal->n = size;
+	coal->stored_lineages = ivector(size + grid_count);
+	coal->stored_times = dvector(size + grid_count);
+	coal->iscoalescent = bvector(size + grid_count);
+	coal->stored_iscoalescent = bvector(size + grid_count);
+	coal->n = size + grid_count;
 	coal->need_update_intervals = true;
 	coal->need_update = true;
 	coal->grid = NULL;
@@ -708,10 +885,15 @@ Coalescent * create_Coalescent(demography type, size_t size){
 	return coal;
 }
 
+Coalescent * create_Coalescent(demography type, size_t size){
+	return create_GridCoalescent(type, size, 0);
+}
+
 Coalescent * new_ConstantCoalescent_with_parameter( Parameter* theta, int size ){
 	Coalescent *coal = create_Coalescent(COALESCENT_CONSTANT, size);
 	coal->p = new_Parameters(1);
 	Parameters_add(coal->p, theta);
+	theta->model = MODEL_COALESCENT;
 	coal->calculate = _constant_calculate;
 	coal->dlogP = _constant_calculate_dlogP;
 	coal->d2logP = _constant_calculate_d2logP;
@@ -907,6 +1089,10 @@ Coalescent * new_ExponentialCoalescent_with_parameters( Parameters* parameters, 
 	coal->p = new_Parameters(2);
 	Parameters_add(coal->p, Parameters_at(parameters, 0));
 	Parameters_add(coal->p, Parameters_at(parameters, 1));
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
+		Parameters_at(parameters, i)->id = i;
+	}
 	coal->calculate = _coalescent_exponential_calculate;
 	coal->dlogP = _coalescent_exponential_dlogP;
 	coal->d2logP = _coalescent_exponential_d2logP;
@@ -966,6 +1152,10 @@ Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Paramet
 	Coalescent *coal = create_Coalescent(COALESCENT_SKYLINE_CLASSIC, Tree_node_count(tree));
 	coal->p = new_Parameters(Parameters_count(parameters));
 	Parameters_add_parameters(coal->p, parameters);
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
+		Parameters_at(parameters, i)->id = i;
+	}
 	coal->tree = tree;
 	coal->calculate = _coalescent_classical_skyline_calculate;
 	coal->dlogP = NULL;
@@ -1072,6 +1262,49 @@ double _coalescent_skyride_calculate_deltas( Coalescent* coal ){
         coal->need_update = false;
     }
     return coal->logP;
+}
+
+void _skyride_calculate_gradient( Coalescent* coal ){
+	size_t offset = 0;
+	double* chooses = dvector(coal->n);
+	double mexpPop = exp(-Parameters_value(coal->p, 0));
+	size_t index = 0;
+	size_t i = 1;
+	for( ; i < coal->n - 1; i++){
+		chooses[i] = choose(coal->lineages[i], 2)*mexpPop;
+		if (coal->iscoalescent[i]) {
+			mexpPop = exp(-Parameters_value(coal->p, ++index));
+		}
+	}
+	chooses [i] = choose(coal->lineages[i], 2)*exp(-Parameters_value(coal->p, index));
+
+    if(coal->prepared_gradient & COALESCENT_FLAG_THETA){
+		memset(coal->gradient, 0, Parameters_count(coal->p)*sizeof(double));
+		size_t i = 1;
+		index = 0;
+        for( ; i < coal->n - 1; i++){
+			coal->gradient[index] += coal->times[i]*chooses[i];
+			if (coal->iscoalescent[i]) {
+				coal->gradient[index++] -= 1.0;
+			}
+        }
+		coal->gradient[index] += coal->times[i]*chooses[i] - 1.0;
+		offset += Parameters_count(coal->p);
+    }
+	// -log(theta) - k/theta t
+	// -ltheta - k/exp(ltheta) t
+    if(coal->prepared_gradient & COALESCENT_FLAG_TREE){
+		double* interval_gradient = dvector(coal->n);
+		double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
+		for(size_t i = 1; i < coal->n; i++){
+			interval_gradient[i] = -chooses[i];
+		}
+		height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
+		Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
+		free(interval_gradient);
+		free(height_gradient);
+	}
+	free(chooses);
 }
 
 double _skyride_calculate_dlogP( Coalescent* coal, const Parameter* p ){
@@ -1209,9 +1442,17 @@ Coalescent * new_SkyrideCoalescent_with_parameters(Parameters* parameters, int s
 	coal->p = new_Parameters(Parameters_count(parameters));
 	Parameters_add_parameters(coal->p, parameters);
     coal->calculate = _coalescent_skyride_calculate;
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
+		Parameters_at(parameters, i)->id = i;
+	}
+	//TODO: size is never equal to param count
     if (Parameters_count(parameters) != size) {
-        coal->calculate = _coalescent_skyride_calculate_deltas;
+//        coal->calculate = _coalescent_skyride_calculate_deltas;
     }
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
+	}
 	coal->dlogP = _skyride_calculate_dlogP;
 	coal->d2logP = _skyride_calculate_d2logP;
 	coal->ddlogP = _coalescent_skyride_ddlogP;
@@ -1242,68 +1483,29 @@ Coalescent * new_SkyrideCoalescent_with_data(Parameters* parameters, double* tim
 
 double _coalescent_grid_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
-		_update_intervals(coal);
+		coal->update_intervals(coal);
 	}
+	
 	if ( coal->need_update ) {
 		coal->logP = 0;
-		double start = 0;
 		size_t currentGridIndex = 0;
-
-//		double cutoff = Node_height(Tree_root(coal->tree));
-//		for(int i = 0; i < coal->gridCount; i++){
-//			coal->grid[i] = cutoff*i/(coal->gridCount-1);
-//		}
-		double cum = 0;
+		double popSize = Parameters_value(coal->p, 0);
+		double logPopSize = log(popSize);
+		double lchoose2;
 		
-		for( int i = 0; i< coal->n; i++  ){
-			double finish = start + coal->times[i];
-			double logN = Parameters_value(coal->p, currentGridIndex);
-			double lchoose2 = choose(coal->lineages[i], 2);
-			
-			// grid splits an interval
-			if(currentGridIndex < coal->gridCount-2 && finish > coal->grid[currentGridIndex+1]){
-//				printf("%d s: %f f: %f\n", currentGridIndex, start, finish);
-//				coal->logP -= (coal->grid[currentGridIndex+1] - start)*lchoose2/exp(logN);
-//				coal->logP -= (finish - coal->grid[currentGridIndex+1])*lchoose2/exp(Parameters_value(coal->p, currentGridIndex+1));
-				
-				// an interval can be sliced more than once by grids
-				// only the last slice can be a coalescent event
-				while(currentGridIndex < coal->gridCount-1 && finish > coal->grid[currentGridIndex]){
-					double end = dmin(coal->grid[currentGridIndex+1], finish);
-//					printf("  %d %f %f %d\n", currentGridIndex, coal->grid[currentGridIndex], end, coal->lineages[i]);
-					coal->logP -= (end - start)*lchoose2/Parameters_value(coal->p, currentGridIndex);
-					start = coal->grid[currentGridIndex+1];
-					if( coal->iscoalescent[i] ){
-						coal->logP -= log(Parameters_value(coal->p, currentGridIndex));
-					}
-					currentGridIndex++;
+		for(size_t i = 0; i < coal->n; i++){
+			if(coal->times[i] != 0.0){
+				lchoose2 = choose(coal->lineages[i], 2);
+				coal->logP -= coal->times[i]*lchoose2/popSize;
+				if( coal->iscoalescent[i] && coal->nodes[i]->index >= 0 ){
+					coal->logP -= logPopSize;
 				}
-				currentGridIndex--;
-				if(currentGridIndex == coal->gridCount-2 && finish > coal->grid[currentGridIndex]){
-//					printf("  %d %f %f %f ==\n", currentGridIndex, coal->grid[currentGridIndex], start, finish);
-					coal->logP -= (finish - start)*lchoose2/Parameters_value(coal->p, currentGridIndex);
-					if( coal->iscoalescent[i] ){
-						coal->logP -= log(Parameters_value(coal->p, currentGridIndex));
-					}
+				else if (currentGridIndex < Parameters_count(coal->p) - 1) {
+					popSize = Parameters_value(coal->p, ++currentGridIndex);
+					logPopSize = log(popSize);
 				}
 			}
-			else{
-//				if(coal->times[i]!=0.0)
-//					printf("%d s: %f f: %f g: %f g1: %f %d *\n", currentGridIndex, start, finish, coal->grid[currentGridIndex], coal->grid[currentGridIndex+1], coal->lineages[i]);
-//				coal->logP -= coal->times[i]*lchoose2/exp(logN);
-				coal->logP -= coal->times[i]*lchoose2/logN;
-				cum += coal->times[i];
-				if( coal->iscoalescent[i] ){
-//					coal->logP -= logN;
-					coal->logP -= log(logN);
-				}
-			}
-			
-			start = finish;
-			
 		}
-//		Parameters_print(coal->p);
-//		printf("%d\n",currentGridIndex);
 		coal->need_update = false;
 	}
 	return coal->logP;
@@ -1311,92 +1513,28 @@ double _coalescent_grid_calculate( Coalescent* coal ){
 
 double _coalescent_grid_calculate_log_space( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
-		_update_intervals(coal);
+		coal->update_intervals(coal);
 	}
 	
 	if ( coal->need_update ) {
-//		double cutoff = Node_height(Tree_root(coal->tree));
-//		for(int i = 1; i <= coal->gridCount; i++){
-//			coal->grid[i-1] = cutoff*i/coal->gridCount;
-//		}
 		coal->logP = 0;
-		double start = 0;
 		size_t currentGridIndex = 0;
-		
-		double finish;
 		double logPopSize = Parameters_value(coal->p, 0);
 		double popSize = exp(logPopSize);
 		double lchoose2;
 		
-		for( int i = 0; i< coal->n; i++  ){
-			finish = start + coal->times[i];
+		for(size_t i = 0; i < coal->n; i++){
 			if(coal->times[i] != 0.0){
 				lchoose2 = choose(coal->lineages[i], 2);
-			
-				// grid splits an interval
-				while(currentGridIndex < coal->gridCount-1 && finish > coal->grid[currentGridIndex]){
-					double end = fmin(coal->grid[currentGridIndex], finish);
-					coal->logP -= (end - start)*lchoose2/popSize;
-					start = end;
-				
-					if(currentGridIndex < coal->gridCount-1){
-						currentGridIndex++;
-						logPopSize = Parameters_value(coal->p, currentGridIndex);
-						popSize = exp(logPopSize);
-					}
-				}
-				coal->logP -= (finish - start)*lchoose2/popSize;
-			
-				if( coal->iscoalescent[i] ){
+				coal->logP -= coal->times[i]*lchoose2/popSize;
+				if( coal->iscoalescent[i] && coal->nodes[i]->index >= 0 ){
 					coal->logP -= logPopSize;
 				}
-			}
-			start = finish;
-		}
-		coal->need_update = false;
-	}
-	return coal->logP;
-}
-
-double _coalescent_grid_calculate_space( Coalescent* coal ){
-	if ( coal->need_update_intervals ) {
-		_update_intervals(coal);
-	}
-	
-	if ( coal->need_update ) {
-		coal->logP = 0;
-		double start = 0;
-		size_t currentGridIndex = 0;
-		
-		double finish;
-		double popSize = Parameters_value(coal->p, 0);
-		double logPopSize = log(popSize);
-		double lchoose2;
-		
-		for( int i = 0; i< coal->n; i++  ){
-			finish = start + coal->times[i];
-			if(coal->times[i] != 0.0){
-				lchoose2 = choose(coal->lineages[i], 2);
-				
-				// grid splits an interval
-				while(currentGridIndex < coal->gridCount-1 && finish > coal->grid[currentGridIndex]){
-					double end = fmin(coal->grid[currentGridIndex], finish);
-					coal->logP -= (end - start)*lchoose2/popSize;
-					start = end;
-					
-					if(currentGridIndex < coal->gridCount-1){
-						currentGridIndex++;
-						popSize = Parameters_value(coal->p, currentGridIndex);
-						logPopSize = log(popSize);
-					}
-				}
-				coal->logP -= (finish - start)*lchoose2/popSize;
-				
-				if( coal->iscoalescent[i] ){
-					coal->logP -= logPopSize;
+				else if (currentGridIndex < Parameters_count(coal->p) - 1) {
+					logPopSize = Parameters_value(coal->p, ++currentGridIndex);
+					popSize = exp(logPopSize);
 				}
 			}
-			start = finish;
 		}
 		coal->need_update = false;
 	}
@@ -1458,6 +1596,47 @@ double _coalescent_grid_calculate_dlogP_space( Coalescent* coal, const Parameter
 	return dlogP;
 }
 
+void _skygrid_calculate_gradient( Coalescent* coal ){
+	size_t offset = 0;
+	double* chooses = dvector(coal->n);
+	double mexpPop = exp(-Parameters_value(coal->p, 0));
+	size_t index = 0;
+	for(size_t i = 0; i < coal->n; i++){
+		chooses [i] = choose(coal->lineages[i], 2)*mexpPop;
+		if ( coal->nodes[i]->index < 0) {
+			mexpPop = exp(-Parameters_value(coal->p, ++index));
+		}
+	}
+
+    if(coal->prepared_gradient & COALESCENT_FLAG_THETA){
+		memset(coal->gradient, 0, Parameters_count(coal->p)*sizeof(double));
+		size_t index = 0;
+		for(size_t i = 0; i < coal->n; i++){
+			coal->gradient[index] += coal->times[i]*chooses[i];
+			if (coal->iscoalescent[i] && coal->nodes[i]->index >= 0) {
+				coal->gradient[index] -= 1.0;
+			}
+			else if (coal->nodes[i]->index < 0) {
+				index++;
+			}
+		}
+		offset += Parameters_count(coal->p);
+    }
+	
+    if(coal->prepared_gradient & COALESCENT_FLAG_TREE){
+		double* interval_gradient = dvector(coal->n);
+		double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
+		for(size_t i = 1; i < coal->n; i++){
+			interval_gradient[i] = -chooses[i];
+		}
+		height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
+		Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
+		free(interval_gradient);
+		free(height_gradient);
+	}
+	free(chooses);
+}
+
 double _coalescent_grid_calculate_dlogP( Coalescent* coal, const Parameter* p ){
 	int ii = 0;
 	for(; ii < Parameters_count(coal->p); ii++){
@@ -1515,13 +1694,17 @@ double _coalescent_grid_calculate_dlogP( Coalescent* coal, const Parameter* p ){
 }
 
 Coalescent * new_GridCoalescent_with_parameters(Parameters* parameters, int size, int grid, double cutoff){
-	Coalescent *coal = create_Coalescent(COALESCENT_SKYGRID, size);
+	Coalescent *coal = create_GridCoalescent(COALESCENT_SKYGRID, size, grid - 1);
 	assert(coal);
 	coal->grid = dvector(grid-1); // not 0 at grid[0]
 	coal->gridCount = grid-1; // number of lines-1
 	coal->p = new_Parameters(Parameters_count(parameters));
 	Parameters_add_parameters(coal->p, parameters);
-	coal->calculate = _coalescent_grid_calculate_space;
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
+		Parameters_at(parameters, i)->id = i;
+	}
+	coal->calculate = _coalescent_grid_calculate_log_space;
 	coal->dlogP = _coalescent_grid_calculate_dlogP_space;
 	coal->d2logP = NULL;
 	coal->ddlogP = NULL;
@@ -1535,8 +1718,8 @@ Coalescent * new_GridCoalescent_with_parameters(Parameters* parameters, int size
 Coalescent * new_GridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff ){
 	Coalescent *coal = new_GridCoalescent_with_parameters(parameters, Tree_node_count(tree), grid, cutoff);
 	coal->tree = tree;
-	coal->nodes = malloc(Tree_node_count(tree)*sizeof(double_int_pair_t*));
-	for (int i = 0; i < Tree_node_count(tree); i++) {
+	coal->nodes = malloc(coal->n*sizeof(double_int_pair_t*));
+	for (int i = 0; i < coal->n; i++) {
 		coal->nodes[i] = malloc(sizeof(double_int_pair_t));
 	}
 	return coal;
@@ -1596,6 +1779,10 @@ Coalescent * new_SkylineCoalescent_with_parameters( Parameters* parameters, int 
 	coal->groups = groups;
 	coal->p = new_Parameters(Parameters_count(parameters));
 	Parameters_add_parameters(coal->p, parameters);
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
+		Parameters_at(parameters, i)->id = i;
+	}
 	coal->calculate = _coalescent_skyline_calculate;
 	coal->dlogP = _coalescent_exponential_dlogP;
 	coal->d2logP = _coalescent_exponential_d2logP;
