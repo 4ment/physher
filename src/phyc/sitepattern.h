@@ -68,6 +68,7 @@ static const int NUCLEOTIDE_STATES[128] = {
 typedef struct SitePattern{
 	int id;
 	uint8_t **patterns; // [size][count]
+	double **partials; // [size][count]
 	double *weights; // [count]
 	int *indexes;    // from site index of the alignment to pattern index in **patterns
     int size;        // Length of each pattern (number of sequences)

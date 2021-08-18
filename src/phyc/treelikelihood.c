@@ -897,6 +897,10 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 		bm = mbm->obj;
 	}
 	
+	if(patterns->partials != NULL){
+		use_tip_states = false;
+	}
+	
 	SingleTreeLikelihood* tlk = new_SingleTreeLikelihood((Tree*)mtree->obj, (SiteModel*)msm->obj, patterns, bm, use_tip_states);
 	char* id = get_json_node_value_string(node, "id");
 	Model* model = new_TreeLikelihoodModel(id, tlk, mtree, msm, mbm);

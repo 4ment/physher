@@ -38,6 +38,7 @@ static void _make_patterns_codon( const Sequences *aln, Hashtable* hash, int sta
 static void _make_patterns_generic( const Sequences *aln, Hashtable* hash, int start, int length );
 
 static void _sitepattern_get_partials(const SitePattern* sp, size_t taxonIndex, double* partials);
+static void _sitepattern_get_partials_from_partials(const SitePattern* sp, size_t taxonIndex, double* partials);
 
 typedef struct uint8vec{
 	uint8_t* values;
@@ -64,6 +65,34 @@ SitePattern * new_SitePattern( const Sequences *aln ){
 	return new_SitePattern2(aln, 0, aln->length, 1);
 }
 
+// length: number of site in alignment
+// size: number of sequences
+SitePattern * new_SitePartials( char** names, double **partials, int length, int size, DataType* datatype ){
+	SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );
+	assert(sp);
+	sp->id = 0;
+	
+	sp->datatype = datatype;
+	sp->datatype->ref_count++;
+	sp->nstate = sp->datatype->state_count(sp->datatype);
+	sp->get_partials = _sitepattern_get_partials_from_partials;
+	sp->count = length;
+	sp->nsites = length;
+	sp->size = size;
+	sp->indexes = ivector(sp->count);
+	sp->weights = dvector(sp->count);
+	for (int i = 0; i < sp->count; i++) {
+		sp->indexes[i] = i;
+		sp->weights[i] = 1.0;
+	}
+	
+	sp->patterns = NULL;
+	sp->partials = partials;
+	sp->names = names;
+	
+	sp->ref_count = 1;
+	return sp;
+}
 
 SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int every ){
 	SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );
@@ -74,6 +103,7 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 	sp->datatype->ref_count++;
 	sp->nstate = sp->datatype->state_count(sp->datatype);
 	sp->get_partials = _sitepattern_get_partials;
+	sp->partials = NULL;
 	
 	Hashtable* hash = new_Hashtable( 100, &hashtable_hash_uint8_t, hashtable_compare_uint8_t, HASHTABLE_KEY_REFERENCE);
 	hashtable_set_key_ownership(hash, true);
@@ -140,6 +170,7 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 	sp->datatype->ref_count++;
 	sp->nstate = sp->datatype->state_count(sp->datatype);
 	sp->get_partials = _sitepattern_get_partials;
+	sp->partials = NULL;
 	
 	Hashtable* hash = new_Hashtable( 100, &hashtable_hash_uint8_t, hashtable_compare_uint8_t, HASHTABLE_KEY_REFERENCE);
 	hashtable_set_key_ownership(hash, true);
@@ -204,6 +235,10 @@ void free_SitePattern( SitePattern *sp ){
 			free_ui8matrix(sp->patterns, sp->size);
 			free(sp->weights);
 		}
+		if(sp->partials != NULL ){
+			free_dmatrix(sp->partials, sp->size);
+			free(sp->weights);
+		}
 		if(sp->indexes != NULL)free(sp->indexes);
 		
 		if(sp->names != NULL ){
@@ -229,12 +264,22 @@ SitePattern * clone_SitePattern( const SitePattern *sp ){
     newsp->datatype = sp->datatype;
 	newsp->datatype->ref_count++;
 	newsp->get_partials = sp->get_partials;
-    
-    newsp->patterns = ui8matrix(sp->size, sp->count);
-    for ( int p = 0; p < sp->size; p++ ) {
-        memcpy(newsp->patterns[p], sp->patterns[p], sp->count * sizeof(uint8_t));
-    }
-    
+	newsp->patterns = NULL;
+	newsp->partials = NULL;
+	
+	if(sp->patterns != NULL){
+		newsp->patterns = ui8matrix(sp->size, sp->count);
+		for ( int p = 0; p < sp->size; p++ ) {
+			memcpy(newsp->patterns[p], sp->patterns[p], sp->count * sizeof(uint8_t));
+		}
+	}
+    else if(sp->partials != NULL){
+		newsp->partials = dmatrix(sp->size, sp->count * sp->nstate);
+		for ( int p = 0; p < sp->size; p++ ) {
+			memcpy(newsp->partials[p], sp->partials[p], sp->count * sp->nstate * sizeof(double));
+		}
+	}
+	
     newsp->indexes = clone_ivector( sp->indexes, sp->nsites);
     
     newsp->weights = clone_dvector( sp->weights, sp->count );
@@ -502,6 +547,10 @@ void _sitepattern_get_partials(const SitePattern* sp, size_t taxonIndex, double*
 	}
 }
 
+void _sitepattern_get_partials_from_partials(const SitePattern* sp, size_t taxonIndex, double* partials){
+	memcpy(partials, sp->partials[taxonIndex], sizeof(double)*sp->count*sp->datatype->stateCount);
+}
+
 int frequencies( const SitePattern *sp, double *freqs, const uint8_t nstate ){
 	int j;
 	int ambiguity = 0;
@@ -717,6 +766,22 @@ unsigned SitePattern_polymorphic_count(SitePattern *sp){
     return polymorphisms;
 }
 
+DataType* parse_datatype(json_node* datatype_node, Hashtable* hash){
+	DataType* datatype = NULL;
+	if(datatype_node->node_type == MJSON_STRING && (strcasecmp((char*)datatype_node->value, "nucleotide") == 0 ||
+	   strcasecmp((char*)datatype_node->value, "codon") == 0 || strcasecmp((char*)datatype_node->value, "aa") == 0)){
+		datatype = new_DataType_from_json(datatype_node, hash);
+	}
+	else if (datatype_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)datatype_node->value)) {
+		datatype = Hashtable_get(hash, (char*)datatype_node->value);
+		datatype->ref_count++;
+	}
+	else{
+		datatype = new_DataType_from_json(datatype_node, hash);
+		Hashtable_add(hash, datatype->name, datatype);
+	}
+	return datatype;
+}
 
 SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
@@ -724,34 +789,35 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		"datatype",
 		"every",
 		"length",
+		"partials",
 		"start",
 		"verbose"
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
 	json_node* alignment_node = get_json_node(node, "alignment");
+	json_node* partials_node = get_json_node(node, "partials");
 	json_node* datatype_node = get_json_node(node, "datatype");
 	json_node* start_node = get_json_node(node, "start");
 	json_node* length_node = get_json_node(node, "length");
 	json_node* every_node = get_json_node(node, "every");
 	SitePattern* patterns = NULL;
 	
+	DataType* datatype = NULL;
+	if(datatype_node->node_type == MJSON_STRING && (strcasecmp((char*)datatype_node->value, "nucleotide") == 0 ||
+	   strcasecmp((char*)datatype_node->value, "codon") == 0 || strcasecmp((char*)datatype_node->value, "aa") == 0)){
+		datatype = new_DataType_from_json(datatype_node, hash);
+	}
+	else if (datatype_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)datatype_node->value)) {
+		datatype = Hashtable_get(hash, (char*)datatype_node->value);
+		datatype->ref_count++;
+	}
+	else{
+		datatype = new_DataType_from_json(datatype_node, hash);
+		Hashtable_add(hash, datatype->name, datatype);
+	}
 	
 	if (alignment_node != NULL) {
-		DataType* datatype = NULL;
-		if(datatype_node->node_type == MJSON_STRING && (strcasecmp((char*)datatype_node->value, "nucleotide") == 0 ||
-		   strcasecmp((char*)datatype_node->value, "codon") == 0 || strcasecmp((char*)datatype_node->value, "aa") == 0)){
-			datatype = new_DataType_from_json(datatype_node, hash);
-		}
-		else if (datatype_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)datatype_node->value)) {
-			datatype = Hashtable_get(hash, (char*)datatype_node->value);
-			datatype->ref_count++;
-		}
-		else{
-			datatype = new_DataType_from_json(datatype_node, hash);
-			Hashtable_add(hash, datatype->name, datatype);
-		}
-		
 		Sequences* sequences = new_Sequences_from_json(alignment_node, hash);
 		sequences->datatype = datatype;
 		datatype->ref_count++;
@@ -776,7 +842,6 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		else{
 			patterns = new_SitePattern(sequences);
 		}
-		free_DataType(datatype);
 		free_Sequences(sequences);
 		
 		json_node* seq_node = get_json_node(alignment_node, "sequences");
@@ -792,18 +857,36 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 			json_free_tree(seq_node);
 		}
 	}
+	else if(partials_node != NULL){
+		double** partials = malloc(partials_node->child_count*sizeof(double*));
+		char** names = malloc(partials_node->child_count*sizeof(char*));
+		int length = 0;
+		for (int i = 0; i < partials_node->child_count; i++) {
+			json_node* child = partials_node->children[i];
+			names[i] = String_clone((char*)child->key);
+			char* sequence = child->value;
+			int l = 0;
+			String_trim(sequence);
+			partials[i] = String_split_char_double( sequence, ',', &l );
+			length = l;
+		}
+		patterns = new_SitePartials(names, partials, length/datatype->stateCount, partials_node->child_count, datatype);
+	}
 	else{
 		fprintf(stderr, "No `alignment' provided in sitepattern object\n");
 		exit(1);
 	}
+	free_DataType(datatype);
 	
 	bool verbose = get_json_node_value_bool(node, "verbose", true);
 	if(verbose){
 		double unc_lk = unconstrained_lk(patterns, patterns->nsites);
-		int polymorphisms = SitePattern_polymorphic_count(patterns);
 		fprintf(stdout, "Number of sequences: %d\n", patterns->size );
 		fprintf(stdout, "Alignment length: %d\n", patterns->nsites );
-		fprintf(stdout, "Number of polymorphic sites: %d/%d (%f)\n", polymorphisms, patterns->nsites,((double)polymorphisms/patterns->nsites) );
+		if(patterns->patterns != NULL){
+			int polymorphisms = SitePattern_polymorphic_count(patterns);
+			fprintf(stdout, "Number of polymorphic sites: %d/%d (%f)\n", polymorphisms, patterns->nsites,((double)polymorphisms/patterns->nsites) );
+		}
 		fprintf(stdout, "Number of patterns: %d\n", patterns->count );
 		fprintf(stdout, "Unconstrained likelihood: %f\n\n", unc_lk );
 	}
