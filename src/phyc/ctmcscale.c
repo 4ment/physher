@@ -9,6 +9,7 @@
 #include "ctmcscale.h"
 
 #include "distmodel.h"
+#include "mathconstant.h"
 
 
 double DistributionModel_log_ctmc_scale(DistributionModel* dm){
