@@ -30,7 +30,7 @@
 #include "mstring.h"
 #include "geneticcode.h"
 #include "random.h"
-
+#include "hashfunctions.h"
 #include "datatype.h"
 
 static void _make_patterns( const Sequences *a, Hashtable* hash, int start, int end, int every );
@@ -39,6 +39,29 @@ static void _make_patterns_generic( const Sequences *aln, Hashtable* hash, int s
 
 static void _sitepattern_get_partials(const SitePattern* sp, size_t taxonIndex, double* partials);
 static void _sitepattern_get_partials_from_partials(const SitePattern* sp, size_t taxonIndex, double* partials);
+
+typedef struct double_vec_t{
+	double* values;
+	size_t length;
+}double_vec_t;
+
+
+unsigned int hashtable_hash_double_t(const void* data) {
+	const double_vec_t* vec = data;
+	const double* values = vec->values;
+	unsigned int hash = values[0]/71;
+	for(int i = 1; i < vec->length; i++){
+//		hash += values[i]/71;
+		hash += ELFHash((const char *)&values[i], sizeof(values[i]));
+	}
+	return hash;
+}
+
+static bool hashtable_compare_double_t( const void *key1, const void *key2 ){
+	const double_vec_t* k1 = (double_vec_t*)key1;
+	const double_vec_t* k2 = (double_vec_t*)key2;
+	return memcmp(k1->values, k2->values, k1->length*sizeof(double)) == 0;
+}
 
 typedef struct uint8vec{
 	uint8_t* values;
@@ -65,9 +88,34 @@ SitePattern * new_SitePattern( const Sequences *aln ){
 	return new_SitePattern2(aln, 0, aln->length, 1);
 }
 
+void _make_partials( double** partials, Hashtable* hash, int size, int length ){
+	double_vec_t* pattern = malloc(sizeof(double_vec_t));
+	pattern->length = size*4;
+	pattern->values = malloc(sizeof(double)*pattern->length);
+	
+	for( int site = 0; site < length; site++ ){
+		for( int i = 0; i < size; i++ ){
+			memcpy(pattern->values + i*4, partials[i] + site*4, sizeof(double)*4);
+		}
+		HashEntry* entry = Hashtable_get_entry(hash, pattern);
+		if (entry != NULL) {
+			int* counter = HashEntry_value(entry);
+			(*counter)++;
+		}
+		else{
+			double_vec_t* vec = malloc(sizeof(double_vec_t));
+			vec->length = pattern->length;
+			vec->values = clone_dvector(pattern->values, pattern->length);
+			Hashtable_add(hash, vec, new_Int(1));
+		}
+	}
+	free(pattern->values);
+	free(pattern);
+}
+
 // length: number of site in alignment
 // size: number of sequences
-SitePattern * new_SitePartials( char** names, double **partials, int length, int size, DataType* datatype ){
+SitePattern * new_SitePartials( char** names, double **partials, int length, int size, DataType* datatype, bool compress ){
 	SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );
 	assert(sp);
 	sp->id = 0;
@@ -79,15 +127,56 @@ SitePattern * new_SitePartials( char** names, double **partials, int length, int
 	sp->count = length;
 	sp->nsites = length;
 	sp->size = size;
-	sp->indexes = ivector(sp->count);
-	sp->weights = dvector(sp->count);
-	for (int i = 0; i < sp->count; i++) {
-		sp->indexes[i] = i;
-		sp->weights[i] = 1.0;
+
+	if(compress){
+		Hashtable* hash = new_Hashtable( 100, &hashtable_hash_double_t, hashtable_compare_double_t, HASHTABLE_KEY_REFERENCE);
+		hashtable_set_key_ownership(hash, true);
+		hashtable_set_value_ownership(hash, true);
+		_make_partials(partials, hash, size, length);
+		
+		int compressed_count = Hashtable_length(hash);
+		sp->count = compressed_count;
+		sp->indexes = ivector(compressed_count);
+		sp->weights = dvector(compressed_count);
+		
+		Hashtable_init_iterator(hash);
+		HashEntry *entry = NULL;
+		
+		double** partials2 = malloc(sizeof(double*)*size);
+		for(size_t i = 0; i < size; i++){
+			partials2[i] = malloc(sizeof(double)*compressed_count*4);
+		}
+		
+		size_t index = 0;
+		while ( (entry = Hashtable_next(hash) ) != NULL ) {
+			const double_vec_t *vec = HashEntry_key(entry);
+			const double *partial = vec->values;
+			const int *counter = HashEntry_value(entry);
+			sp->weights[index] = *counter;
+			for(size_t i = 0; i < size; i++){
+				memcpy(partials2[i] + index*4, partial + i*4, sizeof(double)*4);
+			}
+			sp->indexes[index] = -1;
+			index++;
+			free(vec->values);
+		}
+		for(int i = 0; i < size; i++)
+			free(partials[i]);
+		free(partials);
+		free_Hashtable(hash);
+			sp->partials = partials2;
+	}
+	else{
+		sp->indexes = ivector(sp->count);
+		sp->weights = dvector(sp->count);
+		for (int i = 0; i < sp->count; i++) {
+			sp->indexes[i] = i;
+			sp->weights[i] = 1.0;
+		}
+		sp->partials = partials;
 	}
 	
 	sp->patterns = NULL;
-	sp->partials = partials;
 	sp->names = names;
 	
 	sp->ref_count = 1;
@@ -870,7 +959,8 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 			partials[i] = String_split_char_double( sequence, ',', &l );
 			length = l;
 		}
-		patterns = new_SitePartials(names, partials, length/datatype->stateCount, partials_node->child_count, datatype);
+		bool compress = get_json_node_value_bool(node, "compress", true);
+		patterns = new_SitePartials(names, partials, length/datatype->stateCount, partials_node->child_count, datatype, compress);
 	}
 	else{
 		fprintf(stderr, "No `alignment' provided in sitepattern object\n");
