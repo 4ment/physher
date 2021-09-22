@@ -364,6 +364,40 @@ void init_dates(Tree* atree, json_node* dates_node){
 	}
 }
 
+void init_leaf_heights_from_times(Tree* atree){
+	atree->homochronous = true;
+	atree->time_mode = true;
+	atree->rooted = true;
+	double min = INFINITY;
+	double max = -INFINITY;
+	Node** nodes = Tree_get_nodes(atree, PREORDER);
+	for (int i = 0; i < Tree_node_count(atree); i++) {
+		if(Node_isleaf(nodes[i])){
+			double date = Node_time(nodes[i]);
+			min = dmin(date, min);
+			max = dmax(date, max);
+			if (date != 0.0) atree->homochronous = false;
+		}
+			
+	}
+	double offset = max;
+	if (!atree->homochronous && min != 0) {
+		offset = -1;
+		for (int i = 0; i < Tree_node_count(atree); i++) {
+			if(Node_isleaf(nodes[i])){
+				Node_set_height(nodes[i], max - Node_time(nodes[i]));
+				offset = dmax(offset-0.000001, Node_height(nodes[i]))+0.000001;
+			}
+		}
+	}
+	
+	if (!atree->homochronous){
+		Constraint_set_lower(atree->root->height->cnstr, offset);
+		Constraint_set_flower(atree->root->height->cnstr, offset);
+	}
+	atree->tt->update_lowers(atree->tt);
+}
+
 void init_heights_from_distances(Tree* atree){
 	atree->time_mode = true;
 	atree->rooted = true;
@@ -2236,6 +2270,8 @@ double mean_rate_calibrations( Tree *tree ){
 
 // zero is the present, 10 is the past
 bool parse_dates( Tree *tree ){
+	tree->time_mode = true;
+	tree->rooted = true;
 	char *pch = NULL;
 	bool isDated = true;
 	Node **nodes = Tree_get_nodes( tree, POSTORDER );

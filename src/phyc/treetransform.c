@@ -10,6 +10,18 @@
 
 #include "matrix.h"
 
+
+double _node_transform_log_jacobian(TreeTransform *tt){
+	double logP = 0.0;
+	Node** nodes = Tree_nodes(tt->tree);
+	for(size_t i = 0; i < Tree_node_count(tt->tree); i++){
+		if(!Node_isroot(nodes[i]) && !Node_isleaf(nodes[i])){
+			logP += log(Node_height(Node_parent(nodes[i])) - tt->lowers[Node_id(nodes[i])]);
+		}
+	}
+	return logP;
+}
+
 void tree_transform_update_heights(Node *node, Parameters *parameters,
                                    unsigned *map, double *lowers) {
     if (!Node_isleaf(node)) {
@@ -145,6 +157,7 @@ TreeTransform *new_HeightTreeTransform(Tree *tree) {
     tt->parameter_of_node = _parameter_of_node;
     tt->node_of_parameter = _node_of_parameter;
     tt->inverse_transform = _height_tree_inverse_transform;
+    tt->log_jacobian = _node_transform_log_jacobian;
     tt->dlog_jacobian = _node_transform_dlog_jacobian;
     tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient;
     tt->jvp = node_transform_jvp;
@@ -209,6 +222,7 @@ Model *clone_HeightTreeTransform(Model *self, Hashtable *hash) {
     ttnew->parameter_of_node = tt->parameter_of_node;
     ttnew->node_of_parameter = tt->node_of_parameter;
     ttnew->inverse_transform = tt->inverse_transform;
+    ttnew->log_jacobian = tt->log_jacobian;
     ttnew->dlog_jacobian = tt->dlog_jacobian;
     ttnew->log_jacobian_gradient = tt->log_jacobian_gradient;
     ttnew->jvp = tt->jvp;
@@ -293,6 +307,17 @@ static Model *_tree_transform_model_clone(Model *self, Hashtable *hash) {
     return NULL;
 }
 
+static double _tree_transform_model_logP(Model *self) {
+	TreeTransform* tt = self->obj;
+	return tt->log_jacobian(tt);
+}
+
+static double _tree_transform_model_dlogP(Model *self, const Parameter* p){
+	TreeTransform* tt = self->obj;
+	Node* node = _node_of_parameter(tt, p);
+	return tt->dlog_jacobian(tt, node);
+}
+
 Model *new_TreeTransformModel(const char *name, TreeTransform *tt, Model *tree) {
     Model *model = new_Model(MODEL_TREE_TRANSFORM, name, tt);
     for (int i = 0; i < Parameters_count(tt->parameters); i++) {
@@ -305,6 +330,9 @@ Model *new_TreeTransformModel(const char *name, TreeTransform *tt, Model *tree) 
     model->restore = _tree_transform_model_restore;
     model->update = _tree_transform_model_handle_change;
     model->handle_restore = _tree_transform_model_handle_restore;
+	
+	model->logP = _tree_transform_model_logP;
+	model->dlogP = _tree_transform_model_dlogP;
 
     model->data = tree;
     return model;

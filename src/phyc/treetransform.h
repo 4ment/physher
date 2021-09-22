@@ -25,6 +25,7 @@ typedef struct TreeTransform {
     double (*inverse_transform)(struct TreeTransform*, Node*);
     void (*update)(struct TreeTransform*);
     void (*update_lowers)(struct TreeTransform*);
+	double (*log_jacobian)(struct TreeTransform*);
     void (*jvp)(struct TreeTransform*, const double*, double*);
     double (*dlog_jacobian)(struct TreeTransform*, Node*);
     void (*log_jacobian_gradient)(struct TreeTransform*, double*);

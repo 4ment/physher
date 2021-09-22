@@ -46,6 +46,7 @@ Tree * new_Tree( const char *nexus, bool containBL );
 Tree * new_Tree2( Node *root );
 
 void Tree_init_heights ( Tree *atree );
+void init_leaf_heights_from_times(Tree* atree);
 
 void free_Tree( Tree *t);
 void free_Tree_for_model( Tree *t);
