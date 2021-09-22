@@ -245,7 +245,7 @@ configure_file (
   
 #####################################################################
 
-add_definitions("-std=c99")
+add_definitions("-std=gnu99")
 
 link_libraries(m)
 
@@ -323,3 +323,7 @@ IF (BUILD_TESTING)
 	enable_testing()
 	add_subdirectory(tests)
 ENDIF (BUILD_TESTING)
+
+IF (BUILD_BENCHMARKING)
+	add_subdirectory(examples)
+ENDIF (BUILD_BENCHMARKING)
