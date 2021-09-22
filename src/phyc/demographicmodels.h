@@ -57,6 +57,7 @@ typedef struct Coalescent{
 	double (*ddlogP)( struct Coalescent*, const Parameter*, const Parameter* );
 	void (*update_intervals)( struct Coalescent* );
     bool need_update;
+	bool need_update_gradient;
 	bool need_update_intervals;
 	double* grid;
 	size_t gridCount;

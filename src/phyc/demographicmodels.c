@@ -142,8 +142,9 @@ double _coalescent_model_dlogP_prepared(Model *self, const Parameter* p){
 	if ( coal->need_update_intervals){
 		coal->update_intervals(coal);
 	}
-	if (coal->need_update) {
-		coal->need_update = false;
+	// coal->need_update is set to false if we call logP first
+	if (coal->need_update_gradient) {
+		coal->need_update_gradient = false;
 		if(coal->type == COALESCENT_CONSTANT){
 			_constant_calculate_gradient(coal);
 		}
@@ -296,6 +297,7 @@ static Model* _coalescent_model_clone( Model *self, Hashtable* hash ){
 		}
 		clone->need_update_intervals = true;
 		clone->need_update = true;
+		clone->need_update_gradient = true;
 	}
 	
 	clone->gridCount = coalescent->gridCount;
@@ -331,13 +333,16 @@ static void _coalescent_model_handle_change( Model *self, Model *model, int inde
 	// theta has changed
 	if(model == NULL){
 		c->need_update = true;
+		c->need_update_gradient = true;
 	}
 	else if ( model->type == MODEL_TREE ) {
 		c->need_update_intervals = true;
 		c->need_update = true;
+		c->need_update_gradient = true;
 	}
 	else if ( model->type == MODEL_DISCRETE_PARAMETER ) {
 		c->need_update = true;
+		c->need_update_gradient = true;
 	}
 	else{
 		fprintf(stderr, "_coalescent_model_handle_change %d %s\n", model->type, model->name);
@@ -487,7 +492,7 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		Hashtable_add(hash, Parameters_name(ps, 1), Parameters_at(ps, 1));
 	}
 	else if(strcasecmp(model, "skygrid") == 0){
-		int gridCount = Parameters_count(ps)+1;
+		int gridCount = Parameters_count(ps);
 		
 		double cutoff = get_json_node_value_double(node, "cutoff", -1);
 		if(cutoff <= 0){
@@ -629,6 +634,7 @@ void _update_intervals(Coalescent* coal){
 	coal->n = intervalCount;
 	coal->need_update_intervals = false;
 	coal->need_update = true;
+	coal->need_update_gradient = true;
 }
 
 void _update_intervals_grid(Coalescent* coal){
@@ -680,6 +686,7 @@ void _update_intervals_grid(Coalescent* coal){
 	coal->n = points_count;
 	coal->need_update_intervals = false;
 	coal->need_update = true;
+	coal->need_update_gradient = true;
 }
 
 
@@ -876,6 +883,7 @@ Coalescent * create_GridCoalescent(demography type, size_t size, size_t grid_cou
 	coal->stored_iscoalescent = bvector(size + grid_count);
 	coal->n = size + grid_count;
 	coal->need_update_intervals = true;
+	coal->need_update_gradient = true;
 	coal->need_update = true;
 	coal->grid = NULL;
 	coal->gridCount = 0;
@@ -1530,7 +1538,7 @@ double _coalescent_grid_calculate_log_space( Coalescent* coal ){
 				if( coal->iscoalescent[i] && coal->nodes[i]->index >= 0 ){
 					coal->logP -= logPopSize;
 				}
-				else if (currentGridIndex < Parameters_count(coal->p) - 1) {
+				else if (coal->nodes[i]->index < 0 &&currentGridIndex < Parameters_count(coal->p) - 1) {
 					logPopSize = Parameters_value(coal->p, ++currentGridIndex);
 					popSize = exp(logPopSize);
 				}
@@ -1603,7 +1611,7 @@ void _skygrid_calculate_gradient( Coalescent* coal ){
 	size_t index = 0;
 	for(size_t i = 0; i < coal->n; i++){
 		chooses [i] = choose(coal->lineages[i], 2)*mexpPop;
-		if ( coal->nodes[i]->index < 0) {
+		if ( coal->nodes[i]->index < 0 && index < Parameters_count(coal->p)-1) {
 			mexpPop = exp(-Parameters_value(coal->p, ++index));
 		}
 	}
