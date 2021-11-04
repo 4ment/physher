@@ -14,12 +14,18 @@
 #include "parameters.h"
 #include "tree.h"
 
+typedef enum tree_transform_t{
+	TREE_TRANSFORM_RATIO_SLOW=0,
+	TREE_TRANSFORM_RATIO
+}tree_transform_t;
+
 typedef struct TreeTransform {
     Tree* tree;
     Parameters* parameters;
     double* lowers;
     unsigned* map;
     Node** map_to_node;
+	tree_transform_t parameterization;
     Parameter* (*parameter_of_node)(struct TreeTransform*, Node*);
     Node* (*node_of_parameter)(struct TreeTransform*, Parameter*);
     double (*inverse_transform)(struct TreeTransform*, Node*);
@@ -31,7 +37,7 @@ typedef struct TreeTransform {
     void (*log_jacobian_gradient)(struct TreeTransform*, double*);
 } TreeTransform;
 
-TreeTransform* new_HeightTreeTransform(Tree* tree);
+TreeTransform* new_HeightTreeTransform(Tree* tree, tree_transform_t parameterization);
 
 void free_TreeTransform(TreeTransform* tt);
 

@@ -492,6 +492,7 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	atree->time_mode = false;
 	atree->homochronous = true;
     atree->need_update_height = true;
+	atree->tt = NULL;
 
 	//printf("%s",nexus);
 	Node *current = NULL;
@@ -675,7 +676,6 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	Tree_update_topology(atree);
 	
 	init_parameter_arrays(atree);
-	atree->tt = new_HeightTreeTransform(atree);
 	
 	free_StringBuffer(buffer);
 	
@@ -696,6 +696,7 @@ Tree * new_Tree2( Node *root ){
 	atree->time_mode = false;
 	atree->homochronous = true;
     atree->need_update_height = false;
+	atree->tt = NULL;
 	
 	_Tree_count_nodes(root, &atree->nTips, &atree->nNodes);
 	
@@ -706,7 +707,6 @@ Tree * new_Tree2( Node *root ){
 	Tree_update_topology(atree);
     
     init_parameter_arrays(atree);
-	atree->tt = new_HeightTreeTransform(atree);
 	
 	return atree;
 }
@@ -1103,6 +1103,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 		// initialize heights from distances read from newick file
 		if(tree->time_mode){
+			tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO_SLOW);
 			tree->tt->update_lowers(tree->tt);
 			init_heights_from_distances(tree);
 		}
@@ -1225,7 +1226,7 @@ void free_Tree_for_model( Tree *t){
 }
 
 void free_Tree( Tree *t){
-	free_TreeTransform(t->tt);
+	if(t->tt!= NULL) free_TreeTransform(t->tt);
 	free_Tree_for_model(t);
 }
 
@@ -1283,7 +1284,7 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
 	newTree->need_update_height = tree->need_update_height;
 	
 	init_parameter_arrays(newTree);
-	newTree->tt = new_HeightTreeTransform(newTree);
+	newTree->tt = new_HeightTreeTransform(newTree, tree->tt->parameterization);
 	
 	return newTree;
 }

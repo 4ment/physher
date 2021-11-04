@@ -10,6 +10,100 @@
 
 #include "matrix.h"
 
+// Efficient calculation of the ratio and root height gradient, adpated from BEAST.
+// Xiang et al. Scalable Bayesian divergence time estimation with ratio transformation (2021).
+// https://arxiv.org/abs/2110.13298
+static double _epoch_gradient_addition(const Node* node, const Node* child, const unsigned* map, const double* lowers, Parameters* ratios, const double* ratio_gradient) {
+    if (Node_isleaf(child)) {
+        return 0.0;
+    }
+    size_t node_id = Node_id(node);
+    size_t child_id = Node_id(child);
+    size_t child_class_id = Node_class_id(child);
+	double node_ratio = Parameters_value(ratios, map[node_id]);
+	double child_ratio = Parameters_value(ratios, map[child_id]);
+    
+    // child_id and node_id are in the same epoch
+    if (lowers[node_id] == lowers[child_id]) {
+        return ratio_gradient[child_class_id] * child_ratio / node_ratio;
+    }
+    // NOT the same epoch
+    else {
+        double height = Node_height(node);
+        return ratio_gradient[child_class_id] * child_ratio / (height - lowers[child_id]) * (height - lowers[node_id])/node_ratio;
+    }
+}
+
+static double _root_height_gradient(Tree* tree, const unsigned* map, Parameters* ratios, const double* gradient_height) {
+	size_t gradientLength = Tree_tip_count(tree) - 1;
+    double* multiplierArray = dvector(gradientLength);
+    multiplierArray[map[Node_id(Tree_root(tree))]] = 1.0;
+    Node** nodes = Tree_get_nodes(tree, PREORDER);
+    size_t nodeCount = Tree_node_count(tree);
+    
+    for(size_t i = 1; i < nodeCount; i++){
+		if(!Node_isleaf(nodes[i])){
+			size_t node_id = Node_id(nodes[i]);
+			double node_ratio = Parameters_value(ratios, map[node_id]);
+			multiplierArray[map[node_id]] = node_ratio * multiplierArray[map[Node_id(nodes[i]->parent)]];
+		}
+    }
+    double sum = 0.0;
+    for (int i = 0; i < gradientLength; i++) {
+        sum += gradient_height[i] * multiplierArray[i];
+    }
+    free(multiplierArray);
+    return sum;
+}
+
+void _update_ratios_gradient(Tree* tree, const unsigned* map, const double* lowers, Parameters* ratios, const double* gradient_height, double* gradient){
+    Node** nodes = Tree_get_nodes(tree, POSTORDER);
+    for (int i = 0; i < Tree_node_count(tree)-1; i++) {
+        if(Node_isleaf(nodes[i])) continue;
+        int node_id = Node_id(nodes[i]);
+        int node_class_id = Node_class_id(nodes[i]);
+        double height = Node_height(nodes[i]);
+        gradient[node_class_id] += (height - lowers[node_id])/Parameters_value(ratios, node_class_id) * gradient_height[node_class_id];
+        gradient[node_class_id] += _epoch_gradient_addition(nodes[i], nodes[i]->left, map, lowers, ratios, gradient);
+        gradient[node_class_id] += _epoch_gradient_addition(nodes[i], nodes[i]->right, map, lowers, ratios, gradient);
+    }
+}
+
+
+void node_transform_jvp_efficient(TreeTransform *tt, const double *height_gradient, double *gradient){
+	memset(gradient, 0.0, sizeof(double)*(Tree_tip_count(tt->tree)-1));
+	_update_ratios_gradient(tt->tree, tt->map, tt->lowers, tt->parameters, height_gradient, gradient);
+	gradient[tt->map[Node_id(Tree_root(tt->tree))]] = _root_height_gradient(tt->tree, tt->map, tt->parameters, height_gradient);
+}
+
+void _node_transform_log_jacobian_gradient_efficient(struct TreeTransform *tt, double *gradient) {
+	size_t nodeCount = Tree_node_count(tt->tree);
+	double *log_time = dvector(Tree_tip_count(tt->tree)-1);
+	unsigned root_class_id = tt->map[Node_id(Tree_root(tt->tree))];
+	
+	Node** nodes = Tree_nodes(tt->tree);
+	for (size_t i = 0; i < nodeCount; i++) {
+		if(!Node_isleaf(nodes[i])){
+			log_time[tt->map[Node_id(nodes[i])]] = 1.0 / (Node_height(nodes[i]) - tt->lowers[Node_id(nodes[i])]);
+		}
+	}
+	log_time[root_class_id] = 0.0;
+	double* jac_gradient = dvector(Tree_tip_count(tt->tree)-1);
+	memset(jac_gradient, 0.0, sizeof(double)*(Tree_tip_count(tt->tree)-1));
+	_update_ratios_gradient(tt->tree, tt->map, tt->lowers, tt->parameters, log_time, jac_gradient);
+	
+	
+	gradient[root_class_id] += _root_height_gradient(tt->tree, tt->map, tt->parameters, log_time);
+	
+	for (int i = 0; i < nodeCount; i++) {
+        if(!Node_isleaf(nodes[i]) && !Node_isroot(nodes[i])){
+            size_t node_class_id = Node_class_id(nodes[i]);
+            gradient[node_class_id] += jac_gradient [node_class_id] -1.0 / Parameters_value(tt->parameters, node_class_id);
+        }
+    }
+	free(jac_gradient);
+	free(log_time);
+}
 
 double _node_transform_log_jacobian(TreeTransform *tt){
 	double logP = 0.0;
@@ -144,9 +238,10 @@ void node_transform_jvp(TreeTransform *tt, const double *height_gradient, double
     }
 }
 
-TreeTransform *new_HeightTreeTransform(Tree *tree) {
+TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameterization) {
     TreeTransform *tt = malloc(sizeof(TreeTransform));
     tt->tree = tree;
+	tt->parameterization = parameterization;
     tt->parameters = new_Parameters(Tree_tip_count(tree) + 1);
     Parameters_set_name2(tt->parameters, "reparam");
     tt->map = uivector(Tree_node_count(tree));
@@ -159,8 +254,14 @@ TreeTransform *new_HeightTreeTransform(Tree *tree) {
     tt->inverse_transform = _height_tree_inverse_transform;
     tt->log_jacobian = _node_transform_log_jacobian;
     tt->dlog_jacobian = _node_transform_dlog_jacobian;
-    tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient;
-    tt->jvp = node_transform_jvp;
+	if(parameterization == TREE_TRANSFORM_RATIO_SLOW){
+		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient;
+		tt->jvp = node_transform_jvp;
+	}
+	else if(parameterization == TREE_TRANSFORM_RATIO){
+		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_efficient;
+		tt->jvp = node_transform_jvp_efficient;
+	}
 
     Node **nodes = Tree_get_nodes(tree, PREORDER);
 
