@@ -81,10 +81,11 @@ char* json_jc69_unrooted =
 // Calculate the log of the determinant of the Jacobian for the node height transform.
 // Derivatives are wrt ratio/root height parameters.
 // At each iteration, node heights are updated from the ratios/root height parameters.
-void test_height_transform(size_t iter, const char* newick, bool debug) {
+void test_height_transform(size_t iter, const char* newick, int reparameterization, bool debug) {
     struct timespec start, end;
 
     Tree* tree = new_Tree(newick, true);
+    Tree_set_transform(tree, reparameterization);
     parse_dates(tree);
     init_leaf_heights_from_times(tree);
 
@@ -109,13 +110,12 @@ void test_height_transform(size_t iter, const char* newick, bool debug) {
     }
 
     double dlogP;
+    double* gradient = malloc((Tree_tip_count(tree) - 1) * sizeof(double));
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         tt->update(tt);
-        for (int j = 0; j < Parameters_count(reparams); j++) {
-            logP = mtt->dlogP(mtt, Parameters_at(reparams, j));
-        }
+        tt->log_jacobian_gradient(tt, gradient);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
@@ -126,7 +126,7 @@ void test_height_transform(size_t iter, const char* newick, bool debug) {
             printf("dlogP %f\n", dlogP);
         }
     }
-
+    free(gradient);
     mtree->free(mtree);
 }
 
@@ -134,11 +134,13 @@ void test_height_transform(size_t iter, const char* newick, bool debug) {
 // The derivatives are wrt population size and the ratio/node height parameters
 // but the log determinant of the Jacobian is not included.
 // At each iteration, node heights are updated from the ratios/root height parameters.
-void test_constant(size_t iter, const char* newick, bool debug) {
+void test_constant(size_t iter, const char* newick, int reparameterization, bool debug) {
     struct timespec start, end;
 
     Tree* tree = new_Tree(newick, true);
+    Tree_set_transform(tree, reparameterization);
     parse_dates(tree);
+
     init_leaf_heights_from_times(tree);
 
     init_heights_from_distances(tree);
@@ -205,7 +207,7 @@ void test_constant(size_t iter, const char* newick, bool debug) {
 // Derivatives are wrt branch ratios/node height parameters.
 // At each iteration, the probability matrices are updated and the whole tree likelihood
 // is calculated.
-void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick, bool debug) {
+void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick, int reparameterization, bool debug) {
     struct timespec start, end;
 
     Hashtable* hash2 = new_Hashtable_string(100);
@@ -221,6 +223,7 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
     Hashtable_add(hash2, "patterns", patterns);
 
     Tree* tree = new_Tree(newick, true);
+    Tree_set_transform(tree, reparameterization);
     parse_dates(tree);
     init_leaf_heights_from_times(tree);
 
@@ -283,7 +286,7 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
 // Derivatives are wrt branch lengths.
 // At each iteration, the probability matrices are updated and the whole tree likelihood
 // is calculated.
-void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const char* newick, bool debug) {
+void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const char* newick, double scaler, bool debug) {
     struct timespec start, end;
 
     Hashtable* hash2 = new_Hashtable_string(100);
@@ -299,7 +302,17 @@ void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const ch
     Hashtable_add(hash2, "patterns", patterns);
 
     Tree* tree = new_Tree(newick, false);
-    Tree_scale_distance(tree, 0.001);
+    Tree_scale_distance(tree, scaler);
+    Node* root = Tree_root(tree);
+    for (int i = 0; i < Tree_node_count(tree); i++) {
+        Node* node = Tree_node(tree, i);
+        if (node != root) {
+            if (Parameter_value(node->distance) < 1.e-6) {
+                Parameter_set_value(node->distance, 1.e-6);
+            }
+        }
+    }
+
     Model* mtree = new_TreeModel("tree", tree);
     Hashtable_add(hash2, "tree", mtree);
 
@@ -321,7 +334,6 @@ void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const ch
     }
 
     Parameters* ps = new_Parameters(1);
-    Node* root = Tree_root(tree);
     for (int i = 0; i < Tree_node_count(tree); i++) {
         Node* node = Tree_node(tree, i);
         if (node != root && root->right != node) {
@@ -357,27 +369,49 @@ void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const ch
 
 int main(int argc, char* argv[]) {
     if (argc == 1) {
-        printf("USAGE: benchmarking iterations alignment-file-name tree-file-name\n\n");
+        printf("USAGE: benchmarking -r iterations -i alignment-file-name -t tree-file-name\n\n");
         printf("positional arguments:\n");
-        printf("  iterations             number of iterations\n");
-        printf("  alignment-file-name    alignment file\n");
-        printf("  tree-file-name number  tree file in newick format\n\n");
+        printf("  -r iterations             number of iterations\n");
+        printf("  -i alignment-file-name    alignment file\n");
+        printf("  -t tree-file-name         tree file in newick format\n\n");
+        printf("  --debug                   debug mode (print log likelihood)\n\n");
         exit(0);
     }
-    size_t iter = atoi(argv[1]);
-    char* fasta_file = argv[2];
-    char* newick = readTree(argv[3]);
-    bool debug = argc > 4 ? atoi(argv[4]) : false;
+    size_t iter = 100;
+    char* fasta_file = NULL;
+    char* newick = NULL;
+    bool debug = false;
+    double scaler = 1.0;
+    char* csv = NULL;
+    int reparameterization = 0;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-i") == 0) {
+            fasta_file = argv[++i];
+        } else if (strcmp(argv[i], "-t") == 0) {
+            newick = readTree(argv[++i]);
+        } else if (strcmp(argv[i], "-r") == 0) {
+            iter = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-o") == 0) {
+            csv = argv[++i];
+        } else if (strcmp(argv[i], "-f") == 0) {
+            scaler = atof(argv[++i]);
+        } else if (strcmp(argv[i], "-p") == 0) {
+            reparameterization = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--debug") == 0) {
+            debug = true;
+        }
+    }
 
     printf("Height transform log det Jacobian:\n");
-    test_height_transform(iter, newick, debug);
+    test_height_transform(iter, newick, reparameterization, debug);
 
     printf("Constant coalescent:\n");
-    test_constant(iter, newick, debug);
+    test_constant(iter, newick, reparameterization, debug);
 
     printf("Tree likelihood unrooted:\n");
-    test_tree_likelihood_unrooted(iter, fasta_file, newick, debug);
+    test_tree_likelihood_unrooted(iter, fasta_file, newick, scaler, debug);
 
     printf("Tree likelihood time tree:\n");
-    test_tree_likelihood_time(iter, fasta_file, newick, debug);
+    test_tree_likelihood_time(iter, fasta_file, newick, reparameterization, debug);
 }

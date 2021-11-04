@@ -254,13 +254,17 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
     tt->inverse_transform = _height_tree_inverse_transform;
     tt->log_jacobian = _node_transform_log_jacobian;
     tt->dlog_jacobian = _node_transform_dlog_jacobian;
-	if(parameterization == TREE_TRANSFORM_RATIO_SLOW){
+	if(parameterization == TREE_TRANSFORM_RATIO_NAIVE){
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient;
 		tt->jvp = node_transform_jvp;
 	}
 	else if(parameterization == TREE_TRANSFORM_RATIO){
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_efficient;
 		tt->jvp = node_transform_jvp_efficient;
+	}
+	else{
+		fprintf(stderr, "Node height reparameterization not recognized\n");
+		exit(2);
 	}
 
     Node **nodes = Tree_get_nodes(tree, PREORDER);

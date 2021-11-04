@@ -213,6 +213,7 @@ unsigned* get_reparam_map(Tree* tree);
 void Tree_node_transform_jvp(Tree* tree, const double* input, double* output);
 void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient);
 Node* Tree_node_from_parameter(Tree* tree, Parameter* p);
+void Tree_set_transform(Tree* tree, int tt);
 
 void Tree_update_heights(Tree* tree);
 double Tree_node_height(Tree* tree, Node* node);

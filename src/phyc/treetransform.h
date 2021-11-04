@@ -15,7 +15,7 @@
 #include "tree.h"
 
 typedef enum tree_transform_t{
-	TREE_TRANSFORM_RATIO_SLOW=0,
+	TREE_TRANSFORM_RATIO_NAIVE=0,
 	TREE_TRANSFORM_RATIO
 }tree_transform_t;
 

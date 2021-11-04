@@ -1042,9 +1042,11 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 //		Parameter_set_name(Parameters_at(tree->reparam, i), buffer->c);
 //		Parameters_at(tree->reparam,i)->listeners->add(Parameters_at(tree->reparam, i)->listeners, model);
 //	}
-	Model* mtt = new_TreeTransformModel("TreeTransformModel", tree->tt, model);
-	model->data = mtt;
-	mtt->listeners->add( mtt->listeners, model );
+	if(tree->tt != NULL){
+		Model* mtt = new_TreeTransformModel("TreeTransformModel", tree->tt, model);
+		model->data = mtt;
+		mtt->listeners->add( mtt->listeners, model );
+	}
 	
 	free_StringBuffer(buffer);
 	model->update = _tree_handle_change;
@@ -1066,7 +1068,8 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		"parameters", // distance parameters
 		"newick",
 		"reparam", // reparametrization
-		"time"
+		"time",
+		"transform"
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
@@ -1074,6 +1077,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	json_node* file_node = get_json_node(node, "file");
 	json_node* init_node = get_json_node(node, "init");
 	json_node* dates_node = get_json_node(node, "dates");
+	char* transform_desc = get_json_node_value_string(node, "transform");
 	bool time_tree = get_json_node_value_bool(node, "time", false);
 	
 	Model* mtree = NULL;
@@ -1103,7 +1107,12 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 		// initialize heights from distances read from newick file
 		if(tree->time_mode){
-			tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO_SLOW);
+			if(transform_desc != NULL && strcasecmp(transform_desc, "ratio_naive")){
+				tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO_NAIVE);
+			}
+			else{
+				tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO);
+			}
 			tree->tt->update_lowers(tree->tt);
 			init_heights_from_distances(tree);
 		}
@@ -2501,6 +2510,10 @@ bool Tree_is_time_mode(Tree* tree){
 
 #pragma mark -
 #pragma mark TreeTransform
+
+void Tree_set_transform(Tree* tree, int tt){
+	tree->tt = new_HeightTreeTransform(tree, tt);
+}
 
 void Tree_node_transform_jvp(Tree* tree, const double* input, double* output){
 	tree->tt->jvp(tree->tt, input, output);
