@@ -763,14 +763,21 @@ void _constant_calculate_gradient( Coalescent* coal ){
 	if(coal->prepared_gradient & COALESCENT_FLAG_TREE){
 		double theta = Parameters_value(coal->p, 0);
 		double* interval_gradient = dvector(coal->n);
-		double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
 		for(size_t i = 0; i < coal->n; i++){
 			interval_gradient[i] = -chooses[i]/theta;
 		}
-		height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
-		Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
+		// derivatives wrt to reparameterization
+		if(get_reparams(coal->tree) != NULL){
+			double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
+			height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
+			Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
+			free(height_gradient);
+		}
+		// derivatives wrt to node heights
+		else{
+			height_gradient_from_interval_gradient(coal, interval_gradient, coal->gradient+offset);
+		}
 		free(interval_gradient);
-		free(height_gradient);
 	}
 	free(chooses);
 }

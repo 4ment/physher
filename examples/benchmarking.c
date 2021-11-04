@@ -131,14 +131,11 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
 }
 
 // Calculate the constant size coalescent log likelihood.
-// The derivatives are wrt population size and the ratio/node height parameters
-// but the log determinant of the Jacobian is not included.
-// At each iteration, node heights are updated from the ratios/root height parameters.
+// The derivatives are wrt population size and the node height parameters
 void test_constant(size_t iter, const char* newick, int reparameterization, bool debug) {
     struct timespec start, end;
 
     Tree* tree = new_Tree(newick, true);
-    Tree_set_transform(tree, reparameterization);
     parse_dates(tree);
 
     init_leaf_heights_from_times(tree);
@@ -153,12 +150,10 @@ void test_constant(size_t iter, const char* newick, int reparameterization, bool
 
     Model* model = new_CoalescentModel("", coal, mtree);
 
-    Model* mtt = mtree->data;
     double logP;
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
-        //      	coal->need_update_intervals = true;
-        mtt->update(mtt, NULL, 0);
+        coal->need_update_intervals = true;
         logP = model->logP(model);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
@@ -171,9 +166,9 @@ void test_constant(size_t iter, const char* newick, int reparameterization, bool
     Parameters* ps = new_Parameters(1);
     Parameters_add(ps, N);
     Parameter_set_value(N, value);
-    Parameters* reparams = get_reparams(tree);
-    for (int i = 0; i < Parameters_count(reparams); i++) {
-        Parameters_add(ps, Parameters_at(reparams, i));
+    Node** nodes = Tree_nodes(tree);
+    for (int i = 0; i < Tree_node_count(tree); i++) {
+        Parameters_add(ps, nodes[i]->height);
     }
 
     model->prepare_gradient(model, ps);
@@ -182,20 +177,12 @@ void test_constant(size_t iter, const char* newick, int reparameterization, bool
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         coal->need_update_intervals = true;
-        mtt->update(mtt, NULL, 0);
         for (int j = 0; j < Parameters_count(ps); j++) {
             dlogP = model->dlogP(model, Parameters_at(ps, j));
         }
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
-
-    if (debug) {
-        for (int j = 0; j < Parameters_count(ps); j++) {
-            dlogP = mtt->dlogP(mtt, Parameters_at(ps, j));
-            printf("dlogP %f\n", dlogP);
-        }
-    }
 
     model->free(model);
     mtree->free(mtree);

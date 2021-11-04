@@ -68,7 +68,8 @@ void check_tree( Tree *tree ){
 #pragma mark Tree
 
 Parameters* get_reparams(Tree* tree){
-	return tree->tt->parameters;
+	if(tree->tt == NULL) return NULL;
+	else tree->tt->parameters;
 }
 
 unsigned* get_reparam_map(Tree* tree){
@@ -298,9 +299,9 @@ void Tree_update_heights(Tree* tree){
     if(tree->need_update_height || tree->topology_changed){
         if( tree->topology_changed ){
             Tree_update_topology(tree);
-			tree->tt->update_lowers(tree->tt);
+			if(tree->tt != NULL) tree->tt->update_lowers(tree->tt);
         }
-        tree->tt->update(tree->tt);
+        if(tree->tt != NULL) tree->tt->update(tree->tt);
         tree->need_update_height = false;
     }
 }
@@ -395,7 +396,9 @@ void init_leaf_heights_from_times(Tree* atree){
 		Constraint_set_lower(atree->root->height->cnstr, offset);
 		Constraint_set_flower(atree->root->height->cnstr, offset);
 	}
-	atree->tt->update_lowers(atree->tt);
+	if(atree->tt != NULL){
+		atree->tt->update_lowers(atree->tt);
+	}
 }
 
 void init_heights_from_distances(Tree* atree){
@@ -421,20 +424,23 @@ void init_heights_from_distances(Tree* atree){
 			}
 		}
 		Tree_constraint_heights(atree);
-		atree->tt->update_lowers(atree->tt);
-		
-		// initialize reparam from height parameters
-		nodes = Tree_get_nodes(atree, PREORDER);
-		for (int i = 0; i < Tree_node_count(atree); i++) {
-			Node* node = nodes[i];
-			if(Node_isroot(node)){
-				Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
-				Parameter_set_value_quietly(p, Node_height(node));
-			}
-			else if(!Node_isleaf(node)){
-				Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
-				double s = atree->tt->inverse_transform(atree->tt, node);
-				Parameter_set_value_quietly(p, s);
+
+		if(atree->tt != NULL){
+			atree->tt->update_lowers(atree->tt);
+
+			// initialize reparam from height parameters
+			nodes = Tree_get_nodes(atree, PREORDER);
+			for (int i = 0; i < Tree_node_count(atree); i++) {
+				Node* node = nodes[i];
+				if(Node_isroot(node)){
+					Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+					Parameter_set_value_quietly(p, Node_height(node));
+				}
+				else if(!Node_isleaf(node)){
+					Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+					double s = atree->tt->inverse_transform(atree->tt, node);
+					Parameter_set_value_quietly(p, s);
+				}
 			}
 		}
 	}
@@ -454,24 +460,27 @@ void init_heights_from_distances(Tree* atree){
 			}
 		}
 		Tree_constraint_heights(atree);
-		atree->tt->update_lowers(atree->tt);
-		
-		// initialize reparam from height parameters
-		nodes = Tree_get_nodes(atree, PREORDER);
-		for (int i = 0; i < Tree_node_count(atree); i++) {
-			Node* node = nodes[i];
-			if(Node_isroot(node)){
-				Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
-//                Constraint_set_lower(p->cnstr, Constraint_lower(node->height->cnstr));
-//				Constraint_set_flower(p->cnstr, Constraint_lower(node->height->cnstr));
-//				Constraint_set_upper(p->cnstr, Constraint_upper(node->height->cnstr));
-//				Constraint_set_fupper(p->cnstr, Constraint_upper(node->height->cnstr));
-				Parameter_set_value_quietly(p, Node_height(node));
-			}
-			else if(!Node_isleaf(node)){
-				Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
-				double s = atree->tt->inverse_transform(atree->tt, node);
-				Parameter_set_value_quietly(p, s);
+
+		if(atree->tt != NULL){
+			atree->tt->update_lowers(atree->tt);
+
+			// initialize reparam from height parameters
+			nodes = Tree_get_nodes(atree, PREORDER);
+			for (int i = 0; i < Tree_node_count(atree); i++) {
+				Node* node = nodes[i];
+				if(Node_isroot(node)){
+					Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+	//                Constraint_set_lower(p->cnstr, Constraint_lower(node->height->cnstr));
+	//				Constraint_set_flower(p->cnstr, Constraint_lower(node->height->cnstr));
+	//				Constraint_set_upper(p->cnstr, Constraint_upper(node->height->cnstr));
+	//				Constraint_set_fupper(p->cnstr, Constraint_upper(node->height->cnstr));
+					Parameter_set_value_quietly(p, Node_height(node));
+				}
+				else if(!Node_isleaf(node)){
+					Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+					double s = atree->tt->inverse_transform(atree->tt, node);
+					Parameter_set_value_quietly(p, s);
+				}
 			}
 		}
 	}
