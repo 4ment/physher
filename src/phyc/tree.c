@@ -69,7 +69,7 @@ void check_tree( Tree *tree ){
 
 Parameters* get_reparams(Tree* tree){
 	if(tree->tt == NULL) return NULL;
-	else tree->tt->parameters;
+	else return tree->tt->parameters;
 }
 
 unsigned* get_reparam_map(Tree* tree){

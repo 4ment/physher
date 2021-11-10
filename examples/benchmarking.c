@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <time.h>
@@ -81,7 +82,7 @@ char* json_jc69_unrooted =
 // Calculate the log of the determinant of the Jacobian for the node height transform.
 // Derivatives are wrt ratio/root height parameters.
 // At each iteration, node heights are updated from the ratios/root height parameters.
-void test_height_transform(size_t iter, const char* newick, int reparameterization, bool debug) {
+void test_height_transform(size_t iter, const char* newick, int reparameterization, FILE* csv, bool debug) {
     struct timespec start, end;
 
     Tree* tree = new_Tree(newick, true);
@@ -104,6 +105,8 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu evaluations: %f ms (%f)\n", iter, mseconds(start, end), logP);
+    if (csv != NULL)
+        fprintf(csv, "ratio_transform_jacobian%s,evaluation,off,%f,%f\n", (reparameterization == 1 ? "2" : ""), mseconds(start, end) / 1000., logP);
 
     if (debug) {
         printf("logP %f\n", logP);
@@ -119,6 +122,8 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
+    if (csv != NULL)
+        fprintf(csv, "ratio_transform_jacobian%s,gradient,off,%f,\n", (reparameterization == 1 ? "2" : ""), mseconds(start, end) / 1000.);
 
     if (debug) {
         for (int j = 0; j < Parameters_count(reparams); j++) {
@@ -132,7 +137,7 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
 
 // Calculate the constant size coalescent log likelihood.
 // The derivatives are wrt population size and the node height parameters
-void test_constant(size_t iter, const char* newick, int reparameterization, bool debug) {
+void test_constant(size_t iter, const char* newick, FILE* csv, bool debug) {
     struct timespec start, end;
 
     Tree* tree = new_Tree(newick, true);
@@ -158,6 +163,8 @@ void test_constant(size_t iter, const char* newick, int reparameterization, bool
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu evaluations: %f ms (%f)\n", iter, mseconds(start, end), logP);
+    if (csv != NULL)
+        fprintf(csv, "coalescent,evaluation,off,%f,%f\n", mseconds(start, end) / 1000., logP);
 
     if (debug) {
         printf("logP %f\n", logP);
@@ -183,6 +190,8 @@ void test_constant(size_t iter, const char* newick, int reparameterization, bool
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
+    if (csv != NULL)
+        fprintf(csv, "coalescent,gradient,off,%f,\n", mseconds(start, end) / 1000.);
 
     model->free(model);
     mtree->free(mtree);
@@ -194,7 +203,7 @@ void test_constant(size_t iter, const char* newick, int reparameterization, bool
 // Derivatives are wrt branch ratios/node height parameters.
 // At each iteration, the probability matrices are updated and the whole tree likelihood
 // is calculated.
-void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick, int reparameterization, bool debug) {
+void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick, int reparameterization, FILE* csv, bool debug) {
     struct timespec start, end;
 
     Hashtable* hash2 = new_Hashtable_string(100);
@@ -273,7 +282,7 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
 // Derivatives are wrt branch lengths.
 // At each iteration, the probability matrices are updated and the whole tree likelihood
 // is calculated.
-void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const char* newick, double scaler, bool debug) {
+void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const char* newick, double scaler, FILE* csv, bool debug) {
     struct timespec start, end;
 
     Hashtable* hash2 = new_Hashtable_string(100);
@@ -314,6 +323,8 @@ void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const ch
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu evaluations: %f ms (%f)\n", iter, mseconds(start, end), logP);
+    if (csv != NULL)
+        fprintf(csv, "treelikelihood,evaluation,off,%f,%f\n", mseconds(start, end) / 1000., logP);
     // logP does not match tree time value because it does not include log det Jacobian
 
     if (debug) {
@@ -339,6 +350,8 @@ void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const ch
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
+    if (csv != NULL)
+        fprintf(csv, "treelikelihood,gradient,off,%f,\n", mseconds(start, end) / 1000.);
 
     if (debug) {
         for (int j = 0; j < Parameters_count(ps); j++) {
@@ -369,8 +382,7 @@ int main(int argc, char* argv[]) {
     char* newick = NULL;
     bool debug = false;
     double scaler = 1.0;
-    char* csv = NULL;
-    int reparameterization = 0;
+    FILE* csv = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-i") == 0) {
@@ -380,25 +392,30 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "-r") == 0) {
             iter = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-o") == 0) {
-            csv = argv[++i];
-        } else if (strcmp(argv[i], "-f") == 0) {
+            csv = fopen(argv[++i], "w");
+            fprintf(csv, "function,mode,JIT,time,logprob\n");
+        } else if (strcmp(argv[i], "-s") == 0) {
             scaler = atof(argv[++i]);
-        } else if (strcmp(argv[i], "-p") == 0) {
-            reparameterization = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--debug") == 0) {
             debug = true;
         }
     }
 
     printf("Height transform log det Jacobian:\n");
-    test_height_transform(iter, newick, reparameterization, debug);
+    printf("naive:\n");
+    test_height_transform(iter, newick, 0, csv, debug);
+    printf("efficient:\n");
+    test_height_transform(iter, newick, 1, csv, debug);
 
     printf("Constant coalescent:\n");
-    test_constant(iter, newick, reparameterization, debug);
+    test_constant(iter, newick, csv, debug);
 
     printf("Tree likelihood unrooted:\n");
-    test_tree_likelihood_unrooted(iter, fasta_file, newick, scaler, debug);
+    test_tree_likelihood_unrooted(iter, fasta_file, newick, scaler, csv, debug);
 
     printf("Tree likelihood time tree:\n");
-    test_tree_likelihood_time(iter, fasta_file, newick, reparameterization, debug);
+    test_tree_likelihood_time(iter, fasta_file, newick, 0, csv, debug);
+    test_tree_likelihood_time(iter, fasta_file, newick, 1, csv, debug);
+
+    fclose(csv);
 }
