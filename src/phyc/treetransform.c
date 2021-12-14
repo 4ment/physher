@@ -118,13 +118,14 @@ double _node_transform_log_jacobian(TreeTransform *tt){
 
 void tree_transform_update_heights(Node *node, Parameters *parameters,
                                    unsigned *map, double *lowers) {
-    if (!Node_isleaf(node)) {
+	// set height quietly because ratios already notified the tree (and other upstream listeners)
+	if (!Node_isleaf(node)) {
         double s = Parameters_value(parameters, map[Node_id(node)]);
         if (Node_isroot(node)) {
-            Node_set_height(node, s);
+            Node_set_height_quietly(node, s);
         } else {
             double lower = lowers[Node_id(node)];
-            Node_set_height(node, lower + (Node_height(Node_parent(node)) - lower) * s);
+            Node_set_height_quietly(node, lower + (Node_height(Node_parent(node)) - lower) * s);
         }
         tree_transform_update_heights(node->left, parameters, map, lowers);
         tree_transform_update_heights(node->right, parameters, map, lowers);

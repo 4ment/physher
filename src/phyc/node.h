@@ -63,6 +63,7 @@ void free_Node( Node *node );
 Node * clone_Node( const Node *node);
 
 void Node_set_height( Node *node, const double value );
+void Node_set_height_quietly( Node *node, const double value );
 
 double Node_height( const Node *node );
 

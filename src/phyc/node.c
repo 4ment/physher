@@ -136,6 +136,10 @@ void Node_set_height( Node *node, const double value ){
 	Parameter_set_value(node->height, value);
 }
 
+void Node_set_height_quietly( Node *node, const double value ){
+	Parameter_set_value_quietly(node->height, value);
+}
+
 double Node_height( const Node *node ){
 	return Parameter_value(node->height);
 }
