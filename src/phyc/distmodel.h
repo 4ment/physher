@@ -37,6 +37,7 @@ typedef enum distribution_t{
 	DISTRIBUTION_BETA,
 	DISTRIBUTION_BETA_PRIME,
 	DISTRIBUTION_CAUCHY,
+	DISTRIBUTION_CTMC_SCALE,
 	DISTRIBUTION_DIRICHLET,
 	DISTRIBUTION_DISCRETE,
 	DISTRIBUTION_EXPONENTIAL,
@@ -77,6 +78,11 @@ struct _DistributionModel{
 	distribution_parameterization parameterization;
 	gsl_rng* rng;
 	double shift;
+	
+	int prepared_gradient;
+	double* gradient;
+	size_t gradient_length;
+	bool need_update_gradient;
 };
 
 

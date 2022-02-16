@@ -30,7 +30,7 @@ double ** SingleTreeLikelihood_posterior_sites( SingleTreeLikelihood *tlk ){
 	for ( int j = 0; j < tlk->sm->cat_count; j++) {
 		for ( i = 0; i < tlk->sp->count; i++) {
 			// sum pi_x P[ D_i| r_i=r_j, D_i^r=x ]
-			for ( int x = 0; x < tlk->sm->nstate; x++ ) {
+			for ( int x = 0; x < tlk->m->nstate; x++ ) {
 				posteriors[i][j] += frequencies[x] * partials[v];
 				v++;
 			}

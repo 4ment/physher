@@ -17,4 +17,6 @@ DistributionModel* new_KumaraswamyDistributionModel_with_parameters(Parameters**
 
 Model* new_KumaraswamyDistributionModel_from_json(json_node* node, Hashtable* hash);
 
+double DistributionModel_kumaraswamy_inverse_CDF(double p, double a, double b);
+
 #endif /* distkumaraswamy_h */

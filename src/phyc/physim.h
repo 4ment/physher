@@ -22,11 +22,12 @@
 #include "sequence.h"
 #include "branchmodel.h"
 #include "sitemodel.h"
+#include "substmodel.h"
 #include "tree.h"
 
 #define JSON_SIMULTRON "simultron"
 
-Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataType *datatype, unsigned len, bool keep_internal );
+Sequences * Sequence_simulate( Tree *tree, SubstitutionModel *m, SiteModel *sm, BranchModel *bm, DataType *datatype, unsigned len, bool keep_internal );
 
 void SimulateSequences_from_json(json_node* node, Hashtable* hash);
 

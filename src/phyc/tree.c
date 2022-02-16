@@ -2517,6 +2517,11 @@ bool Tree_is_time_mode(Tree* tree){
 	return tree->time_mode;
 }
 
+double _treeModel_logP(Model *self){
+	Tree* tree = (Tree*)self->obj;
+	return tree->tt->log_jacobian(tree->tt);
+}
+
 #pragma mark -
 #pragma mark TreeTransform
 

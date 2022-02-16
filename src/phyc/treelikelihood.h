@@ -46,6 +46,7 @@ typedef double (*calculate_upper_t)( SingleTreeLikelihood *, Node *);
 struct _SingleTreeLikelihood{
 	
 	Tree        *tree;
+	SubstitutionModel *m;
 	SiteModel   *sm;
 	SitePattern *sp;
 	BranchModel *bm;
@@ -121,7 +122,7 @@ struct _SingleTreeLikelihood{
 	size_t gradient_length;
 };
 
-Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm );
+Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk, Model *tree, Model *m, Model *sm, Model *bm );
 
 Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash);
 
@@ -130,7 +131,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash);
 #pragma mark SingleTreeLikelihood
 
 
-SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm, bool use_tip_states );
+SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *m, SiteModel *sm, SitePattern *sp, BranchModel *bm, bool use_tip_states );
 
 // does not free tree, branchmodel, sitemodel
 void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk );

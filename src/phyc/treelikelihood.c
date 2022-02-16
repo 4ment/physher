@@ -114,9 +114,10 @@ static void _singleTreeLikelihood_store(Model* self){
 	memcpy(tlk->stored_partials_indexes, tlk->current_partials_indexes, sizeof(unsigned)*Tree_node_count(tlk->tree)*2);
 	Model** models = (Model**)self->data;
 	models[0]->store(models[0]); // tree
-	models[1]->store(models[1]); // sitemodel
-	if(models[2] != NULL){
-		models[2]->store(models[2]); // branchmodel
+	models[1]->store(models[1]); // substitutionmodel
+	models[2]->store(models[2]); // sitemodel
+	if(models[3] != NULL){
+		models[3]->store(models[3]); // branchmodel
 	}
 	self->storedLogP = self->lp;
 	tlk->stored_lk = tlk->lk;
@@ -125,9 +126,10 @@ static void _singleTreeLikelihood_store(Model* self){
 static void _singleTreeLikelihood_restore(Model* self){
 	Model** models = (Model**)self->data;
 	models[0]->restore(models[0]); // tree
-	models[1]->restore(models[1]); // sitemodel
-	if(models[2] != NULL){
-		models[2]->restore(models[2]); // branchmodel
+	models[1]->restore(models[1]); // substitutionmodel
+	models[2]->restore(models[2]); // sitemodel
+	if(models[3] != NULL){
+		models[3]->restore(models[3]); // branchmodel
 	}
 	self->lp = self->storedLogP;
 }
@@ -187,8 +189,8 @@ void _model_prepare_gradient(Model* self, const Parameters* ps){
 		else if (p->model == MODEL_SUBSTITUTION && !prepare_subsitution_model) {
 			prepare_subsitution_model = true;
 			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;
-			gradient_length += tlk->sm->m->rates_simplex == NULL ? Parameters_count(tlk->sm->m->rates) : tlk->sm->m->rates_simplex->K - 1;
-			gradient_length += tlk->sm->m->simplex->K - 1;
+			gradient_length += tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K - 1;
+			gradient_length += tlk->m->simplex->K - 1;
 		}
 	}
 	if(tlk->gradient == NULL){
@@ -281,13 +283,13 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 	}
 	if (prepare_subsitution_model) {
 		if (p->model == MODEL_SUBSTITUTION) {
-			if (Parameters_count(tlk->sm->m->rates) != 0) {
-				if(p->id < Parameters_count(tlk->sm->m->rates) && p == Parameters_at(tlk->sm->m->rates, p->id)){
+			if (Parameters_count(tlk->m->rates) != 0) {
+				if(p->id < Parameters_count(tlk->m->rates) && p == Parameters_at(tlk->m->rates, p->id)){
 					return tlk->gradient[offset + p->id];
 				}
-				offset += Parameters_count(tlk->sm->m->rates);
+				offset += Parameters_count(tlk->m->rates);
 			}
-			if(p == Parameters_at(tlk->sm->m->simplex->parameters, p->id)){
+			if(p == Parameters_at(tlk->m->simplex->parameters, p->id)){
 				return tlk->gradient[offset + p->id];
 			}
 		}
@@ -426,25 +428,25 @@ double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 		// Substitution model parameter
 		int idx = 0;
 		size_t rateCount;
-		if(tlk->sm->m->rates_simplex == NULL){
-			rateCount = Parameters_count(tlk->sm->m->rates);
+		if(tlk->m->rates_simplex == NULL){
+			rateCount = Parameters_count(tlk->m->rates);
 			for (; idx < rateCount; idx++) {
-				if(Parameters_at(tlk->sm->m->rates, idx) == p) break;
+				if(Parameters_at(tlk->m->rates, idx) == p) break;
 			}
 		}
 		else{
-			rateCount = tlk->sm->m->rates_simplex->K - 1;
+			rateCount = tlk->m->rates_simplex->K - 1;
 			for (; idx < rateCount; idx++) {
-				if(Parameters_at(tlk->sm->m->rates_simplex->parameters, idx) == p) break;
+				if(Parameters_at(tlk->m->rates_simplex->parameters, idx) == p) break;
 			}
 		}
 		if(idx >= rateCount){
-			for (int ii = 0; ii < Parameters_count(tlk->sm->m->simplex->parameters); idx++, ii++) {
-				if(Parameters_at(tlk->sm->m->simplex->parameters, ii) == p) break;
+			for (int ii = 0; ii < Parameters_count(tlk->m->simplex->parameters); idx++, ii++) {
+				if(Parameters_at(tlk->m->simplex->parameters, ii) == p) break;
 			}
 		}
 		
-		if(idx < rateCount + Parameters_count(tlk->sm->m->simplex->parameters)){
+		if(idx < rateCount + Parameters_count(tlk->m->simplex->parameters)){
 			dlogP = calculate_dlnl_dQ( tlk, idx, pattern_likelihoods );
 //			printf("dlogP: %f finite diff: %f (%d %s)\n", dlogP, Model_first_derivative(self, p, 0.0001), idx, p->name);
 		}
@@ -619,41 +621,41 @@ double _singleTreeLikelihood_ddlogP(Model *self, const Parameter* p1, const Para
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
         if( tlk->use_SIMD ){
             if( node1_transpose ){
-                tlk->sm->m->dp_dt_transpose(tlk->sm->m,
+                tlk->m->dp_dt_transpose(tlk->m,
                                             bl1 * tlk->sm->get_rate(tlk->sm, i),
                                             &tlk->matrices[tlk->current_matrices_indexes[Node_id(node1)]][Node_id(node1)][i*tlk->matrix_size]);
             }
             else {
-                tlk->sm->m->dp_dt(tlk->sm->m,
+                tlk->m->dp_dt(tlk->m,
                                   bl1 * tlk->sm->get_rate(tlk->sm, i),
                                   &tlk->matrices[tlk->current_matrices_indexes[Node_id(node1)]][Node_id(node1)][i*tlk->matrix_size]);
             }
             if( node2_transpose ){
-                tlk->sm->m->dp_dt_transpose(tlk->sm->m,
+                tlk->m->dp_dt_transpose(tlk->m,
                                             bl2 * tlk->sm->get_rate(tlk->sm, i),
                                             &tlk->matrices[tlk->current_matrices_indexes[Node_id(node2)]][Node_id(node2)][i*tlk->matrix_size]);
             }
             else {
-                tlk->sm->m->dp_dt(tlk->sm->m,
+                tlk->m->dp_dt(tlk->m,
                                   bl2 * tlk->sm->get_rate(tlk->sm, i),
                                   &tlk->matrices[tlk->current_matrices_indexes[Node_id(node2)]][Node_id(node2)][i*tlk->matrix_size]);
             }
         }
         else{
-            tlk->sm->m->dp_dt(tlk->sm->m,
+            tlk->m->dp_dt(tlk->m,
                               bl1 * tlk->sm->get_rate(tlk->sm, i),
                               &tlk->matrices[tlk->current_matrices_indexes[Node_id(node1)]][Node_id(node1)][i*tlk->matrix_size]);
             
-            tlk->sm->m->dp_dt(tlk->sm->m,
+            tlk->m->dp_dt(tlk->m,
                               bl2 * tlk->sm->get_rate(tlk->sm, i),
                               &tlk->matrices[tlk->current_matrices_indexes[Node_id(node2)]][Node_id(node2)][i*tlk->matrix_size]);
         }
 #else
-        tlk->sm->m->dp_dt(tlk->sm->m,
+        tlk->m->dp_dt(tlk->m,
                           bl1 * tlk->sm->get_rate(tlk->sm, i),
                           &tlk->matrices[tlk->current_matrices_indexes[Node_id(node1)]][Node_id(node1)][i*tlk->matrix_size]);
         
-        tlk->sm->m->dp_dt(tlk->sm->m,
+        tlk->m->dp_dt(tlk->m,
                           bl2 * tlk->sm->get_rate(tlk->sm, i),
                           &tlk->matrices[tlk->current_matrices_indexes[Node_id(node2)]][Node_id(node2)][i*tlk->matrix_size]);
 #endif
@@ -676,7 +678,7 @@ double _singleTreeLikelihood_ddlogP(Model *self, const Parameter* p1, const Para
     int v = 0;
     int i = 0;
     
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int patternCount = tlk->sp->count;
     const double* freqs = tlk->get_root_frequencies(tlk);
     
@@ -734,9 +736,11 @@ static void _treeLikelihood_model_free( Model *self ){
 static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	Model** list = (Model**)self->data;
 	Model* mtree = list[0];
-	Model* msm = list[1];
-	Model* mbm = list[2];
+	Model* mm = list[1];
+	Model* msm = list[2];
+	Model* mbm = list[3];
 	Model *mtreeclone = NULL;
+	Model *mmclone = NULL;
 	Model *msmclone = NULL;
 	Model* mbmclone = NULL;
 	
@@ -747,6 +751,15 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	else{
 		mtreeclone = mtree->clone(mtree, hash);
 		Hashtable_add(hash, mtreeclone->name, mtreeclone);
+	}
+	
+	if(Hashtable_exists(hash, mm->name)){
+		mmclone = Hashtable_get(hash, mm->name);
+		mmclone->ref_count++;
+	}
+	else{
+		mmclone = mtree->clone(mm, hash);
+		Hashtable_add(hash, mmclone->name, mmclone);
 	}
 	
 	if(Hashtable_exists(hash, msm->name)){
@@ -775,9 +788,10 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	else{
 		clonetlk = clone_SingleTreeLikelihood_with(tlk, (Tree*)mtreeclone->obj, (SiteModel*)msmclone->obj, tlk->sp, NULL);
 	}
-	Model* clone = new_TreeLikelihoodModel(self->name, clonetlk, mtreeclone, msmclone, mbmclone);
+	Model* clone = new_TreeLikelihoodModel(self->name, clonetlk, mtreeclone, mmclone, msmclone, mbmclone);
 	Hashtable_add(hash, clone->name, clone);
 	mtreeclone->free(mtreeclone);
+	mmclone->free(mmclone);
 	msmclone->free(msmclone);
 	if(mbmclone) mbmclone->free(mbmclone);
 	clone->store = self->store;
@@ -789,10 +803,11 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 }
 
 // TreeLikelihood listen to the TreeModel, SiteModel, BranchModel
-Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *sm, Model *bm ){
+Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *m, Model *sm, Model *bm ){
 	Model *model = new_Model(MODEL_TREELIKELIHOOD,name, tlk);
 
 	tree->listeners->add( tree->listeners, model );
+	m->listeners->add( m->listeners, model );
 	if(bm != NULL)bm->listeners->add( bm->listeners, model );
 	sm->listeners->add( sm->listeners, model );
 	model->handle_restore = _treelikelihood_handle_restore;
@@ -810,9 +825,11 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	model->restore = _singleTreeLikelihood_restore;
 	Model** list = (Model**)model->data;
 	list[0] = tree;
-	list[1] = sm;
-	list[2] = bm;
+	list[1] = m;
+	list[2] = sm;
+	list[3] = bm;
 	tree->ref_count++;
+	m->ref_count++;
 	sm->ref_count++;
 	if(bm != NULL) bm->ref_count++;
 	
@@ -828,6 +845,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 		"sitemodel",
 		"sitepattern",
 		"sse",
+		"substitutionmodel",
 		"tipstates",
 		"tree"
 	};
@@ -835,12 +853,14 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	
 	json_node* patterns_node = get_json_node(node, "sitepattern");
 	json_node* tree_node = get_json_node(node, "tree");
+	json_node* m_node = get_json_node(node, "substitutionmodel");
 	json_node* sm_node = get_json_node(node, "sitemodel");
 	json_node* bm_node = get_json_node(node, "branchmodel");
 	bool reparameterized = get_json_node_value_bool(node, "reparameterized", false);
 	bool use_tip_states = get_json_node_value_bool(node, "tipstates", true);
 	
 	Model* mtree = NULL;
+	Model* mm = NULL;
 	Model* msm = NULL;
 	SitePattern* patterns = NULL;
 	Model* mbm = NULL;
@@ -882,6 +902,20 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 		Hashtable_add(hash, id, msm);
 	}
 	
+	// the old way
+	if (m_node == NULL) {
+		m_node = get_json_node(sm_node, "substitutionmodel");
+	}
+	if (m_node->node_type == MJSON_STRING && ((char*)m_node->value)[0] == '&') {
+		char* ref = (char*)m_node->value;
+		mm = Hashtable_get(hash, ref+1);
+		mm->ref_count++;
+	}
+	else{
+		mm = new_SubstitutionModel_from_json(m_node, hash);
+	}
+
+	
 	if(bm_node != NULL){
 		if (bm_node->node_type == MJSON_STRING) {
 			char* ref = (char*)bm_node->value;
@@ -901,9 +935,10 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 		use_tip_states = false;
 	}
 	
-	SingleTreeLikelihood* tlk = new_SingleTreeLikelihood((Tree*)mtree->obj, (SiteModel*)msm->obj, patterns, bm, use_tip_states);
+	SingleTreeLikelihood* tlk = new_SingleTreeLikelihood((Tree*)mtree->obj, (SubstitutionModel*)mm->obj, (SiteModel*)msm->obj, patterns, bm, use_tip_states);
 	char* id = get_json_node_value_string(node, "id");
-	Model* model = new_TreeLikelihoodModel(id, tlk, mtree, msm, mbm);
+	Model* model = new_TreeLikelihoodModel(id, tlk, mtree, mm, msm, mbm);
+	mm->free(mm);
 	mtree->free(mtree);
 	msm->free(msm);
 	if(mbm != NULL) mbm->free(mbm);
@@ -911,8 +946,8 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	bool root_freqs_unknown = get_json_node_value_bool(node, "root_frequencies", false);
 	if(root_freqs_unknown){
 		tlk->get_root_frequencies = get_root_frequencies_fixed;
-		tlk->root_frequencies = dvector(tlk->sm->nstate);
-		for (int i = 0; i < tlk->sm->nstate; i++) {
+		tlk->root_frequencies = dvector(tlk->m->nstate);
+		for (int i = 0; i < tlk->m->nstate; i++) {
 			tlk->root_frequencies[i] = 1;
 		}
 	}
@@ -992,11 +1027,12 @@ void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
     }
 }
 
-SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm, bool use_tip_states ){
+SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *m, SiteModel *sm, SitePattern *sp, BranchModel *bm, bool use_tip_states ){
 	SingleTreeLikelihood *tlk = (SingleTreeLikelihood *)malloc( sizeof(SingleTreeLikelihood));
 	assert(tlk);
 	
 	tlk->tree = tree;
+	tlk->m = m;
 	tlk->sm = sm;
 	tlk->sp = sp;
 	tlk->bm = bm;
@@ -1012,15 +1048,15 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 	
 	Node **nodes = Tree_get_nodes( tree, POSTORDER );
 	
-	tlk->partials_size = sp->count * sm->nstate * tlk->cat_count;
+	tlk->partials_size = sp->count * m->nstate * tlk->cat_count;
 	
 	
 	tlk->matrix_dim = Tree_node_count(tree);
-	tlk->matrix_size = sm->nstate * sm->nstate;
+	tlk->matrix_size = m->nstate * m->nstate;
 	
 	tlk->upper_partial_indexes = ivector(Tree_node_count(tree));
 	
-	tlk->root_partials_size = sp->count*sm->nstate*3;
+	tlk->root_partials_size = sp->count*m->nstate*3;
 	tlk->pattern_lk_size = sp->count*4;
 	
 	tlk->partials_dim = Tree_node_count(tree)*2; // allocate *2 for upper likelihoods
@@ -1056,20 +1092,20 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 	tlk->calculate_branch_likelihood = calculate_branch_partials;
 	tlk->update_partials_flexible = NULL;
 	
-	if ( sm->nstate == 4 ) {
+	if ( m->nstate == 4 ) {
 		tlk->update_partials      = update_partials_4;
 		tlk->update_partials_flexible = update_partials_flexible_4;
 		tlk->integrate_partials   = integrate_partials_4;
 		tlk->node_log_likelihoods = node_log_likelihoods_4;
 		tlk->calculate_branch_likelihood = calculate_branch_partials_4;
 	}
-	else if( sm->nstate == 20 ){
+	else if( m->nstate == 20 ){
 		tlk->update_partials      = update_partials_general;
 		tlk->integrate_partials   = integrate_partials_general;
 		tlk->node_log_likelihoods = node_log_likelihoods_general;
 		tlk->calculate_branch_likelihood = calculate_branch_partials_20;
 	}
-	else if( sm->nstate >= 60 ){
+	else if( m->nstate >= 60 ){
 		tlk->update_partials      = update_partials_codon;
 		tlk->integrate_partials   = integrate_partials_codon;
 		tlk->node_log_likelihoods = node_log_likelihoods_codon;
@@ -1095,8 +1131,8 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 				sp->get_partials(sp, tlk->mapping[Node_id(nodes[i])], tlk->partials[0][Node_id(nodes[i])]);
 				
 				for(size_t k = 1; k < tlk->sm->cat_count; k++){
-					size_t offset = k*sm->nstate*tlk->cat_count;
-					memcpy(tlk->partials[0][Node_id(nodes[i])] + offset, tlk->partials[0][Node_id(nodes[i])], sizeof(double)*sm->nstate*tlk->cat_count);
+					size_t offset = k*m->nstate*tlk->cat_count;
+					memcpy(tlk->partials[0][Node_id(nodes[i])] + offset, tlk->partials[0][Node_id(nodes[i])], sizeof(double)*m->nstate*tlk->cat_count);
 				}
 				memcpy(tlk->partials[1][Node_id(nodes[i])], tlk->partials[0][Node_id(nodes[i])], sizeof(double)*tlk->partials_size);
 			}
@@ -1119,7 +1155,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 #endif
 	
 #ifdef SSE3_ENABLED
-	if ( sm->nstate == 4 ) {
+	if ( m->nstate == 4 ) {
 		tlk->update_partials      = update_partials_4_SSE;
 		tlk->update_partials_flexible = update_partials_flexible_4_SSE;
 		tlk->integrate_partials   = integrate_partials_4_SSE;
@@ -1127,7 +1163,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
 		tlk->calculate_branch_likelihood = calculate_branch_partials_4_SSE;
         tlk->use_SIMD = true;
 	}
-	else if ( sm->nstate == 20 ) {
+	else if ( m->nstate == 20 ) {
 		tlk->update_partials      = update_partials_20_SSE;
 		tlk->integrate_partials   = integrate_partials_general;
 		tlk->node_log_likelihoods = node_log_likelihoods_general;
@@ -1137,13 +1173,13 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SiteModel *sm, Site
     // Does not work for matrix with odd dimension.
     // If we want to load doubles at indexes 1 and 2 from matrices it will crash
     // same issue with partials, it will try to store at odd indexes
-	else if( sm->nstate >= 60 && !(sm->nstate & 1) ){
+	else if( m->nstate >= 60 && !(m->nstate & 1) ){
 		tlk->update_partials      = update_partials_codon_SSE;
 		tlk->integrate_partials   = integrate_partials_codon_SSE;
 		tlk->node_log_likelihoods = node_log_likelihoods_codon_SSE;
         tlk->use_SIMD = true;
 	}
-    else if(!(sm->nstate & 1)){
+    else if(!(m->nstate & 1)){
         tlk->update_partials      = update_partials_general_even_SSE;
         tlk->integrate_partials   = integrate_partials_general_even_SSE;
 		tlk->node_log_likelihoods = node_log_likelihoods_general_even_SSE;
@@ -1216,6 +1252,7 @@ void free_SingleTreeLikelihood_internals( SingleTreeLikelihood *tlk ){
 }
 
 void free_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
+	if ( tlk->m != NULL ) tlk->m->free( tlk->m );
 	if ( tlk->bm != NULL ) tlk->bm->free( tlk->bm, false );
 	if ( tlk->sm != NULL ) free_SiteModel( tlk->sm );
 	if ( tlk->sp != NULL ) free_SitePattern( tlk->sp );
@@ -1371,7 +1408,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	
 	newtlk->root_frequencies = NULL;
 	if(tlk->root_frequencies != NULL){
-		newtlk->root_frequencies = clone_dvector(tlk->root_frequencies, tlk->sm->nstate);
+		newtlk->root_frequencies = clone_dvector(tlk->root_frequencies, tlk->m->nstate);
 	}
 	newtlk->get_root_frequencies = tlk->get_root_frequencies;
 
@@ -1407,10 +1444,10 @@ void SingleTreeLikelihood_set_nthreads( SingleTreeLikelihood *tlk, int nthreads 
     #if defined (_OPENMP) && !((SSE3_ENABLED) || (AVX_ENABLED))
     //#if defined _OPENMP
 
-     if( tlk->sm->nstate >= 60 || tlk->sm->nstate == 4 ){
+     if( tlk->m->nstate >= 60 || tlk->m->nstate == 4 ){
         if( nthreads > 1 ){
             tlk->nthreads = nthreads;
-            if( tlk->sm->nstate == 4 ){
+            if( tlk->m->nstate == 4 ){
                 tlk->update_partials = update_partials_4_openmp;
             }
             else {
@@ -1419,7 +1456,7 @@ void SingleTreeLikelihood_set_nthreads( SingleTreeLikelihood *tlk, int nthreads 
         }
         else {
             tlk->nthreads = 1;
-            if( tlk->sm->nstate == 4 ){
+            if( tlk->m->nstate == 4 ){
                 tlk->update_partials = update_partials_4;
             }
             else {
@@ -1592,23 +1629,23 @@ void SingleTreeLikelihood_update_Q(SingleTreeLikelihood* tlk, Node* n){
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
 		if( tlk->use_SIMD ){
 			if( node_transpose ){
-				tlk->sm->m->p_t_transpose(tlk->sm->m,
+				tlk->m->p_t_transpose(tlk->m,
 										  bl * tlk->sm->get_rate(tlk->sm, i),
 										  &tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 			}
 			else {
-				tlk->sm->m->p_t(tlk->sm->m,
+				tlk->m->p_t(tlk->m,
 								bl * tlk->sm->get_rate(tlk->sm, i),
 								&tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 			}
 		}
 		else{
-			tlk->sm->m->p_t(tlk->sm->m,
+			tlk->m->p_t(tlk->m,
 							bl * tlk->sm->get_rate(tlk->sm, i),
 							&tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 		}
 #else
-		tlk->sm->m->p_t(tlk->sm->m,
+		tlk->m->p_t(tlk->m,
 						bl * tlk->sm->get_rate(tlk->sm, i),
 						&tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 #endif
@@ -1646,23 +1683,23 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n  ){
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
 				if( tlk->use_SIMD ){
 					if( node_transpose ){
-						tlk->sm->m->p_t_transpose(tlk->sm->m,
+						tlk->m->p_t_transpose(tlk->m,
 												  bl * tlk->sm->get_rate(tlk->sm, i),
 												  &tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 					}
 					else {
-						tlk->sm->m->p_t(tlk->sm->m,
+						tlk->m->p_t(tlk->m,
 										bl * tlk->sm->get_rate(tlk->sm, i),
 										&tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 					}
 				}
 				else{
-					tlk->sm->m->p_t(tlk->sm->m,
+					tlk->m->p_t(tlk->m,
 									bl * tlk->sm->get_rate(tlk->sm, i),
 									&tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 				}
 #else
-				tlk->sm->m->p_t(tlk->sm->m,
+				tlk->m->p_t(tlk->m,
 								bl * tlk->sm->get_rate(tlk->sm, i),
 								&tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 #endif
@@ -1770,31 +1807,31 @@ void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeInde
 		double scaleFactor = 0.0;
 		int v = u;
 		for ( k = 0; k < tlk->cat_count; k++ ) {
-			for ( j = 0; j < tlk->sm->nstate; j++ ) {
+			for ( j = 0; j < tlk->m->nstate; j++ ) {
 				if ( partials[v] > scaleFactor ) {
 					scaleFactor = partials[v];
 				}
 				v++;
 			}
-			v += ( tlk->sp->count - 1 ) * tlk->sm->nstate;
+			v += ( tlk->sp->count - 1 ) * tlk->m->nstate;
 		}
 		
 		if ( scaleFactor < tlk->scaling_threshold ) {
 			
 			v = u;
 			for ( k = 0; k < tlk->cat_count; k++ ) {
-				for ( j = 0; j < tlk->sm->nstate; j++ ) {
+				for ( j = 0; j < tlk->m->nstate; j++ ) {
 					partials[v] /= scaleFactor;
 					v++;
 				}
-				v += (tlk->sp->count - 1) * tlk->sm->nstate;
+				v += (tlk->sp->count - 1) * tlk->m->nstate;
 			}
 			scaling_factors[i] = log(scaleFactor);
 		}
 		else {
 			scaling_factors[i] = 0.0;
 		}
-		u += tlk->sm->nstate;
+		u += tlk->m->nstate;
 	}
 }
 
@@ -1819,26 +1856,26 @@ void SingleTreeLikelihood_enable_SSE( SingleTreeLikelihood *tlk, bool value ){
 		// Does not work for matrix with odd dimension.
 		// If we want to load doubles at indexes 1 and 2 from matrices it will crash
 		// same issue with partials, it will try to store at odd indexes
-		if( tlk->sm->nstate & 1 ){
+		if( tlk->m->nstate & 1 ){
 			tlk->use_SIMD = false;
 		}
 	}
 	
 	if ( tlk->use_SIMD ){
-		if (tlk->sm->nstate == 4 ) {
+		if (tlk->m->nstate == 4 ) {
 			tlk->update_partials      = update_partials_4_SSE;
 			tlk->update_partials_flexible = update_partials_flexible_4_SSE;
 			tlk->integrate_partials   = integrate_partials_4_SSE;
 			tlk->node_log_likelihoods = node_log_likelihoods_4_SSE;
 			tlk->calculate_branch_likelihood = calculate_branch_partials_4_SSE;
 		}
-		else if ( tlk->sm->nstate == 20 ) {
+		else if ( tlk->m->nstate == 20 ) {
 			tlk->update_partials      = update_partials_20_SSE;
 			tlk->integrate_partials   = integrate_partials_general;
 			tlk->node_log_likelihoods = node_log_likelihoods_general;
 			tlk->calculate_branch_likelihood = calculate_branch_partials_20_SSE;
 		}
-		else if ( tlk->sm->nstate >= 60 ) {
+		else if ( tlk->m->nstate >= 60 ) {
 			//			tlk->update_partials      = update_partials_codon_SSE;
 			//			tlk->integrate_partials   = integrate_partials_codon_SSE;
 			//			tlk->node_log_likelihoods = node_log_likelihoods_codon_SSE;
@@ -1861,20 +1898,20 @@ void SingleTreeLikelihood_enable_SSE( SingleTreeLikelihood *tlk, bool value ){
 		}
 	}
 	else {
-		if ( tlk->sm->nstate == 4 ) {
+		if ( tlk->m->nstate == 4 ) {
 			tlk->update_partials      = update_partials_4;
 			tlk->update_partials_flexible = update_partials_flexible_4;
 			tlk->integrate_partials   = integrate_partials_4;
 			tlk->node_log_likelihoods = node_log_likelihoods_4;
 			tlk->calculate_branch_likelihood = calculate_branch_partials_4;
 		}
-		else if ( tlk->sm->nstate == 20 ) {
+		else if ( tlk->m->nstate == 20 ) {
 			tlk->update_partials      = update_partials_general;
 			tlk->integrate_partials   = integrate_partials_general;
 			tlk->node_log_likelihoods = node_log_likelihoods_general;
 			tlk->calculate_branch_likelihood = calculate_branch_partials_20;
 		}
-		else if( tlk->sm->nstate >= 60 ){
+		else if( tlk->m->nstate >= 60 ){
 			tlk->update_partials      = update_partials_codon;
 			tlk->integrate_partials   = integrate_partials_codon;
 			tlk->node_log_likelihoods = node_log_likelihoods_codon;
@@ -1900,7 +1937,7 @@ bool SingleTreeLikelihood_SSE( SingleTreeLikelihood *tlk ){
 }
 
 const double* get_root_frequencies(SingleTreeLikelihood* tlk){
-	return tlk->sm->m->get_frequencies(tlk->sm->m);
+	return tlk->m->get_frequencies(tlk->m);
 }
 
 const double* get_root_frequencies_fixed(SingleTreeLikelihood* tlk){
@@ -1917,7 +1954,7 @@ double SingleTreeLikelihood_calculate_at_node( SingleTreeLikelihood *tlk, const 
 		tlk->calculate(tlk);
 	}
 	
-	double *partials   = dvector( tlk->sp->count*tlk->sm->nstate );
+	double *partials   = dvector( tlk->sp->count*tlk->m->nstate );
 	double *pattern_lk = dvector(tlk->sp->count);
 	
 	tlk->integrate_partials(tlk, tlk->partials[tlk->current_matrices_indexes[Node_id(node)]][Node_id(node)], tlk->sm->get_proportions(tlk->sm), partials );
@@ -2073,7 +2110,7 @@ void update_upper_partials(SingleTreeLikelihood *tlk, Node* node){
 			double* partials = tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[idNode]]][tlk->upper_partial_indexes[idNode]];
 			for(size_t i = 0; i < tlk->cat_count; i++){
 				for(size_t k = 0; k < tlk->pattern_count; k++){
-					for(size_t j = 0; j < tlk->sm->nstate; j++){
+					for(size_t j = 0; j < tlk->m->nstate; j++){
 						*partials *= freqs[j];
 						partials++;
 					}
@@ -2194,23 +2231,23 @@ void calculate_dldt_uppper( SingleTreeLikelihood *tlk, Node *node, double* patte
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
 		if( tlk->use_SIMD ){
 			if( node_transpose ){
-				tlk->sm->m->dp_dt_transpose(tlk->sm->m,
+				tlk->m->dp_dt_transpose(tlk->m,
 											bl * tlk->sm->get_rate(tlk->sm, i),
 											&mat[i*tlk->matrix_size]);
 			}
 			else {
-				tlk->sm->m->dp_dt(tlk->sm->m,
+				tlk->m->dp_dt(tlk->m,
 								  bl * tlk->sm->get_rate(tlk->sm, i),
 								  &mat[i*tlk->matrix_size]);
 			}
 		}
 		else{
-			tlk->sm->m->dp_dt(tlk->sm->m,
+			tlk->m->dp_dt(tlk->m,
 							  bl * tlk->sm->get_rate(tlk->sm, i),
 							  &mat[i*tlk->matrix_size]);
 		}
 #else
-		tlk->sm->m->dp_dt(tlk->sm->m,
+		tlk->m->dp_dt(tlk->m,
 						  bl * tlk->sm->get_rate(tlk->sm, i),
 						  &mat[i*tlk->matrix_size]);
 #endif
@@ -2220,7 +2257,7 @@ void calculate_dldt_uppper( SingleTreeLikelihood *tlk, Node *node, double* patte
 	}
 	
 	
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int patternCount = tlk->sp->count;
 	double* root_partials = tlk->root_partials  + patternCount*nstate;
 	const double* freqs = tlk->get_root_frequencies(tlk);
@@ -2263,23 +2300,23 @@ double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pat
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
 		if( tlk->use_SIMD ){
 			if( node_transpose ){
-				tlk->sm->m->d2p_d2t_transpose(tlk->sm->m,
+				tlk->m->d2p_d2t_transpose(tlk->m,
 											  bl * rate,
 											  &mat[i*tlk->matrix_size]);
 			}
 			else {
-				tlk->sm->m->d2p_d2t(tlk->sm->m,
+				tlk->m->d2p_d2t(tlk->m,
 									bl * rate,
 									&mat[i*tlk->matrix_size]);
 			}
 		}
 		else{
-			tlk->sm->m->d2p_d2t(tlk->sm->m,
+			tlk->m->d2p_d2t(tlk->m,
 								bl * rate,
 								&mat[i*tlk->matrix_size]);
 		}
 #else
-		tlk->sm->m->d2p_d2t(tlk->sm->m,
+		tlk->m->d2p_d2t(tlk->m,
 							bl * rate,
 							&mat[i*tlk->matrix_size]);
 #endif
@@ -2287,7 +2324,7 @@ double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pat
 			mat[i*tlk->matrix_size+k] *= rate * rate;
 		}
 	}
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int patternCount = tlk->sp->count;
 	double* root_partials = tlk->root_partials  + (patternCount*nstate)*2;
 	double* pattern_d2lnl = tlk->pattern_lk + patternCount*3;
@@ -2296,7 +2333,7 @@ double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pat
 	tlk->calculate_branch_likelihood(tlk, spare_partials, tlk->upper_partial_indexes[nodeId], nodeId, tempMatrixId );
 	tlk->integrate_partials(tlk, spare_partials, tlk->sm->get_proportions(tlk->sm), root_partials );
 	
-	//tlk->node_log_likelihoods( tlk, root_partials, tlk->sm->m->_freqs, pattern_d2lnl);
+	//tlk->node_log_likelihoods( tlk, root_partials, tlk->m->_freqs, pattern_d2lnl);
 	int v = 0;
 	double d2lnl = 0;
 	
@@ -2326,15 +2363,15 @@ void calculate_dpartials_dfreqs(SingleTreeLikelihood *tlk, int index, double* dp
     const int rootId = Node_id(Tree_root(tlk->tree));
     const int rightId = Node_id(Node_right(Tree_root(tlk->tree)));
     
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int patternCount = tlk->sp->count;
     
     int tempMatrixId = Node_id(Tree_root(tlk->tree));
     double* mat = tlk->matrices[tlk->current_matrices_indexes[tempMatrixId]][tempMatrixId];
-    double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->sm->nstate;
+    double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->m->nstate;
     memset(dpartials, 0, sizeof(double)*patternCount);
     
-    const int freqIndex = index - Parameters_count(tlk->sm->m->rates);
+    const int freqIndex = index - Parameters_count(tlk->m->rates);
 	const double* freqs = tlk->get_root_frequencies(tlk);
     double* transpose = dvector(nstate*nstate*tlk->sm->cat_count);
 
@@ -2366,8 +2403,8 @@ void calculate_dpartials_dfreqs(SingleTreeLikelihood *tlk, int index, double* dp
         
         for (int i = 0; i < tlk->sm->cat_count; i++) {
     
-            if(tlk->sm->m->dPdp != NULL){
-                tlk->sm->m->dPdp(tlk->sm->m, index, &mat[i*tlk->matrix_size], bl* tlk->sm->get_rate(tlk->sm, i));
+            if(tlk->m->dPdp != NULL){
+                tlk->m->dPdp(tlk->m, index, &mat[i*tlk->matrix_size], bl* tlk->sm->get_rate(tlk->sm, i));
             }
             else{
                 // Use finite differences
@@ -2413,22 +2450,22 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 	const int rootId = Node_id(Tree_root(tlk->tree));
 	const int rightId = Node_id(Node_right(Tree_root(tlk->tree)));
 	
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int patternCount = tlk->sp->count;
 	bool time_mode = Tree_is_time_mode(tlk->tree);
 	
 	int tempMatrixId = Node_id(Tree_root(tlk->tree));
 	double* mat = tlk->matrices[0][tempMatrixId];
 	double* mat_transpose = tlk->matrices[1][tempMatrixId];
-	double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->sm->nstate;
+	double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->m->nstate;
 	double* pattern_dlnl = tlk->pattern_lk + tlk->sp->count*2; // pattern_likelihoods points to tlk->pattern_lk + tlk->sp->count
 	memset(pattern_dlnl, 0, sizeof(double)*tlk->sp->count);
 	double* spare_partials = tlk->partials[0][tlk->upper_partial_indexes[rootId]];
     
     double dlnldQ = 0;
-    tlk->sm->m->dQ_need_update = true;
+    tlk->m->dQ_need_update = true;
 	
-	size_t rateCount = tlk->sm->m->rates_simplex == NULL ? Parameters_count(tlk->sm->m->rates) : tlk->sm->m->rates_simplex->K - 1;
+	size_t rateCount = tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K - 1;
     
 	const double* freqs = tlk->get_root_frequencies(tlk);
 	
@@ -2436,8 +2473,8 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
     if(index >= rateCount){
 		size_t freqIndex = index - rateCount;
 		if(freqs != tlk->root_frequencies){
-			double* dphi = dvector(tlk->sm->nstate);
-			tlk->sm->m->simplex->gradient(tlk->sm->m->simplex, freqIndex, dphi);
+			double* dphi = dvector(tlk->m->nstate);
+			tlk->m->simplex->gradient(tlk->m->simplex, freqIndex, dphi);
 			
 			//calculate_dpartials_dfreqs(tlk, index, dpartials, pattern_likelihoods);
 			int v = 0;
@@ -2468,7 +2505,7 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 			}
 			
 			for (int i = 0; i < tlk->sm->cat_count; i++) {
-				tlk->sm->m->dPdp(tlk->sm->m, index, &mat[i*tlk->matrix_size], bl* tlk->sm->get_rate(tlk->sm, i));
+				tlk->m->dPdp(tlk->m, index, &mat[i*tlk->matrix_size], bl* tlk->sm->get_rate(tlk->sm, i));
 			}
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
 			if( tlk->use_SIMD ){
@@ -2524,7 +2561,7 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 			}
             
             for (int i = 0; i < tlk->sm->cat_count; i++) {
-                tlk->sm->m->dPdp(tlk->sm->m, index, &mat[i*tlk->matrix_size], bl* tlk->sm->get_rate(tlk->sm, i));
+                tlk->m->dPdp(tlk->m, index, &mat[i*tlk->matrix_size], bl* tlk->sm->get_rate(tlk->sm, i));
             }
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
             if( tlk->use_SIMD ){
@@ -2580,12 +2617,12 @@ double calculate_dlnl_dWeibull( SingleTreeLikelihood *tlk, const double* pattern
 	const int rootId = Node_id(Tree_root(tlk->tree));
 	const int rightId = Node_id(Node_right(Tree_root(tlk->tree)));
 	
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int patternCount = tlk->sp->count;
 	bool time_mode = Tree_is_time_mode(tlk->tree);
 	int tempMatrixId = Node_id(Tree_root(tlk->tree));
 	double* mat = tlk->matrices[0][tempMatrixId];
-	double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->sm->nstate;
+	double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->m->nstate;
 	double* pattern_dlnl = tlk->pattern_lk + tlk->sp->count*2; // pattern_likelihoods points to tlk->pattern_lk + tlk->sp->count
 	memset(pattern_dlnl, 0, sizeof(double)*tlk->sp->count);
 	double* spare_partials = tlk->partials[0][tlk->upper_partial_indexes[rootId]];
@@ -2628,23 +2665,23 @@ double calculate_dlnl_dWeibull( SingleTreeLikelihood *tlk, const double* pattern
 			if( tlk->use_SIMD ){
 				bool node_transpose = tlk->partials[0][Node_id(n)] == NULL;
 				if( node_transpose ){
-					tlk->sm->m->dp_dt_transpose(tlk->sm->m,
+					tlk->m->dp_dt_transpose(tlk->m,
 												bl * tlk->sm->get_rate(tlk->sm, i),
 												&mat[i*tlk->matrix_size]);
 				}
 				else {
-					tlk->sm->m->dp_dt(tlk->sm->m,
+					tlk->m->dp_dt(tlk->m,
 									  bl * tlk->sm->get_rate(tlk->sm, i),
 									  &mat[i*tlk->matrix_size]);
 				}
 			}
 			else{
-				tlk->sm->m->dp_dt(tlk->sm->m,
+				tlk->m->dp_dt(tlk->m,
 								  bl * tlk->sm->get_rate(tlk->sm, i),
 								  &mat[i*tlk->matrix_size]);
 			}
 #else
-			tlk->sm->m->dp_dt(tlk->sm->m,
+			tlk->m->dp_dt(tlk->m,
 							  bl * tlk->sm->get_rate(tlk->sm, i),
 							  &mat[i*tlk->matrix_size]);
 #endif
@@ -2699,23 +2736,23 @@ void get_Q_times_P(SingleTreeLikelihood* tlk, const Node* node, double* mat){
 		if( tlk->use_SIMD ){
 			bool node_transpose = tlk->partials[0][Node_id(node)] == NULL;
 			if( node_transpose ){
-				tlk->sm->m->dp_dt_transpose(tlk->sm->m,
+				tlk->m->dp_dt_transpose(tlk->m,
 											bl * tlk->sm->get_rate(tlk->sm, i),
 											&mat[i*tlk->matrix_size]);
 			}
 			else {
-				tlk->sm->m->dp_dt(tlk->sm->m,
+				tlk->m->dp_dt(tlk->m,
 								  bl * tlk->sm->get_rate(tlk->sm, i),
 								  &mat[i*tlk->matrix_size]);
 			}
 		}
 		else{
-			tlk->sm->m->dp_dt(tlk->sm->m,
+			tlk->m->dp_dt(tlk->m,
 							  bl * tlk->sm->get_rate(tlk->sm, i),
 							  &mat[i*tlk->matrix_size]);
 		}
 #else
-		tlk->sm->m->dp_dt(tlk->sm->m,
+		tlk->m->dp_dt(tlk->m,
 						  bl * tlk->sm->get_rate(tlk->sm, i),
 						  &mat[i*tlk->matrix_size]);
 #endif
@@ -2909,7 +2946,7 @@ void calculate_dldp_uppper_aux(SingleTreeLikelihood *tlk, Node *node, const Node
 		
 		double* partials_deriv = tlk->partials[1-tlk->current_partials_indexes[node_id]][node_id]; // store derivatives for node
 		
-		int dim = tlk->sp->count*tlk->sm->nstate*tlk->sm->cat_count;
+		int dim = tlk->sp->count*tlk->m->nstate*tlk->sm->cat_count;
 		
 		double* spare_partials = tlk->partials[0][tlk->upper_partial_indexes[Tree_root(tlk->tree)->id]];
 		double* spare_partials2 = tlk->partials[1][tlk->upper_partial_indexes[Tree_root(tlk->tree)->id]];
@@ -2989,7 +3026,7 @@ void calculate_dldp_uppper_aux(SingleTreeLikelihood *tlk, Node *node, const Node
 }
 
 void calculate_dldp_uppper_reparam( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods ){
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int patternCount = tlk->sp->count;
 	double* root_partials = tlk->root_partials  + patternCount*nstate;
 	
@@ -3059,13 +3096,13 @@ double calculate_dl_dr(SingleTreeLikelihood* tlk, double* pattern_likelihoods){
 	
 	const int rootId = Node_id(Tree_root(tlk->tree));
 	
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int patternCount = tlk->sp->count;
 	
 	int tempMatrixId = Node_id(Tree_root(tlk->tree));
 	double* mat = tlk->matrices[0][tempMatrixId];
 	double* mat_transpose = tlk->matrices[1][tempMatrixId];
-	double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->sm->nstate;
+	double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->m->nstate;
 	double* pattern_dlnl = tlk->pattern_lk + tlk->sp->count*2;
 	memset(pattern_dlnl, 0, sizeof(double)*tlk->sp->count);
 	
@@ -3123,12 +3160,12 @@ double calculate_dl_dr(SingleTreeLikelihood* tlk, double* pattern_likelihoods){
 
 // one rate per branch
 double calculate_dl_dr_discrete(SingleTreeLikelihood* tlk, Node* node, double* pattern_likelihoods){
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int patternCount = tlk->sp->count;
     
     int tempMatrixId = Node_id(Tree_root(tlk->tree));
     double* mat = tlk->matrices[0][tempMatrixId];
-    double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->sm->nstate;
+    double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->m->nstate;
     double* pattern_dlnl = tlk->pattern_lk + tlk->sp->count*2;
     memset(pattern_dlnl, 0, sizeof(double)*tlk->sp->count);
     
@@ -3195,21 +3232,21 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 			bool node_transpose = tlk->partials[0][Node_id(n)] == NULL;
 			if( tlk->use_SIMD && node_transpose ){
 				for (int i = 0; i < tlk->sm->cat_count; i++) {
-					tlk->sm->m->p_t_transpose(tlk->sm->m,
+					tlk->m->p_t_transpose(tlk->m,
 											  Node_distance(n) * tlk->sm->get_rate(tlk->sm, i),
 											  &tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 				}
 			}
 			else{
 				for (int i = 0; i < tlk->sm->cat_count; i++) {
-					tlk->sm->m->p_t(tlk->sm->m,
+					tlk->m->p_t(tlk->m,
 									Node_distance(n) * tlk->sm->get_rate(tlk->sm, i),
 									&tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 				}
 			}
 #else
 			for (int i = 0; i < tlk->sm->cat_count; i++) {
-				tlk->sm->m->p_t(tlk->sm->m,
+				tlk->m->p_t(tlk->m,
 								Node_distance(n) * tlk->sm->get_rate(tlk->sm, i),
 								&tlk->matrices[tlk->current_matrices_indexes[Node_id(n)]][Node_id(n)][i*tlk->matrix_size]);
 			}
@@ -3237,21 +3274,21 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 	bool node_transpose = tlk->partials[0][Node_id(node)] == NULL;
 	if( tlk->use_SIMD && node_transpose ){
 		for (int i = 0; i < tlk->sm->cat_count; i++) {
-			tlk->sm->m->p_t_transpose(tlk->sm->m,
+			tlk->m->p_t_transpose(tlk->m,
 									  Node_distance(node) * tlk->sm->get_rate(tlk->sm, i),
 									  &mat[i*tlk->matrix_size]);
 		}
 	}
 	else{
 		for (int i = 0; i < tlk->sm->cat_count; i++) {
-			tlk->sm->m->p_t(tlk->sm->m,
+			tlk->m->p_t(tlk->m,
 							Node_distance(node) * tlk->sm->get_rate(tlk->sm, i),
 							&mat[i*tlk->matrix_size]);
 		}
 	}
 #else
 	for (int i = 0; i < tlk->sm->cat_count; i++) {
-		tlk->sm->m->p_t(tlk->sm->m,
+		tlk->m->p_t(tlk->m,
 						Node_distance(node) * tlk->sm->get_rate(tlk->sm, i),
 						&mat[i*tlk->matrix_size]);
 	}
@@ -3285,7 +3322,7 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 	double* mat = tlk->matrices[tlk->current_matrices_indexes[tempMatrixId]][tempMatrixId];
 	double* spare_partials = tlk->partials[0][tlk->upper_partial_indexes[Tree_root(tlk->tree)->id]];
 	size_t nodeCount = Tree_node_count(tlk->tree);
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int patternCount = tlk->sp->count;
 	const int catCount = tlk->sm->cat_count;
 	const double* freqs = tlk->get_root_frequencies(tlk);
@@ -3305,23 +3342,23 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 			if( tlk->use_SIMD ){
 				bool node_transpose = tlk->partials[0][Node_id(node)] == NULL;
 				if( node_transpose ){
-					tlk->sm->m->dp_dt_transpose(tlk->sm->m,
+					tlk->m->dp_dt_transpose(tlk->m,
 												bl * tlk->sm->get_rate(tlk->sm, c),
 												&mat[c*tlk->matrix_size]);
 				}
 				else {
-					tlk->sm->m->dp_dt(tlk->sm->m,
+					tlk->m->dp_dt(tlk->m,
 									  bl * tlk->sm->get_rate(tlk->sm, c),
 									  &mat[c*tlk->matrix_size]);
 				}
 			}
 			else{
-				tlk->sm->m->dp_dt(tlk->sm->m,
+				tlk->m->dp_dt(tlk->m,
 								  bl * tlk->sm->get_rate(tlk->sm, c),
 								  &mat[c*tlk->matrix_size]);
 			}
 #else
-			tlk->sm->m->dp_dt(tlk->sm->m,
+			tlk->m->dp_dt(tlk->m,
 							  bl * tlk->sm->get_rate(tlk->sm, c),
 							  &mat[c*tlk->matrix_size]);
 #endif
@@ -3356,7 +3393,7 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 void gradient_pinv_sitemodel(SingleTreeLikelihood* tlk, const double* branch_gradient, const double* branch_lengths, double* gradient){
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	size_t nodeCount = Tree_node_count(tlk->tree);
-	size_t stateCount = tlk->sm->nstate;
+	size_t stateCount = tlk->m->nstate;
 	size_t patternCount = tlk->sp->count;
 	size_t catCount = tlk->sm->cat_count;
 	double pinv_grad = 0;
@@ -3390,7 +3427,7 @@ void gradient_pinv_W_sitemodel(SingleTreeLikelihood* tlk, const double* branch_g
 	assert(branch_gradient[Tree_root(tlk->tree)->id*tlk->sm->cat_count] == 0.0);
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	size_t nodeCount = Tree_node_count(tlk->tree);
-	size_t stateCount = tlk->sm->nstate;
+	size_t stateCount = tlk->m->nstate;
 	size_t patternCount = tlk->sp->count;
 	size_t catCount = tlk->sm->cat_count;
 	size_t variableCount = catCount - 1;
@@ -3483,8 +3520,8 @@ void gradient_clock(SingleTreeLikelihood* tlk, const double* branch_gradient, do
 }
 
 void gradient_PMatrix(SingleTreeLikelihood* tlk, const double* pattern_likelihoods, double* gradient){
-	size_t parameter_count = Parameters_count(tlk->sm->m->rates);
-	if(tlk->sm->m->simplex != NULL) parameter_count += tlk->sm->m->simplex->K - 1;
+	size_t parameter_count = Parameters_count(tlk->m->rates);
+	if(tlk->m->simplex != NULL) parameter_count += tlk->m->simplex->K - 1;
 	for(size_t i = 0; i < parameter_count; i++){
 		gradient[i] = calculate_dlnl_dQ(tlk, i, pattern_likelihoods);
 	}

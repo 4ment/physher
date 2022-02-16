@@ -30,7 +30,7 @@ void _marginal_reconstruction( SingleTreeLikelihood *tlk ){
 	size_t node_count = Tree_node_count(tlk->tree);
 	SitePattern *sp = tlk->sp;
 	int sp_count = sp->count;
-	int nstate = tlk->sm->nstate;
+	int nstate = tlk->m->nstate;
 	double *backup = dvector(tlk->partials_size);
 	double *Lj = dvector(sp_count);
 

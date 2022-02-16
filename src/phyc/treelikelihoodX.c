@@ -101,7 +101,7 @@ void node_log_likelihoods_general( const SingleTreeLikelihood *tlk, const double
     int v = 0;
     int i = 0;
     
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int patternCount = tlk->pattern_count;
     
     for ( int k = 0; k < patternCount; k++ ) {
@@ -125,7 +125,7 @@ void node_likelihoods_general( const SingleTreeLikelihood *tlk, const double *pa
     int v = 0;
     int i = 0;
     
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int patternCount = tlk->pattern_count;
     
     for ( int k = 0; k < patternCount; k++ ) {
@@ -149,7 +149,7 @@ void integrate_partials_general( const SingleTreeLikelihood *tlk, const double *
 	double *pPartials = outPartials;
 	const double *pInPartials = inPartials;
 	
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count; 
 	const int patternCount = tlk->pattern_count;
 
@@ -187,7 +187,7 @@ void partials_states_and_states( const SingleTreeLikelihood *tlk, int idx1, cons
 	int u = 0;
 	int state1, state2;
 	double *pPartials = partials;
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -312,7 +312,7 @@ void partials_states_transpose( const SingleTreeLikelihood *tlk, int idx1, const
 	int u = 0;
 	int state1;
 	double *pPartials = partials;
-	int nstate = tlk->sm->nstate;
+	int nstate = tlk->m->nstate;
 	
 	for ( int l = 0; l < tlk->cat_count; l++ ) {
 		
@@ -339,7 +339,7 @@ void partials_states( const SingleTreeLikelihood *tlk, int idx1, const double * 
 	int u = 0;
 	int state1;
 	double *pPartials = partials;
-	int nstate = tlk->sm->nstate;
+	int nstate = tlk->m->nstate;
 	
 	for ( int l = 0; l < tlk->cat_count; l++ ) {
 		
@@ -366,7 +366,7 @@ void partials_states_and_undefined( const SingleTreeLikelihood *tlk, int idx1, c
 	int i,j,k;
 	int w;
 	int state1;
-	const int nstate = tlk->sm->nstate;
+	const int nstate = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -484,7 +484,7 @@ void partials_undefined( const SingleTreeLikelihood *tlk, const double *partials
 	int v = 0;
 	int i,j,k;
 	int w;
-	const int nstate = tlk->sm->nstate;
+	const int nstate = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -518,7 +518,7 @@ void partials_undefined_and_undefined( const SingleTreeLikelihood *tlk, const do
     int v = 0;
     int i,j,k;
     
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int catCount = tlk->cat_count;
     const int patternCount = tlk->pattern_count;
     
@@ -658,7 +658,7 @@ void partials_states_and_states_transpose( const SingleTreeLikelihood *tlk, int 
     int w;
     
     double *pPartials = partials;
-    const int nstate = tlk->sm->nstate;
+    const int nstate = tlk->m->nstate;
     
     for ( int l = 0; l < tlk->cat_count; l++ ) {
         
@@ -715,7 +715,7 @@ void partials_states_and_undefined_transpose( const SingleTreeLikelihood *tlk, i
     
     const double *m2,*p2;
     double sum = 0;
-    const int nstate = tlk->sm->nstate;
+    const int nstate = tlk->m->nstate;
     
     
     for ( int l = 0; l < tlk->cat_count; l++ ) {
@@ -757,7 +757,7 @@ void partials_states_and_undefined_transpose( const SingleTreeLikelihood *tlk, i
 }
 
 static void _calculate_branch_likelihood_undefined(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, const double* partials, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	int patternCount = tlk->pattern_count;
 	memset(rootPartials, 0, sizeof(double)*stateCount*patternCount);
 	
@@ -784,7 +784,7 @@ static void _calculate_branch_likelihood_undefined(SingleTreeLikelihood *tlk, do
 }
 
 static void _calculate_branch_likelihood_state(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, int partialsIndex, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	int patternCount = tlk->pattern_count;
 	memset(rootPartials, 0, sizeof(double)*stateCount*patternCount);
 	
@@ -818,7 +818,7 @@ static void _calculate_branch_likelihood_state(SingleTreeLikelihood *tlk, double
 }
 
 static void _calculate_branch_likelihood_state2(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, const double* partials, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	int patternCount = tlk->pattern_count;
 	memset(rootPartials, 0, sizeof(double)*stateCount*patternCount);
 	
@@ -886,7 +886,7 @@ void calculate_branch_likelihood(SingleTreeLikelihood *tlk, double* rootPartials
 
 
 static void _calculate_branch_partials_undefined(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, const double* partials, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	int patternCount = tlk->pattern_count;
 	memset(rootPartials, 0, sizeof(double)*stateCount*patternCount);
 	
@@ -911,7 +911,7 @@ static void _calculate_branch_partials_undefined(SingleTreeLikelihood *tlk, doub
 }
 
 static void _calculate_branch_partials_state(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, int partialsIndex, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	int patternCount = tlk->pattern_count;
 	memset(rootPartials, 0, sizeof(double)*stateCount*patternCount);
 	
@@ -945,7 +945,7 @@ static void _calculate_branch_partials_state(SingleTreeLikelihood *tlk, double* 
 }
 
 static void _calculate_branch_partials_state2(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, const double* partials, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	int patternCount = tlk->pattern_count;
 	memset(rootPartials, 0, sizeof(double)*stateCount*patternCount);
 	
@@ -1019,7 +1019,7 @@ void node_log_likelihoods_general_even_SSE( const SingleTreeLikelihood *tlk, con
 
     int i,k;
     
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int patternCount = tlk->pattern_count;
     
     __m128d *f,*p;
@@ -1053,7 +1053,7 @@ void node_likelihoods_general_even_SSE( const SingleTreeLikelihood *tlk, const d
     
     int i,k;
     
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int patternCount = tlk->pattern_count;
     
     __m128d *f,*p;
@@ -1087,7 +1087,7 @@ void node_likelihoods_general_even_SSE( const SingleTreeLikelihood *tlk, const d
 void integrate_partials_general_even_SSE( const SingleTreeLikelihood *tlk, const double *inPartials, const double *proportions, double *outPartials ){
     int i,k,l;
     
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int catCount = tlk->cat_count;
     const int patternCount = tlk->pattern_count;
     
@@ -1134,7 +1134,7 @@ void partials_states_and_states_even_SSE( const SingleTreeLikelihood *tlk, int i
     int w;
     
     double *pPartials = partials;
-    const int nstate = tlk->sm->nstate;
+    const int nstate = tlk->m->nstate;
     
     __m128d *m1,*m2;
     
@@ -1195,7 +1195,7 @@ void partials_states_and_undefined_even_SSE( const SingleTreeLikelihood *tlk, in
 	__m128d *m2,*p2;
 	__m128d sum;
 	double temp[2] __attribute__ ((aligned (16)));
-	const int nstate = tlk->sm->nstate;
+	const int nstate = tlk->m->nstate;
 	
 	
 	for ( l = 0; l < tlk->cat_count; l++ ) {
@@ -1252,7 +1252,7 @@ void partials_undefined_and_undefined_even_SSE( const SingleTreeLikelihood *tlk,
     int w;
     int i,j,k,l;
     
-    const int nstate   = tlk->sm->nstate;
+    const int nstate   = tlk->m->nstate;
     const int catCount = tlk->cat_count;
     const int patternCount = tlk->pattern_count;
     
@@ -1368,7 +1368,7 @@ static void _partials_states_and_states_rel( const SingleTreeLikelihood *tlk, in
 	int k,i,u;
 	int state1, state2;
 	double *pPartials = partials;
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
     
@@ -1447,7 +1447,7 @@ static void _partials_states_and_undefined_rel( const SingleTreeLikelihood *tlk,
 	int v = 0;
 	int h,i,j,k,l,u;
 	int state1;
-	const int nstate = tlk->sm->nstate;
+	const int nstate = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 
@@ -1529,7 +1529,7 @@ static void _partials_undefined_and_undefined_rel( const SingleTreeLikelihood *t
 	int v = 0;
 	int i,j,k;
 	
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -1619,7 +1619,7 @@ void update_partials_general_rel( SingleTreeLikelihood *tlk, int nodeIndex1, int
 
 void partials_undefined_and_undefined_omp( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 ){
 	
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	
     //int nThreads = tlk->nthreads;
     
@@ -1657,7 +1657,7 @@ static void _partial_lower_upper( const SingleTreeLikelihood *tlk, const double 
     int w,i,j,k;
     int v = 0;
     double p,sum;
-    int nstate = tlk->sm->nstate;
+    int nstate = tlk->m->nstate;
     
     memset(pattern_lk, 0, tlk->pattern_count*sizeof(double));
     
@@ -1689,7 +1689,7 @@ static void _partial_lower_upper_leaf( const SingleTreeLikelihood *tlk, const do
     int v = 0;
     double p = 0;
     int state;
-    int nstate = tlk->sm->nstate;
+    int nstate = tlk->m->nstate;
     
     memset(pattern_lk, 0, tlk->pattern_count*sizeof(double));
     
@@ -1754,7 +1754,7 @@ static void _partials_states_and_states_ancestral( const SingleTreeLikelihood *t
 	int w,k,u = 0;
 	int state1, state2, state3;
 	double *pPartials = partials;
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -1803,7 +1803,7 @@ static void _partials_states_and_undefined_ancestral( const SingleTreeLikelihood
 	int k;
 	int w;
 	int state1,state2,state3;
-	const int nstate = tlk->sm->nstate;
+	const int nstate = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
     
@@ -1842,7 +1842,7 @@ static void _partials_undefined_and_undefined_ancestral( const SingleTreeLikelih
 	int v = 0;
 	int k;
 	int state1,state2,state3;
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -1876,7 +1876,7 @@ static void _partials_undefined_and_undefined_ancestral2( const SingleTreeLikeli
 	int v = 0;
 	int i,k;
 	
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -1911,7 +1911,7 @@ static void _partials_states_and_undefined_ancestral2( const SingleTreeLikelihoo
 	int i,k;
 	int w;
 	int state1,state2;
-	const int nstate = tlk->sm->nstate;
+	const int nstate = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -2024,7 +2024,7 @@ static void _partials_states_and_states_ancestral_rel( const SingleTreeLikelihoo
 	int k,u = 0;
 	int state1, state2, state3;
 	double *pPartials = partials;
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -2086,7 +2086,7 @@ static void _partials_states_and_states_ancestral_relb( const SingleTreeLikeliho
     //int u = 0;
 	int state1, state2, state3;
 	//double *pPartials = partials;
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -2146,7 +2146,7 @@ static void _partials_states_and_undefined_ancestral_rel( const SingleTreeLikeli
 	int v = 0;
 	int k,u;
 	int state1,state2,state3;
-	const int nstate = tlk->sm->nstate;
+	const int nstate = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
     
@@ -2196,7 +2196,7 @@ static void _partials_undefined_and_undefined_ancestral_rel( const SingleTreeLik
 	int v = 0;
 	int k,u;
 	int state1,state2,state3;
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -2234,7 +2234,7 @@ static void _partials_undefined_and_undefined_ancestral2_rel( const SingleTreeLi
 	int v = 0;
 	int i,k,u;
 	
-	const int nstate   = tlk->sm->nstate;
+	const int nstate   = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -2276,7 +2276,7 @@ static void _partials_states_and_undefined_ancestral2_rel( const SingleTreeLikel
 	int i,k;
 	int w;
 	int state1,state2;
-	const int nstate = tlk->sm->nstate;
+	const int nstate = tlk->m->nstate;
 	const int catCount = tlk->cat_count;
 	const int patternCount = tlk->pattern_count;
 	
@@ -2394,7 +2394,7 @@ void update_partials_general_ancestral_relb( SingleTreeLikelihood *tlk, int node
 // we do not integrate anything
 void integrate_partials_general_rel( const SingleTreeLikelihood *tlk, const double *inPartials, const double *proportions, double *outPartials ){
 	
-    memcpy(outPartials, inPartials, sizeof(double)*tlk->pattern_count*tlk->sm->nstate);
+    memcpy(outPartials, inPartials, sizeof(double)*tlk->pattern_count*tlk->m->nstate);
 	
     
 }
@@ -2404,7 +2404,7 @@ void integrate_partials_general_rel( const SingleTreeLikelihood *tlk, const doub
 
 #ifdef SSE3_ENABLED
 static void _calculate_branch_likelihood_undefined_even_SSE(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, const double* partials, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	memset(rootPartials, 0, sizeof(double)*stateCount*tlk->pattern_count);
 	int v = 0;
 	__m128d* m;
@@ -2436,7 +2436,7 @@ static void _calculate_branch_likelihood_undefined_even_SSE(SingleTreeLikelihood
 
 // matrix is transposed
 static void _calculate_branch_likelihood_state_even_SSE(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, int partialsIndex, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	memset(rootPartials, 0, sizeof(double)*stateCount*tlk->pattern_count);
 	int v = 0;
 	__m128d* up = (__m128d*)upperPartials;
@@ -2478,7 +2478,7 @@ static void _calculate_branch_likelihood_state_even_SSE(SingleTreeLikelihood *tl
 }
 
 static void _calculate_branch_likelihood_state2_even_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, const double* partials, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	memset(rootPartials, 0, sizeof(double)*stateCount*tlk->pattern_count);
 	
 	double t[2] __attribute__ ((aligned (16)));
@@ -2548,7 +2548,7 @@ void calculate_branch_likelihood_even_SSE(SingleTreeLikelihood *tlk, double* roo
 }
 
 static void _calculate_branch_partials_undefined_even_SSE(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, const double* partials, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	memset(rootPartials, 0, sizeof(double)*stateCount*tlk->pattern_count*tlk->cat_count);
 	int v = 0;
 	__m128d* m;
@@ -2590,7 +2590,7 @@ static void _calculate_branch_partials_undefined_even_SSE(SingleTreeLikelihood *
 
 // matrix is transposed
 static void _calculate_branch_partials_state_even_SSE(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, int partialsIndex, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	memset(rootPartials, 0, sizeof(double)*stateCount*tlk->pattern_count);
 	int v = 0;
 	__m128d* up = (__m128d*)upperPartials;
@@ -2628,7 +2628,7 @@ static void _calculate_branch_partials_state_even_SSE(SingleTreeLikelihood *tlk,
 }
 
 static void _calculate_branch_partials_state2_even_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, const double* partials, const double* matrices){
-	int stateCount = tlk->sm->nstate;
+	int stateCount = tlk->m->nstate;
 	memset(rootPartials, 0, sizeof(double)*stateCount*tlk->pattern_count);
 	
 	double t[2] __attribute__ ((aligned (16)));

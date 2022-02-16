@@ -25,20 +25,20 @@ char* json_jc69_strict =
 	\"sse\":true, \
 	\"tipstates\": false, \
 	\"sitepattern\": \"&patterns\", \
+	\"substitutionmodel\":{ \
+		\"id\":\"sm\", \
+		\"type\":\"substitutionmodel\", \
+		\"model\":\"jc69\", \
+		\"datatype\":\"nucleotide\", \
+		\"frequencies\":{ \
+			\"id\":\"freqs\", \
+			\"type\":\"Simplex\", \
+			\"values\":[0.25,0.25,0.25,0.25] \
+		} \
+	}, \
 	\"sitemodel\":{ \
 		\"id\": \"sitemodel\", \
-		\"type\": \"sitemodel\", \
-		\"substitutionmodel\":{ \
-			\"id\":\"sm\", \
-			\"type\":\"substitutionmodel\", \
-			\"model\":\"jc69\", \
-			\"datatype\":\"nucleotide\", \
-			\"frequencies\":{ \
-				\"id\":\"freqs\", \
-				\"type\":\"Simplex\", \
-				\"values\":[0.25,0.25,0.25,0.25] \
-			} \
-		} \
+		\"type\": \"sitemodel\" \
 	 \
 	}, \
 	\"tree\": \"&tree\", \
@@ -60,20 +60,52 @@ char* json_jc69_unrooted =
 	\"sse\":true, \
 	\"tipstates\": false, \
 	\"sitepattern\": \"&patterns\", \
+	\"substitutionmodel\":{ \
+		\"id\":\"sm\", \
+		\"type\":\"substitutionmodel\", \
+		\"model\":\"jc69\", \
+		\"datatype\":\"nucleotide\", \
+		\"frequencies\":{ \
+			\"id\":\"freqs\", \
+			\"type\":\"Simplex\", \
+			\"values\":[0.25,0.25,0.25,0.25] \
+		} \
+	}, \
 	\"sitemodel\":{ \
 		\"id\": \"sitemodel\", \
-		\"type\": \"sitemodel\", \
-		\"substitutionmodel\":{ \
-			\"id\":\"sm\", \
-			\"type\":\"substitutionmodel\", \
-			\"model\":\"jc69\", \
-			\"datatype\":\"nucleotide\", \
-			\"frequencies\":{ \
-				\"id\":\"freqs\", \
-				\"type\":\"Simplex\", \
-				\"values\":[0.25,0.25,0.25,0.25] \
-			} \
+		\"type\": \"sitemodel\" \
+	}, \
+	\"tree\": \"&tree\" \
+}";
+
+char* json_gtr_unrooted =
+    "{ \
+	\"id\":\"treelikelihood\", \
+	\"type\": \"treelikelihood\", \
+	\"sse\":true, \
+	\"tipstates\": false, \
+	\"sitepattern\": \"&patterns\", \
+	\"substitutionmodel\":{ \
+		\"id\":\"sm\", \
+		\"type\":\"substitutionmodel\", \
+		\"model\":\"gtr\", \
+		\"datatype\":\"nucleotide\", \
+		\"rates\":{ \
+			\"ac\":{\"id\":\"ac\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"}, \
+			\"ag\":{\"id\":\"ag\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"}, \
+			\"at\":{\"id\":\"at\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"}, \
+			\"cg\":{\"id\":\"cg\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"}, \
+			\"ct\":{\"id\":\"ct\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"} \
+		}, \
+		\"frequencies\":{ \
+			\"id\":\"freqs\", \
+			\"type\":\"Simplex\", \
+			\"values\":[0.25,0.25,0.25,0.25] \
 		} \
+	}, \
+	\"sitemodel\":{ \
+		\"id\": \"sitemodel\", \
+		\"type\": \"sitemodel\" \
 	 \
 	}, \
 	\"tree\": \"&tree\" \
@@ -282,14 +314,14 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
 // Derivatives are wrt branch lengths.
 // At each iteration, the probability matrices are updated and the whole tree likelihood
 // is calculated.
-void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const char* newick, double scaler, FILE* csv, bool debug) {
+void test_tree_likelihood_unrooted(size_t iter, const char* json_model, const char* fasta_file, const char* newick, double scaler, FILE* csv, bool debug) {
     struct timespec start, end;
 
     Hashtable* hash2 = new_Hashtable_string(100);
     hashtable_set_key_ownership(hash2, false);
     hashtable_set_value_ownership(hash2, false);
 
-    json_node* json = create_json_tree(json_jc69_unrooted);
+    json_node* json = create_json_tree(json_model);
 
     Sequences* sequences = readSequences(fasta_file);
     sequences->datatype = new_NucleotideDataType();
@@ -319,6 +351,7 @@ void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const ch
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         SingleTreeLikelihood_update_all_nodes(tlk);
+        tlk->m->need_update = true;
         logP = mlike->logP(mlike);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
@@ -338,12 +371,17 @@ void test_tree_likelihood_unrooted(size_t iter, const char* fasta_file, const ch
             Parameters_add(ps, node->distance);
         }
     }
+    if (tlk->m->modeltype == GTR) {
+        Parameters_add_parameters(ps, tlk->m->rates);
+        Parameters_add_parameters(ps, tlk->m->simplex->parameters);
+    }
     mlike->prepare_gradient(mlike, ps);
     double dlogP;
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         SingleTreeLikelihood_update_all_nodes(tlk);
+        tlk->m->need_update = true;
         for (int j = 0; j < Parameters_count(ps); j++) {
             dlogP = mlike->dlogP(mlike, Parameters_at(ps, j));
         }
@@ -411,7 +449,8 @@ int main(int argc, char* argv[]) {
     test_constant(iter, newick, csv, debug);
 
     printf("Tree likelihood unrooted:\n");
-    test_tree_likelihood_unrooted(iter, fasta_file, newick, scaler, csv, debug);
+    test_tree_likelihood_unrooted(iter, json_jc69_unrooted, fasta_file, newick, scaler, csv, debug);
+    test_tree_likelihood_unrooted(iter, json_gtr_unrooted, fasta_file, newick, scaler, csv, debug);
 
     printf("Tree likelihood time tree:\n");
     test_tree_likelihood_time(iter, fasta_file, newick, 0, csv, debug);

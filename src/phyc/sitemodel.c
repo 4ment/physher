@@ -21,7 +21,6 @@
 #include <strings.h>
 #include <math.h>
 
-#include "substmodel.h"
 #include "parameters.h"
 #include "gamma.h"
 #include "gausslaguerre.h"
@@ -64,10 +63,7 @@ static void _site_model_handle_change( Model *self, Model *model, int index ){
 }
 
 static void _site_model_store(Model* self){
-	Model** models = (Model**)self->data;
-	Model *msubst = models[0];
-	Model *mprop = models[1];
-	msubst->store(msubst); // substitution model
+	Model *mprop = (Model*)self->data;
 	if(mprop != NULL) mprop->store(mprop); // simplex proportion model
 	SiteModel* sm = self->obj;
 	if (Parameters_count(sm->rates) > 0) {
@@ -79,10 +75,7 @@ static void _site_model_store(Model* self){
 }
 
 static void _site_model_restore(Model* self){
-	Model** models = (Model**)self->data;
-	Model *msubst = models[0];
-	Model *mprop = models[1];
-	msubst->restore(msubst); // substitution model
+	Model *mprop = (Model*)self->data;
 	if(mprop != NULL) mprop->restore(mprop); // simplex proportion model
 	SiteModel* sm = self->obj;
 	if (Parameters_count(sm->rates) > 0) {
@@ -114,10 +107,10 @@ static void _site_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free site model %s\n", self->name);
 		SiteModel *sm = (SiteModel*)self->obj;
-		Model** models = (Model**)self->data;
-		models[0]->free(models[0]); // substitution model
-		if(models[1] != NULL) models[1]->free(models[1]);
-		free(self->data);
+		if(self->data != NULL){
+			Model* model = (Model*)self->data;
+			model->free(model);
+		}
 		
 		if(sm->rates != NULL) free_Parameters(sm->rates);
 		//TODO: deal with this
@@ -136,21 +129,9 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 	if (Hashtable_exists(hash, self->name)) {
 		return Hashtable_get(hash, self->name);
 	}
-	Model** models = (Model**)self->data;
-	Model *mm = models[0];
-	Model *mprop = models[1];
-	Model* mmclone = NULL;
+	Model* mprop = (Model*)self->data;
 	Model* mpropclone = NULL;
     Simplex* propclone = NULL;
-	// Susbtitution model may have been parsed already
-	if (Hashtable_exists(hash, mm->name)) {
-		mmclone = Hashtable_get(hash, mm->name);
-		mmclone->ref_count++; // it is decremented at the end using free
-	}
-	else{
-		mmclone = mm->clone(mm, hash);
-		Hashtable_add(hash, mmclone->name, mmclone);
-	}
 	
     if(mprop != NULL){
         if (Hashtable_exists(hash, mprop->name)) {
@@ -189,23 +170,19 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 			Hashtable_add(hash, name, mu);
 		}
 	}
-	SiteModel* smclone = clone_SiteModel_with_parameters(sm, (SubstitutionModel*)mmclone->obj, propclone, ps, mu);
+	SiteModel* smclone = clone_SiteModel_with_parameters(sm, propclone, ps, mu);
 	free_Parameters(ps);
 	free_Parameter(mu);
-	Model* clone = new_SiteModel2(self->name, smclone, mmclone, mpropclone);
+	Model* clone = new_SiteModel2(self->name, smclone, mpropclone);
 	Hashtable_add(hash, clone->name, clone);
-	mmclone->free(mmclone);
 	if(mpropclone != NULL)mpropclone->free(mpropclone);
 	clone->print = self->print;
 	return clone;
 }
 
 // SubstitutionModel2 listen to the rate and freq parameters
-Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel, Model* proportions ){
+Model * new_SiteModel2( const char* name, SiteModel *sm, Model* proportions ){
 	Model *model = new_Model(MODEL_SITEMODEL, name, sm);
-	Model** data = (Model**)calloc(2, sizeof(Model*));
-	data[0] = substmodel;
-	data[1] = NULL;
 	if ( sm->rates != NULL ) {
 		for ( int i = 0; i < Parameters_count(sm->rates); i++ ) {
 			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
@@ -215,13 +192,10 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel, Mode
 		sm->mu->listeners->add( sm->mu->listeners, model );
 	}
 	if (proportions != NULL) {
-		data[1] = proportions;
+		model->data = proportions;
 		proportions->ref_count++;
 		proportions->listeners->add( proportions->listeners, model );
 	}
-	
-	// Listen to substitution model
-	substmodel->listeners->add( substmodel->listeners, model );
 	
 	model->update = _site_model_handle_change;
 	model->handle_restore = _site_model_handle_restore;
@@ -229,8 +203,6 @@ Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel, Mode
 	model->restore = _site_model_restore;
 	model->free = _site_model_free;
 	model->clone = _site_model_clone;
-	model->data = data;
-	substmodel->ref_count++;
 	return model;
 }
 
@@ -354,14 +326,12 @@ void _weibull_gradient( SiteModel *sm, const double* ingrad, double* grad ){
 
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
-SiteModel * new_SiteModel_with_parameters( SubstitutionModel *m, const Parameters *params, Simplex* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad){
+SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad){
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
 	sm->site_category = NULL;
 	sm->sp = NULL;
 	sm->get_site_category = _get_site_category;
-	sm->m = m;
-	sm->nstate = m->nstate;
 	
 	sm->distribution = distribution;
 	sm->invariant = invariant;
@@ -761,14 +731,12 @@ double _get_rate_cat( SiteModel *sm, const int index ){
 	return sm->cat_rates[index] * (sm->mu == NULL ? 1.0 : Parameter_value(sm->mu));
 }
 
-SiteModel * new_CATSiteModel_with_parameters( SubstitutionModel *m, const Parameters *params,  const size_t cat_count, SitePattern* sp){
+SiteModel * new_CATSiteModel_with_parameters( const Parameters *params,  const size_t cat_count, SitePattern* sp){
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
 	sm->sp = sp;
 	sm->site_category = ivector(sp->count);
 	sm->get_site_category = _get_site_category_CAT;
-	sm->m = m;
-	sm->nstate = m->nstate;
 	
 	sm->distribution = -1;
 	sm->invariant = false;
@@ -806,14 +774,12 @@ SiteModel * new_CATSiteModel_with_parameters( SubstitutionModel *m, const Parame
 #pragma mark -
 
 SiteModel * clone_SiteModel( const SiteModel *sm ){
-	return clone_SiteModel_with(sm, sm->m->clone(sm->m));
+	return clone_SiteModel_with(sm);
 }
 
-SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
+SiteModel * clone_SiteModel_with( const SiteModel *sm ){
 	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(newsm);
-	newsm->m = m;
-	newsm->nstate = sm->nstate;
 	
 	newsm->rates = NULL;
 	
@@ -854,15 +820,13 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m ){
 	return newsm;
 }
 
-SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, Simplex* props, const Parameters* params, Parameter* mu ){
+SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Simplex* props, const Parameters* params, Parameter* mu ){
 	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(newsm);
-	newsm->m = m;
 	newsm->proportions = props;
 	newsm->distribution = sm->distribution;
 	newsm->invariant = sm->invariant;
 	newsm->quadrature = sm->quadrature;
-	newsm->nstate = sm->nstate;
 	
 	newsm->rates = NULL;
 	
@@ -909,7 +873,6 @@ void free_SiteModel( SiteModel *sm ){
 	if ( sm->mu != NULL ) free_Parameter(sm->mu);
 	if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
 	free(sm->cat_rates);
-	if(sm->m!=NULL)sm->m->free(sm->m);
 	free(sm);
 }
 
@@ -921,26 +884,14 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		"mu",
 		"rates",
 		"sitepattern",
-		"substitutionmodel"
+		"substitutionmodel" // allowed for backward compatibility
 	};
 	//json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
 	json_node* distribution_node = get_json_node(node, "distribution");
-	json_node* m_node = get_json_node(node, "substitutionmodel");
 	json_node* mu_node = get_json_node(node, "mu");
 	char* sp_ref = get_json_node_value_string(node, "sitepattern");
 	json_node* proportions_node = NULL;
-	
-	Model* mm = NULL;
-	if (m_node->node_type == MJSON_STRING && ((char*)m_node->value)[0] == '&') {
-		char* ref = (char*)m_node->value;
-		mm = Hashtable_get(hash, ref+1);
-		mm->ref_count++;
-	}
-	else{
-		mm = new_SubstitutionModel_from_json(m_node, hash);
-	}
-	SubstitutionModel* m = (SubstitutionModel*)mm->obj;
 	
 	size_t cat = 1;
 	
@@ -1092,10 +1043,10 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			Hashtable_add(hash, Parameters_name(rates, i), Parameters_at(rates, i));
 		}
 		
-		sm = new_CATSiteModel_with_parameters(m, rates, cat, sp);
+		sm = new_CATSiteModel_with_parameters(rates, cat, sp);
 	}
 	else {
-		sm = new_SiteModel_with_parameters(m, rates, props_simplex, cat, distribution, invariant, quad);
+		sm = new_SiteModel_with_parameters(rates, props_simplex, cat, distribution, invariant, quad);
 	}
 	
 	
@@ -1111,9 +1062,8 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
 	}
 	
-	Model* msm = new_SiteModel2(id_string, sm, mm, mprops_simplex);
+	Model* msm = new_SiteModel2(id_string, sm, mprops_simplex);
 	
-	mm->free(mm);
 	if(mprops_simplex != NULL) mprops_simplex->free(mprops_simplex);
 	msm->print = _SiteModel_print;
 	free_Parameters(rates);

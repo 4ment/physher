@@ -18,7 +18,6 @@
 #ifndef _SITE_MODEL_H_
 #define _SITE_MODEL_H_
 
-#include "substmodel.h"
 #include "parameters.h"
 #include "mstring.h"
 #include "distmodel.h"
@@ -37,9 +36,7 @@ typedef enum quadrature_t {
 }quadrature_t;
 
 typedef struct SiteModel{
-	SubstitutionModel *m;
 	SitePattern* sp;
-	int nstate;
 	
 	distribution_t distribution; // parametric distribution
 	bool invariant;
@@ -71,7 +68,7 @@ typedef struct SiteModel{
     Parameter *mu;
 } SiteModel;
 
-Model * new_SiteModel2( const char* name, SiteModel *sm, Model *substmodel, Model* proportions );
+Model * new_SiteModel2( const char* name, SiteModel *sm, Model* proportions );
 
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash);
 
@@ -81,8 +78,8 @@ void free_SiteModel( SiteModel *sm );
 
 SiteModel * clone_SiteModel( const SiteModel *sm );
 
-SiteModel * clone_SiteModel_with( const SiteModel *sm, SubstitutionModel* m );
+SiteModel * clone_SiteModel_with( const SiteModel *sm );
 
-SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, SubstitutionModel* m, Simplex* props, const Parameters* params, Parameter* mu );
+SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Simplex* props, const Parameters* params, Parameter* mu );
 
 #endif

@@ -78,6 +78,7 @@ static void _free_partial_distribution(DistributionModel*dm){
     }
 	if(dm->tempx != NULL) free(dm->tempx);
 	if(dm->tempp != NULL) free(dm->tempp);
+	if(dm->gradient != NULL) free(dm->gradient);
 	// freeing data is left to the user
 	free(dm);
 }
@@ -206,6 +207,11 @@ DistributionModel* new_DistributionModel(Parameters** p, size_t dim, Parameters*
 	dm->tempx = NULL;
 	dm->tempp = NULL;
 	dm->need_update = true;
+	
+	dm->prepared_gradient = 0;;
+	dm->gradient = NULL;
+	dm->gradient_length = 0;
+	dm->need_update_gradient = true;
 	return dm;
 }
 
@@ -446,6 +452,7 @@ DistributionModel* new_UniformTreeDistribution(Tree* tree){
 void _dist_model_handle_change( Model *self, Model *model, int index ){
 	DistributionModel* dm = self->obj;
 	dm->need_update = true;
+	dm->need_update_gradient = true;
 	self->listeners->fire( self->listeners, self, index );
 }
 

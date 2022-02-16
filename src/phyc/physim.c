@@ -37,12 +37,12 @@
 
 
 // for codons len is the number of codons
-Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataType *datatype, unsigned len, bool keep_internal ){
-    int nstate = sm->nstate;
+Sequences * Sequence_simulate( Tree *tree, SubstitutionModel *m, SiteModel *sm, BranchModel *bm, DataType *datatype, unsigned len, bool keep_internal ){
+    int nstate = m->nstate;
     double *p = dvector(nstate*nstate);
     int *rates = ivector(len);
     
-    const double *freqs = sm->m->get_frequencies(sm->m);
+    const double *freqs = m->get_frequencies(m);
     
     double accum = 0;
     for ( int i = 0; i < nstate; i++ ) {
@@ -57,7 +57,7 @@ Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataT
         exit(1);
     }
     
-    sm->m->need_update = true;
+    m->need_update = true;
     sm->need_update = true;
     
     if( sm->distribution != DISTRIBUTION_UNIFORM ){
@@ -123,7 +123,7 @@ Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataT
             else {
                 t *= Node_time_elapsed(nodes[i]) * bm->get(bm, nodes[i]);
             }
-            sm->m->p_t(sm->m, t, p);
+			m->p_t(m, t, p);
 
             memcpy(residue, &parent->seq[j], residue_length*sizeof(char));
             int parent_state = seqs->datatype->encoding_string(seqs->datatype, residue);
@@ -147,8 +147,8 @@ Sequences * Sequence_simulate( Tree *tree, SiteModel *sm, BranchModel *bm, DataT
     }
     
     seqs->aligned  = true;
-    seqs->datatype->genetic_code  = sm->m->gen_code;
-    seqs->datatype->type = sm->m->datatype->type;
+    seqs->datatype->genetic_code  = m->gen_code;
+    seqs->datatype->type = m->datatype->type;
     
     free(residue);
     free(p);
@@ -210,7 +210,8 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     char* output = get_json_node_value_string(node, "output");
     char* format = get_json_node_value_string(node, "format");
     json_node* tree_node = get_json_node(node, "tree");
-    json_node* sm_node = get_json_node(node, "sitemodel");
+	json_node* m_node = get_json_node(node, "substitutionmodel");
+	json_node* sm_node = get_json_node(node, "sitemodel");
     json_node* bm_node = get_json_node(node, "branchmodel");
     json_node* datatype_node = get_json_node(node, "datatype");
     int length = get_json_node_value_int(node, "length", 1000);
@@ -224,7 +225,8 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
 	}
     
     Model* mtree = NULL;
-    Model* msm = NULL;
+	Model* msm = NULL;
+	Model* mm = NULL;
     Model* mbm = NULL;
     
     if (tree_node->node_type == MJSON_STRING) {
@@ -239,18 +241,30 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
         Hashtable_add(hash, id, mtree);
     }
     
-    if (sm_node->node_type == MJSON_STRING) {
-        char* ref = (char*)sm_node->value;
+    if (m_node->node_type == MJSON_STRING) {
+        char* ref = (char*)m_node->value;
         // check it starts with a &
         msm = Hashtable_get(hash, ref+1);
         msm->ref_count++;
     }
     else{
-        char* id = get_json_node_value_string(sm_node, "id");
-        msm = new_SiteModel_from_json(sm_node, hash);
-        Hashtable_add(hash, id, msm);
+        char* id = get_json_node_value_string(m_node, "id");
+        mm = new_SiteModel_from_json(m_node, hash);
+        Hashtable_add(hash, id, mm);
     }
-    
+	
+	
+	if (sm_node->node_type == MJSON_STRING) {
+		char* ref = (char*)sm_node->value;
+		// check it starts with a &
+		msm = Hashtable_get(hash, ref+1);
+		msm->ref_count++;
+	}
+	else{
+		char* id = get_json_node_value_string(sm_node, "id");
+		msm = new_SiteModel_from_json(sm_node, hash);
+		Hashtable_add(hash, id, msm);
+	}
     BranchModel* bm = NULL;
     if(bm_node != NULL){
         if (bm_node->node_type == MJSON_STRING) {
@@ -433,7 +447,7 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
         free(rate_dist);
     }
     
-    Sequences *sim = Sequence_simulate(tree, msm->obj, bm, datatype, length, internal);
+    Sequences *sim = Sequence_simulate(tree, mm->obj, msm->obj, bm, datatype, length, internal);
     
     if(strcasecmp(format, "fasta") == 0){
         Sequences_save_fasta(sim, output);
@@ -468,6 +482,7 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
 	
     free_Sequences(sim);
     mtree->free(mtree);
-    msm->free(msm);
+	mm->free(mm);
+	msm->free(msm);
     if(mbm != NULL) mbm->free(mbm);
 }

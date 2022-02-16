@@ -678,7 +678,7 @@ static void _calculate_branch_partials_undefined_20(SingleTreeLikelihood *tlk, d
 }
 
 static void _calculate_branch_partials_state_20(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, int partialsIndex, const double* matrices){
-	memset(rootPartials, 0, sizeof(double)*tlk->sm->nstate*tlk->pattern_count);
+	memset(rootPartials, 0, sizeof(double)*tlk->m->nstate*tlk->pattern_count);
 	int u = 0;
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < tlk->pattern_count; k++) {
@@ -725,7 +725,7 @@ static void _calculate_branch_partials_state_20(SingleTreeLikelihood *tlk, doubl
 }
 
 static void _calculate_branch_partials_state2_20(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, const double* partials, const double* matrices){
-	memset(rootPartials, 0, sizeof(double)*tlk->sm->nstate*tlk->pattern_count*tlk->cat_count);
+	memset(rootPartials, 0, sizeof(double)*tlk->m->nstate*tlk->pattern_count*tlk->cat_count);
 	int u = 0;
 	const double* partialsChildPtr = partials;
 	for(int l = 0; l < tlk->cat_count; l++) {
@@ -886,7 +886,7 @@ static void _calculate_branch_partials_undefined_20_SSE(SingleTreeLikelihood *tl
 }
 
 static void _calculate_branch_partials_upper_undefined_20_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, const double* partials, const double* matrices){
-	memset(rootPartials, 0, sizeof(double)*tlk->sm->nstate*tlk->pattern_count*tlk->cat_count);
+	memset(rootPartials, 0, sizeof(double)*tlk->m->nstate*tlk->pattern_count*tlk->cat_count);
 	
 	double t[2] __attribute__ ((aligned (16)));
 	__m128d temp;
