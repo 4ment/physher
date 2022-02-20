@@ -250,6 +250,8 @@ void Parameters_set_value( Parameters *p, const size_t index, const double value
 
 void Parameters_set_value_quietly( Parameters *p, const size_t index, const double value );
 
+void Parameters_set_values( Parameters *p, const double* values );
+
 void Parameters_set_all_value( Parameters *p, const double value );
 
 void Parameters_fire( Parameters *p );

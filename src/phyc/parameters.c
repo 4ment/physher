@@ -644,6 +644,13 @@ void Parameters_set_value_quietly( Parameters *p, const size_t index, const doub
 	Parameter_set_value_quietly(p->list[index], value);
 }
 
+void Parameters_set_values( Parameters *p, const double* values ){
+	for (int i = 0; i < Parameters_count(p); ++i) {
+		p->list[i]->value = values[i];
+	}
+	Parameter_fire(p->list[0]);
+}
+
 void Parameters_fire( Parameters *p ){
 	for (int i = 0; i < Parameters_count(p); ++i) {
 		Parameter_fire(p->list[i]);
