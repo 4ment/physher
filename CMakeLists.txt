@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 SET(DEFAULT_SSE_LEVEL "sse3")
 
-PROJECT(phyc C)
+PROJECT(phyc)
 
 SET( LIBRARY_NAME "PHYC" )
 
@@ -245,12 +245,16 @@ configure_file (
   
 #####################################################################
 
-add_definitions("-std=gnu99")
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 link_libraries(m)
 
 file(GLOB SRC_FILES src/phyc/*.c)
 file(GLOB HEADER_FILES src/phyc/*.h)
+
+set_source_files_properties(${SRC_FILES} PROPERTIES LANGUAGE CXX )
+set_source_files_properties(${HEADER_FILES} PROPERTIES LANGUAGE CXX )
 
 SET(HEADER_FILES "${HEADER_FILES};${PROJECT_BINARY_DIR}/phyc/PhyCConfig.h")
 
@@ -271,7 +275,8 @@ set_target_properties(
     
 	CLEAN_DIRECT_OUTPUT 1
 )
-  
+#set_target_properties(phyc PROPERTIES LINKER_LANGUAGE CXX)
+
 IF(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set_property(
         TARGET phyc
@@ -300,6 +305,7 @@ target_link_libraries(phyc GSL::gsl GSL::gslcblas)
 
 IF(NOT LIBRARY_ONLY)	
 	add_executable(physher src/physher.c)
+	#set_target_properties(physher PROPERTIES LINKER_LANGUAGE CXX)
 	target_link_libraries(physher phyc)
 
 	

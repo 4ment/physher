@@ -29,7 +29,7 @@
 #include "hashtable.h"
 
 args_parser* argsparser_init(struct argsparser_option options[], int count){
-    struct args_parser* args = malloc(sizeof(args_parser));
+    struct args_parser* args = (struct args_parser*)malloc(sizeof(args_parser));
     assert(args);
     args->option_count = count;
     args->options = options;
@@ -39,7 +39,7 @@ args_parser* argsparser_init(struct argsparser_option options[], int count){
 }
 
 args_parser2* argsparser2_init(struct argsparser2_option options[], int count){
-	struct args_parser2* args = malloc(sizeof(args_parser2));
+	struct args_parser2* args = (struct args_parser2*)malloc(sizeof(args_parser2));
 	assert(args);
 	args->option_count = count;
 	args->options = options;
@@ -739,7 +739,7 @@ Hashtable * argsparser2_parse(args_parser2* args, char* argv[], int argc){
 	
 	Hashtable* hash = new_Hashtable_string(10);
 	for(int i = 0; i < args->option_count; i++){
-		char* name = args->options[i].long_name;
+		const char* name = args->options[i].long_name;
 		char* value = args->options[i].value;
 		if (value == NULL) {
 			value = "";
