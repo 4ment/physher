@@ -353,6 +353,9 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* pr
 			Parameters_set_name2(sm->rates, Parameters_name2(params));
 		}
 	}
+	for(size_t i = 0; i < Parameters_count(params); i++){
+		Parameters_at(sm->rates, i)->model = MODEL_SITEMODEL;
+	}
 	sm->mu    = NULL;
     
     sm->set_rate = set_rate;
@@ -652,6 +655,12 @@ double *_get_proportions_laguerre( SiteModel *sm ){
 
 int _get_site_category_CAT(SiteModel* sm, const int pattern){
 	return sm->site_category[pattern];
+}
+
+void SiteModel_set_mu(SiteModel *sm, Parameter* mu){
+	sm->mu = mu;
+	sm->mu->model = MODEL_SITEMODEL;
+	mu->refCount++;
 }
 
 #pragma mark -

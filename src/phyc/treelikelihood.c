@@ -59,6 +59,8 @@ static double _calculate( SingleTreeLikelihood *tlk );
 
 double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 
+double calculate_log_jacobian(Node* node, double* logP);
+
 void calculate_dldp_uppper_reparam( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods );
 double calculate_dl_dr(SingleTreeLikelihood* tlk, double* pattern_likelihoods);
 double calculate_dl_dr_discrete(SingleTreeLikelihood* tlk, Node* node, double* pattern_likelihoods);
@@ -137,14 +139,25 @@ static void _singleTreeLikelihood_restore(Model* self){
 double _singleTreeLikelihood_logP(Model *self){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 	self->lp = tlk->calculate(tlk);
+	if(tlk->include_jacobian){
+		if(Tree_homochronous(tlk->tree)){
+			for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
+				Node* node = Tree_node(tlk->tree, i);
+				if(!Node_isroot(node) && !Node_isleaf(node)){
+					self->lp += log(Node_height(Node_parent(node)));
+				}
+			}
+		}
+		else{
+			calculate_log_jacobian(Tree_root(tlk->tree), &self->lp);
+		}
+	}
 	return self->lp;
 }
 
 double _singleTreeLikelihood_full_logP(Model *self){
-	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
-	SingleTreeLikelihood_update_all_nodes(tlk);
-	self->lp = tlk->calculate(tlk);
-	return self->lp;
+	SingleTreeLikelihood_update_all_nodes((SingleTreeLikelihood*)self->obj);
+	return _singleTreeLikelihood_logP(self);
 }
 
 // Set flags for gradient calculation
@@ -311,41 +324,6 @@ double calculate_log_jacobian(Node* node, double* logP){
 	else{
 		return Node_height(node);
 	}
-}
-
-double _singleTreeLikelihood_reparametrized_logP(Model *self){
-	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
-	self->lp = tlk->calculate(tlk);
-	if(Tree_homochronous(tlk->tree)){
-		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
-			Node* node = Tree_node(tlk->tree, i);
-			if(!Node_isroot(node) && !Node_isleaf(node)){
-				self->lp += log(Node_height(Node_parent(node)));
-			}
-		}
-	}
-	else{
-		calculate_log_jacobian(Tree_root(tlk->tree), &self->lp);
-	}
-	return self->lp;
-}
-
-double _singleTreeLikelihood_reparametrized_full_logP(Model *self){
-	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
-		SingleTreeLikelihood_update_all_nodes(tlk);
-	self->lp = tlk->calculate(tlk);
-	if(Tree_homochronous(tlk->tree)){
-		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
-			Node* node = Tree_node(tlk->tree, i);
-			if(!Node_isroot(node) && !Node_isleaf(node)){
-				self->lp += log(Node_height(Node_parent(node)));
-			}
-		}
-	}
-	else{
-		calculate_log_jacobian(Tree_root(tlk->tree), &self->lp);
-	}
-	return self->lp;
 }
 
 static void _calculate_dlog_jacobian(const Node* noderef, Node* node, double* dlogP, double* descendant, unsigned *map, Parameters* reparams, double* lowers){
@@ -820,7 +798,7 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	model->update = _treelikelihood_handle_change;
 	model->free = _treeLikelihood_model_free;
 	model->clone = _treeLikelihood_model_clone;
-	model->data = (Model**)malloc(sizeof(Model*)*3);
+	model->data = (Model**)malloc(sizeof(Model*)*4);
 	model->store = _singleTreeLikelihood_store;
 	model->restore = _singleTreeLikelihood_restore;
 	Model** list = (Model**)model->data;
@@ -840,7 +818,8 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	char* allowed[] = {
 		"branchmodel",
-		"reparameterized",
+		"include_jacobian",
+		"reparameterized", // deprecated. use include_jacobian
 		"root_frequencies",
 		"sitemodel",
 		"sitepattern",
@@ -856,7 +835,8 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	json_node* m_node = get_json_node(node, "substitutionmodel");
 	json_node* sm_node = get_json_node(node, "sitemodel");
 	json_node* bm_node = get_json_node(node, "branchmodel");
-	bool reparameterized = get_json_node_value_bool(node, "reparameterized", false);
+	bool include_jacobian = get_json_node_value_bool(node, "reparameterized", false);
+	include_jacobian |= get_json_node_value_bool(node, "include_jacobian", false);
 	bool use_tip_states = get_json_node_value_bool(node, "tipstates", true);
 	
 	Model* mtree = NULL;
@@ -956,11 +936,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	if (!use_sse) {
 		SingleTreeLikelihood_enable_SSE(tlk, false);
 	}
-	
-	if(reparameterized){
-		model->logP = _singleTreeLikelihood_reparametrized_logP;
-		model->full_logP = _singleTreeLikelihood_reparametrized_full_logP;
-	}
+	tlk->include_jacobian = include_jacobian;
 	return model;
 }
 
@@ -1412,7 +1388,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	}
 	newtlk->get_root_frequencies = tlk->get_root_frequencies;
 
-	newtlk->reparametrized = tlk->reparametrized;
+	newtlk->include_jacobian = tlk->include_jacobian;
 	
 	newtlk->gradient = NULL;
 	if(tlk->gradient != NULL){
@@ -3579,7 +3555,9 @@ void gradient_ratios(SingleTreeLikelihood* tlk, const double* branch_gradient, d
 	gradient_heights(tlk, branch_gradient, height_gradient);
 	//jvp and jacobian
 	Tree_node_transform_jvp(tlk->tree, height_gradient, gradient);
-	Tree_node_transform_jacobian_gradient(tlk->tree, gradient);
+	if(tlk->include_jacobian){
+		Tree_node_transform_jacobian_gradient(tlk->tree, gradient);
+	}
 //	node_transform_jvp(tlk->tree, height_gradient, gradient, true);
 	free(height_gradient);
 }

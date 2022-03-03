@@ -1191,16 +1191,16 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		
 		p = get_json_node_value_string(node, "reparam");
 		
-		StringBuffer* buffer = new_StringBuffer(10);
-		char* id = get_json_node_value_string(node, "id");
-		for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
-			StringBuffer_set_string(buffer, id);
-			StringBuffer_append_strings(buffer, 2, ".", Parameters_name(tree->tt->parameters, i));
-			Parameter_set_name(Parameters_at(tree->tt->parameters, i), buffer->c);
-		}
-		free_StringBuffer(buffer);
-		
 		if (p != NULL) {
+			StringBuffer* buffer = new_StringBuffer(10);
+			char* id = get_json_node_value_string(node, "id");
+			for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
+				StringBuffer_set_string(buffer, id);
+				StringBuffer_append_strings(buffer, 2, ".", Parameters_name(tree->tt->parameters, i));
+				Parameter_set_name(Parameters_at(tree->tt->parameters, i), buffer->c);
+			}
+			free_StringBuffer(buffer);
+			
 			Parameters_set_name2(tree->tt->parameters, p);
 			Hashtable_add(hash, Parameters_name2(tree->tt->parameters), tree->tt->parameters);
 			for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {

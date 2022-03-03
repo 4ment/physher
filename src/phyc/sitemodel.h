@@ -74,6 +74,8 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash);
 
 #pragma mark -
 
+SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad);
+
 void free_SiteModel( SiteModel *sm );
 
 SiteModel * clone_SiteModel( const SiteModel *sm );
@@ -81,5 +83,7 @@ SiteModel * clone_SiteModel( const SiteModel *sm );
 SiteModel * clone_SiteModel_with( const SiteModel *sm );
 
 SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Simplex* props, const Parameters* params, Parameter* mu );
+
+void SiteModel_set_mu(SiteModel *sm, Parameter* mu);
 
 #endif

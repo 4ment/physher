@@ -115,7 +115,7 @@ struct _SingleTreeLikelihood{
 	
 	const double* (*get_root_frequencies)(SingleTreeLikelihood*);
 	double* root_frequencies;
-	bool reparametrized;
+	bool include_jacobian;
 	
 	int prepared_gradient;
 	double* gradient;

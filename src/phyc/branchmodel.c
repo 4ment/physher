@@ -535,6 +535,7 @@ BranchModel * new_StrictClock_with_parameters( Tree *tree, const Parameters *rat
 	
 	bm->rates = new_Parameters(1);
 	Parameters_add_parameters(bm->rates, rates);
+	Parameters_at(bm->rates, 0)->model = MODEL_BRANCHMODEL;
 	
 	bm->need_update = false; // nothing to do
 	
@@ -552,6 +553,7 @@ BranchModel * new_StrictClock_with_parameter( Tree *tree, Parameter *rate ){
 	bm->get = _get_strict_clock;
 	bm->set = _set_strickclock;
 	
+	rate->model = MODEL_BRANCHMODEL;
 	bm->rates = new_Parameters(1);
 	Parameters_add(bm->rates, rate);
 	
@@ -869,6 +871,10 @@ BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *r
 	bm->rates = new_Parameters(Parameters_count(rates));
 	Parameters_add_parameters(bm->rates, rates);
 	
+	for (int i = 0; i < Parameters_count(rates); i++) {
+		Parameters_at(rates, i)->model = MODEL_BRANCHMODEL;
+	}
+
 	bm->map = map;
 	bm->indicators = NULL;
 	bm->unscaled_rates = NULL;
