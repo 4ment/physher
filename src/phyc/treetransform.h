@@ -27,7 +27,7 @@ typedef struct TreeTransform {
     Node** map_to_node;
 	tree_transform_t parameterization;
     Parameter* (*parameter_of_node)(struct TreeTransform*, Node*);
-    Node* (*node_of_parameter)(struct TreeTransform*, Parameter*);
+    Node* (*node_of_parameter)(struct TreeTransform*, const Parameter*);
     double (*inverse_transform)(struct TreeTransform*, Node*);
     void (*update)(struct TreeTransform*);
     void (*update_lowers)(struct TreeTransform*);

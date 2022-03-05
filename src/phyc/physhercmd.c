@@ -815,7 +815,7 @@ void create_json_node_meta_opt(Hashtable* nodes){
 	Hashtable_add(nodes, "joptmetalist", joptmetalist);
 }
 
-Hashtable * extract_arguments(int argc, char* argv[]){
+Hashtable * extract_arguments(int argc, const char* argv[]){
 	
 	struct argsparser2_option options[] = {
 		{ARGS_OPTION_STRING,  'i', "sequences",    NULL, "Input alignment file"},
@@ -958,7 +958,7 @@ void create_json_vb(Hashtable* options, Hashtable* nodes){
      */
 }
 
-json_node* create_json_file(int argc, char* argv[]){
+json_node* create_json_file(int argc, const char* argv[]){
 	
 	Hashtable* options = extract_arguments(argc, argv);
 	

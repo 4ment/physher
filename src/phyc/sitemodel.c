@@ -222,7 +222,7 @@ static void _SiteModel_print(Model* model, FILE* out){
 		fprintf(out, "sum %f\n", sum);
 	}
 	else if(sm->proportions != NULL){
-		fprintf(out, "proportion rate %d\n", sm->proportions->K);
+		fprintf(out, "proportion rate %lu\n", sm->proportions->K);
 		for (int i = 0; i < sm->proportions->K; i++){
 			fprintf(out, "%f %f\n",sm->cat_proportions[i], sm->cat_rates[i]);
 		}
@@ -692,7 +692,7 @@ void _calculate_rates_discrete( SiteModel *sm ) {
 	int cat = (sm->invariant ? 1 : 0);
 	int cat_count = sm->proportions->K;
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
-	double* cat_proportions = sm->proportions->get_values(sm->proportions);
+	const double* cat_proportions = sm->proportions->get_values(sm->proportions);
 	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
 	
 	if(Parameters_count(sm->rates) == 0){

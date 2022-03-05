@@ -79,7 +79,7 @@ double* multivariate_normal_logP(Vector** values, size_t n, const double* means,
 	gsl_linalg_cholesky_decomp1(L);
 	
 	for (int i = 0; i < n; i++) {
-		double* vv = Vector_data(values[i]);
+		const double* vv = Vector_data(values[i]);
 		for (int j = 0; j < dim; j++) {
 			gsl_vector_set(x, j,  vv[j]);
 		}
@@ -129,10 +129,10 @@ void bridge_sampling(BridgeSampling* bs){
 	
 	// Calculate covariance matrix
 	for (int i = 0; i < paramCount; i++) {
-		double* pp = Vector_data(params_transformed[i]);
+		const double* pp = Vector_data(params_transformed[i]);
 		covariances[i*paramCount+i] = variance(pp, aN1, means[i]);
 		for (int j = i+1; j < paramCount; j++) {
-			double* pp2 = Vector_data(params_transformed[j]);
+			const double* pp2 = Vector_data(params_transformed[j]);
 			covariances[i*paramCount+j] = covariances[j*paramCount+i] = covariance(pp, pp2, means[i], means[j], aN1);
 		}
 	}

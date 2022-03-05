@@ -32,8 +32,8 @@ typedef struct variational_block_t{
     double (*entropy)(struct variational_block_t*);
     void (*grad_elbo)(struct variational_block_t*, const Parameters*, double* grads);
     void (*grad_entropy)(struct variational_block_t*, const Parameters*, double*);
-    double (*logP)(struct variational_block_t*, double* values);
-    double (*logQ)(struct variational_block_t*, double* values);
+    double (*logP)(struct variational_block_t*, const double* values);
+    double (*logQ)(struct variational_block_t*, const double* values);
     bool use_entropy;
     gsl_rng* rng;
     bool initialized;
@@ -54,7 +54,7 @@ typedef struct variational_t{
     size_t grad_samples;
 	bool (*sample)( struct variational_t*, double* values );
 	bool (*sample_some)( struct variational_t*, const Parameters* parameters, double* values );
-	double (*logP)( struct variational_t*, double* x );
+	double (*logP)( struct variational_t*, const double* x );
 	void (*finalize)( struct variational_t* );
     void (*print)( struct variational_t*, FILE* file );
 	bool initialized;

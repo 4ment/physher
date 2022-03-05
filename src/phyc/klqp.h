@@ -31,8 +31,8 @@ double klqp_block_meanfield_normal_entropy(variational_block_t* var);
 void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Parameters* parameters, double* grads);
 void klqp_block_meanfield_normal_grad_entropy(variational_block_t* var, const Parameters* parameters, double* grads);
 
-double klqp_block_meanfield_normal_logP(variational_block_t* var, double* values);
-double klqp_block_meanfield_normal_logQ(variational_block_t* var, double* values);
+double klqp_block_meanfield_normal_logP(variational_block_t* var, const double* values);
+double klqp_block_meanfield_normal_logQ(variational_block_t* var, const double* values);
 
 void klqp_block_meanfield_normal_sample(variational_block_t* var, double* values);
 
@@ -48,8 +48,8 @@ double klqp_block_fullrank_normal_entropy(variational_block_t* var);
 void klqp_block_fullrank_normal_grad_elbo(variational_block_t* var, const Parameters* parameters, double* grads);
 void klqp_block_fullrank_normal_grad_entropy(variational_block_t* var, const Parameters* parameters, double* grads);
 
-double klqp_block_fullrank_normal_logP(variational_block_t* var, double* values);
-double klqp_block_fullrank_normal_logQ(variational_block_t* var, double* values);
+double klqp_block_fullrank_normal_logP(variational_block_t* var, const double* values);
+double klqp_block_fullrank_normal_logQ(variational_block_t* var, const double* values);
 
 void klqp_block_fullrank_normal_sample(variational_block_t* var, double* values);
 
@@ -67,7 +67,7 @@ double klqp_meanfield_normal_elbo_multi(variational_t* var);
 
 void klqp_meanfield_normal_grad_elbo(variational_t* var, const Parameters* parameters, double* grads);
 
-double klqp_meanfield_normal_logP(variational_t* var, double* values);
+double klqp_meanfield_normal_logP(variational_t* var, const double* values);
 
 bool klqp_meanfield_normal_sample(variational_t* var, double* values);
 
@@ -81,7 +81,7 @@ double klqp_meanfield_lognormal_elbo(variational_t* var);
 
 void klqp_meanfield_lognormal_grad_elbo(variational_t* var, const Parameters* parameters, double* grads);
 
-double klqp_meanfield_lognormal_logP(variational_t* var, double* values);
+double klqp_meanfield_lognormal_logP(variational_t* var, const double* values);
 
 bool klqp_meanfield_lognormal_sample(variational_t* var, double* values);
 
@@ -98,7 +98,7 @@ double klqp_fullrank_normal_elbo(variational_t* var);
 
 void klqp_fullrank_normal_grad_elbo(variational_t* var, const Parameters* parameters, double* grads);
 
-double klqp_fullrank_normal_logP(variational_t* var, double* values);
+double klqp_fullrank_normal_logP(variational_t* var, const double* values);
 
 bool klqp_fullrank_normal_sample(variational_t* var, double* values);
 

@@ -242,7 +242,7 @@ Model* new_MultivariateNormalDistributionModel_from_json(json_node* node, Hashta
         int n = Vector_length(samples[0]);
         
         for (int i = 0; i < paramCount; i++) {
-            double* vv = Vector_data(samples[i]);
+            double* vv = Vector_mutable_data(samples[i]);
             for (int j = 0; j < n; j++) {
                 vv[j] = log(vv[j]);
             }
@@ -252,10 +252,10 @@ Model* new_MultivariateNormalDistributionModel_from_json(json_node* node, Hashta
         
         // Calculate covariance matrix
         for (int i = 0; i < paramCount; i++) {
-            double* pp = Vector_data(samples[i]);
+            const double* pp = Vector_data(samples[i]);
             sigma[i*paramCount+i] = variance(pp, n, mu[i]);
             for (int j = i+1; j < paramCount; j++) {
-                double* pp2 = Vector_data(samples[j]);
+                const double* pp2 = Vector_data(samples[j]);
                 sigma[i*paramCount+j] = sigma[j*paramCount+i] = covariance(pp, pp2, mu[i], mu[j], n);
             }
             free_Vector(samples[i]);

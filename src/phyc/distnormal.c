@@ -192,7 +192,7 @@ Model* new_NormalDistributionModel_from_json(json_node* node, Hashtable* hash){
         parameters[1] = new_Parameters(paramCount);
         
         for (int i = 0; i < paramCount; i++) {
-            double* vec = Vector_data(samples[i]);
+            const double* vec = Vector_data(samples[i]);
             double m = mean(vec, Vector_length(samples[i]));
             double v = variance(vec, Vector_length(samples[i]), m);
             Parameters_move(parameters[0], new_Parameter("mu", m, new_Constraint(-INFINITY, INFINITY)));
@@ -374,7 +374,7 @@ Model* new_HalfNormalDistributionModel_from_json(json_node* node, Hashtable* has
         }
         
         for (int i = 0; i < paramCount; i++) {
-            double* vec = Vector_data(samples[i]);
+            const double* vec = Vector_data(samples[i]);
             double sum2 = 0;
             size_t n = Vector_length(samples[i]);
             for(size_t j = 0; j < n; j++){

@@ -134,7 +134,7 @@ Model* new_BetaDistributionModel_from_json(json_node* node, Hashtable* hash){
         parameters[1] = new_Parameters(paramCount);
         
         for (int i = 0; i < paramCount; i++) {
-            double* vec = Vector_data(samples[i]);
+            const double* vec = Vector_data(samples[i]);
             double m = mean(vec, Vector_length(samples[i]));
             double v = variance(vec, Vector_length(samples[i]), m);
             double alpha = m*(m*(1.0 - m)/v - 1.0);

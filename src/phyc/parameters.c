@@ -552,7 +552,11 @@ void Parameters_set_name2(Parameters* ps, const char* name){
 	ps->name = String_clone(name);
 }
 
-char* Parameters_name2(Parameters* ps){
+const char* Parameters_name2(const Parameters* ps){
+	return ps->name;
+}
+
+char* Parameters_mutable_name2(Parameters* ps){
 	return ps->name;
 }
 
@@ -1106,7 +1110,7 @@ double Model_first_derivative( Model *model, Parameter* parameter, double eps ) 
 
 #pragma mark -
 
-void get_parameters_slice(char* ref, Parameters* parameters, Hashtable* hash){
+void get_parameters_slice(const char* ref, Parameters* parameters, Hashtable* hash){
 	char* copy = String_clone(ref);
 	char* start = copy;
 	while (*start != '['){

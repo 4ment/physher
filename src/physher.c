@@ -58,7 +58,7 @@
 #include "phyc/physhercmd.h"
 
 
-int main(int argc, char* argv[]){
+int main(int argc, const char* argv[]){
 	time_t start_time;
 	time_t beginning_of_time;
 	time_t end_time;

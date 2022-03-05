@@ -192,7 +192,7 @@ json_node* add_json_node_double(json_node* parent, const char* key, double value
 	return add_json_node_aux(parent, nkey, nvalue, MJSON_PRIMITIVE);
 }
 
-json_node* add_json_node_array_double(json_node* parent, const char* key, double* values, size_t dim){
+json_node* add_json_node_array_double(json_node* parent, const char* key, const double* values, size_t dim){
 	json_node* new = create_json_node(parent);
 	add_json_node(parent, new);
 	new->node_type = MJSON_ARRAY;
@@ -209,7 +209,7 @@ json_node* add_json_node_array_double(json_node* parent, const char* key, double
 	return new;
 }
 
-json_node* add_json_node_array_unsigned(json_node* parent, const char* key, unsigned* values, size_t dim){
+json_node* add_json_node_array_unsigned(json_node* parent, const char* key, const unsigned* values, size_t dim){
 	json_node* new = create_json_node(parent);
 	add_json_node(parent, new);
 	new->node_type = MJSON_ARRAY;
@@ -585,7 +585,7 @@ void json_check_allowed(json_node* node, char** allowed, int length){
 			}
 		}
 		if (j == length) {
-			fprintf(stderr, "Key not recognised: %s in %s of type %s\n", node->children[i]->key, node->children[id]->value, node->children[type]->value);
+			fprintf(stderr, "Key not recognised: %s in %s of type %s\n", node->children[i]->key, (char*)node->children[id]->value, (char*)node->children[type]->value);
 			fprintf(stderr, "Possible keys:\n");
 			for (int j = 0; j < length; j++) {
 				fprintf(stderr, " %s\n", allowed[j]);
@@ -625,7 +625,7 @@ void json_check_required(json_node* node, char** required, int length){
 	}
 	for (int j = 0 ; j < length; j++) {
 		if(!found[j]){
-			fprintf(stderr, "Key not found: %s in %s of type %s\n", required[j], node->children[id]->value, node->children[type]->value);
+			fprintf(stderr, "Key not found: %s in %s of type %s\n", required[j], (char*)node->children[id]->value, (char*)node->children[type]->value);
 			exit(12);
 		}
 	}

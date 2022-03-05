@@ -243,7 +243,7 @@ void estimate_GTR(SingleTreeLikelihood* tlk){
 				Q[i][j] /= subst;
 			}
 		}
-		print_dmatrix(stdout, Q, 4, 4, ',');
+		print_dmatrix(stdout, (const double**)Q, 4, 4, ',');
 		print_dvector(pi, 4);
 	}
 	free(pi);

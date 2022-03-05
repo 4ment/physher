@@ -117,7 +117,7 @@ double klpq_normal_meanfield(variational_t* var){
 	return -elbo; // we want to minimize with a maximizer
 }
 
-void grad_klpq_normal_meanfield(variational_t* var, double* grads){
+void grad_klpq_normal_meanfield(variational_t* var, const Parameters* parameters, double* grads){
 	if (var->initialized == false) {
 		klqp_meanfield_normal_init(var);
 		// save for later

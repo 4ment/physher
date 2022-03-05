@@ -234,7 +234,7 @@ Model* new_LogNormalDistributionModel_from_json(json_node* node, Hashtable* hash
         
         for (int i = 0; i < paramCount; i++) {
             //TODO: that coming from normal
-            double* vec = Vector_data(samples[i]);
+            const double* vec = Vector_data(samples[i]);
             double m = mean(vec, Vector_length(samples[i]));
             double v = variance(vec, Vector_length(samples[i]), m);
             Parameters_move(parameters[0], new_Parameter("mu", m, new_Constraint(-INFINITY, INFINITY)));

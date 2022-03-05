@@ -21,8 +21,8 @@ void klqp_block_meanfield_weibull_grad_elbo(variational_block_t* var, const Para
 
 void klqp_block_meanfield_weibull_grad_entropy(variational_block_t* var, const Parameters* parameters, double* grads);
 
-double klqp_block_meanfield_weibull_logP(variational_block_t* var, double* values);
-double klqp_block_meanfield_weibull_logQ(variational_block_t* var, double* values);
+double klqp_block_meanfield_weibull_logP(variational_block_t* var, const double* values);
+double klqp_block_meanfield_weibull_logQ(variational_block_t* var, const double* values);
 void klqp_block_meanfield_weibull_sample(variational_block_t* var, double* values);
 
 bool klqp_block_meanfield_weibull_sample_some(variational_block_t* var, const Parameters* parameters, double* values);

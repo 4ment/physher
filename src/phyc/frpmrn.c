@@ -32,9 +32,9 @@ void conjugate_gradient( const int n, double *sdir, const double *gvec, const do
 double gradientProjection( const int n, const double *sdir, const double *gvec );
 void steepestDescentDirection( const int n, double *sdir, double *gvec, bool *active);
 
-static double _findStep( LineFunction *lf, double f0, double s0, double lastStep, int *numFun );
+static double _findStep( LineFunction *lf, double f0, double s0, double lastStep, size_t *numFun );
 
-static double _computeDerivative(LineFunction *lf, double lambda, int *numFun );
+static double _computeDerivative(LineFunction *lf, double lambda, size_t *numFun );
 
 /*! Conjugate gradient in multidimension.
  * Given a starting point p[1..n], Fletcher-Reeves-Polak-Ribiere minimization is performed on a function func, 
@@ -118,7 +118,7 @@ opt_result frprmn_optimize( Parameters *xvec, opt_func f, void *data, OptStopCri
 		fprintf(stdout,"...   numArgs   ... %d\n", numArgs);
 		fprintf(stdout,"...   tolx   ... %f\n", stop.tolx);
 		fprintf(stdout,"...   tolfx   ... %f\n", stop.tolfx);
-		fprintf(stdout,"... maxFun  ... %d\n", stop.f_eval_max);
+		fprintf(stdout,"... maxFun  ... %lu\n", stop.f_eval_max);
 		fprintf(stdout,"... numActive  ... %d\n", numActive);
 		fprintf(stdout,"... slope  ... %f\n\n", slope);
 		
@@ -200,7 +200,7 @@ opt_result frprmn_optimize( Parameters *xvec, opt_func f, void *data, OptStopCri
             for ( int i = 0; i < numArgs; i++ ) {
                 fprintf(stdout,"%s value: %f active: %d direction: %f\n", Parameters_name(xvec, i), Parameters_value(xvec, i), active[i], sdir[i]);
             }
-			fprintf(stderr, "... numFun  ... %d\n", *numFun);
+			fprintf(stderr, "... numFun  ... %lu\n", *numFun);
 			
 			fprintf(stderr, "... numLin  ... %d\n", numLin);
             fprintf(stdout,"... numActive  ... %d\n", numActive);
@@ -212,7 +212,7 @@ opt_result frprmn_optimize( Parameters *xvec, opt_func f, void *data, OptStopCri
 	if (prin > 0){
 		fprintf(stderr, "\n");
 		fprintf(stderr, "... final vector ...\n");
-		fprintf(stderr,"... numFun  ... %d", *numFun);
+		fprintf(stderr,"... numFun  ... %lu", *numFun);
 		fprintf(stderr,"... numLin  ... %d", numLin);
 		fprintf(stderr,"... LnL  ... %f (%f)", fx, fx_start);
         fprintf(stdout,"... numActive  ... %d\n", numActive);
@@ -302,7 +302,7 @@ void steepestDescentDirection( const int n, double *sdir, double *gvec, bool *ac
 
 // Find alpha that minimize f(x_1) such that f(x_1) = f(x_0) + alpha * r_0
 // where r_0 = -f'(x_0) the direction of steepest descent
-double _findStep( LineFunction *lf, double f0, double s0, double lastStep, int *numFun ){
+double _findStep( LineFunction *lf, double f0, double s0, double lastStep, size_t *numFun ){
 	// f0 function value at step = 0
 	// s0 slope at step = 0
 	
@@ -373,7 +373,7 @@ double _findStep( LineFunction *lf, double f0, double s0, double lastStep, int *
 }
 
 // This function has changed the current parameters.
-double _computeDerivative(LineFunction *lf, double x, int *numFun ){
+double _computeDerivative(LineFunction *lf, double x, size_t *numFun ){
 	*numFun += 2;
 	double h = SQRT_EPS*(fabs(x) + 1.0);
     

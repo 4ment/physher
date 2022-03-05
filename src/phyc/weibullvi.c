@@ -20,7 +20,7 @@ double qweibull(double p, double scale, double shape){
 
 void klqp_block_meanfield_weibull_sample1(variational_block_t* var, double* jacobian){
     size_t dim = Parameters_count(var->parameters);
-    double* etas = Vector_data(var->etas);
+    double* etas = Vector_mutable_data(var->etas);
     
     for (int j = 0; j < dim; j++) {
         Parameter* p = Parameters_at(var->parameters, j);
@@ -72,7 +72,7 @@ void klqp_block_meanfield_weibull_sample2(variational_block_t* var, const Parame
     // not beeing optimized
     if (scale_idx == opt_param_dim) return;
     
-    double* etas = Vector_data(var->etas);
+    double* etas = Vector_mutable_data(var->etas);
     
     for (int idx = 0; idx < dim; idx++) {
         Parameter* p = Parameters_at(var->parameters, idx);
@@ -108,7 +108,7 @@ void klqp_block_meanfield_weibull_grad_elbo(variational_block_t* var, const Para
     Model* posterior = var->posterior;
     size_t dim = Parameters_count(var->parameters);
     size_t simplex_parameter_count = var->simplex_parameter_count;
-    double* etas = Vector_data(var->etas);
+    const double* etas = Vector_data(var->etas);
 //    int idx = 0;
 //    if (simplex_parameter_count > 0) {
 //        for(int s = 0; s < var->simplex_count; s++){
@@ -184,7 +184,7 @@ void klqp_block_meanfield_weibull_grad_entropy(variational_block_t* var, const P
     }
 }
 
-double klqp_block_meanfield_weibull_logP(variational_block_t* var, double* values){
+double klqp_block_meanfield_weibull_logP(variational_block_t* var, const double* values){
     size_t dim = Parameters_count(var->parameters);
     double logP = 0;
     for (size_t i = 0; i < dim; i++) {
@@ -197,7 +197,7 @@ double klqp_block_meanfield_weibull_logP(variational_block_t* var, double* value
 }
 
 
-double klqp_block_meanfield_weibull_logQ(variational_block_t* var, double* values){
+double klqp_block_meanfield_weibull_logQ(variational_block_t* var, const double* values){
 	return klqp_block_meanfield_weibull_logP(var, values);
 }
 

@@ -33,7 +33,7 @@ void free_Stack(ExpressionStack* stack);
 
 char* DifferentiateStack(ExpressionStack* stack, int* nExpression, const char* dx);
 
-char* differentiate(const char* lpcsInput, const char* dx);
+char* differentiate(char* lpcsInput, const char* dx);
 
 double differentiate2(ExpressionStack* stack, Parameters* list);
 

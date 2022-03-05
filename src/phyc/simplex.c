@@ -105,7 +105,7 @@ double get_value(Simplex* simplex, int i){
 
 // dp/dphi_index
 void _simplex_gradient(Simplex* simplex, size_t index, double* gradient){
-	double* freqs = simplex->get_values(simplex);
+	const double* freqs = simplex->get_values(simplex);
 	memset(gradient, 0, sizeof(double)*simplex->K);
 	
 	double p = Parameters_value(simplex->parameters, index);
@@ -126,7 +126,7 @@ void _simplex_gradient(Simplex* simplex, size_t index, double* gradient){
 }
 
 void _simplex4_gradient(Simplex* simplex, size_t index, double* gradient){
-	double* freqs = simplex->get_values(simplex);
+	const double* freqs = simplex->get_values(simplex);
 	double p0 = Parameters_value(simplex->parameters, 0);
 	double p1 = Parameters_value(simplex->parameters, 1);
 	double p2 = Parameters_value(simplex->parameters, 2);

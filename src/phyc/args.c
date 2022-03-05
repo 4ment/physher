@@ -155,7 +155,7 @@ void argsparser_check(args_parser* args, char* argv[], int argc){
     free_Hashtable(hash);
 }
 
-void argsparser2_check(args_parser2* args, char* argv[], int argc){
+void argsparser2_check(args_parser2* args, const char* argv[], int argc){
 	Hashtable *hash = new_Hashtable_string(10);
 	hashtable_set_key_ownership( hash, false );
 	hashtable_set_value_ownership( hash, false );
@@ -633,8 +633,8 @@ bool args_get_boolean( int argc, char* argv[], const char flag[] ){
 	return false;
 }
 
-char* get_program_name(char* argv[]){
-	char *name = argv[0]+strlen(argv[0]);
+const char* get_program_name(const char* argv[]){
+	const char *name = argv[0]+strlen(argv[0]);
 	while( name != argv[0] ){
 		if ( *name == '/' || *name == '\\' ) {
 			name++;
@@ -654,7 +654,7 @@ void argsparser2_free(args_parser2* args){
 	free(args);
 }
 
-Hashtable * argsparser2_parse(args_parser2* args, char* argv[], int argc){
+Hashtable * argsparser2_parse(args_parser2* args, const char* argv[], int argc){
 	
 	argsparser2_check(args, argv, argc);
 	
@@ -739,7 +739,7 @@ Hashtable * argsparser2_parse(args_parser2* args, char* argv[], int argc){
 	
 	Hashtable* hash = new_Hashtable_string(10);
 	for(int i = 0; i < args->option_count; i++){
-		char* name = args->options[i].long_name;
+		const char* name = args->options[i].long_name;
 		char* value = args->options[i].value;
 		if (value == NULL) {
 			value = "";

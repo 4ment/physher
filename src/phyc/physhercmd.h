@@ -14,6 +14,6 @@
 #include "mjson.h"
 
 
-json_node* create_json_file(int argc, char* argv[]);
+json_node* create_json_file(int argc, const char* argv[]);
 
 #endif /* physhercmd_h */

@@ -981,7 +981,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 			double* variances = dvector(paramCount);
 			
 			for (int i = 0; i < paramCount; i++) {
-				double* vec = Vector_data(samples[i]);
+				const double* vec = Vector_data(samples[i]);
 				means[i] = mean(vec, n);
 				variances[i] = variance(vec, n, means[i]);
 			}
@@ -1068,18 +1068,18 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 				Model* simpleModel = Hashtable_get(hash, ref+1);
 				DistributionModel* simpleDM = simpleModel->obj;
 				for (int i = 0; i < paramCount; i++) {
-                    Parameters_move(parameters[0], clone_Parameter(Parameters_at(simpleDM->parameters, i)));
-                    Parameters_move(parameters[1], clone_Parameter(Parameters_at(simpleDM->parameters, i)));
+                    Parameters_move(parameters[0], clone_Parameter(Parameters_at(simpleDM->parameters[i], i)));
+                    Parameters_move(parameters[1], clone_Parameter(Parameters_at(simpleDM->parameters[i], i)));
 				}
 			}
 		
 			double* cov = dvector(paramCount*paramCount);
 			// Calculate sample covariance matrix
 			for (int i = 0; i < paramCount; i++) {
-				double* pp = Vector_data(samples[i]);
+				const double* pp = Vector_data(samples[i]);
 				cov[i*paramCount+i] = covariance(pp, pp, means[i], means[i], n);
 				for (int j = i+1; j < paramCount; j++) {
-					double* pp2 = Vector_data(samples[j]);
+					const double* pp2 = Vector_data(samples[j]);
 					cov[i*paramCount+j] = cov[j*paramCount+i] = covariance(pp, pp2, means[i], means[j], n);
 				}
 			}
@@ -1120,7 +1120,7 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
 			Model* simpleModel = Hashtable_get(hash, ref+1);
 			DistributionModel* simpleDM = simpleModel->obj;
 			for (int i = 0; i < paramCount*2; i++) {
-				Parameters_move(parameters, clone_Parameter(Parameters_at(simpleDM->parameters, i)));
+				Parameters_move(parameters[i], clone_Parameter(Parameters_at(simpleDM->parameters[i], i)));
 			}
 			
 			json_node* posterior_node = get_json_node(node, "posterior");

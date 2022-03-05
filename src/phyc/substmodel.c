@@ -51,6 +51,7 @@ static void _substitution_model_store(Model* self){
 	Model** models = (Model**)self->data;
 	models[0]->store(models[0]); // simplex freqs
 	if(models[1] != NULL) models[1]->store(models[1]); // simplex rates
+	if(models[2] != NULL) models[2]->store(models[2]); // discrete parameter
 	SubstitutionModel* subst = self->obj;
 	if (Parameters_count(subst->rates) > 0) {
 		Parameters_store(subst->rates);
@@ -61,6 +62,7 @@ static void _substitution_model_restore(Model* self){
 	Model** models = (Model**)self->data;
 	models[0]->restore(models[0]); // simplex freqs
 	if(models[1] != NULL) models[1]->restore(models[1]); // simplex rates
+	if(models[2] != NULL) models[2]->restore(models[2]); // discrete parameter
 	SubstitutionModel* subst = self->obj;
 	if (Parameters_count(subst->rates) > 0) {
 		bool changed = false;
@@ -90,13 +92,13 @@ static void _substitution_model_free( Model *self ){
 		//printf("Free subsitution model %s\n", self->name);
 		SubstitutionModel* m = (SubstitutionModel*)self->obj;
 		if(self->data != NULL){
-			Model** msimplex = (Model**)self->data;
-			for (int i = 0; i < 2; i++) {
-				if(msimplex[i] != NULL){
-					msimplex[i]->free(msimplex[i]);
+			Model** models = (Model**)self->data;
+			for (int i = 0; i < 3; i++) {
+				if(models[i] != NULL){
+					models[i]->free(models[i]);
 				}
 			}
-			free(msimplex);
+			free(models);
 		}
 		
 		free_DataType(m->datatype);
@@ -148,6 +150,7 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 				Hashtable_add(hash, msimplex_rates_clone->name, msimplex_rates_clone);
 			}
 		}
+		//TODO: discrete parameter
 	}
 	
 	Parameters* ps = NULL;
@@ -191,13 +194,15 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 	return clone;
 }
 
-// SubstitutionModel2 listen to the rate and freq parameters
-Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex ){
+Model * new_SubstitutionModel3( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex, Model* discrete_model ){
 	Model *model = new_Model(MODEL_SUBSTITUTION, name, sm);
-	Model** simplexes = (Model**)calloc(2, sizeof(Model*));
-	model->data = simplexes;
+	Model** models = (Model**)calloc(3, sizeof(Model*));
+	for(size_t i = 0; i < 3; i++){
+		models[i] = NULL;
+	}
+	model->data = models;
 	if(freqs_simplex != NULL){
-		simplexes[0] = freqs_simplex;
+		models[0] = freqs_simplex;
 		freqs_simplex->ref_count++;
 		freqs_simplex->listeners->add( freqs_simplex->listeners, model );
 	}
@@ -210,9 +215,15 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 	}
 	
 	if (rates_simplex != NULL) {
-		simplexes[1] = rates_simplex;
+		models[1] = rates_simplex;
 		rates_simplex->ref_count++;
 		rates_simplex->listeners->add( rates_simplex->listeners, model );
+	}
+	
+	if (discrete_model != NULL) {
+		models[2] = discrete_model;
+		discrete_model->ref_count++;
+		discrete_model->listeners->add( discrete_model->listeners, model );
 	}
 	
 	model->update = _substitution_model_handle_change;
@@ -222,6 +233,12 @@ Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* 
 	model->free = _substitution_model_free;
 	model->clone = _substitution_model_clone;
 	return model;
+}
+
+
+// SubstitutionModel2 listen to the rate and freq parameters
+Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex ){
+	return new_SubstitutionModel3(name, sm, freqs_simplex, rates_simplex, NULL);
 }
 
 Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
@@ -335,14 +352,14 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 	// General model
 	//TODO: use rate simplex
 	if (structure_node != NULL) {
-		DiscreteParameter* dp = new_DiscreteParameterModel_from_json(model_node, hash);
+		Model* mdp = new_DiscreteParameterModel_from_json(model_node, hash);
 		check_constraints(rates, 0, INFINITY, 0.001, 1000);
-		SubstitutionModel* m = new_GeneralModel_with_parameters(datatype, dp, rates, freqs_simplex, -1, normalize);
-		Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex, mrates_simplex);
+		SubstitutionModel* m = new_GeneralModel_with_parameters(datatype, mdp->obj, rates, freqs_simplex, -1, normalize);
+		Model* mm = new_SubstitutionModel3(id, m, mfreqs_simplex, mrates_simplex, mdp);
 
 		free_DataType(datatype);
 		free_Parameters(rates);
-		dp->free(dp);
+		mdp->free(mdp);
 		if(mfreqs_simplex != NULL) mfreqs_simplex->free(mfreqs_simplex);
 		if(mrates_simplex != NULL) mrates_simplex->free(mrates_simplex);
 		if(assignment != NULL) free(assignment);
@@ -359,7 +376,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
 		return mm;
 	}
 	
-	SubstitutionModel* m = SubstitutionModel_factory(model_string, datatype, freqs_simplex, rates_simplex, rates, assignment);
+	SubstitutionModel* m = SubstitutionModel_factory(model_string, datatype, freqs_simplex, rates_simplex, rates, (const char**)assignment);
 	
 	if(mfreqs_simplex == NULL  && m->simplex != NULL){
 		mfreqs_simplex = new_SimplexModel("anonymousfreqs", m->simplex);
@@ -1391,7 +1408,7 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 	size_t K = datatype->state_count(datatype);
 	
 	if (datatype->type == DATA_TYPE_NUCLEOTIDE) {
-		check_constraints(rates, 0, INFINITY, 0.001, 100);
+		check_constraints((Parameters*)rates, 0, INFINITY, 0.001, 100);
 		bool equal_frequencies = false;
 		for (int i = 0; i < K; i++) {
 			Parameter* p = Parameters_at(freqSimplex->parameters, i);

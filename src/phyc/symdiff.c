@@ -673,7 +673,7 @@ double differentiate2(ExpressionStack* stack, Parameters* list){
 	return evalueStack(stack, &nExpression, list);
 }
 
-char* differentiate(const char* lpcsInput, const char* dx){
+char* differentiate(char* lpcsInput, const char* dx){
 	char* strInput = lpcsInput;
 	// remove spaces
 //	strInput.Remove(' ');

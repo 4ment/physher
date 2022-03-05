@@ -352,7 +352,7 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
     return var;
 }
 
-double variational_logP(variational_t* var, double* values){
+double variational_logP(variational_t* var, const double* values){
     double logP = 0;
     size_t shift = 0;
     for(int j = 0; j < var->block_count; j++){
@@ -406,7 +406,7 @@ void variational_load(variational_t* var, const char* filename){
     for(size_t i = 0; i < var->block_count; i++){
         variational_block_t* block = var->blocks[i];
         for(size_t j = 0; j < block->var_parameters_count; j++){
-            char* var_id = Parameters_name2(block->var_parameters[j]);
+            const char* var_id = Parameters_name2(block->var_parameters[j]);
             json_node* parameters_node = get_json_node(json, var_id);
             if(parameters_node != NULL){
                 json_node* values = get_json_node(parameters_node, "values");

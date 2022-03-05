@@ -13,7 +13,7 @@
 
 #include "vb.h"
 
-void grad_klpq_normal_meanfield(variational_t* var, double* grads);
+void grad_klpq_normal_meanfield(variational_t* var, const Parameters* parameters, double* grads);
 
 double klpq_normal_meanfield(variational_t* var);
 

@@ -84,7 +84,7 @@ opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 	for ( j = 0; j < n; j++ ) pt[j] = Parameters_value(p, j); // Save the initial point
 	
 	while( status == OPT_KEEP_GOING ){
-		if(POWELL_DEBUG) fprintf(stdout, "\nPowell iteration #%d (lk=%f)\n", (stop.iter+1), fret);
+		if(POWELL_DEBUG) fprintf(stdout, "\nPowell iteration #%lu (lk=%f)\n", (stop.iter+1), fret);
 		fp   = fret;
 		ibig = 0;   // Index of the biggest function decrease
 		del  = 0.0; // Will be the biggest function decrease.

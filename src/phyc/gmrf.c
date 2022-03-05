@@ -9,6 +9,7 @@
 #include "gmrf.h"
 
 #include <math.h>
+#include <strings.h>
 
 #include "distmodel.h"
 #include "mathconstant.h"

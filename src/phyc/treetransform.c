@@ -159,7 +159,7 @@ Parameter *_parameter_of_node(struct TreeTransform *tt, Node *node) {
     return Parameters_at(tt->parameters, tt->map[Node_id(node)]);
 }
 
-Node *_node_of_parameter(struct TreeTransform *tt, Parameter *p) {
+Node *_node_of_parameter(struct TreeTransform *tt, const Parameter *p) {
     return tt->map_to_node[p->id];
 }
 

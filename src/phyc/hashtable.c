@@ -259,7 +259,7 @@ bool Hashtable_add_array_unsigned( Hashtable *hash, int *key, const unsigned int
  * Otherwise the value is ignored. The user should check if the return function if override_value==false and own_value==true in order to avoid leaks
  * IT is a bit fucked here there is a difference in ownership for keys and values
  */
-bool Hashtable_add( Hashtable *hash, void *key, void *value ){
+bool Hashtable_add( Hashtable *hash, const void *key, void *value ){
     unsigned int index;
     HashEntry *entry = NULL;
     if ( hash->length == hash->loadlimit ){

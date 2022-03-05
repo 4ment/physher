@@ -44,9 +44,11 @@ static char _codon_state( DataType *datatype, int encoding);
 static int _codon_encoding_string( DataType *datatype, const char *codon);
 static const char * _codon_state_string( const DataType *datatype, int encoding);
 
-static DataType SINGLETON_DATATYPE_NUCLEOTIDE = {"Nucleotide", DATA_TYPE_NUCLEOTIDE,  4, 1, 0, _nucleotide_encoding, _nucleotide_state, _nucleotide_encoding_string, _nucleotide_state_string, _state_count, 0};
-static DataType SINGLETON_DATATYPE_AMINO_ACID = {"Amino Acid", DATA_TYPE_AMINO_ACID, 20, 1, 0, _aa_encoding,         _aa_state,         _aa_encoding_string,         _aa_state_string        , _state_count, 0};
-static DataType SINGLETON_DATATYPE_CODON      = {"Codon",      DATA_TYPE_CODON,      60, 3, 0, _codon_encoding,      _codon_state,      _codon_encoding_string,      _codon_state_string     , _state_count,  0};
+static void _generic_partial(const DataType *datatype, int encoding, double* partial);
+
+static DataType SINGLETON_DATATYPE_NUCLEOTIDE = {"Nucleotide", DATA_TYPE_NUCLEOTIDE,  4, 1, 0, _nucleotide_encoding, _nucleotide_state, _nucleotide_encoding_string, _nucleotide_state_string, _nucleotide_partial, _state_count, 0, 1};
+static DataType SINGLETON_DATATYPE_AMINO_ACID = {"Amino Acid", DATA_TYPE_AMINO_ACID, 20, 1, 0, _aa_encoding,         _aa_state,         _aa_encoding_string,         _aa_state_string        , NULL, _state_count, 0, 1};
+static DataType SINGLETON_DATATYPE_CODON      = {"Codon",      DATA_TYPE_CODON,      60, 3, 0, _codon_encoding,      _codon_state,      _codon_encoding_string,      _codon_state_string     , NULL, _state_count,  0, 1};
 
 static char AMINO_ACIDS[26] = "ACDEFGHIKLMNPQRSTVWYBZX*?-";
 static const char *AMINO_ACIDS_STRING[26] = {"A","C","D","E","F","G","H","I","K","L","M","N","P","Q","R","S","T","V","W","Y","B","Z","X","*","?","-"};
@@ -109,12 +111,12 @@ DataType* new_DataType_from_json(json_node* node, Hashtable* hash){
 		json_node* states_node = get_json_node(node, "states");
 		char* name = get_json_node_value_string(node, "id");
 		size_t count = states_node->child_count;
-		const char** states = malloc(sizeof(char*)*count);
+		char** states = malloc(sizeof(char*)*count);
 		for (size_t i = 0; i < count; i++) {
 			json_node* child = states_node->children[i];
 			states[i] = String_clone((char*)child->value);
 		}
-		datatype = new_GenericDataType(name, count, states);
+		datatype = new_GenericDataType(name, count, (const char**)states);
 		for (size_t i = 0; i < count; i++) {
 			free(states[i]);
 		}

@@ -231,7 +231,7 @@ void variational_klqp_grad_elbo(variational_t* var, const Parameters* parameters
 
 void klqp_block_meanfield_normal_sample1(variational_block_t* var, double* jacobian){
     size_t dim = Parameters_count(var->parameters);
-    double* etas = Vector_data(var->etas);
+    double* etas = Vector_mutable_data(var->etas);
     
     for (int j = 0; j < dim; j++) {
         Parameter* p = Parameters_at(var->parameters, j);
@@ -304,7 +304,7 @@ void klqp_block_meanfield_normal_sample2(variational_block_t* var, const Paramet
     // not beeing optimized
     if (mu_idx == opt_param_dim) return;
     
-    double* etas = Vector_data(var->etas);
+    double* etas = Vector_mutable_data(var->etas);
     
     for (int idx = 0; idx < dim; idx++) {
         Parameter* p = Parameters_at(var->parameters, idx);
@@ -341,7 +341,7 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
     Model* posterior = var->posterior;
     size_t dim = Parameters_count(var->parameters);
     size_t simplex_parameter_count = var->simplex_parameter_count;
-    double* etas = Vector_data(var->etas);
+    const double* etas = Vector_data(var->etas);
     int idx = 0;
     if (simplex_parameter_count > 0) {
         for(int s = 0; s < var->simplex_count; s++){
@@ -410,7 +410,7 @@ void klqp_block_meanfield_normal_grad_entropy(variational_block_t* var, const Pa
     }
 }
 
-double klqp_block_meanfield_normal_logP(variational_block_t* var, double* values){
+double klqp_block_meanfield_normal_logP(variational_block_t* var, const double* values){
     size_t dim = Parameters_count(var->parameters);
     double logP = 0;
     for (size_t i = 0; i < dim; i++) {
@@ -424,7 +424,7 @@ double klqp_block_meanfield_normal_logP(variational_block_t* var, double* values
 }
 
 
-double klqp_block_meanfield_normal_logQ(variational_block_t* var, double* values){
+double klqp_block_meanfield_normal_logQ(variational_block_t* var, const double* values){
     size_t dim = Parameters_count(var->parameters);
     double logP = 0;
     for (size_t i = 0; i < dim; i++) {
@@ -492,7 +492,7 @@ bool klqp_block_meanfield_normal_sample_some(variational_block_t* var, const Par
 
 void klqp_block_fullrank_normal_sample1(variational_block_t* var, double* jacobian){
     size_t dim = Parameters_count(var->parameters);
-    double* etas = Vector_data(var->etas);
+    double* etas = Vector_mutable_data(var->etas);
     for (int j = 0; j < dim; j++) {
         etas[j] = rnorm();
     }
@@ -547,7 +547,7 @@ double klqp_block_fullrank_normal_entropy(variational_block_t* var){
 // parameters are the variational parameters
 void klqp_block_fullrank_normal_sample2(variational_block_t* var, const Parameters* parameters){
     size_t dim = Parameters_count(var->parameters);
-    double* etas = Vector_data(var->etas);
+    double* etas = Vector_mutable_data(var->etas);
     for (int j = 0; j < dim; j++) {
         etas[j] = rnorm();
     }
@@ -590,7 +590,7 @@ void klqp_block_fullrank_normal_grad_elbo(variational_block_t* var, const Parame
         }
     }
     
-    double* etas = Vector_data(var->etas);
+    const double* etas = Vector_data(var->etas);
     Model* posterior = var->posterior;
     size_t simplex_parameter_count = var->simplex_parameter_count;
     size_t  dim = Parameters_count(var->parameters);
@@ -634,7 +634,7 @@ void klqp_block_fullrank_normal_grad_entropy(variational_block_t* var, const Par
     }
 }
 
-double klqp_block_fullrank_normal_logP(variational_block_t* var, double* values){
+double klqp_block_fullrank_normal_logP(variational_block_t* var, const double* values){
     size_t dim = Parameters_count(var->parameters);
     gsl_vector * mu = gsl_vector_calloc(dim);
     gsl_matrix * L = gsl_matrix_calloc(dim, dim);
@@ -665,7 +665,7 @@ double klqp_block_fullrank_normal_logP(variational_block_t* var, double* values)
     return logP + logJac;
 }
 
-double klqp_block_fullrank_normal_logQ(variational_block_t* var, double* values){
+double klqp_block_fullrank_normal_logQ(variational_block_t* var, const double* values){
     size_t dim = Parameters_count(var->parameters);
     gsl_vector * mu = gsl_vector_calloc(dim);
     gsl_matrix * L = gsl_matrix_calloc(dim, dim);
@@ -695,7 +695,7 @@ double klqp_block_fullrank_normal_logQ(variational_block_t* var, double* values)
 
 void klqp_block_fullrank_normal_sample(variational_block_t* var, double* values){
     size_t dim = Parameters_count(var->parameters);
-    double* etas = Vector_data(var->etas);
+    double* etas = Vector_mutable_data(var->etas);
     for (int j = 0; j < dim; j++) {
         etas[j] = rnorm();
     }
@@ -1036,7 +1036,7 @@ void klqp_meanfield_normal_grad_elbo(variational_t* var, const Parameters* param
 
 // TODO: should use a jacobian fucntion instead transform().
 // In this function it works for transform == log but not anything else
-double klqp_meanfield_normal_logP(variational_t* var, double* values){
+double klqp_meanfield_normal_logP(variational_t* var, const double* values){
 	size_t dim = Parameters_count(var->parameters);
 	double logP = 0;
 	for (size_t i = 0; i < dim; i++) {
@@ -1273,7 +1273,7 @@ void klqp_meanfield_lognormal_grad_elbo(variational_t* var, const Parameters* pa
 }
 
 // assumes that values are in R+
-double klqp_meanfield_lognormal_logP(variational_t* var, double* values){
+double klqp_meanfield_lognormal_logP(variational_t* var, const double* values){
     size_t dim = Parameters_count(var->parameters);
     double logP = 0;
     for (size_t i = 0; i < dim; i++) {
@@ -1649,7 +1649,7 @@ void klqp_fullrank_normal_grad_elbo(variational_t* var, const Parameters* parame
 	}
 }
 
-double klqp_fullrank_normal_logP(variational_t* var, double* values){
+double klqp_fullrank_normal_logP(variational_t* var, const double* values){
 	size_t dim = Parameters_count(var->parameters);
 	gsl_vector * mu = gsl_vector_calloc(dim);
 	gsl_matrix * L = gsl_matrix_calloc(dim, dim);

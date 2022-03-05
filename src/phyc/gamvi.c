@@ -73,7 +73,7 @@ void init_meanfield_gamma(variational_t* var){
 
 void klqp_block_meanfield_gamma_sample1(variational_block_t* var, double* jacobian){
     size_t dim = Parameters_count(var->parameters);
-    double* z = Vector_data(var->etas);
+    double* z = Vector_mutable_data(var->etas);
     
     for (int j = 0; j < dim; j++) {
         Parameter* p = Parameters_at(var->parameters, j);
@@ -125,7 +125,7 @@ void klqp_block_meanfield_gamma_sample2(variational_block_t* var, const Paramete
     // not beeing optimized
     if (shape_idx == opt_param_dim) return;
     
-    double* z = Vector_data(var->etas);
+	double* z = Vector_mutable_data(var->etas);
     
     for (int idx = 0; idx < dim; idx++) {
         Parameter* p = Parameters_at(var->parameters, idx);
@@ -160,7 +160,7 @@ void klqp_block_meanfield_gamma_grad_elbo(variational_block_t* var, const Parame
     Model* posterior = var->posterior;
     size_t dim = Parameters_count(var->parameters);
     size_t simplex_parameter_count = var->simplex_parameter_count;
-    double* z = Vector_data(var->etas);
+    const double* z = Vector_data(var->etas);
 //    int idx = 0;
 //    if (simplex_parameter_count > 0) {
 //        for(int s = 0; s < var->simplex_count; s++){
@@ -259,7 +259,7 @@ void klqp_block_meanfield_gamma_grad_entropy(variational_block_t* var, const Par
     }
 }
 
-double klqp_block_meanfield_gamma_logP(variational_block_t* var, double* values){
+double klqp_block_meanfield_gamma_logP(variational_block_t* var, const double* values){
     size_t dim = Parameters_count(var->parameters);
     double logP = 0;
     for (size_t i = 0; i < dim; i++) {
@@ -271,7 +271,7 @@ double klqp_block_meanfield_gamma_logP(variational_block_t* var, double* values)
 }
 
 
-double klqp_block_meanfield_gamma_logQ(variational_block_t* var, double* values){
+double klqp_block_meanfield_gamma_logQ(variational_block_t* var, const double* values){
 	return klqp_block_meanfield_gamma_logP(var, values);
 }
 
@@ -303,7 +303,7 @@ bool klqp_block_meanfield_gamma_sample_some(variational_block_t* var, const Para
     return true;
 }
 
-void grad_elbo_gamma_meanfield(variational_t* var, double* grads){
+void grad_elbo_gamma_meanfield(variational_t* var, const Parameters* parameters, double* grads){
 	if (var->initialized == false) {
 		init_meanfield_gamma(var);
 		var->initialized = true;
@@ -455,7 +455,7 @@ double variational_gamma_meanfield_parameters_logP(variational_t* var, const Par
 }
 
 // assumes that there is transformation
-double variational_gamma_meanfield_logP(variational_t* var, double* values){
+double variational_gamma_meanfield_logP(variational_t* var, const double* values){
 	int dim = Parameters_count(var->parameters);
 	double logP = 0;
 	for (int i = 0; i < dim; i++) {

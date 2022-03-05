@@ -42,8 +42,8 @@ json_node* add_json_node_bool(json_node* parent, const char* key, bool value);
 json_node* add_json_node_string(json_node* parent, const char* key, const char* value);
 json_node* add_json_node_size_t(json_node* parent, const char* key, size_t value);
 json_node* add_json_node_double(json_node* parent, const char* key, double value);
-json_node* add_json_node_array_double(json_node* parent, const char* key, double* values, size_t dim);
-json_node* add_json_node_array_unsigned(json_node* parent, const char* key, unsigned* values, size_t dim);
+json_node* add_json_node_array_double(json_node* parent, const char* key, const double* values, size_t dim);
+json_node* add_json_node_array_unsigned(json_node* parent, const char* key, const unsigned* values, size_t dim);
 
 json_node* create_json_tree(const char* json);
 json_node* get_json_node(json_node* node, const char* key);

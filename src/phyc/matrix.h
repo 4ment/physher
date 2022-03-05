@@ -82,7 +82,9 @@ void Vector_sort_from_ivector( Vector *v, int *s );
 
 void Vector_swap( Vector *v, int a, int b );
 
-double * Vector_data( Vector *v );
+const double * Vector_data( const Vector *v );
+
+double * Vector_mutable_data( Vector *v );
 
 void free_Vector( Vector *v );
 

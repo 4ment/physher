@@ -46,7 +46,7 @@ void free_Hashtable( Hashtable *hash );
 
 
 
-bool Hashtable_add( Hashtable *hash, void *key, void *value );
+bool Hashtable_add( Hashtable *hash, const void *key, void *value );
 
 void * Hashtable_get( Hashtable *hash, const void *key );
 

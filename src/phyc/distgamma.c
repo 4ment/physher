@@ -228,7 +228,7 @@ Model* new_GammaDistributionModel_from_json(json_node* node, Hashtable* hash){
         parameters[1] = new_Parameters(paramCount);
         
         for (int i = 0; i < paramCount; i++) {
-            double* vec = Vector_data(samples[i]);
+            const double* vec = Vector_data(samples[i]);
             double m = mean(vec, Vector_length(samples[i]));
             double v = variance(vec, Vector_length(samples[i]), m);
             Parameters_move(parameters[0], new_Parameter("shape", m*m/v, new_Constraint(0, INFINITY)));

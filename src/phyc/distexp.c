@@ -244,7 +244,7 @@ Model* new_ExponentialDistributionModel_from_json(json_node* node, Hashtable* ha
         parameters[0] = new_Parameters(paramCount);
         
         for (int i = 0; i < paramCount; i++) {
-            double* vec = Vector_data(samples[i]);
+            const double* vec = Vector_data(samples[i]);
             double m = mean(vec, Vector_length(samples[i]));
             Parameters_move(parameters[0], new_Parameter("mean", m, new_Constraint(0, INFINITY)));
             free_Vector(samples[i]);

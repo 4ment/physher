@@ -226,7 +226,9 @@ Parameters * clone_Parameters( Parameters *p );
 
 void Parameters_set_name2(Parameters* ps, const char* name);
 
-char* Parameters_name2(Parameters* ps);
+const char* Parameters_name2(const Parameters* ps);
+
+char* Parameters_mutable_name2(Parameters* ps);
 
 Parameter * Parameters_at( const Parameters *p, const size_t index );
 
@@ -384,6 +386,6 @@ void get_parameters_references(json_node* node, Hashtable* hash, Parameters* par
 
 void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* parameters, const char* tag);
 
-void get_parameters_slice(char* ref, Parameters* parameters, Hashtable* hash);
+void get_parameters_slice(const char* ref, Parameters* parameters, Hashtable* hash);
 
 #endif

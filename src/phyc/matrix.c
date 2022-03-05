@@ -192,7 +192,11 @@ void Vector_swap( Vector *v, int a, int b ){
 	v->vector[b] = temp;
 }
 
-double * Vector_data( Vector *v ){
+const double * Vector_data( const Vector *v ){
+	return v->vector;
+}
+
+double * Vector_mutable_data( Vector *v ){
 	return v->vector;
 }
 

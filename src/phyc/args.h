@@ -63,7 +63,7 @@ typedef struct args_parser2 {
 
 args_parser2* argsparser2_init(struct argsparser2_option options[], int count);
 
-Hashtable * argsparser2_parse(args_parser2* args, char* argv[], int argc);
+Hashtable * argsparser2_parse(args_parser2* args, const char* argv[], int argc);
 
 void argsparser2_free(args_parser2* args);
 
@@ -101,7 +101,7 @@ double * args_get_double_array( int argc, char* argv[], const char flag[], const
 
 bool args_get_boolean( int argc, char* argv[], const char flag[] );
 
-char* get_program_name(char* argv[]);
+const char* get_program_name(const char* argv[]);
 
 
 #endif
