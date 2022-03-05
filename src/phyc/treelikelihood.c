@@ -696,7 +696,7 @@ static void _treeLikelihood_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free treelikelihood model %s\n", self->name);
 		SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
-		int count = (tlk->bm==NULL?2:3);
+		int count = (tlk->bm==NULL?3:4);
 		Model** list = (Model**)self->data;
 		for(int i = 0; i < count; i++){
 			list[i]->free(list[i]);

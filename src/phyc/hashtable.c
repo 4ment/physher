@@ -493,7 +493,7 @@ float * new_Float( const float value){
 }
 
 
-const void * HashEntry_value( const HashEntry *entry ){
+void * HashEntry_value( const HashEntry *entry ){
 	return entry->value;
 }
 

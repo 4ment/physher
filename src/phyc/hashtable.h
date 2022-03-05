@@ -81,7 +81,7 @@ HashEntry * Hashtable_next( Hashtable *hash );
 
 void Hashtable_init_iterator( Hashtable *hash );
 
-const void * HashEntry_value( const HashEntry *entry );
+void * HashEntry_value( const HashEntry *entry );
 
 const void * HashEntry_key( const HashEntry *entry );
 

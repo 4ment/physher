@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <strings.h>
 
 #include "utils.h"
 #include "mstring.h"
@@ -479,6 +480,7 @@ void Sequences_save_phylip( const Sequences *sequences, const char *filename ){
 
 Sequences* new_Sequences_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
+		"datatype",
 		"file",
 		"sequences"
 	};
@@ -486,6 +488,7 @@ Sequences* new_Sequences_from_json(json_node* node, Hashtable* hash){
 	
 	json_node* file_node = get_json_node(node, "file");
 	json_node* sequences_node = get_json_node(node, "sequences");
+	json_node* datatype_node = get_json_node(node, "datatype");
 	Sequences* sequences = NULL;
 	
 	if(sequences_node != NULL){
@@ -504,6 +507,21 @@ Sequences* new_Sequences_from_json(json_node* node, Hashtable* hash){
 	else{
 		fprintf(stderr, "No `sequences' input (use file option)\n");
 		exit(1);
+	}
+	
+	if(datatype_node != NULL){
+		if(datatype_node->node_type == MJSON_STRING && (strcasecmp((char*)datatype_node->value, "nucleotide") == 0 ||
+		   strcasecmp((char*)datatype_node->value, "codon") == 0 || strcasecmp((char*)datatype_node->value, "aa") == 0)){
+			sequences->datatype = new_DataType_from_json(datatype_node, hash);
+		}
+		else if (datatype_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)datatype_node->value)) {
+			sequences->datatype = Hashtable_get(hash, (char*)datatype_node->value);
+			sequences->datatype->ref_count++;
+		}
+		else{
+			sequences->datatype = new_DataType_from_json(datatype_node, hash);
+			Hashtable_add(hash, sequences->datatype->name, sequences->datatype);
+		}
 	}
 	return sequences;
 }

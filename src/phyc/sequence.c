@@ -83,7 +83,7 @@ void free_Sequences( Sequences *a ){
 	
 }
 
-Sequences * clone( const Sequences * sequences ){
+Sequences * Sequences_clone( const Sequences * sequences ){
     assert(sequences->datatype);
 	Sequences *seqs = new_Sequences(sequences->size);
 	for ( int i = 0; i < sequences->size; i++ ) {

@@ -51,7 +51,7 @@ Sequences * new_Sequences( unsigned capacity );
 
 void free_Sequences( Sequences *a );
 
-Sequences * clone( const Sequences * sequences );
+Sequences * Sequences_clone( const Sequences * sequences );
 
 void Sequences_add(Sequences *aln, Sequence *sequence );
 

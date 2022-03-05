@@ -872,6 +872,23 @@ DataType* parse_datatype(json_node* datatype_node, Hashtable* hash){
 	return datatype;
 }
 
+DataType* get_datatype(json_node* datatype_node, Hashtable* hash){
+	DataType* datatype = NULL;
+	if(datatype_node->node_type == MJSON_STRING && (strcasecmp((char*)datatype_node->value, "nucleotide") == 0 ||
+	   strcasecmp((char*)datatype_node->value, "codon") == 0 || strcasecmp((char*)datatype_node->value, "aa") == 0)){
+		datatype = new_DataType_from_json(datatype_node, hash);
+	}
+	else if (datatype_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)datatype_node->value)) {
+		datatype = Hashtable_get(hash, (char*)datatype_node->value);
+		datatype->ref_count++;
+	}
+	else{
+		datatype = new_DataType_from_json(datatype_node, hash);
+		Hashtable_add(hash, datatype->name, datatype);
+	}
+	return datatype;
+}
+
 SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
 		"alignment",
@@ -892,24 +909,14 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 	json_node* every_node = get_json_node(node, "every");
 	SitePattern* patterns = NULL;
 	
-	DataType* datatype = NULL;
-	if(datatype_node->node_type == MJSON_STRING && (strcasecmp((char*)datatype_node->value, "nucleotide") == 0 ||
-	   strcasecmp((char*)datatype_node->value, "codon") == 0 || strcasecmp((char*)datatype_node->value, "aa") == 0)){
-		datatype = new_DataType_from_json(datatype_node, hash);
-	}
-	else if (datatype_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)datatype_node->value)) {
-		datatype = Hashtable_get(hash, (char*)datatype_node->value);
-		datatype->ref_count++;
-	}
-	else{
-		datatype = new_DataType_from_json(datatype_node, hash);
-		Hashtable_add(hash, datatype->name, datatype);
-	}
-	
 	if (alignment_node != NULL) {
 		Sequences* sequences = new_Sequences_from_json(alignment_node, hash);
-		sequences->datatype = datatype;
-		datatype->ref_count++;
+		if(sequences->datatype == NULL){
+			DataType* datatype = get_datatype(datatype_node, hash);
+			sequences->datatype = datatype;
+			datatype->ref_count++;
+			free_DataType(datatype);
+		}
 		if(every_node != NULL || start_node != NULL || length_node != NULL){
 			const char* every_string = (char*)every_node->value;
 			int start = get_json_node_value_size_t(node, "start", 0);
@@ -947,6 +954,7 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	else if(partials_node != NULL){
+		DataType* datatype = get_datatype(datatype_node, hash);
 		double** partials = malloc(partials_node->child_count*sizeof(double*));
 		char** names = malloc(partials_node->child_count*sizeof(char*));
 		int length = 0;
@@ -961,12 +969,12 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		}
 		bool compress = get_json_node_value_bool(node, "compress", true);
 		patterns = new_SitePartials(names, partials, length/datatype->stateCount, partials_node->child_count, datatype, compress);
+		free_DataType(datatype);
 	}
 	else{
 		fprintf(stderr, "No `alignment' provided in sitepattern object\n");
 		exit(1);
 	}
-	free_DataType(datatype);
 	
 	bool verbose = get_json_node_value_bool(node, "verbose", true);
 	if(verbose){
