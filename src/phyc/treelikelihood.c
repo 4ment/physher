@@ -94,6 +94,9 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 	else if ( model->type == MODEL_SITEMODEL ) {
 		SingleTreeLikelihood_update_all_nodes(tlk);
 	}
+	else if ( model->type == MODEL_SUBSTITUTION ) {
+		SingleTreeLikelihood_update_all_nodes(tlk);
+	}
 	else {
 		fprintf(stderr, "%s of type %s\n", model->name, model_type_strings[model->type]);
 		error("Unknown change in SingleLikelihood\n");
@@ -214,6 +217,91 @@ void _model_prepare_gradient(Model* self, const Parameters* ps){
 		tlk->gradient = realloc(tlk->gradient, sizeof(double)* gradient_length);
 		tlk->gradient_length = gradient_length;
 	}
+}
+
+size_t TreeLikelihood_initialize_gradient(Model *self, int flags){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+	tlk->prepared_gradient = flags;
+	size_t gradient_length = 0;
+	
+	int prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE;
+	int prepare_site_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SITE_MODEL;
+	int prepare_branch_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_BRANCH_MODEL;
+	int prepare_subsitution_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;
+	if(flags == 0){
+		prepare_tree = true;
+		prepare_site_model = tlk->sm->proportions != NULL || Parameters_count(tlk->sm->rates) > 0 || tlk->sm->mu != NULL;
+		prepare_branch_model = tlk->bm!= NULL;
+		prepare_subsitution_model = tlk->m->dPdp != NULL;
+		tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_TREE;
+		if(prepare_site_model){
+			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_SITE_MODEL;
+		}
+		if(prepare_branch_model){
+			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_BRANCH_MODEL;
+		}
+		if(prepare_subsitution_model){
+			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;
+		}
+	}
+	if(prepare_tree){
+		if(!Tree_is_time_mode(tlk->tree)){
+			gradient_length += Tree_node_count(tlk->tree);
+		}
+		else{
+			gradient_length += Tree_tip_count(tlk->tree) - 1;
+		}
+	}
+	if (prepare_site_model) {
+		gradient_length += Parameters_count(tlk->sm->rates);
+		if(tlk->sm->proportions != NULL){
+			gradient_length += Parameters_count(tlk->sm->proportions->parameters);
+		}
+		if(tlk->sm->mu != NULL){
+			gradient_length++;
+		}
+	}
+	if (prepare_branch_model) {
+		gradient_length += Parameters_count(tlk->bm->rates);
+	}
+	if (prepare_subsitution_model) {
+		gradient_length += tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K - 1;
+		gradient_length += tlk->m->simplex->K - 1;
+	}
+
+	if(tlk->gradient == NULL){
+		tlk->gradient = calloc(gradient_length, sizeof(double));
+		tlk->gradient_length = gradient_length;
+	}
+	else if (tlk->gradient_length < gradient_length) {
+		tlk->gradient = realloc(tlk->gradient, sizeof(double)* gradient_length);
+		tlk->gradient_length = gradient_length;
+	}
+	return gradient_length;
+}
+
+double* TreeLikelihood_gradient(Model *self){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+	
+	if(tlk->update_upper){
+		if(Tree_is_time_mode(tlk->tree)){
+			Tree_update_heights(tlk->tree);
+		}
+		double logP = tlk->calculate(tlk); // make sure it is updated
+		if (isnan(logP) || isinf(logP)) {
+//				return logP;
+		}
+		update_upper_partials(tlk, Tree_root(tlk->tree));
+		
+		double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
+		for (size_t i = 0; i < tlk->sp->count; i++) {
+			pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
+		}
+
+		SingleTreeLikelihood_gradient(tlk, tlk->gradient);
+		tlk->update_upper = false;
+	}
+	return tlk->gradient;
 }
 
 double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){

@@ -239,6 +239,25 @@ void node_transform_jvp(TreeTransform *tt, const double *height_gradient, double
     }
 }
 
+void TreeTransform_jvp_with_heights(TreeTransform *tt, const double* heights, const double *height_gradient, double *gradient) {
+	size_t nodeCount = Tree_node_count(tt->tree);
+	Node **nodes = Tree_get_nodes(tt->tree, POSTORDER);
+	for (size_t i = 0; i < nodeCount; i++) {
+		Node *node = nodes[i];
+		if (!Node_isleaf(node)) {
+			double dhi_dri = 1;
+			if (!Node_isroot(node)) {
+				dhi_dri = heights[node->parent->class_id] - tt->lowers[node->id];
+			}
+			unsigned reparamID = tt->map[Node_id(node)];
+			gradient[reparamID] = height_gradient[node->class_id];
+			product_of_ratios(node->left, height_gradient, tt->map, tt->parameters, 1, gradient + reparamID);
+			product_of_ratios(node->right, height_gradient, tt->map, tt->parameters, 1, gradient + reparamID);
+			gradient[reparamID] *= dhi_dri;
+		}
+	}
+}
+
 TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameterization) {
     TreeTransform *tt = malloc(sizeof(TreeTransform));
     tt->tree = tree;

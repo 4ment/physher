@@ -43,4 +43,6 @@ void free_TreeTransform(TreeTransform* tt);
 
 Model* new_TreeTransformModel(const char* name, TreeTransform* coalescent, Model* tree);
 
+void TreeTransform_jvp_with_heights(TreeTransform *tt, const double* heights, const double *height_gradient, double *gradient);
+
 #endif /* treetransform_h */

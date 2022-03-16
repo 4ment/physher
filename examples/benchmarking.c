@@ -207,7 +207,9 @@ void test_constant(size_t iter, const char* newick, FILE* csv, bool debug) {
     Parameter_set_value(N, value);
     Node** nodes = Tree_nodes(tree);
     for (int i = 0; i < Tree_node_count(tree); i++) {
-        Parameters_add(ps, nodes[i]->height);
+        if (!Node_isleaf(nodes[i])) {
+            Parameters_add(ps, nodes[i]->height);
+        }
     }
 
     model->prepare_gradient(model, ps);
@@ -263,6 +265,7 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
     Model* mlike = new_TreeLikelihoodModel_from_json(json, hash2);
     SingleTreeLikelihood* tlk = mlike->obj;
     Model* mtt = mtree->data;  // node height transform
+    mtree->free(mtree);
 
     double logP;
 
@@ -400,6 +403,7 @@ void test_tree_likelihood_unrooted(size_t iter, const char* json_model, const ch
 
     free_Parameters(ps);
     free_SitePattern(patterns);
+    mtree->free(mtree);
     mlike->free(mlike);
     free_Hashtable(hash2);
     json_free_tree(json);
@@ -456,5 +460,8 @@ int main(int argc, char* argv[]) {
     test_tree_likelihood_time(iter, fasta_file, newick, 0, csv, debug);
     test_tree_likelihood_time(iter, fasta_file, newick, 1, csv, debug);
 
-    fclose(csv);
+    free(newick);
+    if (csv != NULL) {
+        fclose(csv);
+    }
 }

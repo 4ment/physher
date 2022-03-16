@@ -185,15 +185,12 @@ void _parse_description( Node *node, const char *newick, int *i,  bool containBL
 	free_StringBuffer(buffer);
 }
 
-void init_parameter_arrays(Tree* atree){
-	Node **nodes = Tree_get_nodes(atree, POSTORDER);
-	atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
-	atree->stored_nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
-	assert(atree->nodes);
+void init_indices(Tree* tree){
+	Node **nodes = Tree_get_nodes(tree, POSTORDER);
 	
 	int nTips = 0;
 	int nInternals = 0;
-	for ( int i = 0; i < Tree_node_count(atree); i++ ) {
+	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
 		nodes[i]->id = i;
 		nodes[i]->distance->id = i;
 		nodes[i]->height->id = i;
@@ -203,6 +200,38 @@ void init_parameter_arrays(Tree* atree){
 		else {
 			nodes[i]->class_id = nInternals++;
 		}
+	}
+}
+
+void init_indices_with_taxa(Tree* tree, char** taxa){
+	Node **nodes = Tree_get_nodes(tree, POSTORDER);
+	
+	int nTips = Tree_tip_count(tree);
+	int nInternals = 0;
+	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
+		nodes[i]->id = i;
+		nodes[i]->distance->id = i;
+		nodes[i]->height->id = i;
+		if( Node_isleaf(nodes[i]) ){
+			for(size_t j = 0; j < nTips; j++){
+				if(strcmp(nodes[i]->name, taxa[j]) == 0){
+					nodes[i]->class_id = j;
+					break;
+				}
+			}
+		}
+		else {
+			nodes[i]->class_id = nInternals++;
+		}
+	}
+}
+
+void init_parameter_arrays(Tree* atree){
+	Node **nodes = Tree_get_nodes(atree, POSTORDER);
+	atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
+	atree->stored_nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
+	assert(atree->nodes);
+	for ( int i = 0; i < Tree_node_count(atree); i++ ) {
 		atree->nodes[ nodes[i]->id ] = nodes[i];
 	}
 	
@@ -365,6 +394,38 @@ void init_dates(Tree* atree, json_node* dates_node){
 	}
 }
 
+void init_dates2(Tree* atree, const double* dates){
+	atree->homochronous = true;
+	double min = INFINITY;
+	double max = -INFINITY;
+	Node** nodes = Tree_get_nodes(atree, PREORDER);
+	for (int j = 0; j < Tree_node_count(atree); j++) {
+		if(Node_isleaf(nodes[j])){
+			double date = dates[nodes[j]->class_id];
+			Node_set_time(nodes[j], date);
+			Node_set_height(nodes[j], date);
+			min = dmin(date, min);
+			max = dmax(date, max);
+			if (dates[j] != 0) atree->homochronous = false;
+		}
+	}
+	double offset = max;
+	if (!atree->homochronous && min != 0) {
+		offset = -1;
+		for (int i = 0; i < Tree_node_count(atree); i++) {
+			if(Node_isleaf(nodes[i])){
+				Node_set_height(nodes[i], max - Node_height(nodes[i]));
+				offset = dmax(offset-0.000001, Node_height(nodes[i]))+0.000001;
+			}
+		}
+	}
+	
+	if (!atree->homochronous){
+		Constraint_set_lower(atree->root->height->cnstr, offset);
+		Constraint_set_flower(atree->root->height->cnstr, offset);
+	}
+}
+
 void init_leaf_heights_from_times(Tree* atree){
 	atree->homochronous = true;
 	atree->time_mode = true;
@@ -486,7 +547,7 @@ void init_heights_from_distances(Tree* atree){
 	}
 }
 
-Tree * new_Tree( const char *nexus, bool containBL ){
+Tree * create_Tree( const char *nexus, bool containBL ){
 	Tree *atree = (Tree *)malloc(sizeof(Tree));
 	assert(atree);
 	atree->root = NULL;
@@ -679,16 +740,38 @@ Tree * new_Tree( const char *nexus, bool containBL ){
 	}
 	
 	Node_set_distance( current, -1 );
-	//Parameter_set_bounds( current->distance, -1, -1 );
-	//Parameter_set_fixed( current->distance, true );
-	
-	Tree_update_topology(atree);
-	
-	init_parameter_arrays(atree);
 	
 	free_StringBuffer(buffer);
 	
 	return atree;
+}
+
+Tree * new_Tree_with_taxa( const char *nexus, char** taxa, bool containBL){
+	Tree* tree = create_Tree(nexus, containBL);
+	//Parameter_set_bounds( current->distance, -1, -1 );
+	//Parameter_set_fixed( current->distance, true );
+	
+	Tree_update_topology(tree);
+	
+	init_indices_with_taxa(tree, taxa);
+	
+	init_parameter_arrays(tree);
+	
+	return tree;
+}
+
+Tree * new_Tree( const char *nexus, bool containBL ){
+	Tree* tree = create_Tree(nexus, containBL);
+	//Parameter_set_bounds( current->distance, -1, -1 );
+	//Parameter_set_fixed( current->distance, true );
+	
+	Tree_update_topology(tree);
+	
+	init_indices(tree);
+	
+	init_parameter_arrays(tree);
+	
+	return tree;
 }
 
 Tree * new_Tree2( Node *root ){
@@ -714,6 +797,8 @@ Tree * new_Tree2( Node *root ){
 	//Parameter_set_fixed( root->distance, true );
 	
 	Tree_update_topology(atree);
+	
+	init_indices(atree);
     
     init_parameter_arrays(atree);
 	
@@ -1209,6 +1294,42 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 		
 	}
+	if (!Tree_rooted(mtree->obj) && Node_distance(Tree_root(mtree->obj)->right) != 0) {
+		Tree* tree = mtree->obj;
+		double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
+		Node_set_distance(Tree_root(tree)->right, 0);
+		Node_set_distance(Tree_root(tree)->left, tot);
+	}
+	return mtree;
+}
+
+Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* dates){
+	
+	Model* mtree = NULL;
+	Tree* tree = NULL;
+	bool time_tree = dates != NULL;
+	tree = new_Tree_with_taxa(newick, taxa, !time_tree);
+	
+	// parse date dictionary for dated trees
+	// tip heights are intialized
+	if (dates != NULL) {
+		init_dates2(tree, dates);
+		tree->time_mode = true;
+		tree->rooted = true;
+	}
+	else{
+		tree->time_mode = time_tree;
+		tree->rooted = time_tree;
+	}
+	// initialize heights from distances read from newick file
+	if(tree->time_mode){
+		tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO);
+		tree->tt->update_lowers(tree->tt);
+		init_heights_from_distances(tree);
+	}
+	mtree = new_TreeModel("id", tree);
+		
+	
 	if (!Tree_rooted(mtree->obj) && Node_distance(Tree_root(mtree->obj)->right) != 0) {
 		Tree* tree = mtree->obj;
 		double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
@@ -2532,6 +2653,9 @@ void Tree_set_transform(Tree* tree, int tt){
 void Tree_node_transform_jvp(Tree* tree, const double* input, double* output){
 	tree->tt->jvp(tree->tt, input, output);
 }
+void Tree_node_transform_jvp_with_heights(Tree* tree, const double* heights, const double* input, double* output){
+	TreeTransform_jvp_with_heights(tree->tt, heights, input, output);
+}
 
 void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient){
 	tree->tt->log_jacobian_gradient(tree->tt, gradient);
@@ -2540,7 +2664,7 @@ void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient){
 #pragma mark -
 #pragma mark Misc
 
-Node* Tree_node_from_parameter(Tree* tree, Parameter* p){
+Node* Tree_node_from_parameter(Tree* tree, const Parameter* p){
 	// reparam
 	if (p->name[strlen(p->name)-1] == 'm') {
 		return tree->tt->map_to_node[p->id];

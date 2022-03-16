@@ -41,6 +41,8 @@ Model * new_TreeModel( const char* name, Tree *tree );
 
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash);
 
+Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* dates);
+
 Tree * new_Tree( const char *nexus, bool containBL );
 
 Tree * new_Tree2( Node *root );
@@ -211,8 +213,9 @@ Parameters* get_reparams(Tree* tree);
 unsigned* get_reparam_map(Tree* tree);
 
 void Tree_node_transform_jvp(Tree* tree, const double* input, double* output);
+void Tree_node_transform_jvp_with_heights(Tree* tree, const double* heights, const double* input, double* output);
 void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient);
-Node* Tree_node_from_parameter(Tree* tree, Parameter* p);
+Node* Tree_node_from_parameter(Tree* tree, const Parameter* p);
 void Tree_set_transform(Tree* tree, int tt);
 
 void Tree_update_heights(Tree* tree);

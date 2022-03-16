@@ -24,8 +24,6 @@
 #include "discreteparameter.h"
 #include "utils.h"
 
-#define COALESCENT_FLAG_TREE         1 << 0
-#define COALESCENT_FLAG_THETA        1 << 1
 
 typedef enum demography{
 	COALESCENT_CONSTANT,
@@ -36,6 +34,11 @@ typedef enum demography{
 	COALESCENT_SKYRIDE
 }demography;
 
+typedef enum parameterization_t{
+	COALESCENT_THETA=0,
+	COALESCENT_THETA_LOG,
+	COALESCENT_THETA_DELTA,
+}parameterization_t;
 
 typedef struct Coalescent{
     Tree *tree;
@@ -66,6 +69,8 @@ typedef struct Coalescent{
 	int prepared_gradient;
 	double* gradient;
 	size_t gradient_length;
+	
+	parameterization_t parameterization;
 }Coalescent;
 
 
@@ -92,10 +97,14 @@ Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Paramet
 Coalescent * new_SkylineCoalescent( Tree *tree, Parameters* parameters, DiscreteParameter* groups);
 Coalescent * new_SkylineCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, DiscreteParameter* groups);
 
-Coalescent * new_SkyrideCoalescent( Tree *tree, Parameters* parameters);
-Coalescent * new_SkyrideCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size);
+Coalescent * new_SkyrideCoalescent( Tree *tree, Parameters* parameters, parameterization_t parameterization);
+Coalescent * new_SkyrideCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, parameterization_t parameterization);
 
-Coalescent * new_GridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff );
-Coalescent * new_GridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff);
+Coalescent * new_GridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff, parameterization_t parameterization );
+Coalescent * new_GridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff, parameterization_t parameterization);
+
+size_t Coalescent_initialize_gradient(Model *self, int flags);
+
+double* Coalescent_gradient(Model *self);
 
 #endif

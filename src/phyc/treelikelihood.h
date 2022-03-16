@@ -126,6 +126,9 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk, Mo
 
 Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash);
 
+size_t TreeLikelihood_initialize_gradient(Model *self, int flags);
+double* TreeLikelihood_gradient(Model *self);
+
 
 #pragma mark -
 #pragma mark SingleTreeLikelihood
