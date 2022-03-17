@@ -13,4 +13,9 @@
 #define GRADIENT_FLAG_SUBSTITUTION_FREQUENCIES 1 << 9
 #define GRADIENT_FLAG_SUBSTITUTION_RATES       1 << 10
 
+typedef enum derivative_t{
+	DERIVATIVE_ANALYTICAL=0,
+	DERIVATIVE_NUMERICAL
+} derivative_t;
+
 #endif /* gradient_h */

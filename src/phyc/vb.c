@@ -31,6 +31,8 @@ variational_block_t* clone_VariationalBlock(variational_block_t* block, Hashtabl
     clone->posterior = NULL;
     clone->simplex_count = 0;
     clone->simplex_parameter_count = 0;
+    clone->derivative_type = block->derivative_type;
+    clone->numerical_eps = block->numerical_eps;
     
     if(block->simplices != NULL){
         clone->simplices = malloc(block->simplex_count*sizeof(Model*));
@@ -102,8 +104,10 @@ variational_block_t* clone_VariationalBlock(variational_block_t* block, Hashtabl
 variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* hash){
     variational_block_t* var = malloc(sizeof(variational_block_t));
     char* allowed[] = {
+        "derivative",
         "distribution",
         "entropy", // use entropy or not
+        "eps",
         "parameters",
         "simplices",
         "tree",
@@ -112,11 +116,19 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
     json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
     
     const char* id = get_json_node_value_string(node, "id");
+    const char* derivative_string = get_json_node_value_string(node, "derivative");
     const char* dist_string = get_json_node_value_string(node, "distribution");
     json_node* parameters_node = get_json_node(node, "parameters");
     json_node* simplices_node = get_json_node(node, "simplices");
     json_node* tree_node = get_json_node(node, "tree");
     var->use_entropy = get_json_node_value_bool(node, "entropy", true);
+
+    var->derivative_type = DERIVATIVE_ANALYTICAL;
+    var->numerical_eps = -INFINITY;
+    if(derivative_string != NULL && strcasecmp(derivative_string, "numerical") == 0){
+        var->derivative_type = DERIVATIVE_NUMERICAL;
+        var->numerical_eps = get_json_node_value_double(node, "eps", 1.e-8);
+    }
 
     var->sample = NULL;
     var->var_parameters = NULL;

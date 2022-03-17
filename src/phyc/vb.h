@@ -15,6 +15,7 @@
 #include "parameters.h"
 #include "simplex.h"
 #include "matrix.h"
+#include "gradient.h"
 
 #include <gsl/gsl_rng.h>
 
@@ -38,6 +39,8 @@ typedef struct variational_block_t{
     gsl_rng* rng;
     bool initialized;
     Vector* etas;
+    derivative_t derivative_type; // use numerical or analytical derivative
+    double numerical_eps; // eps used for numerical derivative
 }variational_block_t;
 
 typedef struct variational_t{

@@ -350,7 +350,13 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
                 Parameter* p = Parameters_at(var->parameters, idx);
                 double mu = Parameters_value(var->var_parameters[0], idx);
                 double sigma = Parameters_value(var->var_parameters[1], idx);
-                double dlogP = posterior->dlogP(posterior, p);
+				double dlogP;
+				if(var->derivative_type == DERIVATIVE_ANALYTICAL){
+                	dlogP = posterior->dlogP(posterior, p);
+				}
+				else{
+					dlogP = Model_first_derivative(posterior, p, 1.e-6);
+				}
                 double zeta = etas[idx] * sigma + mu;
                 double gldits = 1.0/zeta + 1.0/(zeta - 1.0); // grad log det transform of stick
                 const double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
@@ -374,7 +380,13 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
         double mu = Parameters_value(var->var_parameters[0], idx);
         double sigma = Parameters_value(var->var_parameters[1], idx);
         
-        double dlogP = posterior->dlogP(posterior, p);
+        double dlogP;
+		if(var->derivative_type == DERIVATIVE_ANALYTICAL){
+			dlogP = posterior->dlogP(posterior, p);
+		}
+		else{
+			dlogP = Model_first_derivative(posterior, p, 1.e-6);
+		}
         double zeta = etas[idx]*sigma + mu;
         double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
         double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit;
@@ -597,7 +609,13 @@ void klqp_block_fullrank_normal_grad_elbo(variational_block_t* var, const Parame
     size_t row = 0;
     for (int k = 0; k < dim; k++){
         Parameter* p = Parameters_at(var->parameters, k);
-        double dlogP = posterior->dlogP(posterior, p);
+        double dlogP;
+  		if(var->derivative_type == DERIVATIVE_ANALYTICAL){
+			dlogP = posterior->dlogP(posterior, p);
+		}
+		else{
+			dlogP = Model_first_derivative(posterior, p, 1.e-6);
+		}
         double zeta = etas[dim+k];
         const double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
         double grad_mu = dlogP * grad_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p)) + gldit;
