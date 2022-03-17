@@ -140,6 +140,9 @@ SubstitutionModel * new_GTR_with_parameters( Simplex* freqs, Parameter* ac, Para
 	else{
 		m->relativeTo = 5;
 	}
+	for(size_t i = 0; i < Parameters_count(m->rates); i++){
+		Parameters_at(m->rates, i)->id = i;
+	}
 	return m;
 }
 

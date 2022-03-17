@@ -73,13 +73,15 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads );
 void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 	SingleTreeLikelihood *tlk = (SingleTreeLikelihood*)self->obj;
 
-	//printf("%s %d\n", model->name, index);
 	if ( model->type == MODEL_TREE ) {
-//		printf("node index %d\n", index);
-		//SingleTreeLikelihood_update_one_node(tlk, index);
-		tlk->update_nodes[index] = true;
-		tlk->update = true;
-		tlk->update_upper = true;
+		if(index == -1){
+			SingleTreeLikelihood_update_all_nodes(tlk);
+		}
+		else{
+			tlk->update_nodes[index] = true;
+			tlk->update = true;
+			tlk->update_upper = true;
+		}
 	}
 	else if ( model->type == MODEL_BRANCHMODEL ) {
 		if(index == -1){
@@ -390,6 +392,12 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 				}
 				offset += Parameters_count(tlk->m->rates);
 			}
+			else if (tlk->m->rates_simplex != NULL) {
+				if(p->id < (tlk->m->rates_simplex->K - 1) && p == Parameters_at(tlk->m->rates_simplex->parameters, p->id)){
+					return tlk->gradient[offset + p->id];
+				}
+				offset += tlk->m->rates_simplex->K - 1;
+			}
 			if(p == Parameters_at(tlk->m->simplex->parameters, p->id)){
 				return tlk->gradient[offset + p->id];
 			}
@@ -434,6 +442,7 @@ static void _calculate_dlog_jacobian(const Node* noderef, Node* node, double* dl
     }
 }
 
+// This function is replaced by _singleTreeLikelihood_dlogP_prepared
 double _singleTreeLikelihood_dlogP(Model *self, const Parameter* p){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 	
@@ -2532,7 +2541,7 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 	size_t rateCount = tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K - 1;
     
 	const double* freqs = tlk->get_root_frequencies(tlk);
-	
+
     // Frequencies
     if(index >= rateCount){
 		size_t freqIndex = index - rateCount;
@@ -3584,7 +3593,7 @@ void gradient_clock(SingleTreeLikelihood* tlk, const double* branch_gradient, do
 }
 
 void gradient_PMatrix(SingleTreeLikelihood* tlk, const double* pattern_likelihoods, double* gradient){
-	size_t parameter_count = Parameters_count(tlk->m->rates);
+	size_t parameter_count = tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K - 1;
 	if(tlk->m->simplex != NULL) parameter_count += tlk->m->simplex->K - 1;
 	for(size_t i = 0; i < parameter_count; i++){
 		gradient[i] = calculate_dlnl_dQ(tlk, i, pattern_likelihoods);
@@ -3756,7 +3765,6 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
 		offset += Parameters_count(tlk->bm->rates);
 	}
 
-//	if(tlk->sm->m->modeltype == GTR && Parameters_count(tlk->sm->m->rates) == 5){
 	if(prepare_subsitution_model){
 		gradient_PMatrix(tlk, pattern_likelihoods, grads+offset);
 	}

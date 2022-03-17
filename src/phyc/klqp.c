@@ -355,7 +355,7 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
                 	dlogP = posterior->dlogP(posterior, p);
 				}
 				else{
-					dlogP = Model_first_derivative(posterior, p, 1.e-6);
+					dlogP = Model_first_derivative(posterior, p, var->numerical_eps);
 				}
                 double zeta = etas[idx] * sigma + mu;
                 double gldits = 1.0/zeta + 1.0/(zeta - 1.0); // grad log det transform of stick
@@ -385,7 +385,7 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
 			dlogP = posterior->dlogP(posterior, p);
 		}
 		else{
-			dlogP = Model_first_derivative(posterior, p, 1.e-6);
+			dlogP = Model_first_derivative(posterior, p, var->numerical_eps);
 		}
         double zeta = etas[idx]*sigma + mu;
         double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
@@ -614,7 +614,7 @@ void klqp_block_fullrank_normal_grad_elbo(variational_block_t* var, const Parame
 			dlogP = posterior->dlogP(posterior, p);
 		}
 		else{
-			dlogP = Model_first_derivative(posterior, p, 1.e-6);
+			dlogP = Model_first_derivative(posterior, p, var->numerical_eps);
 		}
         double zeta = etas[dim+k];
         const double gldit = grad_log_det_inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p));
