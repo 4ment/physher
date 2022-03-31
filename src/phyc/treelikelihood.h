@@ -108,7 +108,7 @@ struct _SingleTreeLikelihood{
 	
     calculate_upper_t calculate_upper;
 	
-	void (*calculate_branch_likelihood)(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
+	void (*calculate_per_cat_partials)(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 	
 	int* upper_partial_indexes;
 	bool update_upper; // for derivatives

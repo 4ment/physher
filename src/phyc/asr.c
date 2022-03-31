@@ -57,7 +57,7 @@ void _marginal_reconstruction( SingleTreeLikelihood *tlk ){
 					spare_partials = partials;
 				}
 				else {
-					tlk->calculate_branch_likelihood(tlk, spare_partials, tlk->upper_partial_indexes[nodeID], nodeID, nodeID );
+					tlk->calculate_per_cat_partials(tlk, spare_partials, tlk->upper_partial_indexes[nodeID], nodeID, nodeID );
 				}
 				
 				if(tlk->sm->integrate){
