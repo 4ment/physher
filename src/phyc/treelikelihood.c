@@ -2601,6 +2601,23 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 		double* cat_dlikelihoodsNode = branch_grandient + nodeId*tlk->sm->cat_count;
 
 #ifndef INCLUDE_ROOT_FREQS
+#if defined (SSE3_ENABLED) || (AVX_ENABLED)
+	__m128d* p = (__m128d*)spare_partials;
+	__m128d f1 = _mm_load_pd(freqs);
+	__m128d f2 = _mm_load_pd(freqs+2);
+	double temp[2] __attribute__ ((aligned (16)));
+	__m128d temp2;
+	for ( size_t j = 0; j < catCount; j++ ){
+			cat_dlikelihoodsNode[j] = 0;
+			for ( size_t k = 0; k < patternCount; k++ ) {
+				__m128d temp2 = _mm_mul_pd(f1, *p);
+				p++;
+				_mm_store_pd(temp, _mm_add_pd(temp2, _mm_mul_pd(f2, *p)));
+				p++;
+				cat_dlikelihoodsNode[j] += (temp[0]+temp[1])/pattern_likelihoods[k] * tlk->sp->weights[k];
+			}
+		}
+#else
 		for ( int j = 0; j < catCount; j++ ){
 			cat_dlikelihoodsNode[j] = 0;
 			for ( size_t k = 0; k < patternCount; k++ ) {
@@ -2611,6 +2628,7 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 				cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
 			}
 		}
+#endif
 #else
 		for ( int j = 0; j < catCount; j++ ){
 			cat_dlikelihoodsNode[j] = 0;

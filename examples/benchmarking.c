@@ -360,7 +360,7 @@ void test_tree_likelihood_unrooted(size_t iter, const char* json_model, const ch
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu evaluations: %f ms (%f)\n", iter, mseconds(start, end), logP);
     if (csv != NULL)
-        fprintf(csv, "treelikelihood,evaluation,off,%f,%f\n", mseconds(start, end) / 1000., logP);
+        fprintf(csv, "treelikelihood%s,evaluation,off,%f,%f\n", (tlk->m->modeltype == GTR ? "GTR" : "JC69"), mseconds(start, end) / 1000., logP);
     // logP does not match tree time value because it does not include log det Jacobian
 
     if (debug) {
@@ -392,7 +392,7 @@ void test_tree_likelihood_unrooted(size_t iter, const char* json_model, const ch
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
     if (csv != NULL)
-        fprintf(csv, "treelikelihood,gradient,off,%f,\n", mseconds(start, end) / 1000.);
+        fprintf(csv, "treelikelihood%s,gradient,off,%f,\n", (tlk->m->modeltype == GTR ? "GTR" : "JC69"), mseconds(start, end) / 1000.);
 
     if (debug) {
         for (int j = 0; j < Parameters_count(ps); j++) {
