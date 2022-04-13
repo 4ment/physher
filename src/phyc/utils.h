@@ -48,6 +48,8 @@ double logDoubleFactorial(int n);
 #pragma mark -
 #pragma mark double
 
+double dclamp(double value, double min, double max);
+
 double dmax( double a, double b);
 
 double dmin( double a, double b);

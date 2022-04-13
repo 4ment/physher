@@ -38,6 +38,8 @@ void klqp_block_meanfield_normal_sample(variational_block_t* var, double* values
 
 bool klqp_block_meanfield_normal_sample_some(variational_block_t* var, const Parameters* parameters, double* values);
 
+void klqp_block_meanfield_normal_initialize(variational_block_t* var);
+
 //MARK: Fullrank block
 
 void klqp_block_fullrank_normal_sample1(variational_block_t* var, double* jacobian);

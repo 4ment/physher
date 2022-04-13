@@ -245,7 +245,8 @@ opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f,
 	double *elbos = calloc(stop->iter_max/eval_elbo, sizeof(double));
 	
 	opt_result result = OPT_SUCCESS;
-	
+	size_t max_failures = 10;
+	size_t failure_count = 0;
 	double elbo0 = f(parameters, NULL, data);
 	if(verbose > 0)
 		printf("%zu ELBO: %f\n", stop->iter, elbo0);
@@ -255,6 +256,22 @@ opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f,
 		double eta_scaled = eta / sqrt(stop->iter);
 		double beta1p = pow(beta1, stop->iter);
 		double beta2p = pow(beta2, stop->iter);
+
+		int i = 0;
+		for (; i < dim; i++) {
+			if(isnan(grads[i])){
+				break;
+			}
+		}
+		if(i == dim){
+			failure_count = 0;
+		}
+		else if(failure_count < max_failures){
+			stop->iter--;
+			failure_count++;
+			continue;
+		}
+
 		for (int i = 0; i < dim; i++) {
 			if (Parameters_estimate(parameters, i)) {
 				double grad = grads[i];

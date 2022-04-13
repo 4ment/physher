@@ -35,6 +35,7 @@ typedef struct variational_block_t{
     void (*grad_entropy)(struct variational_block_t*, const Parameters*, double*);
     double (*logP)(struct variational_block_t*, const double* values);
     double (*logQ)(struct variational_block_t*, const double* values);
+    void (*initialize)(struct variational_block_t*);
     bool use_entropy;
     gsl_rng* rng;
     bool initialized;

@@ -229,6 +229,36 @@ void variational_klqp_grad_elbo(variational_t* var, const Parameters* parameters
 
 //MARK: block normal meanfield
 
+void klqp_block_meanfield_normal_initialize(variational_block_t* var){
+	size_t dim = Parameters_count(var->parameters);
+	for (int j = 0; j < dim; j++) {
+		Parameter* p = Parameters_at(var->parameters, j);
+		Parameter* var_p_mu = Parameters_at(var->var_parameters[0], j);
+		Parameter* var_p_sigma = Parameters_at(var->var_parameters[1], j);
+		double x = Parameter_value(p);
+		double var_mu = INFINITY;
+		double var_sigma = INFINITY;
+		if(!isinf(Parameter_lower(p)) && !isinf(Parameter_upper(p))){
+			var_mu = transform(x, 0.0, 1.0);
+			var_sigma = 1.e-6;
+		}
+		else if(Parameter_lower(p) >= 0.0){
+			if(Parameter_lower(p) > 0.0){
+				x -= Parameter_lower(p);
+			}
+			var_mu = log(x);
+			var_sigma = 1.e-6;
+		}
+		else{
+			var_mu =x;
+			var_sigma = fabs(x) *0.01;
+		}
+		printf("%s %f %f %f %f %f\n", Parameter_name(p), Parameter_value(p), var_mu, var_sigma, Parameter_lower(p), Parameter_upper(p) );
+		Parameter_set_value(var_p_mu, var_mu);
+		Parameter_set_value(var_p_sigma, var_sigma);
+	}
+}
+
 void klqp_block_meanfield_normal_sample1(variational_block_t* var, double* jacobian){
     size_t dim = Parameters_count(var->parameters);
     double* etas = Vector_mutable_data(var->etas);
@@ -759,6 +789,20 @@ bool klqp_block_fullrank_normal_sample_some(variational_block_t* var, const Para
     return true;
 }
 
+void klqp_block_meanfield_lognormal_initialize(variational_block_t* var){
+	size_t dim = Parameters_count(var->parameters);
+	for (int j = 0; j < dim; j++) {
+		Parameter* p = Parameters_at(var->parameters, j);
+		Parameter* var_p_mu = Parameters_at(var->var_parameters[0], j);
+		Parameter* var_p_sigma = Parameters_at(var->var_parameters[1], j);
+		double x = Parameter_value(p);
+		double variance = x*0.01;
+		double var_mu = log(x / sqrt(1 + variance / x*x));
+		double var_sigma = sqrt(log(1 + variance / x*x));
+		Parameter_set_value(var_p_mu, var_mu);
+		Parameter_set_value(var_p_sigma, var_sigma);
+	}
+}
 
 #pragma mark - normal meanfield
 

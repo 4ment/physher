@@ -106,6 +106,7 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
     char* allowed[] = {
         "derivative",
         "distribution",
+        "initialize",
         "entropy", // use entropy or not
         "eps",
         "parameters",
@@ -139,6 +140,7 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
     var->simplices = NULL;
     
     var->initialized = false;
+    var->initialize = NULL;
     var->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
     
     if(simplices_node != NULL){
@@ -228,6 +230,7 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
 //            var->finalize = klqp_meanfield_normal_finalize;
             var->logP = klqp_block_meanfield_normal_logP;
             var->logQ = klqp_block_meanfield_normal_logQ;
+            var->initialize = klqp_block_meanfield_normal_initialize;
 //            var->parameters_logP = klqp_block_meanfield_normal_logP_parameters;
 //            var->print = klqp_meanfield_normal_log_samples;
             
@@ -359,6 +362,11 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
     else{
         fprintf(stderr, "distribution %s not recognized\n", dist_string);
         exit(1);
+    }
+    bool initialize = get_json_node_value_bool(node, "initialize", false);
+    if(initialize && var->initialize != NULL){
+        var->initialize(var);
+        var->initialized = true;
     }
 
     return var;

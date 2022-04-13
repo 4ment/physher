@@ -37,6 +37,7 @@
 #include "distmultinormal.h"
 #include "distlognormal.h"
 #include "distoneonx.h"
+#include "ctmcscale.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
@@ -946,6 +947,9 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash){
     }
     else if (strcasecmp(d_string, "oneonx") == 0){
         return new_OneOnXDistributionModel_from_json(node, hash);
+    }
+    else if (strcasecmp(d_string, "ctmcscale") == 0){
+        return new_CTMCScaleModel_from_json(node, hash);
     }
     
 	char* id = get_json_node_value_string(node, "id");

@@ -471,14 +471,9 @@ void init_heights_from_distances(Tree* atree){
 		for ( int i = 0; i < Tree_node_count(atree); i++) {
 			Node* node = nodes[i];
 			if( !Node_isleaf(node) ){
-				double left = Node_height(Node_left(node)) + Node_distance(Node_left(node));
-				double right = Node_height(Node_right(node)) + Node_distance(Node_right(node));
-				if(left > right){
-					Node_set_height(node, left);
-				}
-				else{
-					Node_set_height(node, right);
-				}
+				double left = Node_height(Node_left(node)) + dclamp(Node_distance(Node_left(node)), 1.e-6, INFINITY);
+				double right = Node_height(Node_right(node)) + dclamp(Node_distance(Node_right(node)), 1.e-6, INFINITY);
+				Node_set_height(node, dmax(left, right));
 			}
 			else{
 				Node_set_height(nodes[i], 0);
@@ -510,14 +505,9 @@ void init_heights_from_distances(Tree* atree){
 		for ( int i = 0; i < Tree_node_count(atree); i++) {
 			Node* node = nodes[i];
 			if( !Node_isleaf(node) ){
-				double height ;
-				if(Node_height(Node_left(node)) > Node_height(Node_right(node))){
-					height = Node_height(Node_left(node)) + Node_distance(Node_left(node));
-				}
-				else{
-					height = Node_height(Node_right(node)) + Node_distance(Node_right(node));
-				}
-				Node_set_height(node, height);
+				double left = Node_height(Node_left(node)) + dclamp(Node_distance(Node_left(node)), 1.e-6, INFINITY);
+				double right = Node_height(Node_right(node)) + dclamp(Node_distance(Node_right(node)), 1.e-6, INFINITY);
+				Node_set_height(node, dmax(left, right));
 			}
 		}
 		Tree_constraint_heights(atree);

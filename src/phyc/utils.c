@@ -63,6 +63,10 @@ double logDoubleFactorial(int n){
 #pragma mark -
 #pragma mark double
 
+double dclamp(double value, double min, double max){
+	return dmin(dmax(min, value), max);
+}
+
 double dmax( double a, double b){
 	return ( a > b ? a : b);
 }
