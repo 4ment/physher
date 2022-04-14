@@ -175,7 +175,7 @@ void _model_prepare_gradient(Model* self, const Parameters* ps){
 	size_t gradient_length = 0;
 	for (size_t i = 0; i < paramCount; i++) {
 		Parameter* p = Parameters_at(ps, i);
-		if (p->model == MODEL_TREE && !prepare_tree) {
+		if ((p->model == MODEL_TREE || p->model == MODEL_TREE_TRANSFORM) && !prepare_tree) {
 			prepare_tree = true;
 			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_TREE;
 			if(!Tree_is_time_mode(tlk->tree)){
@@ -334,7 +334,7 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 	size_t offset = 0;
 	
 	if(prepare_tree){
-		if (p->model == MODEL_TREE) {
+		if ((p->model == MODEL_TREE || p->model == MODEL_TREE_TRANSFORM)) {
 			return tlk->gradient[p->id];
 		}
 		if(!Tree_is_time_mode(tlk->tree)){

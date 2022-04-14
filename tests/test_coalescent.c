@@ -61,7 +61,7 @@ char* test_skyride(){
 		Parameters_move(ps, p);
 		p->id = i;
 	}
-	Coalescent* coal = new_SkyrideCoalescent(tree, ps);
+	Coalescent* coal = new_SkyrideCoalescent(tree, ps, COALESCENT_THETA_LOG);
 	
 	Model* model = new_CoalescentModel("", coal, mtree);
 	
@@ -114,7 +114,7 @@ char* test_skygrid(){
 	}
 	double cutoff = 10;
 	int grid = 5;
-	Coalescent* coal = new_GridCoalescent(tree, ps, grid, cutoff);
+	Coalescent* coal = new_GridCoalescent(tree, ps, grid, cutoff, COALESCENT_THETA_LOG);
 	
 	Model* model = new_CoalescentModel("", coal, mtree);
 	

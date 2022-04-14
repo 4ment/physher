@@ -860,7 +860,7 @@ void _constant_calculate_gradient( Coalescent* coal ){
 }
 
 double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
-	if(p != Parameters_at(coal->p, 0) && p->model != MODEL_TREE) return 0;
+	if(p != Parameters_at(coal->p, 0) && p->model != MODEL_TREE && p->model != MODEL_TREE_TRANSFORM) return 0;
 	if ( coal->need_update_intervals ) {
 		_update_intervals(coal);
 	}

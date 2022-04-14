@@ -304,9 +304,9 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
             p = new_Parameter(buffer->c, Node_height(node), new_Constraint(0, INFINITY));
 
         } else {
-            p = new_Parameter(buffer->c, Node_height(node) / Node_height(Node_parent(nodes[i])), new_Constraint(0.00001, 0.9999));
+            p = new_Parameter(buffer->c, Node_height(node) / Node_height(Node_parent(nodes[i])), new_Constraint(0., 1.));
         }
-        p->model = MODEL_TREE;
+        p->model = MODEL_TREE_TRANSFORM;
         Parameters_move(tt->parameters, p);
         p->id = Node_class_id(node);
         tt->map_to_node[p->id] = node;
