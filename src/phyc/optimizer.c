@@ -94,6 +94,8 @@ struct _Optimizer{
 	int verbosity;
 	OptimizerSchedule* schedule;
     
+	char* checkpoint_file;
+	int checkpoint_frequency;
     // for stochastic gradient
     double* etas;
 	size_t eta_count;
@@ -249,6 +251,9 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->eta_count = 0;
     opt->ascent = true;
 	opt->reset = NULL;
+
+	opt->checkpoint_file = NULL;
+	opt->checkpoint_frequency = 0;
 	return opt;
 }
 
@@ -354,6 +359,10 @@ void free_Optimizer( Optimizer *opt ){
 		free(opt->schedule->rounds);
 		free(opt->schedule->post);
 		free(opt->schedule);
+		if(opt->checkpoint_file != NULL) free(opt->checkpoint_file);
+	}
+	if(opt->checkpoint_file != NULL){
+		free(opt->checkpoint_file);
 	}
 	free(opt);
 }
@@ -467,6 +476,9 @@ int opt_f_evaluations( Optimizer *opt ){
     return opt->stop.f_eval_current;
 }
 
+Parameters* opt_parameters( Optimizer *opt ){
+	return opt->parameters;
+}
 // Meta optimizer
 
 bool opt_post(OptimizerSchedule* schedule, double before, double after){
@@ -570,6 +582,7 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
     opt->stop.iter = 0;
     opt->stop.f_eval_current = 0;
     opt->stop.count = 0;
+	OptimizerCheckpoint checkpointer = {opt->checkpoint_file, opt->checkpoint_frequency};
 	
 	switch (opt->algorithm ) {
 		case OPT_META:{
@@ -615,10 +628,10 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 			if(eta_adapt_result == OPT_SUCCESS){
 				if(opt->verbosity > 0) printf("Stochastic gradient ascent using eta: %f\n", eta);
 				if (opt->algorithm == OPT_SG_ADAM) {
-					result = optimize_stochastic_gradient_adam(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin);
+					result = optimize_stochastic_gradient_adam(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin, &checkpointer);
 				}
 				else{
-					result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin);
+					result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin, &checkpointer);
 				}
 				opt->reset(opt->data);
 			}
@@ -732,6 +745,8 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	
 	char* allowed[] = {
 		"algorithm",
+		"checkpoint",
+		"checkpoint_frequency",
 		"eta",
 		"frequency_check",
 		"list",
@@ -852,6 +867,17 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
     }
 	opt->threads = get_json_node_value_size_t(node, "threads", 1);
 	opt->verbosity = get_json_node_value_int(node, "verbosity", 1);
+
+	const char* checkpoint_file = get_json_node_value_string(node, "checkpoint");
+	
+	if (checkpoint_file != NULL){
+		opt->checkpoint_file = String_clone(checkpoint_file);		
+	}
+	else{
+		opt->checkpoint_file = String_clone("checkpoint.csv");
+	}
+	opt->checkpoint_frequency = get_json_node_value_int(node, "checkpoint_frequency", 1000);
+	
 	free_Parameters(parameters);
 	return opt;
 }

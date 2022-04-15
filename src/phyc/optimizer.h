@@ -56,6 +56,11 @@ typedef enum opt_algorithm {
 
 static const char *OPT_ALGORITHMS[10] = {"POWELL","BRENT","BRENTSERIAL","BFGS","CG_PR","CG_FR","META","SG","SGADAM","TOPOLOGY"};
 
+typedef struct OptimizerCheckpoint{
+	char* file;
+	int frequency;
+}OptimizerCheckpoint;
+
 typedef struct OptStopCriterion{
 	time_t time_start;
 	time_t time_current;
@@ -150,6 +155,8 @@ size_t opt_frequency_check( Optimizer *opt );
 void opt_set_frequency_check( Optimizer *opt, const size_t frequency_check );
 
 int opt_f_evaluations( Optimizer *opt );
+
+Parameters* opt_parameters( Optimizer *opt );
 
 void opt_set_update_data_function( Optimizer *opt, opt_update_data uf );
 

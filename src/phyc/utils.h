@@ -166,6 +166,8 @@ double SQR( double a );
 
 bool file_exists(const char * filename);
 
+void file_copy(const char* source, const char* dest);
+
 bool isInt( const char *str );
 
 bool isFloat( const char *str );

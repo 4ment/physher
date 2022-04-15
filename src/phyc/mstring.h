@@ -111,6 +111,8 @@ StringBuffer * StringBuffer_reserve( StringBuffer *buffer, const size_t size );
 
 StringBuffer * StringBuffer_set_string( StringBuffer *buffer, const char *src );
 
+StringBuffer * StringBuffer_set_nstring( StringBuffer *buffer, const char *src, const size_t n );
+
 StringBuffer * StringBuffer_append_char( StringBuffer *buffer, const char src );
 
 StringBuffer * StringBuffer_append_string( StringBuffer *buffer, const char *src );

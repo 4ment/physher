@@ -419,6 +419,17 @@ bool file_exists(const char * filename){
     return false;
 }
 
+void file_copy(const char* source, const char* dest){
+	FILE* p = fopen(source, "r");
+	FILE* out = fopen(dest, "w");
+	char ch;
+	while ((ch = fgetc(p)) != EOF){
+    	fputc(ch, out);
+	}
+	fclose(out);
+	fclose(p);
+}
+
 // a number could be 1e10
 bool isFloat( const char *str ){
 	const char *pch = str;

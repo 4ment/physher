@@ -14,6 +14,7 @@
 #include <signal.h>
 
 #include "matrix.h"
+#include "checkpoint.h"
 
 
 #if defined (PTHREAD_ENABLED)
@@ -80,7 +81,7 @@ static void * _threadpool_sg_worker( void *threadpool ){
 		}
 		pool->reset(model);
 		
-		optimize_stochastic_gradient(parameters, pool->f, pool->grad_f, pool->etas[count], model, &stop, 0, pool->elbos+count);
+		optimize_stochastic_gradient(parameters, pool->f, pool->grad_f, pool->etas[count], model, &stop, 0, pool->elbos+count, NULL);
 	}
 	pthread_exit(NULL);
 	return NULL;
@@ -110,7 +111,7 @@ opt_result optimize_stochastic_gradient_adapt(Parameters* parameters, opt_func f
 			stop_local.iter_max = 50;
 			stop_local.frequency_check = 0;
 			fprintf(stdout, "Trying eta: %f ", etas[i]);
-			optimize_stochastic_gradient(parameters, f, grad_f, etas[i], data, &stop_local, 0, elbos+i);
+			optimize_stochastic_gradient(parameters, f, grad_f, etas[i], data, &stop_local, 0, elbos+i, NULL);
 			fprintf(stdout, "ELBO: %f\n", elbos[i]);
 		}
 		
@@ -224,7 +225,7 @@ int compare (const void * a, const void * b){
 	return ( *(double*)a - *(double*)b );
 }
 
-opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin){
+opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer){
 	size_t dim = Parameters_count(parameters);
 	
 	double beta1 = 0.9;
@@ -298,6 +299,11 @@ opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f,
 				elbo_best = elbo;
 				*fmin = elbo_best;
 			}
+
+			if (stop->iter % checkpointer->frequency == 0){
+				checkpoint_save(checkpointer->file, parameters);
+			}
+
 			double delta_elbo = fabs((elbo_prev - elbo) / elbo);
 			size_t eval_count = stop->iter/eval_elbo;
 			elbos[eval_count-1] = delta_elbo;
@@ -321,7 +327,7 @@ opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f,
 	return result;
 }
 
-opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin){
+opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer){
 	size_t dim = Parameters_count(parameters);
 	double tau = 1;
 	double pre_factor  = 0.9;
@@ -408,6 +414,11 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 				elbo_best = elbo;
 				*fmin = elbo_best;
 			}
+
+			if (stop->iter % checkpointer->frequency == 0){
+				checkpoint_save(checkpointer->file, parameters);
+			}
+			
 			double delta_elbo = fabs((elbo_prev - elbo) / elbo);
 			size_t eval_count = stop->iter/eval_elbo;
 			elbos[eval_count-1] = delta_elbo;

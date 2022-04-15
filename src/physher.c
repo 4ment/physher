@@ -54,6 +54,7 @@
 #include "phyc/ppsites.h"
 #include "phyc/cat.h"
 #include "phyc/sbn.h"
+#include "phyc/checkpoint.h"
 
 #include "phyc/physhercmd.h"
 
@@ -92,18 +93,16 @@ int main(int argc, const char* argv[]){
 #endif
 		return 0;
 	}
-	else if(argv[1][0] == '-'){
+	else if(array_of_string_contains("--dry", argv, argc, true)){
 		json = create_json_file(argc, argv);
-		if (array_of_string_contains("--dry", argv, argc, true)) {
-			json_tree_print(json);
-			printf("\n");
-			json_free_tree(json);
-			exit(0);
-		}
+		json_tree_print(json);
+		printf("\n");
+		json_free_tree(json);
+		exit(0);
 	}
 	else{
-		char* content = load_file(argv[1]);
-		printf("Reading file %s\n", argv[1]);
+		char* content = load_file(argv[argc-1]);
+		printf("Reading file %s\n", argv[argc-1]);
 		printf("done\n\n");
 
 		json = create_json_tree(content);
@@ -195,6 +194,10 @@ int main(int argc, const char* argv[]){
         
 		if (strcasecmp(type, "optimizer") == 0) {
 			Optimizer* opt = new_Optimizer_from_json(child, hash2);
+			char* checkpoint = args_get_string(argc, (char**)argv, "-c");
+			if(checkpoint != NULL){
+				checkpoint_apply(checkpoint, opt_parameters(opt));
+			}
 			double logP;
 			opt_optimize(opt, NULL, &logP);
 			free_Optimizer(opt);

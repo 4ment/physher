@@ -814,6 +814,20 @@ StringBuffer * StringBuffer_append_nstring( StringBuffer *buffer, const char *sr
 	return buffer;
 }
 
+StringBuffer * StringBuffer_set_nstring( StringBuffer *buffer, const char *src, const size_t n ){
+	size_t length_src = stmin(strlen(src), n);
+	
+	if( length_src >= buffer->capacity ){
+		buffer->c = realloc( buffer->c, (length_src + 1) * sizeof(char) );
+		assert(buffer->c);
+		buffer->capacity = length_src + 1;
+	}
+	strncpy(buffer->c, src, n);
+	buffer->length = length_src;
+	buffer->c[buffer->length] = '\0';
+	return buffer;
+}
+
 StringBuffer * StringBuffer_append_strings( StringBuffer *buffer, const int n, ... ){
 	va_list ap;
 	va_start(ap,n);
