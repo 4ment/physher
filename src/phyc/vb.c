@@ -96,6 +96,7 @@ variational_block_t* clone_VariationalBlock(variational_block_t* block, Hashtabl
     clone->logQ = block->logQ;
     clone->use_entropy = block->use_entropy;
     clone->rng = block->rng;
+    clone->initialize = block->initialize;
     clone->initialized = block->initialized;
     clone->etas = clone_Vector(block->etas);
     return clone;

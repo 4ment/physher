@@ -113,8 +113,7 @@ char* json_gtr_unrooted =
 
 // Calculate the log of the determinant of the Jacobian for the node height transform.
 // Derivatives are wrt ratio/root height parameters.
-// At each iteration, node heights are updated from the ratios/root height parameters.
-void test_height_transform(size_t iter, const char* newick, int reparameterization, FILE* csv, bool debug) {
+void test_height_transform_jacobian(size_t iter, const char* newick, int reparameterization, FILE* csv, bool debug) {
     struct timespec start, end;
 
     Tree* tree = new_Tree(newick, true);
@@ -128,11 +127,11 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     Model* mtt = mtree->data;
     TreeTransform* tt = mtt->obj;
     Parameters* reparams = get_reparams(tree);
+    tt->update(tt);  // update once
 
     double logP;
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
-        tt->update(tt);
         logP = mtt->logP(mtt);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
@@ -149,7 +148,6 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
-        tt->update(tt);
         tt->log_jacobian_gradient(tt, gradient);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
@@ -164,6 +162,54 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
         }
     }
     free(gradient);
+    mtree->free(mtree);
+}
+
+// Transform node ratios to node height.
+// Derivatives are wrt ratio/root height parameters.
+// At each iteration, node heights are updated from the ratios/root height parameters.
+void test_height_transform(size_t iter, const char* newick, int reparameterization, FILE* csv, bool debug) {
+    struct timespec start, end;
+
+    Tree* tree = new_Tree(newick, true);
+    Tree_set_transform(tree, reparameterization);
+    parse_dates(tree);
+    init_leaf_heights_from_times(tree);
+
+    init_heights_from_distances(tree);
+
+    Model* mtree = new_TreeModel("letree", tree);
+    Model* mtt = mtree->data;
+    TreeTransform* tt = mtt->obj;
+    Parameters* reparams = get_reparams(tree);
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    for (size_t i = 0; i < iter; i++) {
+        tt->update(tt);
+    }
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    printf("  %zu evaluations: %f ms\n", iter, mseconds(start, end));
+    if (csv != NULL)
+        fprintf(csv, "ratio_transform%s,evaluation,off,%f,\n", (reparameterization == 1 ? "2" : ""), mseconds(start, end) / 1000.);
+
+    double* gradient = malloc((Tree_tip_count(tree) - 1) * sizeof(double));
+    double* height_gradient = malloc((Tree_tip_count(tree) - 1) * sizeof(double));
+    for (size_t i = 0; i < Tree_tip_count(tree) - 1; i++) {
+        height_gradient[i] = 1.0;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    for (size_t i = 0; i < iter; i++) {
+        tt->update(tt);
+        tt->jvp(tt, height_gradient, gradient);
+    }
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
+    if (csv != NULL)
+        fprintf(csv, "ratio_transform%s,gradient,off,%f,\n", (reparameterization == 1 ? "2" : ""), mseconds(start, end) / 1000.);
+
+    free(gradient);
+    free(height_gradient);
     mtree->free(mtree);
 }
 
@@ -444,6 +490,12 @@ int main(int argc, char* argv[]) {
     }
 
     printf("Height transform log det Jacobian:\n");
+    printf("naive:\n");
+    test_height_transform_jacobian(iter, newick, 0, csv, debug);
+    printf("efficient:\n");
+    test_height_transform_jacobian(iter, newick, 1, csv, debug);
+
+    printf("Height transform:\n");
     printf("naive:\n");
     test_height_transform(iter, newick, 0, csv, debug);
     printf("efficient:\n");
