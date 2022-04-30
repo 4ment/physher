@@ -2767,6 +2767,7 @@ void gradient_discrete_sitemodel(SingleTreeLikelihood* tlk, const double* branch
 void gradient_clock(SingleTreeLikelihood* tlk, const double* branch_gradient, double* gradient){
 	size_t nodeCount = Tree_node_count(tlk->tree);
 	if (Parameters_count(tlk->bm->rates) == 1) {
+		gradient[0] = 0;
 		for(size_t i = 0; i < nodeCount; i++){
 			Node* node = Tree_node(tlk->tree, i);
 			if(!Node_isroot(node)){

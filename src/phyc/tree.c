@@ -934,7 +934,8 @@ void _tree_handle_change( Model *self, Model *model, int index ){
 //			Node* n = tree->tt->map_to_node[index];
 			tree->need_update_height = true;
 			// notify treelikelihood but _tree_handle_change will be triggered again when heights need to be updated
-			self->listeners->fire( self->listeners, self, index );
+			// because of the reparameterization if an internal node changes every node below it should be updated
+			self->listeners->fire( self->listeners, self, -1 );
 			return;
 		}
 		

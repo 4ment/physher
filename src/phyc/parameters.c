@@ -655,6 +655,12 @@ void Parameters_set_values( Parameters *p, const double* values ){
 	Parameter_fire(p->list[0]);
 }
 
+void Parameters_set_values_quietly( Parameters *p, const double* values ){
+	for (size_t i = 0; i < Parameters_count(p); ++i) {
+		Parameters_set_value_quietly(p, i, values[i]);
+	}
+}
+
 void Parameters_fire( Parameters *p ){
 	for (int i = 0; i < Parameters_count(p); ++i) {
 		Parameter_fire(p->list[i]);
