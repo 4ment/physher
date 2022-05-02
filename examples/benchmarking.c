@@ -137,7 +137,7 @@ void test_height_transform_jacobian(size_t iter, const char* newick, int reparam
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu evaluations: %f ms (%f)\n", iter, mseconds(start, end), logP);
     if (csv != NULL)
-        fprintf(csv, "ratio_transform_jacobian%s,evaluation,off,%f,%f\n", (reparameterization == 1 ? "2" : ""), mseconds(start, end) / 1000., logP);
+        fprintf(csv, "ratio_transform_jacobian%s,evaluation,off,%f,%f\n", (reparameterization == TREE_TRANSFORM_RATIO_NAIVE ? "2" : ""), mseconds(start, end) / 1000., logP);
 
     if (debug) {
         printf("logP %f\n", logP);
@@ -153,7 +153,7 @@ void test_height_transform_jacobian(size_t iter, const char* newick, int reparam
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
     if (csv != NULL)
-        fprintf(csv, "ratio_transform_jacobian%s,gradient,off,%f,\n", (reparameterization == 1 ? "2" : ""), mseconds(start, end) / 1000.);
+        fprintf(csv, "ratio_transform_jacobian%s,gradient,off,%f,\n", (reparameterization == TREE_TRANSFORM_RATIO_NAIVE ? "2" : ""), mseconds(start, end) / 1000.);
 
     if (debug) {
         for (int j = 0; j < Parameters_count(reparams); j++) {
@@ -190,7 +190,8 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu evaluations: %f ms\n", iter, mseconds(start, end));
     if (csv != NULL)
-        fprintf(csv, "ratio_transform%s,evaluation,off,%f,\n", (reparameterization == 1 ? "2" : ""), mseconds(start, end) / 1000.);
+        fprintf(csv, "ratio_transform%s,evaluation,off,%f,\n",
+                (reparameterization == TREE_TRANSFORM_RATIO_NAIVE ? "2" : ""), mseconds(start, end) / 1000.);
 
     double* gradient = malloc((Tree_tip_count(tree) - 1) * sizeof(double));
     double* height_gradient = malloc((Tree_tip_count(tree) - 1) * sizeof(double));
@@ -206,7 +207,8 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
     if (csv != NULL)
-        fprintf(csv, "ratio_transform%s,gradient,off,%f,\n", (reparameterization == 1 ? "2" : ""), mseconds(start, end) / 1000.);
+        fprintf(csv, "ratio_transform%s,gradient,off,%f,\n",
+                (reparameterization == TREE_TRANSFORM_RATIO_NAIVE ? "2" : ""), mseconds(start, end) / 1000.);
 
     free(gradient);
     free(height_gradient);
@@ -491,15 +493,15 @@ int main(int argc, char* argv[]) {
 
     printf("Height transform log det Jacobian:\n");
     printf("naive:\n");
-    test_height_transform_jacobian(iter, newick, 0, csv, debug);
+    test_height_transform_jacobian(iter, newick, TREE_TRANSFORM_RATIO_NAIVE, csv, debug);
     printf("efficient:\n");
-    test_height_transform_jacobian(iter, newick, 1, csv, debug);
+    test_height_transform_jacobian(iter, newick, TREE_TRANSFORM_RATIO, csv, debug);
 
     printf("Height transform:\n");
     printf("naive:\n");
-    test_height_transform(iter, newick, 0, csv, debug);
+    test_height_transform(iter, newick, TREE_TRANSFORM_RATIO_NAIVE, csv, debug);
     printf("efficient:\n");
-    test_height_transform(iter, newick, 1, csv, debug);
+    test_height_transform(iter, newick, TREE_TRANSFORM_RATIO, csv, debug);
 
     printf("Constant coalescent:\n");
     test_constant(iter, newick, csv, debug);

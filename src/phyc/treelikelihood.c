@@ -307,6 +307,8 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 	
 	if(tlk->gradient_length == 0) return 0.0;
+	if(p->model != MODEL_TREE && p->model != MODEL_TREE_TRANSFORM && p->model != MODEL_SITEMODEL
+	    && p->model != MODEL_SUBSTITUTION && p->model != MODEL_BRANCHMODEL) return 0.0;
 			
 	if(tlk->update_upper){
 		if(Tree_is_time_mode(tlk->tree)){
@@ -314,7 +316,7 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 		}
 		double logP = tlk->calculate(tlk); // make sure it is updated
 		if (isnan(logP) || isinf(logP)) {
-//				return logP;
+				return logP;
 		}
 		update_upper_partials(tlk, Tree_root(tlk->tree));
 		
