@@ -378,10 +378,20 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 		}
 	}
 	if (prepare_branch_model) {
+		size_t rateCount = Parameters_count(tlk->bm->rates);
 		if (p->model == MODEL_BRANCHMODEL) {
-			return tlk->gradient[offset + p->id];
+			if(rateCount == 1){
+				return tlk->gradient[offset];
+			}
+			else{
+				// gradient is indexed using class_id
+				// node and rate parameter have the same id
+				Node* node = Tree_node(tlk->tree, p->id);
+				size_t index = Node_isleaf(node) ? node->class_id : node->class_id + Tree_tip_count(tlk->tree);
+				return tlk->gradient[offset + p->id];
+			}
 		}
-		offset += Parameters_count(tlk->bm->rates);
+		offset += rateCount;
 	}
 	if (prepare_subsitution_model) {
 		if (p->model == MODEL_SUBSTITUTION) {
@@ -2778,10 +2788,12 @@ void gradient_clock(SingleTreeLikelihood* tlk, const double* branch_gradient, do
 		}
 	}
 	else{
+		size_t tipCount = Tree_tip_count(tlk->tree);
 		for(size_t i = 0; i < nodeCount; i++){
 			Node* node = Tree_node(tlk->tree, i);
 			if(!Node_isroot(node)){
-				gradient[node->id] = branch_gradient[node->id] * Node_time_elapsed(node);
+				size_t index = Node_isleaf(node) ? node->class_id : node->class_id + tipCount;
+				gradient[index] = branch_gradient[node->id] * Node_time_elapsed(node);
 			}
 		}
 	}
