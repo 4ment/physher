@@ -1091,8 +1091,8 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *
 				sp->get_partials(sp, tlk->mapping[Node_id(nodes[i])], tlk->partials[0][Node_id(nodes[i])]);
 				
 				for(size_t k = 1; k < tlk->sm->cat_count; k++){
-					size_t offset = k*m->nstate*tlk->cat_count;
-					memcpy(tlk->partials[0][Node_id(nodes[i])] + offset, tlk->partials[0][Node_id(nodes[i])], sizeof(double)*m->nstate*tlk->cat_count);
+					size_t offset = k*m->nstate*tlk->pattern_count;
+					memcpy(tlk->partials[0][Node_id(nodes[i])] + offset, tlk->partials[0][Node_id(nodes[i])], sizeof(double)*m->nstate*tlk->pattern_count);
 				}
 				memcpy(tlk->partials[1][Node_id(nodes[i])], tlk->partials[0][Node_id(nodes[i])], sizeof(double)*tlk->partials_size);
 			}
