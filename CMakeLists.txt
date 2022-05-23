@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 SET(DEFAULT_SSE_LEVEL "sse3")
 
-PROJECT(phyc C)
+PROJECT(phyc C CXX)
 
 SET( LIBRARY_NAME "PHYC" )
 
@@ -27,6 +27,7 @@ message(STATUS "Build type ${CMAKE_BUILD_TYPE}")
 # project options
 OPTION( BUILD_SHARED_LIBS "Set to OFF to build static library (default shared)" ON )
 
+OPTION( BUILD_CPP_WRAPPER "Build C++ wrapper (default off)" OFF )
 
 OPTION(USE_SSE_SUPPORT "Use SSE if available." ON)
 OPTION(USE_OPENMP_SUPPORT "Use OpenMP if available." OFF)
@@ -245,7 +246,7 @@ configure_file (
   
 #####################################################################
 
-add_definitions("-std=gnu99")
+# add_compile_definitions("-std=gnu99")
 
 link_libraries(m)
 
@@ -261,6 +262,7 @@ add_library(
     phyc
     ${SRC_FILES}
 )
+set_property(TARGET phyc PROPERTY C_STANDARD 99)
 
 set_target_properties(
 	phyc
@@ -314,6 +316,29 @@ install(FILES ${HEADER_FILES} DESTINATION include/phyc)
 
 install(EXPORT phyc-targets DESTINATION lib/phyc)
 install(FILES phyc-config.cmake DESTINATION lib/phyc)
+
+if(BUILD_CPP_WRAPPER)
+    add_library(
+        phycpp
+        "src/phycpp/physher.cpp"
+    )
+    set_target_properties(phycpp PROPERTIES LINKER_LANGUAGE CXX)
+    set_property(TARGET phycpp PROPERTY CXX_STANDARD 17)
+    target_link_libraries(phycpp phyc)
+    target_include_directories(phycpp PRIVATE "src/")
+    set_target_properties(
+        phycpp
+        PROPERTIES
+        # create *nix style library versions + symbolic links
+        VERSION ${${LIBRARY_NAME}_VERSION}
+        SOVERSION ${${LIBRARY_NAME}_SOVERSION}
+        
+        CLEAN_DIRECT_OUTPUT 1
+    )
+	install(TARGETS phycpp DESTINATION lib EXPORT phycpp-targets)
+	install(FILES "src/phycpp/physher.hpp" DESTINATION include/phycpp)
+	install(EXPORT phycpp-targets DESTINATION lib/phycpp)
+ENDIF(BUILD_CPP_WRAPPER)
 
 #
 # Tests
