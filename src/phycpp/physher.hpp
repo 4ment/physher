@@ -30,6 +30,8 @@ enum class TreeLikelihoodGradientFlags {
 
 class ModelInterface {
    public:
+    virtual ~ModelInterface() { model_->free(model_); }
+
     virtual void SetParameters(const double *parameters) = 0;
     virtual void GetParameters(double *parameters) = 0;
 
@@ -57,8 +59,6 @@ class TreeModelInterface : public ModelInterface {
     TreeModelInterface(const std::string &newick, const std::vector<std::string> &taxa,
                        std::optional<const std::vector<double>> dates);
 
-    virtual ~TreeModelInterface() = default;
-
     size_t GetNodeCount() { return nodeCount_; }
 
     size_t GetTipCount() { return tipCount_; }
@@ -82,8 +82,6 @@ class UnRootedTreeModelInterface : public TreeModelInterface {
     UnRootedTreeModelInterface(const std::string &newick,
                                const std::vector<std::string> &taxa);
 
-    virtual ~UnRootedTreeModelInterface() { model_->free(model_); }
-
     void SetParameters(const double *parameters) override;
 
     void GetParameters(double *parameters) override {}
@@ -94,8 +92,6 @@ class ReparameterizedTimeTreeModelInterface : public TreeModelInterface {
     ReparameterizedTimeTreeModelInterface(const std::string &newick,
                                           const std::vector<std::string> &taxa,
                                           const std::vector<double> dates);
-
-    virtual ~ReparameterizedTimeTreeModelInterface() { model_->free(model_); }
 
     void SetParameters(const double *parameters) override;
 
@@ -118,8 +114,6 @@ class ReparameterizedTimeTreeModelInterface : public TreeModelInterface {
 
 class BranchModelInterface : public ModelInterface {
    public:
-    virtual ~BranchModelInterface() = default;
-
     void SetParameters(const double *parameters) override;
 
     void GetParameters(double *parameters) override;
@@ -134,8 +128,6 @@ class StrictClockModelInterface : public BranchModelInterface {
    public:
     StrictClockModelInterface(double rate, TreeModelInterface *treeModel);
 
-    virtual ~StrictClockModelInterface() { model_->free(model_); }
-
     void SetRate(double rate);
 };
 
@@ -143,14 +135,9 @@ class SimpleClockModelInterface : public BranchModelInterface {
    public:
     SimpleClockModelInterface(const std::vector<double> &rates,
                               TreeModelInterface *treeModel);
-
-    virtual ~SimpleClockModelInterface() { model_->free(model_); }
 };
 
 class SubstitutionModelInterface : public ModelInterface {
-   public:
-    virtual ~SubstitutionModelInterface() = default;
-
    protected:
     Model *Initialize(const std::string &name, Parameters *rates, Model *frequencies,
                       Model *rates_model);
@@ -162,8 +149,6 @@ class JC69Interface : public SubstitutionModelInterface {
    public:
     JC69Interface();
 
-    virtual ~JC69Interface() { model_->free(model_); }
-
     void SetParameters(const double *parameters) override {}
 
     void GetParameters(double *parameters) override {}
@@ -172,8 +157,6 @@ class JC69Interface : public SubstitutionModelInterface {
 class HKYInterface : public SubstitutionModelInterface {
    public:
     HKYInterface(double kappa, const std::vector<double> &frequencies);
-
-    virtual ~HKYInterface() { model_->free(model_); }
 
     void SetKappa(double kappa);
 
@@ -189,8 +172,6 @@ class GTRInterface : public SubstitutionModelInterface {
     GTRInterface(const std::vector<double> &rates,
                  const std::vector<double> &frequencies);
 
-    virtual ~GTRInterface() { model_->free(model_); }
-
     void SetRates(const double *rates);
 
     void SetFrequencies(const double *frequencies);
@@ -202,8 +183,6 @@ class GTRInterface : public SubstitutionModelInterface {
 
 class SiteModelInterface : public ModelInterface {
    public:
-    virtual ~SiteModelInterface() = default;
-
     void SetMu(double mu);
 
    protected:
@@ -214,8 +193,6 @@ class ConstantSiteModelInterface : public SiteModelInterface {
    public:
     explicit ConstantSiteModelInterface(std::optional<double> mu);
 
-    virtual ~ConstantSiteModelInterface() { model_->free(model_); }
-
     void SetParameters(const double *parameters) override;
 
     void GetParameters(double *parameters) override;
@@ -225,8 +202,6 @@ class WeibullSiteModelInterface : public SiteModelInterface {
    public:
     WeibullSiteModelInterface(double shape, size_t categories,
                               std::optional<double> mu);
-
-    virtual ~WeibullSiteModelInterface() { model_->free(model_); }
 
     void SetShape(double shape);
 
@@ -243,8 +218,6 @@ class TreeLikelihoodInterface : public CallableModelInterface {
         SiteModelInterface *siteModel,
         std::optional<BranchModelInterface *> branchModel, bool use_ambiguities = false,
         bool use_tip_states = false, bool include_jacobian = false);
-
-    virtual ~TreeLikelihoodInterface() { model_->free(model_); }
 
     void RequestGradient(std::vector<TreeLikelihoodGradientFlags> flags =
                              std::vector<TreeLikelihoodGradientFlags>());
@@ -268,8 +241,6 @@ class CTMCScaleModelInterface : public CallableModelInterface {
     CTMCScaleModelInterface(const std::vector<double> rates,
                             TreeModelInterface *treeModel);
 
-    virtual ~CTMCScaleModelInterface() = default;
-
     void RequestGradient(
         std::vector<GradientFlags> flags = std::vector<GradientFlags>());
 
@@ -292,8 +263,6 @@ class CoalescentModelInterface : public CallableModelInterface {
         : treeModel_(treeModel) {}
 
    public:
-    virtual ~CoalescentModelInterface() = default;
-
     void RequestGradient(
         std::vector<GradientFlags> flags = std::vector<GradientFlags>());
 
@@ -313,16 +282,12 @@ class CoalescentModelInterface : public CallableModelInterface {
 class ConstantCoalescentModelInterface : public CoalescentModelInterface {
    public:
     ConstantCoalescentModelInterface(double theta, TreeModelInterface *treeModel);
-
-    virtual ~ConstantCoalescentModelInterface() = default;
 };
 
 class PiecewiseConstantCoalescentInterface : public CoalescentModelInterface {
    public:
     PiecewiseConstantCoalescentInterface(const std::vector<double> &thetas,
                                          TreeModelInterface *treeModel);
-
-    virtual ~PiecewiseConstantCoalescentInterface() = default;
 };
 
 class PiecewiseConstantCoalescentGridInterface : public CoalescentModelInterface {
@@ -330,6 +295,4 @@ class PiecewiseConstantCoalescentGridInterface : public CoalescentModelInterface
     PiecewiseConstantCoalescentGridInterface(const std::vector<double> &thetas,
                                              TreeModelInterface *treeModel,
                                              double cutoff);
-
-    virtual ~PiecewiseConstantCoalescentGridInterface() = default;
 };

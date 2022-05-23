@@ -406,7 +406,7 @@ void init_dates2(Tree* atree, const double* dates){
 			Node_set_height(nodes[j], date);
 			min = dmin(date, min);
 			max = dmax(date, max);
-			if (dates[j] != 0) atree->homochronous = false;
+			if (date != 0) atree->homochronous = false;
 		}
 	}
 	double offset = max;

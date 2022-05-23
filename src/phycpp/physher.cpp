@@ -410,8 +410,8 @@ CTMCScaleModelInterface::CTMCScaleModelInterface(const std::vector<double> rates
     : treeModel_(treeModel) {
     Parameters *rates_param = new_Parameters(rates.size());
     for (size_t i = 0; i < rates.size(); i++) {
-        Parameters_move(rates_param,
-                        new_Parameter("ctmcscale", rates[i], new_Constraint(0, INFINITY)));
+        Parameters_move(rates_param, new_Parameter("ctmcscale.x", rates[i],
+                                                   new_Constraint(0, INFINITY)));
     }
     ctmcScale_ = new_CTMCScale_with_parameters(
         rates_param, reinterpret_cast<Tree *>(treeModel_->GetManagedObject()));
@@ -466,7 +466,8 @@ ConstantCoalescentModelInterface::ConstantCoalescentModelInterface(
     coalescent_ = new_ConstantCoalescent(
         reinterpret_cast<Tree *>(treeModel->GetManagedObject()), theta_param);
     free_Parameter(theta_param);
-    model_ = new_CoalescentModel2("constant", coalescent_, treeModel->GetModel(), nullptr);
+    model_ =
+        new_CoalescentModel2("constant", coalescent_, treeModel->GetModel(), nullptr);
     RequestGradient();
     parameterCount_ = 1;
 }
@@ -483,7 +484,8 @@ PiecewiseConstantCoalescentInterface::PiecewiseConstantCoalescentInterface(
         new_SkyrideCoalescent(reinterpret_cast<Tree *>(treeModel->GetManagedObject()),
                               thetas_param, COALESCENT_THETA);
     free_Parameters(thetas_param);
-    model_ = new_CoalescentModel2("slyride", coalescent_, treeModel->GetModel(), nullptr);
+    model_ =
+        new_CoalescentModel2("slyride", coalescent_, treeModel->GetModel(), nullptr);
     RequestGradient();
     parameterCount_ = thetas.size();
 }
@@ -500,7 +502,8 @@ PiecewiseConstantCoalescentGridInterface::PiecewiseConstantCoalescentGridInterfa
         new_GridCoalescent(reinterpret_cast<Tree *>(treeModel->GetManagedObject()),
                            thetas_param, thetas.size(), cutoff, COALESCENT_THETA);
     free_Parameters(thetas_param);
-    model_ = new_CoalescentModel2("skygrid", coalescent_, treeModel->GetModel(), nullptr);
+    model_ =
+        new_CoalescentModel2("skygrid", coalescent_, treeModel->GetModel(), nullptr);
     RequestGradient();
     parameterCount_ = thetas.size();
 }
