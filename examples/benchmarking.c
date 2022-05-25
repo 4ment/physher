@@ -261,14 +261,11 @@ void test_constant(size_t iter, const char* newick, FILE* csv, bool debug) {
     }
 
     model->prepare_gradient(model, ps);
-    double dlogP;
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         coal->need_update_intervals = true;
-        for (int j = 0; j < Parameters_count(ps); j++) {
-            dlogP = model->dlogP(model, Parameters_at(ps, j));
-        }
+        Coalescent_gradient(model);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
@@ -427,15 +424,12 @@ void test_tree_likelihood_unrooted(size_t iter, const char* json_model, const ch
         Parameters_add_parameters(ps, tlk->m->simplex->parameters);
     }
     mlike->prepare_gradient(mlike, ps);
-    double dlogP;
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         SingleTreeLikelihood_update_all_nodes(tlk);
         tlk->m->need_update = true;
-        for (int j = 0; j < Parameters_count(ps); j++) {
-            dlogP = mlike->dlogP(mlike, Parameters_at(ps, j));
-        }
+        TreeLikelihood_gradient(mlike);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
@@ -443,6 +437,7 @@ void test_tree_likelihood_unrooted(size_t iter, const char* json_model, const ch
         fprintf(csv, "treelikelihood%s,gradient,off,%f,\n", (tlk->m->modeltype == GTR ? "GTR" : "JC69"), mseconds(start, end) / 1000.);
 
     if (debug) {
+        double dlogP;
         for (int j = 0; j < Parameters_count(ps); j++) {
             dlogP = mlike->dlogP(mlike, Parameters_at(ps, j));
             printf("dlogP %f\n", dlogP);

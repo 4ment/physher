@@ -291,12 +291,6 @@ double* TreeLikelihood_gradient(Model *self){
 //				return logP;
 		}
 		update_upper_partials(tlk, Tree_root(tlk->tree));
-		
-		double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
-		for (size_t i = 0; i < tlk->sp->count; i++) {
-			pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
-		}
-
 		SingleTreeLikelihood_gradient(tlk, tlk->gradient);
 		tlk->update_upper = false;
 	}
@@ -319,12 +313,6 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 				return logP;
 		}
 		update_upper_partials(tlk, Tree_root(tlk->tree));
-		
-		double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
-		for (size_t i = 0; i < tlk->sp->count; i++) {
-			pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
-		}
-
 		SingleTreeLikelihood_gradient(tlk, tlk->gradient);
 		tlk->update_upper = false;
 	}

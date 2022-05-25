@@ -264,7 +264,8 @@ void partials_states_and_states( const SingleTreeLikelihood *tlk, int idx1, cons
 			state1 = tlk->sp->patterns[idx1][k];
 			state2 = tlk->sp->patterns[idx2][k];
 			
-			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + u;
+			w = u;
+			// w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + u;
 			
 			if (state1 < nstate && state2 < nstate) {
 				
@@ -318,7 +319,9 @@ void partials_states_transpose( const SingleTreeLikelihood *tlk, int idx1, const
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			state1 = tlk->sp->patterns[idx1][k];
-			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + u;
+
+			w = u;
+			// w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + u;
 			if (state1 < nstate ) {
 				for(i = 0; i < nstate; i++){
 					*pPartials++ = matrices1[w + state1]; w += 4;
@@ -345,7 +348,7 @@ void partials_states( const SingleTreeLikelihood *tlk, int idx1, const double * 
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			state1 = tlk->sp->patterns[idx1][k];
-			u = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+			// u = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
 			
 			if (state1 < nstate ) {
 				memcpy(pPartials, matrices1+state1*nstate+u, sizeof(double)*nstate);
@@ -356,6 +359,7 @@ void partials_states( const SingleTreeLikelihood *tlk, int idx1, const double * 
 					*pPartials++ = 1.0;
 				}
 			}
+			u += tlk->matrix_size;
 		}
 	}
 }
@@ -436,7 +440,8 @@ void partials_states_and_undefined( const SingleTreeLikelihood *tlk, int idx1, c
 			
 			state1 = tlk->sp->patterns[idx1][k];
 			
-			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+			w = l * tlk->matrix_size;
+			// w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
 			
 			if ( state1 < nstate) {
 				
@@ -493,7 +498,8 @@ void partials_undefined( const SingleTreeLikelihood *tlk, const double *partials
 	for ( int l = 0; l < catCount; l++ ) {
 		for ( k = 0; k < patternCount; k++ ) {
 			
-			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+			w = l * tlk->matrix_size;
+			// w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
 			
 			for ( i = 0; i < nstate; i++) {
 				sum = 0.0;
@@ -567,7 +573,8 @@ void partials_undefined_and_undefined( const SingleTreeLikelihood *tlk, const do
         
         for ( k = 0; k < patternCount; k++ ) {
             
-            w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+			w = l * tlk->matrix_size;
+            // w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
             
             for ( i = 0; i < nstate; i++ ) {
                 
@@ -667,7 +674,8 @@ void partials_states_and_states_transpose( const SingleTreeLikelihood *tlk, int 
             state1 = tlk->sp->patterns[idx1][k];
             state2 = tlk->sp->patterns[idx2][k];
             
-            w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + u;
+			w = l * tlk->matrix_size;
+            // w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + u;
             
             if (state1 < nstate && state2 < nstate) {
                 
@@ -728,7 +736,7 @@ void partials_states_and_undefined_transpose( const SingleTreeLikelihood *tlk, i
             p2 = &partials2[v];
 		
             if ( state1 < nstate) {
-                w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+                // w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
 				
                 m1 = &matrices1[w + state1*nstate];
                 
@@ -753,6 +761,7 @@ void partials_states_and_undefined_transpose( const SingleTreeLikelihood *tlk, i
             }
             v += nstate;
         }
+		w += tlk->matrix_size;
     }
 }
 
@@ -1145,7 +1154,8 @@ void partials_states_and_states_even_SSE( const SingleTreeLikelihood *tlk, int i
             state1 = tlk->sp->patterns[idx1][k];
             state2 = tlk->sp->patterns[idx2][k];
             
-            w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+			w = l * tlk->matrix_size;
+            // w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
             
             if (state1 < nstate && state2 < nstate) {
                 
@@ -1204,7 +1214,8 @@ void partials_states_and_undefined_even_SSE( const SingleTreeLikelihood *tlk, in
 			
 			state1 = tlk->sp->patterns[idx1][k];
 			
-			w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+			w = l * tlk->matrix_size;
+			// w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
 			
 			m2 = (__m128d*)&matrices2[w];
 			
@@ -1265,7 +1276,8 @@ void partials_undefined_and_undefined_even_SSE( const SingleTreeLikelihood *tlk,
         
         for ( k = 0; k < patternCount; k++ ) {
             
-            w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+			w = l * tlk->matrix_size;
+            // w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
             
             m1 = (__m128d*)&matrices1[w];
             m2 = (__m128d*)&matrices2[w];

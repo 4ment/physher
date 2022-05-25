@@ -1501,7 +1501,8 @@ void partials_states_and_states_4_SSE( const SingleTreeLikelihood *tlk, int idx1
 			state1 = tlk->sp->patterns[idx1][k];
 			state2 = tlk->sp->patterns[idx2][k];
 			
-			w = tlk->sm->get_site_category(tlk->sm, k)*16 + u;
+            // w = tlk->sm->get_site_category(tlk->sm, k)*16 + u;
+			w = u;
 			
 			if (state1 < 4 && state2 < 4) {
 				
@@ -1570,7 +1571,7 @@ void partials_states_4_SSE( const SingleTreeLikelihood *tlk, int idx1, const dou
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
 			state1 = tlk->sp->patterns[idx1][k];
-			u = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
+			// u = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
 			
 			if (state1 < 4) {
 				memcpy(pPartials, &matrices1[u+4*state1], 4*sizeof(double));
@@ -1611,7 +1612,7 @@ void partials_states_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, int i
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
 			state1 = tlk->sp->patterns[idx1][k];
-			w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
+			// w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
 			
 			
 			p2v0 = _mm_load_pd(&partials2[v]);
@@ -1737,7 +1738,7 @@ void partials_undefined_and_undefined_4_SSE( const SingleTreeLikelihood *tlk, co
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
+			// w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
 			
 			p1v0 = _mm_load_pd(&partials1[v]);
 			p1v2 = _mm_load_pd(&partials1[v+2]);
@@ -1855,7 +1856,7 @@ void partials_undefined_4_SSE( const SingleTreeLikelihood *tlk, const double *pa
 		
 		for ( k = 0; k < tlk->pattern_count; k++ ) {
 			
-			w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
+			// w = tlk->sm->get_site_category(tlk->sm, k)*16 + l*16;
 			
 			p1v0 = _mm_load_pd(&partials1[v]);
 			p1v2 = _mm_load_pd(&partials1[v+2]);
