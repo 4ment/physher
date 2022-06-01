@@ -321,7 +321,7 @@ opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f,
 	}
 	free(grads);
 	free(var_grad);
-	free(var_grad);
+	free(mean_grad);
 	free(elbos);
 	
 	return result;

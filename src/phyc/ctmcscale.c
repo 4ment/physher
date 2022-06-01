@@ -60,6 +60,74 @@ double DistributionModel_log_ctmc_scale_with_values(DistributionModel* dm, const
 	return dm->lp;
 }
 
+// Set flags for gradient calculation
+void _ctmcscale_model_prepare_gradient(Model* self, const Parameters* ps){
+	DistributionModel* dm = self->obj;
+	size_t paramCount = Parameters_count(ps);
+	bool prepare_tree = false;
+	bool prepare_theta = false;
+	bool prepare_clock = false;
+	dm->prepared_gradient = 0;
+	size_t gradient_length = 0;
+	for (size_t i = 0; i < paramCount; i++) {
+		Parameter* p = Parameters_at(ps, i);
+		if (p->model == MODEL_TREE && !prepare_tree) {
+			prepare_tree = true;
+			dm->prepared_gradient |= GRADIENT_FLAG_TREE_HEIGHTS;
+			gradient_length += Tree_tip_count(dm->tree) - 1;
+		}
+		else if (p->model == MODEL_TREE_TRANSFORM && !prepare_tree) {
+			prepare_tree = true;
+			dm->prepared_gradient |= GRADIENT_FLAG_TREE_RATIOS;
+			gradient_length += Tree_tip_count(dm->tree) - 1;
+		}
+		else if(p->model == MODEL_BRANCHMODEL && !prepare_clock){
+			prepare_clock = true;
+			dm->prepared_gradient |= GRADIENT_FLAG_CLOCK_RATE;
+			gradient_length += Parameters_count(dm->x);
+		}
+	}
+	if(dm->gradient == NULL){
+		dm->gradient = calloc(gradient_length, sizeof(double));
+		dm->gradient_length = gradient_length;
+	}
+	else if (dm->gradient_length < gradient_length) {
+		dm->gradient = realloc(dm->gradient, sizeof(double)* gradient_length);
+		dm->gradient_length = gradient_length;
+	}
+}
+
+double _ctmcscale_model_dlogP_prepared(Model *self, const Parameter* p){
+	DistributionModel* dm = (DistributionModel*)self->obj;
+	
+	if(dm->gradient_length == 0) return 0.0;
+
+	if(dm->need_update_gradient){
+		DistributionModel_gradient(self);
+		dm->need_update_gradient = false;
+	}
+	
+	int prepare_tree_height = dm->prepared_gradient & GRADIENT_FLAG_TREE_HEIGHTS;
+	int prepare_tree_ratio = dm->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS;
+	int prepare_rate = dm->prepared_gradient & GRADIENT_FLAG_CLOCK_RATE;
+	size_t offset = 0;
+	
+	if(prepare_tree_height && p->model == MODEL_TREE){
+		offset = Tree_tip_count(dm->tree)-1;
+		return dm->gradient[Tree_node(dm->tree, p->id)->class_id];
+	}
+	else if(prepare_tree_ratio && p->model == MODEL_TREE_TRANSFORM){
+		offset = Tree_tip_count(dm->tree)-1;
+		return dm->gradient[p->id];
+	}
+	if (prepare_rate) {
+		if (p->model == MODEL_BRANCHMODEL) {
+			return dm->gradient[offset + p->id];
+		}
+	}
+	return 0;
+}
+
 // by default we get the derivative wrt reparameterized node heights (ratios)
 size_t DistributionModel_initialize_gradient(Model *self, int flags){
 	DistributionModel* dm = self->obj;
@@ -181,6 +249,8 @@ DistributionModel* new_CTMCScale_with_parameters(Parameters* x, Tree* tree){
 Model* new_CTMCScaleModel(const char* name, DistributionModel* dm, Model* tree){
 	Model* model = new_DistributionModel3(name, dm, tree);
 	tree->listeners->add(tree->listeners, model);
+	model->prepare_gradient = _ctmcscale_model_prepare_gradient;
+	model->dlogP = _ctmcscale_model_dlogP_prepared;
 	return model;
 }
 
@@ -193,8 +263,7 @@ Model* new_CTMCScaleModel_from_json(json_node* node, Hashtable* hash){
 	
 	Model *mtree = Hashtable_get(hash, model_key+1);
 	DistributionModel* dm = new_CTMCScale_with_parameters(x, mtree->obj);
-	Model* model = new_DistributionModel3(id, dm, mtree);
-	mtree->listeners->add(mtree->listeners, model);
+	Model* model = new_CTMCScaleModel(id, dm, mtree);
 	
 	dm->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	
