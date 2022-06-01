@@ -64,6 +64,8 @@ double calculate_log_jacobian(Node* node, double* logP);
 
 void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads );
 
+void allocate_storage(SingleTreeLikelihood* tlk, size_t index);
+
 #pragma mark -
 #pragma mark TreeLikelihoodModel
 
@@ -114,6 +116,17 @@ void _treelikelihood_handle_restore( Model *self, Model *model, int index ){
 
 static void _singleTreeLikelihood_store(Model* self){
 	SingleTreeLikelihood* tlk = self->obj;
+	if(tlk->partials[1] == NULL){
+		allocate_storage(tlk, 1);
+		if (!tlk->use_tip_states) {
+			Node **nodes = Tree_get_nodes( tlk->tree, POSTORDER );
+			for (size_t i = 0; i < Tree_node_count(tlk->tree); i++) {
+				if(Node_isleaf(nodes[i])){
+					memcpy(tlk->partials[1][Node_id(nodes[i])], tlk->partials[0][Node_id(nodes[i])], sizeof(double)*tlk->partials_size);
+				}
+			}
+		}
+	}
 	memcpy(tlk->stored_matrices_indexes, tlk->current_matrices_indexes, sizeof(unsigned)*Tree_node_count(tlk->tree)*2);
 	memcpy(tlk->stored_partials_indexes, tlk->current_partials_indexes, sizeof(unsigned)*Tree_node_count(tlk->tree)*2);
 	Model** models = (Model**)self->data;
@@ -1016,7 +1029,8 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *
 //    }
 	
     allocate_storage(tlk, 0);
-    allocate_storage(tlk, 1); // used by mcmc with store/restore
+	// This now allocated when store is called for the first time
+    // allocate_storage(tlk, 1); // used by mcmc with store/restore
 	
 	tlk->root_partials = aligned16_malloc( tlk->root_partials_size * sizeof(double) );
     assert(tlk->root_partials);
@@ -1082,7 +1096,6 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *
 					size_t offset = k*m->nstate*tlk->pattern_count;
 					memcpy(tlk->partials[0][Node_id(nodes[i])] + offset, tlk->partials[0][Node_id(nodes[i])], sizeof(double)*m->nstate*tlk->pattern_count);
 				}
-				memcpy(tlk->partials[1][Node_id(nodes[i])], tlk->partials[0][Node_id(nodes[i])], sizeof(double)*tlk->partials_size);
 			}
 		}
 	}
@@ -1329,7 +1342,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 		memcpy(newtlk->matrices[0][i], tlk->matrices[0][i], tlk->matrix_size*tlk->sm->cat_count * sizeof(double));
 	}
     
-//    if(tlk->partials[1] != NULL){
+   if(tlk->partials[1] != NULL){
         allocate_storage(newtlk, 1);
         memcpy(newtlk->stored_matrices_indexes, tlk->stored_matrices_indexes, 2*nodeCount*sizeof(unsigned));
         memcpy(newtlk->stored_partials_indexes, tlk->stored_partials_indexes, 2*nodeCount*sizeof(unsigned));
@@ -1346,7 +1359,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
         for ( int i = 0; i < tlk->matrix_dim; i++ ) {
             memcpy(newtlk->matrices[1][i], tlk->matrices[1][i], tlk->matrix_size*tlk->sm->cat_count * sizeof(double));
         }
-//    }
+   }
 	
 	newtlk->root_partials = (double*)malloc( newtlk->root_partials_size*sizeof(double) );
     assert(newtlk->root_partials);
@@ -2287,7 +2300,10 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 	
 	int tempMatrixId = Node_id(Tree_root(tlk->tree));
 	double* mat = tlk->matrices[0][tempMatrixId];
-	double* mat_transpose = tlk->matrices[1][tempMatrixId];
+#if defined (SSE3_ENABLED) || (AVX_ENABLED)
+	int mat_len = tlk->matrix_size*tlk->sm->cat_count;
+    double* mat_transpose =  aligned16_malloc( mat_len * sizeof(double) );
+#endif
 	double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->m->nstate;
 	double* pattern_dlnl = tlk->pattern_lk + tlk->sp->count*2; // pattern_likelihoods points to tlk->pattern_lk + tlk->sp->count
 	memset(pattern_dlnl, 0, sizeof(double)*tlk->sp->count);
@@ -2437,7 +2453,9 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
             dlnldQ += pattern_dlnl[k]/pattern_likelihoods[k] * tlk->sp->weights[k];
         }
     }
-//	SingleTreeLikelihood_update_all_nodes(tlk);
+#if defined (SSE3_ENABLED) || (AVX_ENABLED)
+	free(mat_transpose);
+#endif
 	return dlnldQ;
 }
 

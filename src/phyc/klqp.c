@@ -253,7 +253,6 @@ void klqp_block_meanfield_normal_initialize(variational_block_t* var){
 			var_mu =x;
 			var_sigma = fabs(x) *0.01;
 		}
-		printf("%s %f %f %f %f %f\n", Parameter_name(p), Parameter_value(p), var_mu, var_sigma, Parameter_lower(p), Parameter_upper(p) );
 		Parameter_set_value(var_p_mu, var_mu);
 		Parameter_set_value(var_p_sigma, var_sigma);
 	}
