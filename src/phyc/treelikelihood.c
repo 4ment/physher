@@ -721,7 +721,7 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 		mmclone->ref_count++;
 	}
 	else{
-		mmclone = mtree->clone(mm, hash);
+		mmclone = mm->clone(mm, hash);
 		Hashtable_add(hash, mmclone->name, mmclone);
 	}
 	
@@ -746,10 +746,10 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 			mbmclone = mbm->clone(mbm, hash);
 			Hashtable_add(hash, mbmclone->name, mbmclone);
 		}
-		clonetlk = clone_SingleTreeLikelihood_with(tlk, (Tree*)mtreeclone->obj, (SiteModel*)msmclone->obj, tlk->sp, (BranchModel*)mbmclone->obj);
+		clonetlk = clone_SingleTreeLikelihood_with(tlk, (Tree*)mtreeclone->obj, (SubstitutionModel*)mmclone->obj, (SiteModel*)msmclone->obj, tlk->sp, (BranchModel*)mbmclone->obj);
 	}
 	else{
-		clonetlk = clone_SingleTreeLikelihood_with(tlk, (Tree*)mtreeclone->obj, (SiteModel*)msmclone->obj, tlk->sp, NULL);
+		clonetlk = clone_SingleTreeLikelihood_with(tlk, (Tree*)mtreeclone->obj, (SubstitutionModel*)mmclone->obj, (SiteModel*)msmclone->obj, tlk->sp, NULL);
 	}
 	Model* clone = new_TreeLikelihoodModel(self->name, clonetlk, mtreeclone, mmclone, msmclone, mbmclone);
 	Hashtable_add(hash, clone->name, clone);
@@ -1222,6 +1222,7 @@ void free_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 
 SingleTreeLikelihood * clone_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 	SitePattern *sp = clone_SitePattern(tlk->sp);
+	SiteModel *m   = clone_substitution_model(tlk->sm);
 	SiteModel *sm   = clone_SiteModel(tlk->sm);
 	Tree* tree = clone_Tree(tlk->tree);
 	BranchModel* bm = NULL;
@@ -1232,7 +1233,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 		}
 		bm = clone_BranchModel(tlk->bm, tree, dp);
 	}
-	return clone_SingleTreeLikelihood_with( tlk, tree, sm, sp, bm  );
+	return clone_SingleTreeLikelihood_with( tlk, tree, m, sm, sp, bm  );
 }
 
 static void _singletreellikelihood_copy(SingleTreeLikelihood *source, SingleTreeLikelihood *dest, Node *snode, Node *dnode){
@@ -1247,11 +1248,12 @@ void SingleTreeLikelihood_copy(SingleTreeLikelihood *source, SingleTreeLikelihoo
 }
 
 
-SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tlk, Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm){
+SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tlk, Tree *tree, SubstitutionModel* m, SiteModel *sm, SitePattern *sp, BranchModel *bm){
 	SingleTreeLikelihood *newtlk = (SingleTreeLikelihood *)malloc( sizeof(SingleTreeLikelihood));
 	assert(newtlk);
 	
 	newtlk->tree = tree;
+	newtlk->m   = m;
 	newtlk->sm   = sm;
 	newtlk->sp   = sp;
     newtlk->bm = bm;

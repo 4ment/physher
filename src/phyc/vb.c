@@ -29,6 +29,7 @@ variational_block_t* clone_VariationalBlock(variational_block_t* block, Hashtabl
     variational_block_t* clone = malloc(sizeof(variational_block_t));
     
     clone->posterior = NULL;
+    clone->simplices = NULL;
     clone->simplex_count = 0;
     clone->simplex_parameter_count = 0;
     clone->derivative_type = block->derivative_type;

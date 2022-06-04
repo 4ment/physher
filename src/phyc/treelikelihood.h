@@ -144,7 +144,7 @@ void free_SingleTreeLikelihood( SingleTreeLikelihood *tlk );
 
 SingleTreeLikelihood * clone_SingleTreeLikelihood( SingleTreeLikelihood *tlk );
 
-SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tlk, Tree *tree, SiteModel *sm, SitePattern *sp, BranchModel *bm);
+SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tlk, Tree *tree, SubstitutionModel *m, SiteModel *sm, SitePattern *sp, BranchModel *bm);
 
 
 

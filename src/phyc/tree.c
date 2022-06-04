@@ -1107,6 +1107,11 @@ void _TreeModel_print(Model* mtree, FILE* out){
 	fprintf(out, "TL(%s): %f\n", mtree->name, Tree_length(tree));
 }
 
+double _treeModel_logP(Model *self){
+	Tree* tree = (Tree*)self->obj;
+	return tree->tt->log_jacobian(tree->tt);
+}
+
 // TreeModel listen to the height and distance parameters
 Model * new_TreeModel( const char* name, Tree *tree ){
 	Model *model = new_Model(MODEL_TREE, name, tree);
@@ -1141,6 +1146,8 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 	model->free = _tree_model_free;
 	model->clone = _tree_model_clone;
 	model->print = _TreeModel_print;
+	model->logP = _treeModel_logP;
+	model->full_logP = _treeModel_logP;
 	return model;
 }
 
@@ -1414,7 +1421,10 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
 	newTree->need_update_height = tree->need_update_height;
 	
 	init_parameter_arrays(newTree);
-	newTree->tt = new_HeightTreeTransform(newTree, tree->tt->parameterization);
+	newTree->tt = NULL;
+	if(tree->tt != NULL){
+		newTree->tt = new_HeightTreeTransform(newTree, tree->tt->parameterization);
+	}
 	
 	return newTree;
 }
@@ -2627,11 +2637,6 @@ void Tree_scale_heights( Node *node, const double scaler ){
 
 bool Tree_is_time_mode(Tree* tree){
 	return tree->time_mode;
-}
-
-double _treeModel_logP(Model *self){
-	Tree* tree = (Tree*)self->obj;
-	return tree->tt->log_jacobian(tree->tt);
 }
 
 #pragma mark -

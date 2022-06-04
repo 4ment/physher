@@ -148,6 +148,7 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	clone->d2logP = dm->d2logP;
 	clone->ddlogP = dm->ddlogP;
 	clone->sample = dm->sample;
+	clone->sample_evaluate = dm->sample_evaluate;
 	clone->logP_with_values = dm->logP_with_values;
 	clone->clone = dm->clone;
 	clone->free = dm->free;
@@ -169,6 +170,14 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	clone->parameterization = dm->parameterization;
 	clone->rng = dm->rng;
     clone->data = NULL;
+	clone->gradient = NULL;
+	clone->gradient_length = dm->gradient_length;
+	clone->need_update = dm->need_update;
+	clone->need_update_gradient = dm->need_update_gradient;
+	clone->prepared_gradient = dm->prepared_gradient;
+	if(dm->gradient != NULL){
+		clone->gradient = clone_dvector(dm->gradient, dm->gradient_length);
+	}
 	return clone;
 }
 

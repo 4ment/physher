@@ -359,7 +359,6 @@ void free_Optimizer( Optimizer *opt ){
 		free(opt->schedule->rounds);
 		free(opt->schedule->post);
 		free(opt->schedule);
-		if(opt->checkpoint_file != NULL) free(opt->checkpoint_file);
 	}
 	if(opt->checkpoint_file != NULL){
 		free(opt->checkpoint_file);

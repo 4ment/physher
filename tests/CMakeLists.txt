@@ -11,6 +11,12 @@ target_link_libraries(test_distributions phyc)
 add_executable(test_coalescent test_coalescent.c)
 target_link_libraries(test_coalescent phyc)
 
+add_executable(test_tree test_tree.c)
+target_link_libraries(test_tree phyc)
+
+add_executable(test_tree_likelihood test_tree_likelihood.c)
+target_link_libraries(test_tree_likelihood phyc)
+
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/data
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
@@ -31,6 +37,14 @@ add_test (NAME Test_distributions
 add_test (NAME Test_coalescent
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_coalescent)
+
+add_test (NAME Test_tree
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_tree)
+
+add_test (NAME Test_tree_likelihood
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_tree_likelihood)
 
 
 find_program(VALGRIND "valgrind")

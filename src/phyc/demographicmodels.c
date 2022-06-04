@@ -1797,7 +1797,7 @@ void _skygrid_calculate_gradient( Coalescent* coal ){
 		for(size_t i = 1; i < coal->n; i++){
 			interval_gradient[i] = -chooses[i];
 		}
-		free(interval_gradient);
+
 		// derivatives wrt to reparameterization
 		if(get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
 			double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
@@ -1808,6 +1808,7 @@ void _skygrid_calculate_gradient( Coalescent* coal ){
 		else{
 			height_gradient_from_interval_gradient(coal, interval_gradient, coal->gradient+offset);
 		}
+		free(interval_gradient);
 	}
 	free(chooses);
 }
