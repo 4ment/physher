@@ -210,7 +210,6 @@ void Tree_StringBuffer_nexus_with_annotation( StringBuffer *treebuffer, Tree *tr
 bool Tree_is_time_mode(Tree* tree);
 
 Parameters* get_reparams(Tree* tree);
-unsigned* get_reparam_map(Tree* tree);
 
 void Tree_node_transform_jvp(Tree* tree, const double* input, double* output);
 void Tree_node_transform_jvp_with_heights(Tree* tree, const double* heights, const double* input, double* output);

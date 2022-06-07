@@ -22,12 +22,11 @@ typedef enum tree_transform_t{
 typedef struct TreeTransform {
     Tree* tree;
     Parameters* parameters;
+    Parameters* ratios;
+    Parameter* rootHeight;
     double* lowers;
-    unsigned* map;
-    Node** map_to_node;
+    size_t tipCount;
 	tree_transform_t parameterization;
-    Parameter* (*parameter_of_node)(struct TreeTransform*, Node*);
-    Node* (*node_of_parameter)(struct TreeTransform*, const Parameter*);
     double (*inverse_transform)(struct TreeTransform*, Node*);
     void (*update)(struct TreeTransform*);
     void (*update_lowers)(struct TreeTransform*);

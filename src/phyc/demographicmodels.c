@@ -663,18 +663,17 @@ void free_Coalescent( Coalescent *coalescent ){
 
 void _update_intervals(Coalescent* coal){
 	Node **nodes = Tree_get_nodes(coal->tree, POSTORDER);
-	memset(coal->times, 0, Tree_node_count(coal->tree)*sizeof(double));
-	memset(coal->iscoalescent, 0, Tree_node_count(coal->tree)*sizeof(bool));
-	memset(coal->lineages, 0, Tree_node_count(coal->tree)*sizeof(int));
-	Tree_update_heights(coal->tree);
 	size_t nodeCount = Tree_node_count(coal->tree);
+	memset(coal->times, 0, nodeCount*sizeof(double));
+	memset(coal->iscoalescent, 0, nodeCount*sizeof(bool));
+	memset(coal->lineages, 0,nodeCount*sizeof(int));
+	Tree_update_heights(coal->tree);
+	size_t tipCount = Tree_tip_count(coal->tree);
 	for (int i = 0; i < nodeCount; i++) {
 		coal->nodes[i]->index = Node_id(nodes[i]);
 		coal->nodes[i]->value = Node_height(nodes[i]);
 	}
 	qsort(coal->nodes, nodeCount, sizeof(struct double_int_pair_t*), cmp_double_int_pair_asc);
-	
-	Node* node = nodes[coal->nodes[0]->index];
 	double start = coal->nodes[0]->value;
 	int lineageCount = 0;
 	int nodeIndex = 0;
@@ -682,13 +681,12 @@ void _update_intervals(Coalescent* coal){
 	double finish;
 	
 	while (nodeIndex < nodeCount) {
-		node = nodes[coal->nodes[nodeIndex]->index];
-		
+		bool isSampling = coal->nodes[nodeIndex]->index < tipCount;
 		finish = coal->nodes[nodeIndex]->value;
 		nodeIndex++;
 		
 		// sampling event
-		if (Node_isleaf(node)) {
+		if(isSampling){
 			coal->times[intervalCount] = finish - start;
 			coal->lineages[intervalCount] = lineageCount;
 			intervalCount++;
@@ -722,6 +720,8 @@ void _update_intervals_grid(Coalescent* coal){
 	memset(coal->iscoalescent, 0, points_count*sizeof(bool));
 	memset(coal->lineages, 0, points_count*sizeof(int));
 	Tree_update_heights(coal->tree);
+
+	size_t tipCount = Tree_tip_count(coal->tree);
 	size_t i = 0;
 	for ( ; i < nodeCount; i++) {
 		coal->nodes[i]->index = Node_id(nodes[i]);
@@ -734,7 +734,6 @@ void _update_intervals_grid(Coalescent* coal){
 	qsort(coal->nodes, points_count, sizeof(struct double_int_pair_t*), cmp_double_int_pair_asc);
 	
 	// never starts with a grid point
-	Node* node = nodes[coal->nodes[0]->index];
 	double start = coal->nodes[0]->value;
 	int lineageCount = 0;
 	double finish;
@@ -745,9 +744,8 @@ void _update_intervals_grid(Coalescent* coal){
 		
 		// not a grid point
 		if (coal->nodes[i]->index >= 0) {
-			node = nodes[coal->nodes[i]->index];
 			// sampling event
-			if (Node_isleaf(node)) {
+			if (coal->nodes[i]->index < tipCount) {
 				lineageCount++;
 			}
 			// coalescent event
@@ -767,12 +765,12 @@ void _update_intervals_grid(Coalescent* coal){
 }
 
 
-static void _premultiply_proportions(Node* node, double* descendant, unsigned *map, Parameters* reparams){
+static void _premultiply_proportions(Node* node, double* descendant, Parameters* reparams){
     if(!Node_isleaf(node)){
 		size_t node_id = Node_id(node);
-        descendant[node_id] = descendant[Node_id(node->parent)]*Parameters_value(reparams, map[node_id]);
-        _premultiply_proportions(node->left, descendant, map, reparams);
-        _premultiply_proportions(node->right, descendant, map, reparams);
+        descendant[node_id] = descendant[Node_id(node->parent)]*Parameters_value(reparams, Node_class_id(node));
+        _premultiply_proportions(node->left, descendant, reparams);
+        _premultiply_proportions(node->right, descendant, reparams);
     }
 }
 
@@ -889,7 +887,6 @@ double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
                 break;
             }
         }
-        unsigned *map = get_reparam_map(coal->tree);
         Parameters* reparams = get_reparams(coal->tree);
         double lower = Tree_lowers(coal->tree)[Node_id(node)];
         
@@ -900,8 +897,8 @@ double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
             proportion_derivatives[Node_id(node)] = Node_height(Node_parent(node)) - lower;
             dlogP = proportion_derivatives[Node_id(node)]*CHOOSE2(coal->lineages[index+1]);
         }
-        _premultiply_proportions(node->left, proportion_derivatives, map, reparams);
-        _premultiply_proportions(node->right, proportion_derivatives, map, reparams);
+        _premultiply_proportions(node->left, proportion_derivatives, reparams);
+        _premultiply_proportions(node->right, proportion_derivatives, reparams);
         
         index--;
         Node* parent = node;
@@ -1516,7 +1513,6 @@ double _skyride_calculate_dlogP( Coalescent* coal, const Parameter* p ){
         if(index == coal->n) return 0;
         
         double* proportion_derivatives = dvector(coal->n);
-        unsigned *map = get_reparam_map(coal->tree);
         Parameters* reparams = get_reparams(coal->tree);
         lower = Tree_lowers(coal->tree)[Node_id(node)];
         size_t theta_index = 0;
@@ -1533,8 +1529,8 @@ double _skyride_calculate_dlogP( Coalescent* coal, const Parameter* p ){
             proportion_derivatives[Node_id(node)] = Node_height(Node_parent(node)) - lower;
             dlogP = proportion_derivatives[Node_id(node)]*choose(coal->lineages[index+1], 2)/exp(Parameters_value(coal->p, theta_index+1));
         }
-        _premultiply_proportions(node->left, proportion_derivatives, map, reparams);
-        _premultiply_proportions(node->right, proportion_derivatives, map, reparams);
+        _premultiply_proportions(node->left, proportion_derivatives, reparams);
+        _premultiply_proportions(node->right, proportion_derivatives, reparams);
         index--;
         Node* parent = node;
         Node* n = Tree_node(coal->tree, coal->nodes[index]->index);

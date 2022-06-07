@@ -71,11 +71,6 @@ Parameters* get_reparams(Tree* tree){
 	if(tree->tt == NULL) return NULL;
 	else return tree->tt->parameters;
 }
-
-unsigned* get_reparam_map(Tree* tree){
-	return tree->tt->map;
-}
-
 // called just after a ) or a leaf name
 // can start  with bootstrap value, node name, :, [
 // return i on ')' or ',' or ;
@@ -191,15 +186,16 @@ void init_indices(Tree* tree){
 	int nTips = 0;
 	int nInternals = 0;
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
-		nodes[i]->id = i;
-		nodes[i]->distance->id = i;
-		nodes[i]->height->id = i;
 		if( Node_isleaf(nodes[i]) ){
 			nodes[i]->class_id = nTips++;
+			nodes[i]->id = nodes[i]->class_id;
 		}
 		else {
 			nodes[i]->class_id = nInternals++;
+			nodes[i]->id = Tree_tip_count(tree) + nodes[i]->class_id;
 		}
+		nodes[i]->distance->id = nodes[i]->id;
+		nodes[i]->height->id = nodes[i]->id;
 	}
 }
 
@@ -209,20 +205,21 @@ void init_indices_with_taxa(Tree* tree, char** taxa){
 	int nTips = Tree_tip_count(tree);
 	int nInternals = 0;
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
-		nodes[i]->id = i;
-		nodes[i]->distance->id = i;
-		nodes[i]->height->id = i;
 		if( Node_isleaf(nodes[i]) ){
 			for(size_t j = 0; j < nTips; j++){
 				if(strcmp(nodes[i]->name, taxa[j]) == 0){
 					nodes[i]->class_id = j;
+					nodes[i]->id = nodes[i]->class_id;
 					break;
 				}
 			}
 		}
 		else {
 			nodes[i]->class_id = nInternals++;
+			nodes[i]->id = nTips + nodes[i]->class_id;
 		}
+		nodes[i]->distance->id = nodes[i]->id;
+		nodes[i]->height->id = nodes[i]->id;
 	}
 }
 
@@ -231,7 +228,7 @@ void init_parameter_arrays(Tree* atree){
 	atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
 	atree->stored_nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
 	assert(atree->nodes);
-	for ( int i = 0; i < Tree_node_count(atree); i++ ) {
+	for ( size_t i = 0; i < Tree_node_count(atree); i++ ) {
 		atree->nodes[ nodes[i]->id ] = nodes[i];
 	}
 	
@@ -489,11 +486,11 @@ void init_heights_from_distances(Tree* atree){
 			for (int i = 0; i < Tree_node_count(atree); i++) {
 				Node* node = nodes[i];
 				if(Node_isroot(node)){
-					Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+					Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
 					Parameter_set_value_quietly(p, Node_height(node));
 				}
 				else if(!Node_isleaf(node)){
-					Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+					Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
 					double s = atree->tt->inverse_transform(atree->tt, node);
 					Parameter_set_value_quietly(p, s);
 				}
@@ -520,7 +517,7 @@ void init_heights_from_distances(Tree* atree){
 			for (int i = 0; i < Tree_node_count(atree); i++) {
 				Node* node = nodes[i];
 				if(Node_isroot(node)){
-					Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+					Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
 	//                Constraint_set_lower(p->cnstr, Constraint_lower(node->height->cnstr));
 	//				Constraint_set_flower(p->cnstr, Constraint_lower(node->height->cnstr));
 	//				Constraint_set_upper(p->cnstr, Constraint_upper(node->height->cnstr));
@@ -528,7 +525,7 @@ void init_heights_from_distances(Tree* atree){
 					Parameter_set_value_quietly(p, Node_height(node));
 				}
 				else if(!Node_isleaf(node)){
-					Parameter* p = atree->tt->parameter_of_node(atree->tt, node);
+					Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
 					double s = atree->tt->inverse_transform(atree->tt, node);
 					Parameter_set_value_quietly(p, s);
 				}
@@ -1153,13 +1150,16 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
+		"branch_lengths",
 		"dates",
 		"init",
 		"file",
 		"heights", // height parameters
 		"parameters", // distance parameters
 		"newick",
+		"ratios", // reparameterization parameters
 		"reparam", // reparametrization
+		"root_height",
 		"time",
 		"transform"
 	};
@@ -1254,13 +1254,34 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	}
 	// New tree so add node parameters to hashtable
 	if (tree != NULL) {
+		json_node* blens_node = get_json_node(node, "branch_lengths");
 		char* p = get_json_node_value_string(node, "parameters");
+
+		if (blens_node != NULL && p != NULL){
+			fprintf(stderr, "Choose either blens_node or parameters to parameterized the tree model\n");
+			exit(2);
+		}
+
 		if (p != NULL) {
 			Parameters_set_name2(tree->distances, p);
 			Hashtable_add(hash, Parameters_name2(tree->distances), tree->distances);
 			for (int i = 0; i < Parameters_count(tree->distances); i++) {
 				Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
 			}
+		}
+		
+		if(blens_node != NULL){
+			char* id = get_json_node_value_string(blens_node, "id");
+			Parameters* distances = new_MultiParameter_from_json(blens_node, hash);
+
+			Parameters_set_name2(tree->distances, id);
+			Hashtable_add(hash, Parameters_name2(tree->distances), tree->distances);
+			for (int i = 0; i < Parameters_count(tree->distances); i++) {
+				Parameters_set_name(tree->distances, i, Parameters_name(distances, i));
+				Parameters_set_value(tree->distances, i, Parameters_value(distances, i));
+				Hashtable_add(hash, Parameters_name(tree->distances, i), Parameters_at(tree->distances, i));
+			}
+			free_Parameters(distances);
 		}
 		
 		p = get_json_node_value_string(node, "heights");
@@ -1272,7 +1293,40 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			}
 		}
 		
+		
+		json_node* ratios_node = get_json_node(node, "ratios");
+		json_node* root_height_node = get_json_node(node, "root_height");
 		p = get_json_node_value_string(node, "reparam");
+		if (ratios_node != NULL && p != NULL){
+			fprintf(stderr, "Choose either ratios or reparam to parameterize the tree model\n");
+			exit(2);
+		}
+		if(ratios_node != NULL){
+			Parameters_set_name2(tree->tt->parameters, "reparam");
+			Hashtable_add(hash, Parameters_name2(tree->tt->parameters), tree->tt->parameters);
+
+			char* id = get_json_node_value_string(ratios_node, "id");
+			Parameters* ratios = new_MultiParameter_from_json(ratios_node, hash);
+
+			Parameters_set_name2(tree->tt->ratios, id);
+			Hashtable_add(hash, Parameters_name2(tree->tt->ratios), tree->tt->ratios);
+			for (size_t i = 0; i < Parameters_count(tree->tt->ratios); i++) {
+				Parameters_set_name(tree->tt->ratios, i, Parameters_name(ratios, i));
+				Parameter_set_value(Parameters_at(tree->tt->ratios, i), Parameters_value(ratios, i));
+				Hashtable_add(hash, Parameters_name(tree->tt->ratios, i), Parameters_at(tree->tt->ratios, i));
+			}
+			free_Parameters(ratios);
+
+			char* id_root = get_json_node_value_string(root_height_node, "id");
+			Parameter* root_height = new_Parameter_from_json(root_height_node, hash);
+
+			Parameter_set_name(tree->tt->rootHeight, id_root);
+			Parameter_set_value(tree->tt->rootHeight, Parameter_value(root_height));
+			Hashtable_add(hash, Parameter_name(tree->tt->rootHeight), tree->tt->rootHeight);
+			
+			free_Parameter(root_height);
+		}
+		
 		
 		if (p != NULL) {
 			StringBuffer* buffer = new_StringBuffer(10);
@@ -2661,19 +2715,16 @@ void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient){
 #pragma mark Misc
 
 Node* Tree_node_from_parameter(Tree* tree, const Parameter* p){
+	Node* node = NULL;
 	// reparam
-	if (p->name[strlen(p->name)-1] == 'm') {
-		return tree->tt->map_to_node[p->id];
+	if (p->model == MODEL_TREE_TRANSFORM) {
+		node = tree->nodes[p->id + Tree_tip_count(tree)];
 	}
-	// distance
-	else if(p->name[strlen(p->name)-1] == 'e'){
-		return Tree_node(tree, p->id);
+	// distance or height
+	else if(p->model == MODEL_TREE){
+		node = Tree_node(tree, p->id);
 	}
-	// height
-	else if (p->name[strlen(p->name)-1] == 't'){
-		return Tree_node(tree, p->id);
-	}
-	return NULL;
+	return node;
 }
 
 //FIXME: should also update height parameters...
