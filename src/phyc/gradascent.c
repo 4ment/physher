@@ -280,7 +280,13 @@ opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f,
 				var_grad[i] = beta2*var_grad[i] + (1.0 - beta2)*grad*grad;
 				double hat_mean_grad = mean_grad[i]/(1.0 - beta1p);
 				double hat_var_grad = var_grad[i]/(1.0 - beta2p);
-				double v = Parameters_value(parameters, i) + eta_scaled * hat_mean_grad/(sqrt(hat_var_grad) + eps);
+				double v = Parameters_value(parameters, i);
+				if (Parameters_constraint(parameters, i) != NULL && Parameters_lower(parameters, i) == 0) {
+					v = exp(log(v) + eta_scaled * hat_mean_grad/(sqrt(hat_var_grad) + eps));
+				}
+				else{
+					v += eta_scaled * hat_mean_grad/(sqrt(hat_var_grad) + eps);
+				}
 				Parameters_set_value(parameters, i, v);
 			}
 		}
@@ -392,12 +398,6 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 		}
 		
 		if (eval_elbo != 0 && stop->iter % eval_elbo == 0) {
-			//            for (int j = 0; j < dim; j++) {
-			//                Parameter* p = Parameters_at(var->parameters, j);
-			//                //Parameter_set_value(p, exp(parameters[i]));
-			//                Parameter_set_value(p, exp(var->var_parameters[j]-var->var_parameters[j+dim]*var->var_parameters[j+dim])); // mode
-			//            }
-			
 			elbo_prev = elbo;
 			elbo = f(parameters, NULL, data);
 			if(verbose > 0)  printf("%zu ELBO: %f (%f)\n", stop->iter, elbo, elbo_prev);
@@ -406,9 +406,6 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 				*fmin = elbo;
 				break;
 			}
-			//            printf("%d ELBO: %f (%f) logL: %f\n",iter, elbo, elbo_prev, var->posterior->logP(var->posterior));
-			//            double cubo = cubo_meanfield(tlk, nodes, nodeCount, elbo_samples, parameters,r);
-			//            printf("%d ELBO: %f (%f) cubo: %f\n",iter, elbo, elbo_prev, cubo);
 			
 			if (elbo > elbo_best){
 				elbo_best = elbo;
@@ -425,9 +422,6 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 			qsort (elbos, eval_count, sizeof(double), compare);
 			size_t median = eval_count/2;
 			if(elbos[median] < tol_rel_obj && conv == max_conv){
-				//                for(int i = 0; i < parameterCount/2; i++){
-				//                    printf("%d grad: %f %f\n",i, grads[i], grads[dim+i]);
-				//                }
 				if(verbose > 0)  printf("ELBO converged: %f < %f  %f  %zu %zu\n",elbos[median], tol_rel_obj, delta_elbo, median, stop->iter);
 				*fmin = elbo;
 				break;
