@@ -66,6 +66,9 @@ typedef struct SiteModel{
 	Parameters *rates;
 	Simplex* proportions;
     Parameter *mu;
+	
+	// for finite difference approx of gamma site model gradient
+	double epsilon;
 } SiteModel;
 
 Model * new_SiteModel2( const char* name, SiteModel *sm, Model* proportions );

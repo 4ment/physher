@@ -252,6 +252,72 @@ double _no_derivative( SiteModel *sm, const double* ingrad, Parameter* p ){
 	return 0;
 }
 
+double _gamma_shape_derivative( SiteModel *sm, const double* ingrad ){
+	double derivsum = 0;
+	double sum = 0;
+	size_t catCount = sm->cat_count;
+	size_t variableCat = sm->proportions != NULL ? catCount - 1 : catCount;
+	double* proportions = sm->get_proportions(sm);
+	double shape = Parameters_value(sm->rates, 0);
+	double shape_gradient = 0;
+	size_t j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
+	for (size_t i = 0; i < variableCat; i++, j++) {
+		double prob = (2.0*i + 1.0)/(2.0*variableCat);
+		double plus = gsl_cdf_gamma_Qinv( prob, shape + sm->epsilon, 1.0/(shape + sm->epsilon) );
+		double minus = gsl_cdf_gamma_Qinv( prob, shape - sm->epsilon, 1.0/(shape - sm->epsilon) );
+		shape_gradient += ingrad[j] * (plus - minus)/(2.0*sm->epsilon) * proportions[j];
+	}
+	return shape_gradient;
+}
+
+double _gamma_inv_derivative( SiteModel *sm, const double* ingrad ){
+	double* proportions = sm->get_proportions(sm);
+	assert(proportions[0] == Parameters_value(sm->proportions->parameters, 0));
+	
+	// with Gamma
+	if(Parameters_count(sm->rates) > 0){
+		size_t variableCatCount = sm->cat_count - 1;
+		double shape = Parameters_value(sm->rates, 0);
+		double sum_rate = 0;
+		for (size_t i = 0; i < variableCatCount; i++) {
+			double prob = (2.0*i + 1.0)/(2.0*variableCatCount);
+			sum_rate += gsl_cdf_gamma_Qinv( prob, shape, 1.0/shape );
+		}
+		double pinv_gradient = 0;
+		for (size_t i = 0; i < variableCatCount; i++) {
+			double prob = (2.0*i + 1.0)/(2.0*variableCatCount);
+			pinv_gradient += ingrad[i+1] * gsl_cdf_gamma_Qinv( prob, shape, 1.0/shape );
+		}
+		return ingrad[0] + pinv_gradient/(sum_rate*(1.0 - proportions[0]));
+	}
+	// +I only
+	else{
+		return ingrad[0] + ingrad[1]/proportions[1];
+	}
+}
+
+double _gamma_derivative( SiteModel *sm, const double* ingrad, Parameter* p ){
+	// pinv
+	if(sm->proportions != NULL && Parameters_at(sm->proportions->parameters, 0) == p){
+		return _gamma_inv_derivative(sm, ingrad);
+	}
+	else{
+		return _gamma_shape_derivative(sm, ingrad);
+	}
+	return 0;
+}
+
+void _gamma_gradient( SiteModel *sm, const double* ingrad, double* grad ){
+	size_t offset = 0;
+	if(Parameters_count(sm->rates) > 0){
+		grad[offset++] = _gamma_shape_derivative(sm, ingrad);
+	}
+	if(sm->proportions != NULL){
+		grad[offset] = _gamma_inv_derivative(sm, ingrad);
+	}
+}
+
+
 double _weibull_shape_derivative( SiteModel *sm, const double* ingrad ){
 	double derivsum = 0;
 	double sum = 0;
@@ -343,6 +409,8 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* pr
 	sm->cat_rates       = NULL;
 	sm->cat_proportions = NULL;
 	sm->proportions = proportions;
+
+	sm->epsilon = 1.e-6;
     
 	sm->rates = NULL;
 	
@@ -392,6 +460,10 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* pr
 		(distribution == DISTRIBUTION_DISCRETE && Parameters_count(sm->proportions->parameters) == 1)) {
 		sm->gradient = _weibull_gradient;
 		sm->derivative = _weibull_derivative;
+	}
+	else if (distribution == DISTRIBUTION_GAMMA){
+		sm->gradient = _gamma_gradient;
+		sm->derivative = _gamma_derivative;
 	}
 	sm->integrate   = true;
 	sm->need_update = true;
@@ -826,6 +898,8 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm ){
 	
 	newsm->gradient = sm->gradient;
 	newsm->derivative = sm->derivative;
+
+	newsm->epsilon = sm->epsilon;
 	return newsm;
 }
 
@@ -873,6 +947,8 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Simplex* props
 	
 	newsm->gradient = sm->gradient;
 	newsm->derivative = sm->derivative;
+
+	newsm->epsilon = sm->epsilon;
 	return newsm;
 }
 
@@ -888,6 +964,7 @@ void free_SiteModel( SiteModel *sm ){
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	char* allowed[] = {
 		"distribution",
+		"epsilon",
 		"invariant",
 		"model",
 		"mu",
@@ -1070,6 +1147,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
 	}
+	sm->epsilon = get_json_node_value_double(node, "epsilon", 1.e-6);
 	
 	Model* msm = new_SiteModel2(id_string, sm, mprops_simplex);
 	

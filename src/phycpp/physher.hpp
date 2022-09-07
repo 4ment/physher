@@ -198,16 +198,46 @@ class ConstantSiteModelInterface : public SiteModelInterface {
     void GetParameters(double *parameters) override;
 };
 
-class WeibullSiteModelInterface : public SiteModelInterface {
+class DiscretizedSiteModelInterface : public SiteModelInterface {
    public:
-    WeibullSiteModelInterface(double shape, size_t categories,
-                              std::optional<double> mu);
+    DiscretizedSiteModelInterface(distribution_t distribution, double shape,
+                                  size_t categories,
+                                  std::optional<double> proportionInvariant,
+                                  std::optional<double> mu);
 
-    void SetShape(double shape);
+    void SetParameter(double parameter);
+
+    void SetProportionInvariant(double value);
 
     void SetParameters(const double *parameters) override;
 
     void GetParameters(double *parameters) override;
+};
+
+class WeibullSiteModelInterface : public DiscretizedSiteModelInterface {
+   public:
+    WeibullSiteModelInterface(double shape, size_t categories,
+                              std::optional<double> proportionInvariant,
+                              std::optional<double> mu)
+        : DiscretizedSiteModelInterface(DISTRIBUTION_WEIBULL, shape, categories,
+                                        proportionInvariant, mu) {}
+
+    void SetShape(double shape);
+};
+
+class GammaSiteModelInterface : public DiscretizedSiteModelInterface {
+   public:
+    GammaSiteModelInterface(double shape, size_t categories,
+                            std::optional<double> proportionInvariant,
+                            std::optional<double> mu)
+        : DiscretizedSiteModelInterface(DISTRIBUTION_GAMMA, shape, categories,
+                                        proportionInvariant, mu) {
+        siteModel_->epsilon = 1.e-6;
+    }
+
+    void SetShape(double shape);
+
+    void SetEpsilon(double epsilon);
 };
 
 class TreeLikelihoodInterface : public CallableModelInterface {

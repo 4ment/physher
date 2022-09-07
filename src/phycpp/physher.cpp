@@ -294,51 +294,93 @@ void ConstantSiteModelInterface::GetParameters(double *parameters) {
     }
 }
 
-WeibullSiteModelInterface::WeibullSiteModelInterface(double shape, size_t categories,
-                                                     std::optional<double> mu) {
+DiscretizedSiteModelInterface::DiscretizedSiteModelInterface(
+    distribution_t distribution, double shape, size_t categories,
+    std::optional<double> proportionInvariant, std::optional<double> mu) {
     Parameter *shape_parameter =
-        new_Parameter("weibull", shape, new_Constraint(0, INFINITY));
+        new_Parameter("sitemodel.parameter", shape, new_Constraint(0, INFINITY));
     Parameters *params = new_Parameters(1);
     Parameters_move(params, shape_parameter);
+
+    Simplex *propInvSimplex = nullptr;
+    Model *propInvModel = nullptr;
+    if (proportionInvariant.has_value()) {
+        propInvSimplex = new_Simplex("pinv", 2);
+        propInvModel = new_SimplexModel("pinv.model", propInvSimplex);
+        Parameters_at(propInvSimplex->parameters, 0)->model = MODEL_SITEMODEL;
+        Parameters_set_value(propInvSimplex->parameters, 0, *proportionInvariant);
+    }
+
     siteModel_ =
-        new_SiteModel_with_parameters(params, nullptr, categories, DISTRIBUTION_WEIBULL,
+        new_SiteModel_with_parameters(params, propInvSimplex, categories, distribution,
                                       false, QUADRATURE_QUANTILE_MEDIAN);
     if (mu.has_value()) {
         Parameter *mu_param = new_Parameter("mu", *mu, new_Constraint(0, INFINITY));
         SiteModel_set_mu(siteModel_, mu_param);
         free_Parameter(mu_param);
     }
-    model_ = new_SiteModel2("sitemodel", siteModel_, nullptr);
+    siteModel_->epsilon = 1.e-6;
+
+    model_ = new_SiteModel2("sitemodel", siteModel_, propInvModel);
     free_Parameters(params);
     parameterCount_ = Parameters_count(siteModel_->rates) + siteModel_->mu != nullptr;
+    if (propInvModel != nullptr) {
+        propInvModel->free(propInvModel);
+        parameterCount_ += propInvSimplex->K - 1;
+    }
 }
 
-void WeibullSiteModelInterface::SetShape(double shape) {
-    Parameters_set_value(siteModel_->rates, 0, shape);
+void DiscretizedSiteModelInterface::SetParameter(double parameter) {
+    Parameters_set_value(siteModel_->rates, 0, parameter);
 }
 
-void WeibullSiteModelInterface::SetParameters(const double *parameters) {
+void DiscretizedSiteModelInterface::SetProportionInvariant(double value) {
+    Parameters_set_value(siteModel_->proportions->parameters, 0, value);
+}
+
+void DiscretizedSiteModelInterface::SetParameters(const double *parameters) {
     size_t shift = 0;
     if (Parameters_count(siteModel_->rates) > 0) {
         Parameters_set_value(siteModel_->rates, 0, parameters[0]);
         shift++;
     }
+    if (siteModel_->proportions != nullptr) {
+        Parameters_set_value(siteModel_->proportions->parameters, 0, parameters[shift]);
+        shift++;
+    }
+
     if (siteModel_->mu != nullptr) {
         Parameter_set_value(siteModel_->mu, parameters[shift]);
         shift++;
     }
 }
 
-void WeibullSiteModelInterface::GetParameters(double *parameters) {
+void DiscretizedSiteModelInterface::GetParameters(double *parameters) {
     size_t shift = 0;
     if (Parameters_count(siteModel_->rates) > 0) {
         parameters[0] = Parameters_value(siteModel_->rates, 0);
+        shift++;
+    }
+    if (siteModel_->proportions != nullptr) {
+        parameters[shift] = Parameters_value(siteModel_->proportions->parameters, 0);
         shift++;
     }
     if (siteModel_->mu != nullptr) {
         parameters[shift] = Parameter_value(siteModel_->mu);
         shift++;
     }
+}
+
+void WeibullSiteModelInterface::SetShape(double shape) {
+    Parameters_set_value(siteModel_->rates, 0, shape);
+}
+
+void GammaSiteModelInterface::SetShape(double shape) {
+    Parameters_set_value(siteModel_->rates, 0, shape);
+}
+
+void GammaSiteModelInterface::SetEpsilon(double epsilon) {
+    siteModel_->epsilon = epsilon;
 }
 
 TreeLikelihoodInterface::TreeLikelihoodInterface(
