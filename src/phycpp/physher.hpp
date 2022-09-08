@@ -198,6 +198,17 @@ class ConstantSiteModelInterface : public SiteModelInterface {
     void GetParameters(double *parameters) override;
 };
 
+class InvariantSiteModelInterface : public SiteModelInterface {
+   public:
+    InvariantSiteModelInterface(double proportionInvariant, std::optional<double> mu);
+
+    void SetProportionInvariant(double value);
+
+    void SetParameters(const double *parameters) override;
+
+    void GetParameters(double *parameters) override;
+};
+
 class DiscretizedSiteModelInterface : public SiteModelInterface {
    public:
     DiscretizedSiteModelInterface(distribution_t distribution, double shape,
