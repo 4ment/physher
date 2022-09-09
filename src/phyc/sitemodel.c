@@ -259,6 +259,36 @@ double _gamma_shape_derivative( SiteModel *sm, const double* ingrad ){
 	size_t variableCat = sm->proportions != NULL ? catCount - 1 : catCount;
 	double* proportions = sm->get_proportions(sm);
 	double shape = Parameters_value(sm->rates, 0);
+	size_t j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
+	double* temp = dvector(variableCat*2);
+	for (size_t i = 0; i < variableCat; i++, j++) {
+		double prob = (2.0*i + 1.0)/(2.0*variableCat);
+		double plus = gsl_cdf_gamma_Qinv( prob, shape + sm->epsilon, 1.0/(shape + sm->epsilon) );
+		double minus = gsl_cdf_gamma_Qinv( prob, shape - sm->epsilon, 1.0/(shape - sm->epsilon) );
+		temp[i] = (plus - minus)/(2.0*sm->epsilon);
+		temp[i+variableCat] = gsl_cdf_gamma_Qinv( prob, shape, 1.0/shape);
+		derivsum += temp[i] * proportions[j];
+		sum += temp[i+variableCat] * proportions[j];
+	}
+
+	double shape_gradient = 0;
+	j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
+	for (size_t i = 0; i < variableCat; i++, j++) {
+		double prob = (2.0*i + 1.0)/(2.0*variableCat);
+		double deriv_rate = temp[i]/sum - (temp[i+variableCat]*derivsum)/sum/sum;
+		shape_gradient += ingrad[j] * deriv_rate * proportions[j];
+	}
+	free(temp);
+	return shape_gradient;
+}
+
+double _gamma_shape_derivativew( SiteModel *sm, const double* ingrad ){
+	double derivsum = 0;
+	double sum = 0;
+	size_t catCount = sm->cat_count;
+	size_t variableCat = sm->proportions != NULL ? catCount - 1 : catCount;
+	double* proportions = sm->get_proportions(sm);
+	double shape = Parameters_value(sm->rates, 0);
 	double shape_gradient = 0;
 	size_t j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
 	for (size_t i = 0; i < variableCat; i++, j++) {

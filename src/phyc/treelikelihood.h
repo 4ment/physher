@@ -120,6 +120,7 @@ struct _SingleTreeLikelihood{
 	int prepared_gradient;
 	double* gradient;
 	size_t gradient_length;
+	bool include_root_freqs;
 };
 
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk, Model *tree, Model *m, Model *sm, Model *bm );
@@ -184,7 +185,7 @@ double calculate_dlnl_dWeibull( SingleTreeLikelihood *tlk, const double* pattern
 #pragma mark -
 #pragma mark Upper Likelihood
 
-void update_upper_partials(SingleTreeLikelihood *tlk, Node* node);
+void update_upper_partials(SingleTreeLikelihood *tlk, Node* node, bool update_all_partials);
 void update_upper_partials2(SingleTreeLikelihood *tlk, Node* node);
 
 void calculate_dldt_uppper( SingleTreeLikelihood *tlk, Node *node, double* pattern_dlikelihoods );
