@@ -160,6 +160,20 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
                 var->simplex_parameter_count += simplex->K-1;
             }
         }
+        else if(simplices_node->node_type == MJSON_STRING){
+            var->simplices = malloc(sizeof(Model*));
+            char* ref = simplices_node->value;
+            Model* msimplex = Hashtable_get(hash, ref+1);
+            Simplex* simplex = msimplex->obj;
+            Parameters_add_parameters(var->parameters, simplex->parameters);
+            var->simplices[0] = msimplex;
+            msimplex->ref_count++;
+            var->simplex_count++;
+            var->simplex_parameter_count += simplex->K-1;
+        }
+        else{
+            fprintf(stderr, "Cannot read simplices in variational block %s\n", id);
+        }
     }
 
     if (tree_node != NULL) {

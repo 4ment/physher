@@ -296,14 +296,13 @@ void ConstantSiteModelInterface::GetParameters(double *parameters) {
 
 InvariantSiteModelInterface::InvariantSiteModelInterface(double proportionInvariant,
                                                          std::optional<double> mu) {
-    Parameters *params = new_Parameters(1);
     Simplex *propInvSimplex = new_Simplex("pinv", 2);
     Model *propInvModel = new_SimplexModel("pinv.model", propInvSimplex);
     Parameters_at(propInvSimplex->parameters, 0)->model = MODEL_SITEMODEL;
     Parameters_set_value(propInvSimplex->parameters, 0, proportionInvariant);
 
     siteModel_ =
-        new_SiteModel_with_parameters(params, propInvSimplex, 0, DISTRIBUTION_DISCRETE,
+        new_SiteModel_with_parameters(nullptr, propInvSimplex, 1, DISTRIBUTION_DISCRETE,
                                       true, QUADRATURE_QUANTILE_MEDIAN);
     if (mu.has_value()) {
         Parameter *mu_param = new_Parameter("mu", *mu, new_Constraint(0, INFINITY));
@@ -312,8 +311,7 @@ InvariantSiteModelInterface::InvariantSiteModelInterface(double proportionInvari
     }
 
     model_ = new_SiteModel2("sitemodel", siteModel_, propInvModel);
-    free_Parameters(params);
-    parameterCount_ = propInvSimplex->K - 1 + siteModel_->mu != nullptr;
+    parameterCount_ = 1 + siteModel_->mu != nullptr;
 }
 
 void InvariantSiteModelInterface::SetProportionInvariant(double value) {

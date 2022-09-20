@@ -2731,23 +2731,12 @@ void gradient_pinv_sitemodel(SingleTreeLikelihood* tlk, const double* branch_gra
 	double* partials1 = root_partials + stateCount*patternCount;
 	const double* freqs = tlk->get_root_frequencies(tlk);
 
-	if(tlk->include_root_freqs){
-		for ( size_t k = 0; k < patternCount; k++ ) {
-			double L = 0;
-			for ( size_t i = 0; i < stateCount; i++ ) {
-				L += *partials0++ - *partials1++;
-			}
-			pinv_grad += L/pattern_likelihoods[k] * tlk->sp->weights[k];
+	for ( size_t k = 0; k < patternCount; k++ ) {
+		double L = 0;
+		for ( size_t i = 0; i < stateCount; i++ ) {
+			L += freqs[i] * (*partials0++ - *partials1++);
 		}
-	}
-	else{
-		for ( size_t k = 0; k < patternCount; k++ ) {
-			double L = 0;
-			for ( size_t i = 0; i < stateCount; i++ ) {
-				L += freqs[i] * (*partials0++ - *partials1++);
-			}
-			pinv_grad += L/pattern_likelihoods[k] * tlk->sp->weights[k];
-		}
+		pinv_grad += L/pattern_likelihoods[k] * tlk->sp->weights[k];
 	}
 
 	discrete_grad[0] = pinv_grad;
@@ -2771,31 +2760,16 @@ void gradient_pinv_W_sitemodel(SingleTreeLikelihood* tlk, const double* branch_g
 	double* partials0 = root_partials;
 	const double* freqs = tlk->get_root_frequencies(tlk);
 
-	if(tlk->include_root_freqs){
-		for ( size_t k = 0; k < patternCount; k++ ) {
-			double Lk = 0;
-			for ( size_t i = 0; i < stateCount; i++ ) {
-				double temp = 0;
-				for(size_t j = 1; j < catCount; j++){
-					temp += root_partials[stateCount*patternCount*j + k*stateCount + i];
-				}
-				Lk += *partials0++ - temp/variableCount;
+	for ( size_t k = 0; k < patternCount; k++ ) {
+		double Lk = 0;
+		for ( size_t i = 0; i < stateCount; i++ ) {
+			double temp = 0;
+			for(size_t j = 1; j < catCount; j++){
+				temp += root_partials[stateCount*patternCount*j + k*stateCount + i];
 			}
-			pinv_grad += Lk/pattern_likelihoods[k] * tlk->sp->weights[k];
+			Lk += freqs[i] * (*partials0++ - temp/variableCount);
 		}
-	}
-	else{
-		for ( size_t k = 0; k < patternCount; k++ ) {
-			double Lk = 0;
-			for ( size_t i = 0; i < stateCount; i++ ) {
-				double temp = 0;
-				for(size_t j = 1; j < catCount; j++){
-					temp += root_partials[stateCount*patternCount*j + k*stateCount + i];
-				}
-				Lk += freqs[i] * (*partials0++ - temp/variableCount);
-			}
-			pinv_grad += Lk/pattern_likelihoods[k] * tlk->sp->weights[k];
-		}
+		pinv_grad += Lk/pattern_likelihoods[k] * tlk->sp->weights[k];
 	}
 	discrete_grad[0] = pinv_grad;
 	
