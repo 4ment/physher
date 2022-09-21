@@ -519,7 +519,13 @@ static void _hky_dQdp(SubstitutionModel *m, size_t index){
 		dQ[2] = dQ[7] = dQ[8] = dQ[13] = Parameters_value(m->rates, 0); // kappa
 		dQ[1] = dQ[3] = dQ[4] = dQ[6] = dQ[9] = dQ[11] = dQ[12] = dQ[14] = 1.;
 		double dF[4];
-		m->simplex->gradient(m->simplex, index-1, dF);
+		if(m->grad_wrt_reparam){
+			m->simplex->gradient(m->simplex, index-1, dF);
+		}
+		else{
+			memset(dF, 0.0, sizeof(double)*4);
+			dF[index-1] = 1.0;
+		} 
 		build_Q_flat(dQ, dF, stateCount);
 		
 		for (size_t i = 0; i < stateCount; i++) {

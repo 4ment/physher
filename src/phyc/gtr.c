@@ -264,9 +264,15 @@ static void _gtr_dQdp(SubstitutionModel *m, size_t index){
 	const double* frequencies = m->simplex->get_values(m->simplex);
 	double norm = m->norm;
 	double dnorm = 0;
-	if(m->rates_simplex != NULL && index < m->rates_simplex->K - 1){
+	if(m->rates_simplex != NULL && ((m->grad_wrt_reparam && index < m->rates_simplex->K - 1) || (!m->grad_wrt_reparam && index < m->rates_simplex->K))){
 		double dR[6];
-		m->rates_simplex->gradient(m->rates_simplex, index, dR);
+		if(m->grad_wrt_reparam){
+			m->rates_simplex->gradient(m->rates_simplex, index, dR);
+		}
+		else{
+			memset(dR, 0.0, sizeof(double)*6);
+			dR[index] = 1.0;
+		}
 		gtr_setup_rates(dQ, dR, stateCount);
 		build_Q_flat(dQ, frequencies, stateCount);
 		dnorm = normalizing_constant_Q_flat(dQ, frequencies, stateCount);
@@ -279,7 +285,16 @@ static void _gtr_dQdp(SubstitutionModel *m, size_t index){
 		dnorm = normalizing_constant_Q_flat(dQ, frequencies, stateCount);
 	}
 	else{
-		size_t rateCount = m->rates_simplex == NULL ? Parameters_count(m->rates) : m->rates_simplex->K - 1;
+		size_t rateCount = -1;
+		if(m->rates_simplex == NULL){
+			rateCount = Parameters_count(m->rates);
+		}
+		else if(m->grad_wrt_reparam){
+			rateCount = m->rates_simplex->K - 1;
+		}
+		else{
+			rateCount = m->rates_simplex->K;
+		}	
 		if(m->rates_simplex != NULL){
 			const double* rates = m->rates_simplex->get_values(m->rates_simplex);
 			gtr_setup_rates(dQ, rates, stateCount);
@@ -288,7 +303,13 @@ static void _gtr_dQdp(SubstitutionModel *m, size_t index){
 			gtr_setup_rates_relative(dQ, m->rates, stateCount, m->relativeTo);
 		}
 		double dF[4];
-		m->simplex->gradient(m->simplex, index - rateCount, dF);
+		if(m->grad_wrt_reparam){
+			m->simplex->gradient(m->simplex, index - rateCount, dF);
+		}
+		else{
+			memset(dF, 0.0, sizeof(double)*4);
+			dF[index - rateCount] = 1.0;
+		}
 		build_Q_flat(dQ, dF, stateCount);
 		
 		for (size_t i = 0; i < stateCount; i++) {

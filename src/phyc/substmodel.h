@@ -83,6 +83,9 @@ typedef struct SubstitutionModel{
     bool normalize;
 	 // keep track of normalizing constant for derivatives
 	double norm;
+	// calculate gradient wrt to simlex reparameterization
+	// if false the gradient is wrt constrained parameters
+	bool grad_wrt_reparam; 
 	
 	void (*update_Q)( struct SubstitutionModel * );
 	

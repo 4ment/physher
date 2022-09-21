@@ -209,7 +209,7 @@ HKYInterface::HKYInterface(double kappa, const std::vector<double> &frequencies)
     model_ = Initialize("hky", kappa_parameters, frequencies_model, nullptr);
     free_Parameters(kappa_parameters);
     frequencies_model->free(frequencies_model);
-    parameterCount_ = 4;
+    parameterCount_ = 5;
 }
 
 void HKYInterface::SetKappa(double kappa) {
@@ -234,6 +234,7 @@ GTRInterface::GTRInterface(const std::vector<double> &rates,
         Simplex *rates_simplex =
             new_Simplex_with_values("gtr_rate_simplex", rates.data(), rates.size());
         rates_model = new_SimplexModel("gtr_rates", rates_simplex);
+        parameterCount_ = 10;
     } else {
         rates_parameters = new_Parameters(5);
         for (auto rate : rates) {
@@ -241,8 +242,8 @@ GTRInterface::GTRInterface(const std::vector<double> &rates,
                 rates_parameters,
                 new_Parameter("gtr_rates", rate, new_Constraint(0, INFINITY)));
         }
+        parameterCount_ = 9;
     }
-    parameterCount_ = 8;
     Simplex *frequencies_simplex = new_Simplex_with_values(
         "gtr_frequency_simplex", frequencies.data(), frequencies.size());
     Model *frequencies_model = new_SimplexModel("gtr_frequencies", frequencies_simplex);

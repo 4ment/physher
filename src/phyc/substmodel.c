@@ -914,6 +914,7 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     
     m->model = NULL;
 	m->relativeTo = -1;
+    m->grad_wrt_reparam = true;
     
     return m;
 }
@@ -1020,6 +1021,8 @@ SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
 	clone->need_update = false;
 	clone->dQ_need_update = false;
 	clone->relativeTo = m->relativeTo;
+
+	clone->grad_wrt_reparam = m->grad_wrt_reparam;
 	
 	return clone;
 }
@@ -1070,6 +1073,8 @@ SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Pa
 	clone->need_update = true;
 	clone->dQ_need_update = true;
 	clone->relativeTo = m->relativeTo;
+
+	clone->grad_wrt_reparam = m->grad_wrt_reparam;
 	
 	return clone;
 }
@@ -1532,6 +1537,7 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 	else{
 		error("factory Susbtition model\n");
 	}
+	mod->grad_wrt_reparam = true;
 	return mod;
 }
 
