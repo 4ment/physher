@@ -1238,7 +1238,7 @@ void free_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 
 SingleTreeLikelihood * clone_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 	SitePattern *sp = clone_SitePattern(tlk->sp);
-	SiteModel *m   = clone_substitution_model(tlk->sm);
+	SubstitutionModel *m   = clone_substitution_model(tlk->m);
 	SiteModel *sm   = clone_SiteModel(tlk->sm);
 	Tree* tree = clone_Tree(tlk->tree);
 	BranchModel* bm = NULL;
@@ -2679,7 +2679,10 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 				for ( size_t j = 0; j < catCount; j++ ){
 					cat_dlikelihoodsNode[j] = 0;
 					for ( size_t k = 0; k < patternCount; k++ ) {
-						double temp = *partialsPtr++ + *partialsPtr++ + *partialsPtr++ + *partialsPtr++;
+						double temp = *partialsPtr++;
+						for ( size_t i = 1; i < nstate; i++ ) {
+							temp += *partialsPtr++;
+						}
 						cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
 					}
 				}	
@@ -3025,7 +3028,7 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
 			double grad = 0;
 			if (time_mode) {
 				for(size_t i = 0; i < nodeCount; i++){
-					grad += cat_branch_gradient[nodes[i]->id] * Node_distance(nodes[i]) * tlk->bm->get(tlk->bm, nodes[i]);
+					grad += cat_branch_gradient[nodes[i]->id] * Node_time_elapsed(nodes[i]) * tlk->bm->get(tlk->bm, nodes[i]);
 				}
 			}
 			else{
