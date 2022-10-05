@@ -325,7 +325,7 @@ void Tree_update_heights(Tree* tree){
     if(tree->need_update_height || tree->topology_changed){
         if( tree->topology_changed ){
             Tree_update_topology(tree);
-			if(tree->tt != NULL) tree->tt->update_lowers(tree->tt);
+			if(tree->tt != NULL && tree->tt->update_lowers != NULL) tree->tt->update_lowers(tree->tt);
         }
         if(tree->tt != NULL) tree->tt->update(tree->tt);
         tree->need_update_height = false;
@@ -345,7 +345,7 @@ double Tree_node_time_elapsed(Tree* tree, Node* node){
 double* Tree_lowers(Tree* tree){
     if( tree->topology_changed ){
         Tree_update_topology(tree);
-        tree->tt->update_lowers(tree->tt);
+        if(tree->tt->update_lowers != NULL) tree->tt->update_lowers(tree->tt);
     }
     return tree->tt->lowers;
 }
@@ -454,8 +454,44 @@ void init_leaf_heights_from_times(Tree* atree){
 		Constraint_set_lower(atree->root->height->cnstr, offset);
 		Constraint_set_flower(atree->root->height->cnstr, offset);
 	}
-	if(atree->tt != NULL){
+	if(atree->tt != NULL && atree->tt->update_lowers != NULL){
 		atree->tt->update_lowers(atree->tt);
+	}
+}
+
+void init_transform_from_heights(Tree* atree){
+	Node **nodes = Tree_get_nodes(atree, PREORDER);
+	if(atree->homochronous){
+		for (int i = 0; i < Tree_node_count(atree); i++) {
+			Node* node = nodes[i];
+			if(Node_isroot(node)){
+				Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
+				Parameter_set_value_quietly(p, Node_height(node));
+			}
+			else if(!Node_isleaf(node)){
+				Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
+				double s = atree->tt->inverse_transform(atree->tt, node);
+				Parameter_set_value_quietly(p, s);
+			}
+		}		
+	}
+	else{
+		if(atree->tt->update_lowers != NULL){
+			atree->tt->update_lowers(atree->tt);
+		}
+		for (int i = 0; i < Tree_node_count(atree); i++) {
+			Node* node = nodes[i];
+			if(Node_isroot(node)){
+				Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
+				Parameter_set_value_quietly(p, Node_height(node));
+			}
+			else if(!Node_isleaf(node)){
+				Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
+				double s = atree->tt->inverse_transform(atree->tt, node);
+				Parameter_set_value_quietly(p, s);
+			}
+		}
+		
 	}
 }
 
@@ -479,7 +515,9 @@ void init_heights_from_distances(Tree* atree){
 		Tree_constraint_heights(atree);
 
 		if(atree->tt != NULL){
-			atree->tt->update_lowers(atree->tt);
+			if(atree->tt->update_lowers != NULL){
+				atree->tt->update_lowers(atree->tt);
+			}
 
 			// initialize reparam from height parameters
 			nodes = Tree_get_nodes(atree, PREORDER);
@@ -510,7 +548,9 @@ void init_heights_from_distances(Tree* atree){
 		Tree_constraint_heights(atree);
 
 		if(atree->tt != NULL){
-			atree->tt->update_lowers(atree->tt);
+			if(atree->tt->update_lowers != NULL){
+				atree->tt->update_lowers(atree->tt);
+			}
 
 			// initialize reparam from height parameters
 			nodes = Tree_get_nodes(atree, PREORDER);
@@ -912,17 +952,6 @@ void Tree_init_heights ( Tree *atree ) {
 	free_StringBuffer(buffer);
 }
 
-void collect_lowers(Node* node, double* lowers){
-	if(!Node_isleaf(node)){
-		collect_lowers(node->left, lowers);
-		collect_lowers(node->right, lowers);
-		lowers[Node_id(node)] = dmax(lowers[Node_id(Node_left(node))], lowers[Node_id(Node_right(node))]);
-	}
-	else{
-		lowers[Node_id(node)] = Node_height(node);
-	}
-}
-
 void _tree_handle_change( Model *self, Model *model, int index ){
 	Tree *tree = (Tree*)self->obj;
 	if ( tree->time_mode ) {
@@ -1199,13 +1228,19 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 		// initialize heights from distances read from newick file
 		if(tree->time_mode){
-			if(transform_desc != NULL && strcasecmp(transform_desc, "ratio_naive")){
-				tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO_NAIVE);
+			if(transform_desc != NULL){
+				if(strcasecmp(transform_desc, "ratio_naive") == 0){
+					tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO_NAIVE);
+					tree->tt->update_lowers(tree->tt);
+				}
+				else if(strcasecmp(transform_desc, "shift") == 0){
+					tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_SHIFT);
+				}
 			}
 			else{
 				tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO);
+				tree->tt->update_lowers(tree->tt);
 			}
-			tree->tt->update_lowers(tree->tt);
 			init_heights_from_distances(tree);
 		}
 		char* id = get_json_node_value_string(node, "id");
@@ -1233,7 +1268,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			tree->time_mode = time_tree;
 			tree->rooted = time_tree;
 		}
-        if(time_tree)
+        if(time_tree && tree->tt->update_lowers != NULL)
 			tree->tt->update_lowers(tree->tt);
         
 		// initialize heights from distances read from newick file
@@ -1376,7 +1411,9 @@ Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* 
 	// initialize heights from distances read from newick file
 	if(tree->time_mode){
 		tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO);
-		tree->tt->update_lowers(tree->tt);
+		if(tree->tt->update_lowers != NULL){
+			tree->tt->update_lowers(tree->tt);
+		}
 		init_heights_from_distances(tree);
 	}
 	mtree = new_TreeModel("id", tree);
@@ -1388,6 +1425,24 @@ Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* 
 		Node_set_distance(Tree_root(tree)->right, 0);
 		Node_set_distance(Tree_root(tree)->left, tot);
 	}
+	return mtree;
+}
+
+Model* new_TimeTreeModel_from_newick(const char* newick, char** taxa, const double* dates){
+	
+	Model* mtree = NULL;
+	Tree* tree = NULL;
+	bool time_tree = dates != NULL;
+	tree = new_Tree_with_taxa(newick, taxa, !time_tree);
+	
+	// parse date dictionary for dated trees
+	// tip heights are intialized
+	init_dates2(tree, dates);
+	tree->time_mode = true;
+	tree->rooted = true;
+
+	init_heights_from_distances(tree);
+	mtree = new_TreeModel("id", tree);
 	return mtree;
 }
 
@@ -2695,6 +2750,20 @@ bool Tree_is_time_mode(Tree* tree){
 
 #pragma mark -
 #pragma mark TreeTransform
+
+void TreeModel_set_transform(Model* model, unsigned transform){
+	Tree* tree = (Tree*)model->obj;
+	
+	tree->tt = new_HeightTreeTransform(tree, transform);
+	if(tree->tt->update_lowers != NULL){
+		tree->tt->update_lowers(tree->tt);
+	}
+	
+	init_transform_from_heights(tree);
+	Model* mtt = new_TreeTransformModel("TreeTransformModel", tree->tt, model);
+	model->data = mtt;
+	mtt->listeners->add( mtt->listeners, model );
+}
 
 void Tree_set_transform(Tree* tree, int tt){
 	tree->tt = new_HeightTreeTransform(tree, tt);

@@ -10,6 +10,60 @@
 
 #include "matrix.h"
 
+
+void tree_transform_shift_update_heights(Node *node, Parameters *parameters) {
+	// set height quietly because ratios already notified the tree (and other upstream listeners)
+	if (!Node_isleaf(node)) {
+        tree_transform_shift_update_heights(node->left, parameters);
+        tree_transform_shift_update_heights(node->right, parameters);
+        double shift = Parameters_value(parameters, Node_class_id(node));
+        double height = dmax(Node_height(node->left), Node_height(node->right));
+        Node_set_height_quietly(node, height + shift);
+    }
+}
+
+void _tree_transform_shift_update(TreeTransform *tt) {
+    tree_transform_shift_update_heights(Tree_root(tt->tree), tt->parameters);
+}
+
+double _height_tree_inverse_shift_transform(TreeTransform *tt, Node *node) {
+    return Node_height(node) - dmax(Node_height(node->left), Node_height(node->right));
+}
+
+void node_transform_jvp_shift(TreeTransform *tt, const double *height_gradient, double *gradient){
+	memset(gradient, 0.0, sizeof(double)*(tt->tipCount-1));
+    Node** nodes = Tree_nodes(tt->tree);
+    size_t nodeCount = Tree_node_count(tt->tree);
+    for(size_t i = 0; i < nodeCount; i++){
+        Node* node = nodes[i];
+        if(!Node_isleaf(node)){
+            size_t parameterIndex = Node_class_id(node); 
+            gradient[parameterIndex] += height_gradient[Node_class_id(node)];
+
+            if(!Node_isroot(node)){
+                Node* node2 = node;
+                while(node2->parent != NULL && Node_height(node2) > Node_height(Node_sibling(node2))){
+                    // gradient[Node_class_id(node2->parent)] += height_gradient[Node_class_id(node)];
+                    gradient[parameterIndex] += height_gradient[Node_class_id(node2->parent)];
+                    node2 = node2->parent;
+                }
+            }
+        }
+    }
+}
+
+double _node_transform_log_jacobian_zero(TreeTransform *tt){
+	return 0.0;
+}
+
+double _node_transform_dlog_jacobian_zero(struct TreeTransform *tt, Node *node) {
+    return 0.0;
+}
+
+void _node_transform_log_jacobian_gradient_zero(struct TreeTransform *tt, double *gradient) {
+	
+}
+
 // Efficient calculation of the ratio and root height gradient, adpated from BEAST.
 // Xiang et al. Scalable Bayesian divergence time estimation with ratio transformation (2021).
 // https://arxiv.org/abs/2110.13298
@@ -266,6 +320,15 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
 	else if(parameterization == TREE_TRANSFORM_RATIO){
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_efficient;
 		tt->jvp = node_transform_jvp_efficient;
+	}
+	else if(parameterization == TREE_TRANSFORM_SHIFT){
+        tt->update = _tree_transform_shift_update;
+        tt->update_lowers = NULL;
+        tt->inverse_transform = _height_tree_inverse_shift_transform;
+        tt->log_jacobian = _node_transform_log_jacobian_zero;
+        tt->dlog_jacobian = _node_transform_dlog_jacobian_zero;
+		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_zero;
+		tt->jvp = node_transform_jvp_shift;
 	}
 	else{
 		fprintf(stderr, "Node height reparameterization not recognized\n");

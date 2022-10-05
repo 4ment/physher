@@ -42,6 +42,9 @@ Model * new_TreeModel( const char* name, Tree *tree );
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash);
 
 Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* dates);
+Model* new_TimeTreeModel_from_newick(const char* newick, char** taxa, const double* dates);
+
+void TreeModel_set_transform(Model* model, unsigned transform);
 
 Tree * new_Tree( const char *nexus, bool containBL );
 

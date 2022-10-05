@@ -16,7 +16,8 @@
 
 typedef enum tree_transform_t{
 	TREE_TRANSFORM_RATIO_NAIVE=0,
-	TREE_TRANSFORM_RATIO
+	TREE_TRANSFORM_RATIO,
+    TREE_TRANSFORM_SHIFT
 }tree_transform_t;
 
 typedef struct TreeTransform {

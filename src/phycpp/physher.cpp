@@ -12,24 +12,6 @@ extern "C" {
 #include "phyc/treetransform.h"
 }
 
-TreeModelInterface::TreeModelInterface(const std::string &newick,
-                                       const std::vector<std::string> &taxa,
-                                       std::optional<const std::vector<double>> dates) {
-    char **taxa_p = new char *[taxa.size()];
-    for (size_t i = 0; i < taxa.size(); i++) {
-        taxa_p[i] = const_cast<char *>(taxa[i].c_str());
-    }
-    model_ = new_TreeModel_from_newick(newick.c_str(), taxa_p,
-                                       dates.has_value() ? dates->data() : nullptr);
-    delete[] taxa_p;
-
-    tree_ = reinterpret_cast<Tree *>(model_->obj);
-    nodeCount_ = Tree_node_count(tree_);
-    tipCount_ = Tree_tip_count(tree_);
-
-    InitializeMap(taxa);
-}
-
 void TreeModelInterface::InitializeMap(const std::vector<std::string> &taxa) {
     nodeMap_.resize(nodeCount_);
     for (size_t i = 0; i < nodeCount_; i++) {
@@ -50,8 +32,19 @@ void TreeModelInterface::InitializeMap(const std::vector<std::string> &taxa) {
 }
 
 UnRootedTreeModelInterface::UnRootedTreeModelInterface(
-    const std::string &newick, const std::vector<std::string> &taxa)
-    : TreeModelInterface(newick, taxa, std::nullopt) {
+    const std::string &newick, const std::vector<std::string> &taxa) {
+    char **taxa_p = new char *[taxa.size()];
+    for (size_t i = 0; i < taxa.size(); i++) {
+        taxa_p[i] = const_cast<char *>(taxa[i].c_str());
+    }
+    model_ = new_TreeModel_from_newick(newick.c_str(), taxa_p, nullptr);
+    delete[] taxa_p;
+
+    tree_ = reinterpret_cast<Tree *>(model_->obj);
+    nodeCount_ = Tree_node_count(tree_);
+    tipCount_ = Tree_tip_count(tree_);
+
+    InitializeMap(taxa);
     parameterCount_ = nodeCount_ - 2;
 }
 
@@ -72,8 +65,22 @@ void UnRootedTreeModelInterface::SetParameters(const double *parameters) {
 
 ReparameterizedTimeTreeModelInterface::ReparameterizedTimeTreeModelInterface(
     const std::string &newick, const std::vector<std::string> &taxa,
-    const std::vector<double> dates)
-    : TreeModelInterface(newick, taxa, dates) {
+    const std::vector<double> dates, TreeTransformFlags transform) {
+    char **taxa_p = new char *[taxa.size()];
+    for (size_t i = 0; i < taxa.size(); i++) {
+        taxa_p[i] = const_cast<char *>(taxa[i].c_str());
+    }
+    model_ = new_TimeTreeModel_from_newick(newick.c_str(), taxa_p, dates.data());
+    delete[] taxa_p;
+    int int_transform =
+        static_cast<std::underlying_type<TreeLikelihoodGradientFlags>::type>(transform);
+    TreeModel_set_transform(model_, int_transform);
+
+    tree_ = reinterpret_cast<Tree *>(model_->obj);
+    nodeCount_ = Tree_node_count(tree_);
+    tipCount_ = Tree_tip_count(tree_);
+
+    InitializeMap(taxa);
     transformModel_ = reinterpret_cast<Model *>(model_->data);
     parameterCount_ = tipCount_ - 1;
 }
@@ -150,8 +157,9 @@ SimpleClockModelInterface::SimpleClockModelInterface(const std::vector<double> &
     Parameters *ps = new_Parameters(nodeCount - 1);
     DiscreteParameter *map = new_DiscreteParameter(nodeCount);
     StringBuffer *buffer = new_StringBuffer(10);
+    Tree *tree = treeModel->GetTree();
     for (int i = 0; i < nodeCount; i++) {
-        Node *node = Tree_node(treeModel->GetTree(), i);
+        Node *node = Tree_node(tree, i);
         if (!Node_isroot(node)) {
             size_t index = Node_isleaf(node)
                                ? node->class_id
@@ -164,9 +172,9 @@ SimpleClockModelInterface::SimpleClockModelInterface(const std::vector<double> &
             p->id = Node_id(node);
             p->model = MODEL_BRANCHMODEL;
             Parameters_move(ps, p);
-            parameterCount_ = treeModel->GetNodeCount() - 1;
         }
     }
+    parameterCount_ = nodeCount - 1;
     free_StringBuffer(buffer);
     branchModel_ = new_DiscreteClock_with_parameters(treeModel->GetTree(), ps, map);
     free_Parameters(ps);
@@ -359,9 +367,9 @@ DiscretizedSiteModelInterface::DiscretizedSiteModelInterface(
         Parameters_set_value(propInvSimplex->parameters, 0, *proportionInvariant);
     }
 
-    siteModel_ =
-        new_SiteModel_with_parameters(params, propInvSimplex, categories, distribution,
-                                      proportionInvariant.has_value(), QUADRATURE_QUANTILE_MEDIAN);
+    siteModel_ = new_SiteModel_with_parameters(
+        params, propInvSimplex, categories, distribution,
+        proportionInvariant.has_value(), QUADRATURE_QUANTILE_MEDIAN);
     if (mu.has_value()) {
         Parameter *mu_param = new_Parameter("mu", *mu, new_Constraint(0, INFINITY));
         SiteModel_set_mu(siteModel_, mu_param);

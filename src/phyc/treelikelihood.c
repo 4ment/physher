@@ -60,8 +60,6 @@ static double _calculate( SingleTreeLikelihood *tlk );
 
 double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 
-double calculate_log_jacobian(Node* node, double* logP);
-
 void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads );
 
 void allocate_storage(SingleTreeLikelihood* tlk, size_t index);
@@ -155,17 +153,9 @@ double _singleTreeLikelihood_logP(Model *self){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 	self->lp = tlk->calculate(tlk);
 	if(tlk->include_jacobian){
-		if(Tree_homochronous(tlk->tree)){
-			for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
-				Node* node = Tree_node(tlk->tree, i);
-				if(!Node_isroot(node) && !Node_isleaf(node)){
-					self->lp += log(Node_height(Node_parent(node)));
-				}
-			}
-		}
-		else{
-			calculate_log_jacobian(Tree_root(tlk->tree), &self->lp);
-		}
+		Model** models = (Model**)self->data;
+		Model* mtree = models[0];
+		self->lp += mtree->logP(mtree);
 	}
 	return self->lp;
 }
@@ -431,21 +421,6 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 	}
 	
 	return 0;
-}
-
-double calculate_log_jacobian(Node* node, double* logP){
-	if(!Node_isleaf(node)){
-		double l = calculate_log_jacobian(node->left, logP);
-		double r = calculate_log_jacobian(node->right, logP);
-		double max = dmax(l, r);
-		if(!Node_isroot(node)){
-			*logP += log(Node_height(Node_parent(node)) - max);
-		}
-		return max;
-	}
-	else{
-		return Node_height(node);
-	}
 }
 
 static void _calculate_dlog_jacobian(const Node* noderef, Node* node, double* dlogP, double* descendant, unsigned *map, Parameters* reparams, double* lowers){

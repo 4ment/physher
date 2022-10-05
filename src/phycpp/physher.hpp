@@ -13,6 +13,7 @@ extern "C" {
 #include "phyc/demographicmodels.h"
 #include "phyc/gradient.h"
 #include "phyc/treelikelihood.h"
+#include "phyc/treetransform.h"
 }
 
 enum class GradientFlags {
@@ -26,6 +27,11 @@ enum class TreeLikelihoodGradientFlags {
     SITE_MODEL = TREELIKELIHOOD_FLAG_SITE_MODEL,
     SUBSTITUTION_MODEL = TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL,
     BRANCH_MODEL = TREELIKELIHOOD_FLAG_BRANCH_MODEL
+};
+
+enum class TreeTransformFlags {
+    RATIO = TREE_TRANSFORM_RATIO,
+    SHIFT = TREE_TRANSFORM_SHIFT
 };
 
 class ModelInterface {
@@ -56,9 +62,6 @@ class CallableModelInterface : public ModelInterface {
 
 class TreeModelInterface : public ModelInterface {
    public:
-    TreeModelInterface(const std::string &newick, const std::vector<std::string> &taxa,
-                       std::optional<const std::vector<double>> dates);
-
     size_t GetNodeCount() { return nodeCount_; }
 
     size_t GetTipCount() { return tipCount_; }
@@ -91,7 +94,8 @@ class ReparameterizedTimeTreeModelInterface : public TreeModelInterface {
    public:
     ReparameterizedTimeTreeModelInterface(const std::string &newick,
                                           const std::vector<std::string> &taxa,
-                                          const std::vector<double> dates);
+                                          const std::vector<double> dates,
+                                          TreeTransformFlags transform);
 
     void SetParameters(const double *parameters) override;
 
