@@ -204,7 +204,7 @@ static void _generic_partial(const DataType *datatype, int encoding, double* par
 	}
 	else{
 		memset(partial, 0.0, stateCount*sizeof(double));
-		partial[stateCount] = 1.0;
+		partial[encoding] = 1.0;
 	}
 }
 
