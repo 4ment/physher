@@ -166,7 +166,7 @@ void SingleTreeLikelihood_use_rescaling( SingleTreeLikelihood *tlk, bool use );
 
 double getLogScalingFactor( const SingleTreeLikelihood *tlk, int pattern );
 
-void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeIndex );
+void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeIndex, int childIndex1, int childIndex2 );
 
 void SingleTreeLikelihood_enable_SSE( SingleTreeLikelihood *tlk, bool value );
 bool SingleTreeLikelihood_SSE( SingleTreeLikelihood *tlk );

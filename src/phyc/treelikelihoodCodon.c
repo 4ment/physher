@@ -129,92 +129,6 @@ void node_log_likelihoods_codon( const SingleTreeLikelihood *tlk, const double *
 	
 }
 
-void node_likelihoods_codon( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods ){
-    
-    const double *f = frequencies;
-    const double *p = partials;
-    double *out = outLogLikelihoods;
-    
-    const int nstate = tlk->m->nstate;
-    const int extra = nstate - 60;
-    
-    for ( int k = 0; k < tlk->pattern_count; k++, out++ ) {
-        f = frequencies;
-        
-        *out  = *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        *out += *f++ * *p++;
-        
-        
-        // finish the state, number of codons - 60 with a loop
-        for ( int i = 0; i < extra; i++ ) {
-            *out += *f++ * *p++;
-        }
-        
-        if ( tlk->scale ) {
-            *out += getLogScalingFactor( tlk, k);
-        }
-    }
-    
-}
-
 void integrate_partials_codon( const SingleTreeLikelihood *tlk, const double *inPartials, const double *proportions, double *outPartials ){	
 	int k;
 	double *pPartials = outPartials;
@@ -419,7 +333,7 @@ void update_partials_codon( SingleTreeLikelihood *tlk, int partialsIndex, int pa
 	}
 	
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
 }
 
@@ -1220,7 +1134,7 @@ void update_partials_codon_openmp( SingleTreeLikelihood *tlk, int nodeIndex1, in
     }
 	
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+		SingleTreeLikelihood_scalePartials( tlk, nodeIndex3, nodeIndex1, nodeIndex2);
 	}
 }
 
@@ -2570,7 +2484,7 @@ void update_partials_codon_SSE( SingleTreeLikelihood *tlk, int partialsIndex, in
 	}
 	
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
 }
 
@@ -2616,7 +2530,7 @@ void update_partials_codon_odd_SSE( SingleTreeLikelihood *tlk, int partialsIndex
 	}
 	
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
 }
 

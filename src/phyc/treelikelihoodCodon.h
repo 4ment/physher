@@ -24,8 +24,6 @@
 
 void node_log_likelihoods_codon( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
 
-void node_likelihoods_codon( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
-
 void integrate_partials_codon( const SingleTreeLikelihood *tlk, const double *inPartials, const double *proportions, double *outPartials );
 
 void update_partials_codon( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );

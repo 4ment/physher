@@ -1752,11 +1752,14 @@ void SingleTreeLikelihood_update_three_nodes( SingleTreeLikelihood *tlk, const N
  * @param nodeIndex
  */
 
-void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeIndex ) {
+void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeIndex, int childIndex1, int childIndex2 ) {
 	int u = 0;
 	int k,j;
 	double* partials = tlk->partials[tlk->current_partials_indexes[nodeIndex]][nodeIndex];
 	double* scaling_factors = tlk->scaling_factors[tlk->current_partials_indexes[nodeIndex]][nodeIndex];
+	double* scaling_factors1 = childIndex1 >=0 && tlk->partials[0][childIndex1] != NULL ? tlk->scaling_factors[tlk->current_partials_indexes[childIndex1]][childIndex1] : NULL;
+	double* scaling_factors2 = childIndex2 >=0 && tlk->partials[0][childIndex2] != NULL ? tlk->scaling_factors[tlk->current_partials_indexes[childIndex2]][childIndex2] : NULL;
+
 	for ( int i = 0; i < tlk->sp->count; i++ ) {
 		
 		double scaleFactor = 0.0;
@@ -1782,6 +1785,12 @@ void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeInde
 				v += (tlk->sp->count - 1) * tlk->m->nstate;
 			}
 			scaling_factors[i] = log(scaleFactor);
+			if(scaling_factors1 != NULL){
+				scaling_factors[i] += scaling_factors1[i];
+			}
+			if(scaling_factors2 != NULL){
+				scaling_factors[i] += scaling_factors2[i];
+			}
 		}
 		else {
 			scaling_factors[i] = 0.0;
@@ -1793,9 +1802,8 @@ void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeInde
 double getLogScalingFactor( const SingleTreeLikelihood *tlk, int pattern ) {
 	double log_scale_factor = 0.0;
 	if ( tlk->scale ) {
-		for (int i = 0; i < Tree_node_count(tlk->tree); i++) {
-			log_scale_factor += tlk->scaling_factors[tlk->current_partials_indexes[i]][i][pattern];
-		}
+		size_t rootId = Tree_root(tlk->tree)->id;
+		return tlk->scaling_factors[tlk->current_partials_indexes[rootId]][rootId][pattern];
 	}
 	return log_scale_factor;
 }
@@ -2299,6 +2307,7 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
     double* mat_transpose =  aligned16_malloc( mat_len * sizeof(double) );
 #endif
 	double* root_partials = tlk->root_partials  + tlk->sp->count*tlk->m->nstate;
+	double* root_partials2 = tlk->root_partials  + tlk->sp->count*tlk->m->nstate*2;
 	double* pattern_dlnl = tlk->pattern_lk + tlk->sp->count*2; // pattern_likelihoods points to tlk->pattern_lk + tlk->sp->count
 	memset(pattern_dlnl, 0, sizeof(double)*tlk->sp->count);
 	double* spare_partials = tlk->partials[0][tlk->upper_partial_indexes[rootId]];
@@ -2325,13 +2334,24 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 				dphi[freqIndex] = 1.0;
 			}
 			
-			//calculate_dpartials_dfreqs(tlk, index, dpartials, pattern_likelihoods);
-			int v = 0;
-			for ( int k = 0; k < patternCount; k++ ) {
-				pattern_dlnl[k] = 0;
-				for (int jj = 0; jj < nstate; jj++) {
-					pattern_dlnl[k] += dphi[jj]*tlk->root_partials[v];
-					v++;
+			size_t v = 0;
+			if(tlk->scale){
+				for ( size_t k = 0; k < patternCount; k++ ) {
+					double likelihood = 0;
+					double dpartial = 0;
+					for (size_t i = 0; i < nstate; i++, v++) {
+						dpartial += dphi[i]*tlk->root_partials[v];
+						likelihood += freqs[i]*tlk->root_partials[v];
+					}
+					pattern_dlnl[k] = dpartial/likelihood;
+				}
+			}
+			else{
+				for ( size_t k = 0; k < patternCount; k++ ) {
+					pattern_dlnl[k] = 0;
+					for (size_t i = 0; i < nstate; i++, v++) {
+						pattern_dlnl[k] += dphi[i]*tlk->root_partials[v];
+					}
 				}
 			}
 			free(dphi);
@@ -2385,16 +2405,28 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 				}
 			}
 			else{
-				for ( int k = 0; k < patternCount; k++ ) {
-					for (int jj = 0; jj < nstate; jj++) {
-						pattern_dlnl[k] += freqs[jj]*root_partials[v];
-						v++;
+				if(tlk->scale){
+					tlk->calculate_per_cat_partials(tlk, spare_partials, tlk->upper_partial_indexes[nodeId], nodeId, nodeId );
+					tlk->integrate_partials(tlk, spare_partials, tlk->sm->get_proportions(tlk->sm), root_partials2 );
+					for ( size_t k = 0; k < patternCount; k++ ) {
+						double dlikelihood = 0;
+						double likelihood = 0;
+						for ( size_t i = 0; i < nstate; i++, v++ ) {
+							dlikelihood += freqs[i] * root_partials[v];
+							likelihood += freqs[i] * root_partials2[v];
+						}
+						pattern_dlnl[k] += dlikelihood/likelihood;
+					}
+				}
+				else{
+					for ( size_t k = 0; k < patternCount; k++ ) {
+						for ( size_t i = 0; i < nstate; i++ ) {
+							pattern_dlnl[k] += freqs[i] * root_partials[v];
+							v++;
+						}
 					}
 				}
 			}
-        }
-        for ( int k = 0; k < patternCount; k++ ) {
-            dlnldQ += pattern_dlnl[k]/pattern_likelihoods[k] * tlk->sp->weights[k];
         }
     }
     // Rates
@@ -2449,25 +2481,40 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 				}
 			}
 			else{
-				for ( size_t k = 0; k < patternCount; k++ ) {
-					for ( i = 0; i < nstate; i++ ) {
-						pattern_dlnl[k] += freqs[i] * root_partials[v];
-						v++;
+				if(tlk->scale){
+					tlk->calculate_per_cat_partials(tlk, spare_partials, tlk->upper_partial_indexes[nodeId], nodeId, nodeId );
+					tlk->integrate_partials(tlk, spare_partials, tlk->sm->get_proportions(tlk->sm), root_partials2 );
+					for ( size_t k = 0; k < patternCount; k++ ) {
+						double dlikelihood = 0;
+						double likelihood = 0;
+						for ( i = 0; i < nstate; i++, v++ ) {
+							dlikelihood += freqs[i] * root_partials[v];
+							likelihood += freqs[i] * root_partials2[v];
+						}
+						pattern_dlnl[k] += dlikelihood/likelihood;
+					}
+				}
+				else{
+					for ( size_t k = 0; k < patternCount; k++ ) {
+						for ( i = 0; i < nstate; i++ ) {
+							pattern_dlnl[k] += freqs[i] * root_partials[v];
+							v++;
+						}
 					}
 				}
 			}
-			if ( tlk->scale ) {
-				//printf("scaling\n");
-				for ( size_t k = 0; k < patternCount; k++ ) {
-					tlk->pattern_lk[k] += getLogScalingFactor( tlk, k);
-				}
-			}
-        }
-        
-        for ( int k = 0; k < patternCount; k++ ) {
-            dlnldQ += pattern_dlnl[k]/pattern_likelihoods[k] * tlk->sp->weights[k];
         }
     }
+	if(tlk->scale){
+		for ( size_t k = 0; k < patternCount; k++ ) {
+			dlnldQ += pattern_dlnl[k] * tlk->sp->weights[k];
+		}
+	}
+	else{
+		for ( size_t k = 0; k < patternCount; k++ ) {
+			dlnldQ += pattern_dlnl[k]/pattern_likelihoods[k] * tlk->sp->weights[k];
+		}
+	}
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
 	free(mat_transpose);
 #endif
@@ -2579,6 +2626,82 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 
 #pragma mark - gradients
 
+void gradient_cat_branch_lengths_aux(SingleTreeLikelihood* tlk, double* partials, int nodeId, double* cat_dlikelihoodsNode, const double* pattern_likelihoods){
+	const int nstate   = tlk->m->nstate;
+	const int patternCount = tlk->sp->count;
+	size_t catCount = tlk->sm->cat_count;
+	const double* freqs = tlk->get_root_frequencies(tlk);
+	double* partialsPtr = partials;
+	if(tlk->scale){
+		double* spare_partials2 = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+		tlk->calculate_per_cat_partials(tlk, spare_partials2, tlk->upper_partial_indexes[nodeId], nodeId, nodeId );
+		double* partialsPtr2 = spare_partials2;
+		for ( size_t j = 0; j < catCount; j++ ){
+			cat_dlikelihoodsNode[j] = 0;
+			for ( size_t k = 0; k < patternCount; k++ ) {
+				double temp = freqs[0] * *partialsPtr++;
+				double temp2 = freqs[0] * *partialsPtr2++;
+				for ( size_t i = 1; i < nstate; i++ ) {
+					temp += freqs[i] * *partialsPtr++;
+					temp2 += freqs[i] * *partialsPtr2++;
+				}
+				cat_dlikelihoodsNode[j] += temp/temp2 * tlk->sp->weights[k];
+			}
+		}
+		free(spare_partials2);
+	}
+	else{
+		for ( size_t j = 0; j < catCount; j++ ){
+			cat_dlikelihoodsNode[j] = 0;
+			for ( size_t k = 0; k < patternCount; k++ ) {
+				double temp = freqs[0] * *partialsPtr++;
+				for ( size_t i = 1; i < nstate; i++ ) {
+					temp += freqs[i] * *partialsPtr++;
+				}
+				cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
+			}
+		}
+	}
+}
+
+void gradient_cat_branch_lengths_aux_freq_included(SingleTreeLikelihood* tlk, double* partials, int nodeId, double* cat_dlikelihoodsNode, const double* pattern_likelihoods){
+	const int nstate   = tlk->m->nstate;
+	const int patternCount = tlk->sp->count;
+	size_t catCount = tlk->sm->cat_count;
+	const double* freqs = tlk->get_root_frequencies(tlk);
+	double* partialsPtr = partials;
+	if(tlk->scale){
+		double* spare_partials2 = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+		tlk->calculate_per_cat_partials(tlk, spare_partials2, tlk->upper_partial_indexes[nodeId], nodeId, nodeId );
+		double* partialsPtr2 = spare_partials2;
+		for ( size_t j = 0; j < catCount; j++ ){
+			cat_dlikelihoodsNode[j] = 0;
+			for ( size_t k = 0; k < patternCount; k++ ) {
+				double temp = *partialsPtr++;
+				double temp2 = *partialsPtr2++;
+				for ( size_t i = 1; i < nstate; i++ ) {
+					temp += *partialsPtr++;
+					temp2 += *partialsPtr2++;
+				}
+				cat_dlikelihoodsNode[j] += temp/temp2 * tlk->sp->weights[k];
+			}
+		}
+		free(spare_partials2);
+	}
+	else{
+		for ( size_t j = 0; j < catCount; j++ ){
+			cat_dlikelihoodsNode[j] = 0;
+			for ( size_t k = 0; k < patternCount; k++ ) {
+				double temp = *partialsPtr++;
+				for ( size_t i = 1; i < nstate; i++ ) {
+					temp += *partialsPtr++;
+				}
+				cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
+			}
+		}
+	}
+}
+
 // calculate derivative of log likelihood wrt to each branch length for each category
 // dimension of branch_grandient: nodeCount x category_count
 void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_grandient, const double* pattern_likelihoods ){
@@ -2639,70 +2762,93 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 				__m128d* p = (__m128d*)spare_partials;
 				__m128d* p2 = (__m128d*)(spare_partials+2);
 				double temp2[2] __attribute__ ((aligned (16)));
-				for ( size_t j = 0; j < catCount; j++ ){
-					cat_dlikelihoodsNode[j] = 0;
-					for ( size_t k = 0; k < patternCount; k++ ) {
-						_mm_store_pd(temp2, _mm_add_pd(*p, *p2));
-						p += 2;
-						p2 += 2;
-						double temp = temp2[0] + temp2[1];
-						cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
+				if(tlk->scale){
+					double* spare_partials2 = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+					tlk->calculate_per_cat_partials(tlk, spare_partials2, tlk->upper_partial_indexes[nodeId], nodeId, nodeId );
+					__m128d* p1 = (__m128d*)spare_partials2;
+					__m128d* p12 = (__m128d*)(spare_partials2+2);
+					for ( size_t j = 0; j < catCount; j++ ){
+						cat_dlikelihoodsNode[j] = 0;
+						for ( size_t k = 0; k < patternCount; k++ ) {
+							_mm_store_pd(temp2, _mm_add_pd(*p, *p2));
+							p += 2;
+							p2 += 2;
+							double temp = temp2[0] + temp2[1];
+							_mm_store_pd(temp2, _mm_add_pd(*p1, *p12));
+							p1 += 2;
+							p12 += 2;
+							cat_dlikelihoodsNode[j] += temp/(temp2[0] + temp2[1]) * tlk->sp->weights[k];
+						}
+					}
+					free(spare_partials2);
+				}
+				else{
+					for ( size_t j = 0; j < catCount; j++ ){
+						cat_dlikelihoodsNode[j] = 0;
+						for ( size_t k = 0; k < patternCount; k++ ) {
+							_mm_store_pd(temp2, _mm_add_pd(*p, *p2));
+							p += 2;
+							p2 += 2;
+							double temp = temp2[0] + temp2[1];
+							cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
+						}
 					}
 				}
 			}
 			else{
-				for ( size_t j = 0; j < catCount; j++ ){
-					cat_dlikelihoodsNode[j] = 0;
-					for ( size_t k = 0; k < patternCount; k++ ) {
-						double temp = *partialsPtr++;
-						for ( size_t i = 1; i < nstate; i++ ) {
-							temp += *partialsPtr++;
-						}
-						cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
-					}
-				}	
+				gradient_cat_branch_lengths_aux(tlk, spare_partials, nodeId, cat_dlikelihoodsNode, pattern_likelihoods);
 			}
 #else
-			for ( size_t j = 0; j < catCount; j++ ){
-				cat_dlikelihoodsNode[j] = 0;
-				for ( size_t k = 0; k < patternCount; k++ ) {
-					double temp = *partialsPtr++;
-					for ( size_t i = 1; i < nstate; i++ ) {
-						temp += *partialsPtr++;
-					}
-					cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
-				}
-			}
+			gradient_cat_branch_lengths_aux(tlk, spare_partials, nodeId, cat_dlikelihoodsNode, pattern_likelihoods);
 #endif
 		}
 		else{
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
-			__m128d* p = (__m128d*)spare_partials;
-			__m128d f1 = _mm_load_pd(freqs);
-			__m128d f2 = _mm_load_pd(freqs+2);
-			double temp[2] __attribute__ ((aligned (16)));
-			__m128d temp2;
-			for ( size_t j = 0; j < catCount; j++ ){
-					cat_dlikelihoodsNode[j] = 0;
-					for ( size_t k = 0; k < patternCount; k++ ) {
-						__m128d temp2 = _mm_mul_pd(f1, *p);
-						p++;
-						_mm_store_pd(temp, _mm_add_pd(temp2, _mm_mul_pd(f2, *p)));
-						p++;
-						cat_dlikelihoodsNode[j] += (temp[0]+temp[1])/pattern_likelihoods[k] * tlk->sp->weights[k];
-					}
+			if(tlk->m->nstate == 4){
+				__m128d* p = (__m128d*)spare_partials;
+				__m128d f1 = _mm_load_pd(freqs);
+				__m128d f2 = _mm_load_pd(freqs+2);
+				double temp[2] __attribute__ ((aligned (16)));
+				__m128d temp2;
+				if(tlk->scale){
+					double* spare_partials2 = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+					tlk->calculate_per_cat_partials(tlk, spare_partials2, tlk->upper_partial_indexes[nodeId], nodeId, nodeId );
+					__m128d* p2 = (__m128d*)spare_partials2;
+					double temp3[2] __attribute__ ((aligned (16)));
+					for ( size_t j = 0; j < catCount; j++ ){
+						cat_dlikelihoodsNode[j] = 0;
+						for ( size_t k = 0; k < patternCount; k++ ) {
+							temp2 = _mm_mul_pd(f1, *p);
+							p++;
+							_mm_store_pd(temp, _mm_add_pd(temp2, _mm_mul_pd(f2, *p)));
+							p++;
+							temp2 = _mm_mul_pd(f1, *p2);
+							p2++;
+							_mm_store_pd(temp3, _mm_add_pd(temp2, _mm_mul_pd(f2, *p2)));
+							p2++;
+							cat_dlikelihoodsNode[j] += (temp[0]+temp[1])/(temp3[0]+temp3[1]) * tlk->sp->weights[k];
+						}
+					}	
+					free(spare_partials2);
 				}
-#else
-			for ( size_t j = 0; j < catCount; j++ ){
-				cat_dlikelihoodsNode[j] = 0;
-				for ( size_t k = 0; k < patternCount; k++ ) {
-					double temp = freqs[0] * *partialsPtr++;
-					for ( size_t i = 1; i < nstate; i++ ) {
-						temp += freqs[i] * *partialsPtr++;
+				else{
+					for ( size_t j = 0; j < catCount; j++ ){
+						cat_dlikelihoodsNode[j] = 0;
+						for ( size_t k = 0; k < patternCount; k++ ) {
+							__m128d temp2 = _mm_mul_pd(f1, *p);
+							p++;
+							_mm_store_pd(temp, _mm_add_pd(temp2, _mm_mul_pd(f2, *p)));
+							p++;
+							cat_dlikelihoodsNode[j] += (temp[0]+temp[1])/pattern_likelihoods[k] * tlk->sp->weights[k];
+						}
 					}
-					cat_dlikelihoodsNode[j] += temp/pattern_likelihoods[k] * tlk->sp->weights[k];
 				}
 			}
+			else{
+				gradient_cat_branch_lengths_aux(tlk, spare_partials, nodeId, cat_dlikelihoodsNode, pattern_likelihoods);
+			}
+#else
+			gradient_cat_branch_lengths_aux(tlk, spare_partials, nodeId, cat_dlikelihoodsNode, pattern_likelihoods);
 #endif
 		}
 	}

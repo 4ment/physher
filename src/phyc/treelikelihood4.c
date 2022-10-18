@@ -159,74 +159,8 @@ void update_partials_4( SingleTreeLikelihood *tlk, int partialsIndex, int partia
 	}
 	
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
-}
-
-void update_partials_noexp_integrate_4( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
-	if( tlk->partials[partialsIndex1] != NULL ){
-		if(  tlk->partials[partialsIndex2] != NULL ){
-			partials_undefined_and_undefined_noexp_integrate_4(tlk,
-											   tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
-											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
-											   tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
-											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
-											   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
-		}
-		else {
-			partials_states_and_undefined_noexp_integrate_4(tlk,
-											tlk->mapping[partialsIndex2],
-											tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
-											tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
-											tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
-											tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
-		}
-		
-	}
-	else{
-		if(  tlk->partials[partialsIndex2] != NULL ){
-			partials_states_and_undefined_noexp_integrate_4(tlk,
-											tlk->mapping[partialsIndex1],
-											tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
-											tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
-											tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
-											tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
-			
-		}
-		else{
-			partials_states_and_states_noexp_integrate_4(tlk,
-										 tlk->mapping[partialsIndex1],
-										 tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
-										 tlk->mapping[partialsIndex2],
-										 tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
-										 tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
-		}
-	}
-	
-	if( partialsIndex != Tree_root(tlk->tree)->id ){
-		int count = tlk->cat_count*tlk->pattern_count;
-		double temp[4];
-		double *pPartials = tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex];
-		double **invevec = tlk->m->eigendcmp->Invevec;
-		
-		for ( int l = 0; l < count; l++ ) {
-			
-			memcpy(temp, pPartials, sizeof(double)*4);
-			
-			for ( int i = 0; i < 4 ; i++ ) {
-				*pPartials = 0;
-				for ( int x = 0; x < 4 ; x++ ) {
-					*pPartials += temp[x] * invevec[i][x];
-				}
-				pPartials++;
-			}
-		}
-	}
-	
-	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
-	}
-
 }
 
 void integrate_partials_4( const SingleTreeLikelihood * tlk, const double * RESTRICT inPartials, const double * RESTRICT proportions, double * RESTRICT outPartials ){
@@ -285,23 +219,6 @@ void node_log_likelihoods_4( const SingleTreeLikelihood *tlk, const double * RES
 		}
 	}
 }
-
-void node_likelihoods_4( const SingleTreeLikelihood *tlk, const double * RESTRICT partials, const double * RESTRICT frequencies, double * RESTRICT outLogLikelihoods ){
-    int v = 0;
-    for ( int k = 0; k < tlk->pattern_count; k++ ) {
-        
-        outLogLikelihoods[k] = 	frequencies[0] * partials[v]; v++;
-        outLogLikelihoods[k] += frequencies[1] * partials[v]; v++;
-        outLogLikelihoods[k] += frequencies[2] * partials[v]; v++;
-        outLogLikelihoods[k] += frequencies[3] * partials[v]; v++;
-        
-        if ( tlk->scale ) {
-            outLogLikelihoods[k] += getLogScalingFactor( tlk, k);
-        }
-    }
-}
-
-
 
 void partials_states_and_states_4( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT matrices1, int idx2, const double * RESTRICT matrices2, double * RESTRICT partials ){
 	int k,w;
@@ -378,115 +295,6 @@ void partials_states_4( const SingleTreeLikelihood *tlk, int idx1, const double 
 				*pPartials++ = matrices1[4] + matrices1[5] + matrices1[6] + matrices1[7];
 				*pPartials++ = matrices1[8] + matrices1[9] + matrices1[10] + matrices1[11];
 				*pPartials++ = matrices1[12] + matrices1[13] + matrices1[14] + matrices1[15];
-			}
-		}
-		u += 16;
-	}
-}
-
-void partials_states_and_states_noexp_integrate_4( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT exps1, int idx2, const double * RESTRICT exps2, double * RESTRICT partials ){
-	int k;
-	int u = 0;
-	int state1, state2;
-	double sum1,sum2;
-
-    double **evec = tlk->m->eigendcmp->evec;
-    double **invevec = tlk->m->eigendcmp->Invevec;
-    double *pPartials = partials;
-    
-	for ( int l = 0; l < tlk->cat_count; l++ ) {
-		
-		for ( k = 0; k < tlk->pattern_count; k++ ) {
-			
-			state1 = tlk->sp->patterns[idx1][k];
-			state2 = tlk->sp->patterns[idx2][k];
-    
-			if (state1 < 4 && state2 < 4) {
-                
-                for ( int x = 0; x < 4 ; x++ ) {
-                    sum1 = sum2 = 0;
-                    for ( int i = 0; i < 4 ; i++ ) {
-                        sum1 += evec[x][i] * exps1[l*4+i] * invevec[i][state1];
-                        sum2 += evec[x][i] * exps2[l*4+i] * invevec[i][state2];
-                    }
-                    *pPartials++ = sum1 * sum2;
-                }
-				
-			}
-			else if (state1 < 4 ) {
-				// child 2 has a gap or unknown state so treat it as unknown
-                
-                for ( int x = 0; x < 4 ; x++ ) {
-                    *pPartials = 0;
-                    for ( int i = 0; i < 4 ; i++ ) {
-                        *pPartials += evec[x][i] * exps1[l*4+i] * invevec[i][state1];
-                    }
-                    pPartials++;
-                }
-                
-			}
-			else if (state2 < 4 ) {
-				// child 1 has a gap or unknown state so treat it as unknown
-                
-                for ( int x = 0; x < 4 ; x++ ) {
-                    *pPartials = 0;
-                    for ( int i = 0; i < 4 ; i++ ) {
-                        *pPartials += evec[x][i] * exps2[l*4+i] * invevec[i][state2];
-                    }
-                    pPartials++;
-                }
-                
-				
-			}
-			else {
-                printf("partials_states_and_states_noexp_integrate_4 not done yet!\n");
-                exit(1);
-				// both children have a gap or unknown state so set partials to 1
-				partials[u]   = 1.0;
-				partials[u+1] = 1.0;
-				partials[u+2] = 1.0;
-				partials[u+3] = 1.0;
-			}
-		}
-		u += 4;
-	}
-}
-
-
-
-static void _partials_tip_and_tip_4_ancestral( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT matrices1, int idx2, const double * RESTRICT matrices2, int idx3, double * RESTRICT partials ){
-	int k;
-	int u = 0;
-	int state1, state2, state3;
-	double *pPartials = partials;
-    const int nstate   = tlk->m->nstate;
-	
-	for ( int l = 0; l < tlk->cat_count; l++ ) {
-		
-		for ( k = 0; k < tlk->pattern_count; k++ ) {
-			
-			state1 = tlk->sp->patterns[idx1][k];
-			state2 = tlk->sp->patterns[idx2][k];
-			state3 = tlk->sp->patterns[idx3][k];
-						
-            int p = u + nstate * state3;
-            
-			if (state1 < 4 && state2 < 4) {
-				*pPartials++ = matrices1[p + state1] * matrices2[p + state2];
-				
-			}
-			else if (state1 < 4 ) {
-				// child 1 has a gap or unknown state so treat it as unknown
-				*pPartials++ = matrices1[p + state1];
-			}
-			else if (state2 < 4 ) {
-				// child 2 has a gap or unknown state so treat it as unknown
-				*pPartials++ = matrices2[p + state2];
-				
-			}
-			else {
-				// both children have a gap or unknown state so set partials to 1
-				*pPartials++ = 1.0;
 			}
 		}
 		u += 16;
@@ -587,144 +395,6 @@ void partials_states_and_undefined_4( const SingleTreeLikelihood *tlk, int idx1,
 		}
 		w += 16;
 	}
-}
-
-#ifdef GNUC47
-void partials_states_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, int idx1, const double * exps1, const double * restrict apartials2, const double * exps2, double *partials3){
-	const double *partials2 = __builtin_assume_aligned(apartials2, 16);
-#else
-void partials_states_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT exps1, const double * RESTRICT partials2, const double * RESTRICT exps2, double * RESTRICT partials3){
-#endif
-    double sum1,sum2;
-    int v = 0;
-    int k;
-    int state1;
-    
-    double **evec = tlk->m->eigendcmp->evec;
-    double **invevec = tlk->m->eigendcmp->Invevec;
-    double *pPartials = partials3;
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            state1 = tlk->sp->patterns[idx1][k];
-            
-            if ( state1 < 4) {
-                
-                for ( int x = 0; x < 4 ; x++ ) {
-                    sum1 = 0;
-                    sum2 = 0;
-                    
-                    for ( int i = 0; i < 4 ; i++ ) {
-                        sum1 += evec[x][i] * exps1[l*4+i] * invevec[i][state1];
-                        sum2 += evec[x][i] * exps2[l*4+i] * partials2[v+i];
-                    }
-                    *pPartials++ = sum1 * sum2;
-                }
-        
-            }
-            else {
-                // Child 1 has a gap or unknown state so don't use it
-                
-                for ( int x = 0; x < 4 ; x++ ) {
-                    *pPartials = 0;
-                    for ( int i = 0; i < 4 ; i++ ) {
-                        *pPartials += evec[x][i] * exps2[l*4+i] * partials2[v+i];
-                    }
-                    pPartials++;
-                }
-                
-            }
-            
-            v += 4;
-        }
-    }
-}
-
-    // Auto-vectorization
-#ifdef GNUC47
-static void _partials_tip_and_internal_4_ancestral( const SingleTreeLikelihood *tlk, int idx1, const double * restrict amatrices1, int idx2, const double * restrict apartials2, const double * restrict amatrices2, int idx3, double *partials3){
-	const double *partials2 = __builtin_assume_aligned(apartials2, 16);
-	const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
-	const double *matrices2 = __builtin_assume_aligned(amatrices2, 16);
-#else
-static void _partials_tip_and_internal_4_ancestral( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT matrices1, int idx2, const double * RESTRICT partials2, const double * RESTRICT matrices2, int idx3, double * RESTRICT partials3){
-#endif
-    int v = 0;
-    int k;
-    int w = 0;
-    int state1,state2,state3;
-    const int nstate = tlk->m->nstate;
-    
-    double *pPartials = partials3;
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            state1 = tlk->sp->patterns[idx1][k];
-            state2 = tlk->sp->patterns[idx2][k];
-            state3 = tlk->sp->patterns[idx3][k];
-            
-            int p = w + nstate * state3;
-            
-            if ( state1 < 4) {
-                
-                *pPartials++ = matrices1[p + state1] * matrices2[p + state2] * partials2[v];
-                
-            }
-            else {
-                // Child 1 has a gap or unknown state so don't use it
-                
-                *pPartials++ = matrices2[p + state2] * partials2[v];
-            }
-            v++;
-        }
-        w += 16;
-    }
-}
-
-#ifdef GNUC47
-static void _partials_tip_and_internal_4_ancestral2( const SingleTreeLikelihood *tlk, int idx1, const double * restrict amatrices1, int idx2, const double * restrict apartials2, const double * restrict amatrices2, double *partials3){
-	const double *partials2 = __builtin_assume_aligned(apartials2, 16);
-    const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
-    const double *matrices2 = __builtin_assume_aligned(amatrices2, 16);
-#else
-static void _partials_tip_and_internal_4_ancestral2( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT matrices1, int idx2, const double * RESTRICT partials2, const double * RESTRICT matrices2, double * RESTRICT partials3){
-#endif
-    int v = 0;
-    int k,i;
-    int w = 0;
-    int state1,state2;
-    const int nstate = tlk->m->nstate;
-    double *pPartials = partials3;
-    
-    for ( int l = 0; l < tlk->cat_count; l++ ) {
-        
-        for ( k = 0; k < tlk->pattern_count; k++ ) {
-            
-            state1 = tlk->sp->patterns[idx1][k];
-            state2 = tlk->sp->patterns[idx2][k];
-            
-            w = l * 16;
-            
-            if ( state1 < 4) {
-                for ( i = 0; i < nstate; i++ ) {
-                    *pPartials++ = matrices1[w + state1] * matrices2[w + state2] * partials2[v];
-                    w += 4;
-                }
-            }
-            else {
-                // Child 1 has a gap or unknown state so don't use it
-                for ( i = 0; i < nstate; i++ ) {
-                    *pPartials++ = matrices2[w + state2] * partials2[v];
-                    w += 4;
-                }
-            }
-            v++;
-        }
-    }
 }
 
 #ifdef GNUC47
@@ -873,206 +543,6 @@ void partials_undefined_4( const SingleTreeLikelihood *tlk, const double * RESTR
 	
 }
 
-// exps contains exp(lambda_i*bl). dim = cat_count*nstate
-#ifdef GNUC47
-void partials_undefined_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, const double * restrict apartials1, const double * restrict exps1, const double * restrict apartials2, const double * restrict exps2, double * restrict partials3 ){
-    const double *partials1 = __builtin_assume_aligned(apartials1, 16);
-    const double *partials2 = __builtin_assume_aligned(apartials2, 16);
-#else
-void partials_undefined_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, const double * RESTRICT partials1, const double * RESTRICT exps1, const double * RESTRICT partials2, const double * RESTRICT exps2, double * RESTRICT partials3){
-#endif
-    double sum1, sum2;
-    int v = 0;
-    int k;
-	
-    double *pPartials = partials3;
-    double **evec = tlk->m->eigendcmp->evec;
-    int cat_count = tlk->cat_count;
-    int sp_count = tlk->pattern_count;
-    
-    for ( int l = 0; l < cat_count; l++ ) {
-        
-        for ( k = 0; k < sp_count; k++ ) {
-            
-            for ( int x = 0; x < 4 ; x++ ) {
-                sum1 = 0;
-                sum2 = 0;
-                
-                for ( int i = 0; i < 4 ; i++ ) {
-                    sum1 += evec[x][i] * exps1[l*4+i] * partials1[v+i];
-                    sum2 += evec[x][i] * exps2[l*4+i] * partials2[v+i];
-                }
-                *pPartials++ = sum1 * sum2;
-            }
-            
-            v += 4;
-        }
-    }
-    
-}
-
-#ifdef GNUC47
-static void _partials_internal_and_internal_4_ancestral( const SingleTreeLikelihood *tlk, int idx1, const double * restrict apartials1, const double * restrict amatrices1, int idx2, const double * restrict apartials2, const double * restrict amatrices2, int idx3, double * restrict partials3 ){
-    const double *partials1 = __builtin_assume_aligned(apartials1, 16);
-    const double *partials2 = __builtin_assume_aligned(apartials2, 16);
-    const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
-    const double *matrices2 = __builtin_assume_aligned(amatrices2, 16);
-#else
-static void _partials_internal_and_internal_4_ancestral( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT partials1, const double * RESTRICT matrices1, int idx2, const double * RESTRICT partials2, const double * RESTRICT matrices2, int idx3, double * RESTRICT partials3){
-#endif
-        
-    int v = 0;
-    int k;
-    int w = 0;
-	
-    double *pPartials = partials3;
-    int cat_count = tlk->cat_count;
-    int sp_count = tlk->pattern_count;
-    const int nstate = tlk->m->nstate;
-    
-    int state1,state2,state3;
-    
-    for ( int l = 0; l < cat_count; l++ ) {
-        
-        
-        for ( k = 0; k < sp_count; k++ ) {
-            
-            state1 = tlk->sp->patterns[idx1][k];
-            state2 = tlk->sp->patterns[idx2][k];
-            state3 = tlk->sp->patterns[idx3][k];
-            
-            int p = w + nstate * state3;
-            
-            *pPartials++ = matrices1[p + state1]   * partials1[v] * matrices2[p + state2]   * partials2[v];
-            
-            v++;
-        }
-        w += 16;
-    }
-    
-}
-
-#ifdef GNUC47
-static void _partials_internal_and_internal_4_ancestral2( const SingleTreeLikelihood *tlk, int idx1, const double * restrict apartials1, const double * restrict amatrices1, int idx2, const double * restrict apartials2, const double * restrict amatrices2, double * restrict partials3 ){
-    const double *partials1 = __builtin_assume_aligned(apartials1, 16);
-    const double *partials2 = __builtin_assume_aligned(apartials2, 16);
-    const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
-    const double *matrices2 = __builtin_assume_aligned(amatrices2, 16);
-#else
-static void _partials_internal_and_internal_4_ancestral2( const SingleTreeLikelihood *tlk, int idx1, const double * RESTRICT partials1, const double * RESTRICT matrices1, int idx2, const double * RESTRICT partials2, const double * RESTRICT matrices2, double * RESTRICT partials3){
-#endif
-    
-    int v = 0;
-    int k,i;
-    int w = 0;
-	
-    double *pPartials = partials3;
-    int cat_count = tlk->cat_count;
-    int sp_count = tlk->pattern_count;
-    const int nstate = tlk->m->nstate;
-    
-    int state1,state2;
-    
-    for ( int l = 0; l < cat_count; l++ ) {
-        
-        for ( k = 0; k < sp_count; k++ ) {
-            
-            state1 = tlk->sp->patterns[idx1][k];
-            state2 = tlk->sp->patterns[idx2][k];
-            
-            w = l * 16;
-            
-            for ( i = 0; i < nstate; i++ ) {
-                *pPartials++ = matrices1[w + state1] * partials1[v] * matrices2[w + state2] * partials2[v];
-                w += 4;
-            }
-            v++;
-        }
-    }
-    
-}
-	
-void update_partials_4_ancestral( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
-    // internal is known
-    if( tlk->mapping[nodeIndex3] != -1 ){
-        // leaves are always known
-        if( tlk->partials[nodeIndex1] == NULL && tlk->partials[nodeIndex2] == NULL ){
-            _partials_tip_and_tip_4_ancestral(tlk,
-											  tlk->mapping[nodeIndex1],
-											  tlk->matrices[tlk->current_matrices_indexes[nodeIndex1]][nodeIndex1],
-											  tlk->mapping[nodeIndex2],
-											  tlk->matrices[tlk->current_matrices_indexes[nodeIndex2]][nodeIndex2],
-											  tlk->mapping[nodeIndex3],
-											  tlk->partials[tlk->current_partials_indexes[nodeIndex3]][nodeIndex3]);
-        }
-        else if( tlk->partials[nodeIndex1] == NULL ){
-            _partials_tip_and_internal_4_ancestral(tlk,
-												   tlk->mapping[nodeIndex1],
-												   tlk->matrices[tlk->current_matrices_indexes[nodeIndex1]][nodeIndex1],
-												   tlk->mapping[nodeIndex2],
-												   tlk->partials[tlk->current_partials_indexes[nodeIndex2]][nodeIndex2],
-												   tlk->matrices[tlk->current_matrices_indexes[nodeIndex2]][nodeIndex2],
-												   tlk->mapping[nodeIndex3],
-												   tlk->partials[tlk->current_partials_indexes[nodeIndex3]][nodeIndex3]);
-        }
-        else if( tlk->partials[nodeIndex2] == NULL ){
-            _partials_tip_and_internal_4_ancestral(tlk,
-												   tlk->mapping[nodeIndex2],
-												   tlk->matrices[tlk->current_matrices_indexes[nodeIndex2]][nodeIndex2],
-												   tlk->mapping[nodeIndex1],
-												   tlk->partials[tlk->current_partials_indexes[nodeIndex1]][nodeIndex1],
-												   tlk->matrices[tlk->current_matrices_indexes[nodeIndex1]][nodeIndex1],
-												   tlk->mapping[nodeIndex3],
-												   tlk->partials[tlk->current_partials_indexes[nodeIndex3]][nodeIndex3]);
-        }
-        else {
-            _partials_internal_and_internal_4_ancestral(tlk,
-														tlk->mapping[nodeIndex1],
-														tlk->partials[tlk->current_partials_indexes[nodeIndex1]][nodeIndex1],
-														tlk->matrices[tlk->current_matrices_indexes[nodeIndex1]][nodeIndex1],
-														tlk->mapping[nodeIndex2],
-														tlk->partials[tlk->current_partials_indexes[nodeIndex2]][nodeIndex2],
-														tlk->matrices[tlk->current_matrices_indexes[nodeIndex2]][nodeIndex2],
-														tlk->mapping[nodeIndex3],
-														tlk->partials[tlk->current_partials_indexes[nodeIndex3]][nodeIndex3]);
-        }
-    }
-    else {
-        if( tlk->partials[nodeIndex1] == NULL ){
-            _partials_tip_and_internal_4_ancestral2(tlk,
-													tlk->mapping[nodeIndex1],
-													tlk->matrices[tlk->current_matrices_indexes[nodeIndex1]][nodeIndex1],
-													tlk->mapping[nodeIndex2],
-													tlk->partials[tlk->current_partials_indexes[nodeIndex2]][nodeIndex2],
-													tlk->matrices[tlk->current_matrices_indexes[nodeIndex2]][nodeIndex2],
-													tlk->partials[tlk->current_partials_indexes[nodeIndex3]][nodeIndex3]);
-        }
-        else if( tlk->partials[nodeIndex2] == NULL ){
-            _partials_tip_and_internal_4_ancestral2(tlk,
-													tlk->mapping[nodeIndex2],
-													tlk->matrices[tlk->current_matrices_indexes[nodeIndex2]][nodeIndex2],
-													tlk->mapping[nodeIndex1],
-													tlk->partials[tlk->current_partials_indexes[nodeIndex1]][nodeIndex1],
-													tlk->matrices[tlk->current_matrices_indexes[nodeIndex1]][nodeIndex1],
-													tlk->partials[tlk->current_partials_indexes[nodeIndex3]][nodeIndex3]);
-        }
-        else {
-            _partials_internal_and_internal_4_ancestral2(tlk,
-														 tlk->mapping[nodeIndex1],
-														 tlk->partials[tlk->current_partials_indexes[nodeIndex1]][nodeIndex1],
-														 tlk->matrices[tlk->current_matrices_indexes[nodeIndex1]][nodeIndex1],
-														 tlk->mapping[nodeIndex2],
-														 tlk->partials[tlk->current_partials_indexes[nodeIndex2]][nodeIndex2],
-														 tlk->matrices[tlk->current_matrices_indexes[nodeIndex2]][nodeIndex2],
-														 tlk->partials[tlk->current_partials_indexes[nodeIndex3]][nodeIndex3]);
-        }
-    }
-    
-    if ( tlk->scale ) {
-        SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
-    }
-}
-
 #pragma mark -
 #pragma mark OpenMP
 
@@ -1119,7 +589,7 @@ void update_partials_4_openmp( SingleTreeLikelihood *tlk, int partialsIndex, int
 	}
 	
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
 }
 
@@ -1438,41 +908,6 @@ void node_log_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *
         
         pOutPartials++;
 	}
-}
-
-void node_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods ){
-    
-    const double *pInPartials = partials;
-    double *pOutPartials = outLogLikelihoods;
-    
-    double temp[2] __attribute__ ((aligned (16)));
-    
-    __m128d f0 = _mm_load_pd(&frequencies[0]);
-    __m128d f2 = _mm_load_pd(&frequencies[2]);
-    __m128d in0, in2;
-    
-    for ( int k = 0; k < tlk->pattern_count; k++ ) {
-        
-        in0 = _mm_load_pd(pInPartials);
-        pInPartials += 2;
-        in2 = _mm_load_pd(pInPartials);
-        pInPartials += 2;
-        
-        in0 = _mm_mul_pd(in0, f0);
-        in2 = _mm_mul_pd(in2, f2);
-        
-        in0 = _mm_add_pd(in0, in2);
-        
-        _mm_store_pd(temp, in0);
-        
-        *pOutPartials = temp[0]+temp[1];
-        
-        if ( tlk->scale ) {
-            *pOutPartials += getLogScalingFactor( tlk, k);
-        }
-        
-        pOutPartials++;
-    }
 }
     
 #ifdef GNUC47
@@ -2023,7 +1458,7 @@ void update_partials_4_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int pa
 	}
 	
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
 }
 	
@@ -2465,36 +1900,6 @@ void integrate_partials_4_AVX( const SingleTreeLikelihood *tlk, const double *in
             _mm256_store_pd(temp, in0);
             
             *pOutPartials = log(temp[0]+temp[1]+temp[2]+temp[3]);
-            
-            if ( tlk->scale ) {
-                *pOutPartials += getLogScalingFactor( tlk, k);
-            }
-            pOutPartials++;
-        }
-    }
-    
-    // frequencies is not aligned so I am using set_pd instead of load_pd
-    void node_likelihoods_4_AVX( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods ){
-        
-        const double *pInPartials = partials;
-        double *pOutPartials = outLogLikelihoods;
-        
-        double temp[4] __attribute__ ((aligned (32)));
-        //memcpy(temp,frequencies,4*sizeof(double));
-        //__m256d f0 = _mm256_load_pd(temp);
-        __m256d f0 = _mm256_set_pd(frequencies[3],frequencies[2],frequencies[1],frequencies[0]);
-        __m256d in0;
-        
-        for ( int k = 0; k < tlk->pattern_count; k++ ) {
-            
-            in0 = _mm256_load_pd(pInPartials);
-            pInPartials += 4;
-            
-            in0 = _mm256_mul_pd(in0, f0);
-            
-            _mm256_store_pd(temp, in0);
-            
-            *pOutPartials = temp[0]+temp[1]+temp[2]+temp[3];
             
             if ( tlk->scale ) {
                 *pOutPartials += getLogScalingFactor( tlk, k);
@@ -3191,7 +2596,7 @@ void update_partials_4_AVX( SingleTreeLikelihood *tlk, int partialsIndex, int pa
 	}
 	
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
 }
 

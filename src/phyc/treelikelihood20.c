@@ -103,7 +103,7 @@ void update_partials_20_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int p
 	}
 
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, partialsIndex);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
 }
 

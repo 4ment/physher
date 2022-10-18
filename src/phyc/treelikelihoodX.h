@@ -30,8 +30,6 @@ void integrate_partials_general( const SingleTreeLikelihood *tlk, const double *
 
 void node_log_likelihoods_general( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
 
-void node_likelihoods_general( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
-
 void partials_states_and_states( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, int idx2, const double *matrices2, double *partials );
 
 void partials_states_and_undefined( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 );
@@ -58,8 +56,6 @@ void integrate_partials_general_even_SSE( const SingleTreeLikelihood *tlk, const
 
 void node_log_likelihoods_general_even_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
 
-void node_likelihoods_general_even_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
-
 #pragma mark -
 #pragma mark Upper Likelihood
 
@@ -68,24 +64,6 @@ void calculate_branch_likelihood(SingleTreeLikelihood *tlk, double* rootPartials
 void calculate_branch_partials(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 
 void node_log_likelihoods_upper_general( const SingleTreeLikelihood *tlk, Node *node );
-
-
-#pragma mark -
-#pragma mark ASR
-
-void update_partials_general_ancestral( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
-
-
-void update_partials_general_ancestral_rel( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
-void integrate_partials_general_rel( const SingleTreeLikelihood *tlk, const double *inPartials, const double *proportions, double *outPartials );
-
-void update_partials_general_ancestral_relb( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
-
-
-#pragma mark -
-#pragma mark Lower Likelihood REL
-
-void update_partials_general_rel( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
 
 #pragma mark -
 #pragma mark Upper Likelihood SSE

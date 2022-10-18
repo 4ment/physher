@@ -33,8 +33,6 @@ void integrate_partials_4( const SingleTreeLikelihood *tlk, const double *inPart
 
 void node_log_likelihoods_4( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods);
 
-void node_likelihoods_4( const SingleTreeLikelihood *tlk, const double* partials, const double* frequencies, double* outLogLikelihoods );
-
 void partials_undefined_and_undefined_4( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 );
 
 void partials_states_and_undefined_4( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 );
@@ -50,15 +48,9 @@ void partials_states_4( const SingleTreeLikelihood *tlk, int idx1, const double 
 void update_partials_4_ancestral( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
 
 
-
-
-void update_partials_noexp_integrate_4( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 );
-
 void partials_undefined_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, const double *partials1, const double *exps1, const double *partials2, const double *exps2, double *partials3);
 
 void partials_states_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, int idx1, const double *exps1, const double *partials2, const double *exps2, double *partials3 );
-
-void partials_states_and_states_noexp_integrate_4( const SingleTreeLikelihood *tlk, int idx1, const double *exps1, int idx2, const double *exps2, double *partials );
 
 
 #pragma mark -
@@ -87,8 +79,6 @@ void integrate_partials_4_SSE( const SingleTreeLikelihood *tlk, const double *in
 
 void node_log_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
 
-void node_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
-
 void calculate_branch_likelihood_4_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 
 void calculate_branch_partials_4_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
@@ -104,8 +94,6 @@ void update_partials_4_AVX( SingleTreeLikelihood *tlk, int partialsIndex, int pa
 void integrate_partials_4_AVX( const SingleTreeLikelihood *tlk, const double *inPartials, const double *proportions, double *outPartials );
 
 void node_log_likelihoods_4_AVX( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
-
-void node_likelihoods_4_AVX( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
 #endif
 
 
