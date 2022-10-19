@@ -318,6 +318,40 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 	return sp;
 }
 
+SitePattern * new_AttributePattern( DataType* datatype, const char** taxa, const char** attributes, size_t taxon_count ){
+	SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );
+	assert(sp);
+	sp->id = 0;
+	
+	sp->datatype = datatype;
+	sp->datatype->ref_count++;
+	sp->nstate = sp->datatype->state_count(sp->datatype);
+	sp->get_partials = _sitepattern_get_partials;
+	sp->nsites = 1;
+	sp->count = 1;
+	sp->size = taxon_count;
+	sp->indexes = ivector(sp->count);
+	sp->weights = dvector(sp->count);
+	sp->indexes[0] = -1;
+	sp->weights[0] = 1;
+	
+	sp->patterns = malloc(sizeof(uint8_t*)*taxon_count);
+	for(size_t i = 0; i < taxon_count; i++){
+		sp->patterns[i] = malloc(sizeof(uint8_t));
+		sp->patterns[i][0] = datatype->encoding_string(datatype, attributes[i]);
+	}
+	
+	sp->names = (char**)malloc( taxon_count * sizeof(char*) );
+	assert(sp->names);
+	
+	for ( size_t i = 0; i < taxon_count; i++) {
+		sp->names[i] = String_clone( taxa[i] );
+	}
+	sp->ref_count = 1;
+	
+	return sp;
+}
+
 void free_SitePattern( SitePattern *sp ){
 	if(sp->ref_count == 1){
 		if(sp->patterns != NULL ){

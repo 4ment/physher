@@ -10,6 +10,7 @@
 #include <vector>
 
 extern "C" {
+#include "phyc/datatype.h"
 #include "phyc/demographicmodels.h"
 #include "phyc/gradient.h"
 #include "phyc/treelikelihood.h"
@@ -26,12 +27,38 @@ enum class TreeLikelihoodGradientFlags {
     TREE_HEIGHT = TREELIKELIHOOD_FLAG_TREE,
     SITE_MODEL = TREELIKELIHOOD_FLAG_SITE_MODEL,
     SUBSTITUTION_MODEL = TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL,
+    SUBSTITUTION_MODEL_RATES = TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_RATES,
+    SUBSTITUTION_MODEL_FREQUENCIES = TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_FREQUENCIES,
     BRANCH_MODEL = TREELIKELIHOOD_FLAG_BRANCH_MODEL
 };
 
 enum class TreeTransformFlags {
     RATIO = TREE_TRANSFORM_RATIO,
     SHIFT = TREE_TRANSFORM_SHIFT
+};
+
+class DataTypeInterface {
+   public:
+    virtual ~DataTypeInterface() { free_DataType(dataType_); }
+    DataType *dataType_;
+};
+
+class NucleotideDataTypeInterface : public DataTypeInterface {
+   public:
+    NucleotideDataTypeInterface() { dataType_ = new_NucleotideDataType(); }
+};
+
+class GeneralDataTypeInterface : public DataTypeInterface {
+   public:
+    GeneralDataTypeInterface(const std::vector<std::string> &states) {
+        char **states_p = new char *[states.size()];
+        for (size_t i = 0; i < states.size(); i++) {
+            states_p[i] = const_cast<char *>(states[i].c_str());
+        }
+        dataType_ = new_GenericDataType("general_datatype", states.size(),
+                                        const_cast<const char **>(states_p));
+        delete[] states_p;
+    }
 };
 
 class ModelInterface {
@@ -142,11 +169,12 @@ class SimpleClockModelInterface : public BranchModelInterface {
 };
 
 class SubstitutionModelInterface : public ModelInterface {
-   protected:
-    Model *Initialize(const std::string &name, Parameters *rates, Model *frequencies,
-                      Model *rates_model);
+   public:
+    DataTypeInterface *GetDataType() { return dataType_; }
 
+   protected:
     SubstitutionModel *substModel_;
+    DataTypeInterface *dataType_;
 };
 
 class JC69Interface : public SubstitutionModelInterface {
@@ -175,6 +203,23 @@ class GTRInterface : public SubstitutionModelInterface {
    public:
     GTRInterface(const std::vector<double> &rates,
                  const std::vector<double> &frequencies);
+
+    void SetRates(const double *rates);
+
+    void SetFrequencies(const double *frequencies);
+
+    void SetParameters(const double *parameters) override;
+
+    void GetParameters(double *parameters) override {}
+};
+
+class GeneralSubstitutionModelInterface : public SubstitutionModelInterface {
+   public:
+    GeneralSubstitutionModelInterface(DataTypeInterface *dataType,
+                                      const std::vector<double> &rates,
+                                      const std::vector<double> &frequencies,
+                                      const std::vector<unsigned> &mapping,
+                                      bool normalize);
 
     void SetRates(const double *rates);
 
@@ -263,6 +308,15 @@ class TreeLikelihoodInterface : public CallableModelInterface {
         SiteModelInterface *siteModel,
         std::optional<BranchModelInterface *> branchModel, bool use_ambiguities = false,
         bool use_tip_states = false, bool include_jacobian = false);
+
+    TreeLikelihoodInterface(const std::vector<std::string> &taxa,
+                            const std::vector<std::string> &attributes,
+                            TreeModelInterface *treeModel,
+                            SubstitutionModelInterface *substitutionModel,
+                            SiteModelInterface *siteModel,
+                            std::optional<BranchModelInterface *> branchModel,
+                            bool use_ambiguities = false, bool use_tip_states = false,
+                            bool include_jacobian = false);
 
     void RequestGradient(std::vector<TreeLikelihoodGradientFlags> flags =
                              std::vector<TreeLikelihoodGradientFlags>());

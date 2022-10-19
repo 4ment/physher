@@ -281,6 +281,32 @@ static void _general_dQdp(SubstitutionModel *m, size_t index){
 	}
 }
 
+void dPdp_with_dQdp_general(SubstitutionModel *m, double* dQ, double* dP, double t){
+	size_t stateCount = m->nstate;
+	double *v = m->eigendcmp->eval;
+	double* temp = dvector(stateCount*stateCount);
+	for(size_t i = 0; i < stateCount; i++){
+		temp[i] = exp(v[i]*t);
+	}
+	double* dPPtr = dP;
+	double* dQPtr = m->dQ;
+	for(size_t i = 0; i < stateCount; i++){
+		for(size_t j = 0; j < stateCount; j++){
+			if(v[i] != v[j]){
+				*dPPtr = *dQPtr*(temp[i] - temp[j])/(v[i]-v[j]);
+			}
+			else{
+				*dPPtr = *dQPtr*t*temp[i];
+			}
+			dPPtr++;
+			dQPtr++;
+		}
+	}
+	Matrix_mult3(temp, (const double**)m->eigendcmp->evec, dP, stateCount, stateCount, stateCount, stateCount);
+	Matrix_mult4(dP, temp, (const double**)m->eigendcmp->Invevec, stateCount, stateCount, stateCount, stateCount);
+	free(temp);
+}
+
 static void _general_dPdp(SubstitutionModel *m, int index, double* mat, double t){
 	if(m->need_update){
 		m->update_Q(m);
@@ -288,7 +314,10 @@ static void _general_dPdp(SubstitutionModel *m, int index, double* mat, double t
 	}
 	if(m->dQ_need_update){
 		_general_dQdp(m, index);
+		size_t stateCount = m->nstate;
+		Matrix_mult3(mat, (const double**)m->eigendcmp->Invevec, m->dQ, stateCount, stateCount, stateCount, stateCount);
+		Matrix_mult4(m->dQ, mat, (const double**)m->eigendcmp->evec, stateCount, stateCount, stateCount, stateCount);
 		m->dQ_need_update = false;
 	}
-	dPdp_with_dQdp(m, m->dQ, mat, t);
+	dPdp_with_dQdp_general(m, m->dQ, mat, t);
 }

@@ -870,6 +870,7 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     m->name = String_clone(name);
     m->modeltype = modelname;
     m->datatype = datatype;
+	m->datatype->ref_count++;
     
     // Parameters and Q matrix
     m->Q = NULL;
@@ -922,6 +923,7 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
 SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname, Simplex* freqs ){
 	DataType* datatype = new_NucleotideDataType();
     SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
+	free_DataType(datatype);
     m->nstate = 4;
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);
@@ -932,6 +934,7 @@ SubstitutionModel * create_nucleotide_model( const char *name, const modeltype m
 SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code, Simplex* freqs ){
 	DataType* datatype = new_CodonDataType(gen_code);
     SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
+	free_DataType(datatype);
     m->nstate = NUMBER_OF_CODONS[gen_code];
     m->gen_code = gen_code;
     m->Q = dmatrix(m->nstate, m->nstate);
@@ -943,6 +946,7 @@ SubstitutionModel * create_codon_model( const char *name, const modeltype modeln
 SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Simplex* freqs ){
 	DataType* datatype = new_AminoAcidDataType();
     SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
+	free_DataType(datatype);
     m->nstate = 20;
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);

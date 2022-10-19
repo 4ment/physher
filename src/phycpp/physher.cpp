@@ -182,40 +182,27 @@ SimpleClockModelInterface::SimpleClockModelInterface(const std::vector<double> &
         new_BranchModel2("simple_clock", branchModel_, treeModel->GetModel(), nullptr);
 }
 
-Model *SubstitutionModelInterface::Initialize(const std::string &name,
-                                              Parameters *rates, Model *frequencies,
-                                              Model *rates_model) {
-    DataType *datatype = new_NucleotideDataType();
-    Simplex *rates_simplex = rates_model == nullptr
-                                 ? nullptr
-                                 : reinterpret_cast<Simplex *>(rates_model->obj);
-    substModel_ = SubstitutionModel_factory(
-        name.c_str(), datatype, reinterpret_cast<Simplex *>(frequencies->obj),
-        rates_simplex, rates, nullptr);
-    Model *model =
-        new_SubstitutionModel2(name.c_str(), substModel_, frequencies, rates_model);
-    free_DataType(datatype);
-    return model;
-}
-
 JC69Interface::JC69Interface() {
     Simplex *frequencies_simplex = new_Simplex("jc69_frequency_simplex", 4);
     Model *frequencies_model =
         new_SimplexModel("jc69_frequencies", frequencies_simplex);
-    model_ = Initialize("jc69", nullptr, frequencies_model, nullptr);
+    dataType_ = new NucleotideDataTypeInterface();
+    substModel_ = new_JC69(frequencies_simplex);
+    model_ = new_SubstitutionModel2("jc69", substModel_, frequencies_model, nullptr);
     frequencies_model->free(frequencies_model);
     parameterCount_ = 0;
 }
 
 HKYInterface::HKYInterface(double kappa, const std::vector<double> &frequencies) {
-    Parameters *kappa_parameters = new_Parameters(1);
-    Parameters_move(kappa_parameters,
-                    new_Parameter("hky_kappa", kappa, new_Constraint(0, INFINITY)));
+    Parameter *kappa_parameter =
+        new_Parameter("hky_kappa", kappa, new_Constraint(0, INFINITY));
     Simplex *frequencies_simplex = new_Simplex_with_values(
         "hky_frequency_simplex", frequencies.data(), frequencies.size());
     Model *frequencies_model = new_SimplexModel("hky_frequencies", frequencies_simplex);
-    model_ = Initialize("hky", kappa_parameters, frequencies_model, nullptr);
-    free_Parameters(kappa_parameters);
+    dataType_ = new NucleotideDataTypeInterface();
+    substModel_ = new_HKY_with_parameters(frequencies_simplex, kappa_parameter);
+    model_ = new_SubstitutionModel2("hky", substModel_, frequencies_model, nullptr);
+    free_Parameter(kappa_parameter);
     frequencies_model->free(frequencies_model);
     parameterCount_ = 5;
 }
@@ -255,7 +242,17 @@ GTRInterface::GTRInterface(const std::vector<double> &rates,
     Simplex *frequencies_simplex = new_Simplex_with_values(
         "gtr_frequency_simplex", frequencies.data(), frequencies.size());
     Model *frequencies_model = new_SimplexModel("gtr_frequencies", frequencies_simplex);
-    model_ = Initialize("gtr", rates_parameters, frequencies_model, rates_model);
+
+    dataType_ = new NucleotideDataTypeInterface();
+    const char *assigments[5] = {"AC", "AG", "AT", "CG", "CT"};
+    Simplex *rates_simplex = rates_model == nullptr
+                                 ? nullptr
+                                 : reinterpret_cast<Simplex *>(rates_model->obj);
+    substModel_ =
+        SubstitutionModel_factory("gtr", dataType_->dataType_,
+                                  reinterpret_cast<Simplex *>(frequencies_model->obj),
+                                  rates_simplex, rates_parameters, assigments);
+    model_ = new_SubstitutionModel2("gtr", substModel_, frequencies_model, rates_model);
     free_Parameters(rates_parameters);
     frequencies_model->free(frequencies_model);
     if (rates_model != nullptr) {
@@ -274,6 +271,53 @@ void GTRInterface::SetFrequencies(const double *frequencies) {
     substModel_->simplex->set_values(substModel_->simplex, frequencies);
 }
 void GTRInterface::SetParameters(const double *parameters) {
+    Parameters_set_values(substModel_->rates, parameters);
+    substModel_->simplex->set_values(substModel_->simplex, parameters + 3);
+}
+
+GeneralSubstitutionModelInterface::GeneralSubstitutionModelInterface(
+    DataTypeInterface *dataType, const std::vector<double> &rates,
+    const std::vector<double> &frequencies, const std::vector<unsigned> &structure,
+    bool normalize) {
+    Parameters *rate_parameters = new_Parameters(rates.size());
+    for (auto rate : rates) {
+        Parameters_move(rate_parameters, new_Parameter("subst_rates", rate,
+                                                       new_Constraint(0, INFINITY)));
+    }
+
+    parameterCount_ = rates.size();
+    Simplex *frequencies_simplex = new_Simplex_with_values(
+        "subst_frequency_simplex", frequencies.data(), frequencies.size());
+    Model *frequencies_model =
+        new_SimplexModel("subst_frequencies", frequencies_simplex);
+
+    DiscreteParameter *dp =
+        new_DiscreteParameter_with_values(structure.data(), structure.size());
+    Model *mdp = new_DiscreteParameterModel("structure", dp);
+
+    substModel_ = new_GeneralModel_with_parameters(
+        dataType->dataType_, reinterpret_cast<DiscreteParameter *>(mdp->obj),
+        rate_parameters, frequencies_simplex, -1, normalize);
+    model_ = new_SubstitutionModel3("id", substModel_, frequencies_model, nullptr, mdp);
+
+    free_Parameters(rate_parameters);
+    frequencies_model->free(frequencies_model);
+    dataType_ = dataType;
+}
+
+void GeneralSubstitutionModelInterface::SetRates(const double *rates) {
+    if (substModel_->rates == nullptr) {
+        substModel_->rates_simplex->set_values(substModel_->rates_simplex, rates);
+    } else {
+        Parameters_set_values(substModel_->rates, rates);
+    }
+}
+
+void GeneralSubstitutionModelInterface::SetFrequencies(const double *frequencies) {
+    substModel_->simplex->set_values(substModel_->simplex, frequencies);
+}
+
+void GeneralSubstitutionModelInterface::SetParameters(const double *parameters) {
     Parameters_set_values(substModel_->rates, parameters);
     substModel_->simplex->set_values(substModel_->simplex, parameters + 3);
 }
@@ -453,9 +497,46 @@ TreeLikelihoodInterface::TreeLikelihoodInterface(
         Sequences_add(sequences,
                       new_Sequence(sequence.first.c_str(), sequence.second.c_str()));
     }
-    sequences->datatype = new_NucleotideDataType();
+    sequences->datatype = substitutionModel->GetDataType()->dataType_;
     SitePattern *sitePattern = new_SitePattern(sequences);
     free_Sequences(sequences);
+    Model *mbm = branchModel.has_value() ? branchModel_->GetModel() : nullptr;
+    BranchModel *bm =
+        branchModel.has_value() ? reinterpret_cast<BranchModel *>(mbm->obj) : nullptr;
+    SingleTreeLikelihood *tlk = new_SingleTreeLikelihood(
+        reinterpret_cast<Tree *>(treeModel_->GetManagedObject()),
+        reinterpret_cast<SubstitutionModel *>(substitutionModel_->GetManagedObject()),
+        reinterpret_cast<SiteModel *>(siteModel_->GetManagedObject()), sitePattern, bm,
+        use_tip_states);
+    model_ = new_TreeLikelihoodModel("id", tlk, treeModel_->GetModel(),
+                                     substitutionModel_->GetModel(),
+                                     siteModel_->GetModel(), mbm);
+
+    tlk->include_jacobian = include_jacobian;
+    RequestGradient();
+}
+
+TreeLikelihoodInterface::TreeLikelihoodInterface(
+    const std::vector<std::string> &taxa, const std::vector<std::string> &attributes,
+    TreeModelInterface *treeModel, SubstitutionModelInterface *substitutionModel,
+    SiteModelInterface *siteModel, std::optional<BranchModelInterface *> branchModel,
+    bool use_ambiguities, bool use_tip_states, bool include_jacobian)
+    : treeModel_(treeModel),
+      substitutionModel_(substitutionModel),
+      siteModel_(siteModel) {
+    branchModel_ = branchModel.has_value() ? *branchModel : nullptr;
+    const char **taxaPtr = new const char *[taxa.size()];
+    const char **attributesPtr = new const char *[taxa.size()];
+    for (size_t i = 0; i < taxa.size(); i++) {
+        taxaPtr[i] = const_cast<char *>(taxa[i].c_str());
+        attributesPtr[i] = const_cast<char *>(attributes[i].c_str());
+    }
+    DataType *dataType = substitutionModel->GetDataType()->dataType_;
+    SitePattern *sitePattern =
+        new_AttributePattern(dataType, taxaPtr, attributesPtr, taxa.size());
+    delete[] taxaPtr;
+    delete[] attributesPtr;
+
     Model *mbm = branchModel.has_value() ? branchModel_->GetModel() : nullptr;
     BranchModel *bm =
         branchModel.has_value() ? reinterpret_cast<BranchModel *>(mbm->obj) : nullptr;

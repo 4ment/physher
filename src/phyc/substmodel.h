@@ -117,6 +117,7 @@ typedef struct SubstitutionModel{
 }SubstitutionModel;
 
 Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex );
+Model * new_SubstitutionModel3( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex, Model* discrete_model );
 
 void generale_update_freqs( SubstitutionModel *model );
 
