@@ -234,6 +234,8 @@ size_t TreeLikelihood_initialize_gradient(Model *self, int flags){
 	int prepare_branch_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_BRANCH_MODEL;
 	int prepare_substitution_model_unconstrained = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_UNCONSTRAINED;
 	int prepare_substitution_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;
+	int prepare_substitution_model_rates = prepare_substitution_model | (tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_RATES);
+	int prepare_substitution_model_frequencies = prepare_substitution_model | (tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_FREQUENCIES);
 	
 	if(prepare_substitution_model_unconstrained && prepare_substitution_model){
 		fprintf(stderr, "Can only request unconstrained and constrained gradient at the same time\n");
@@ -280,12 +282,18 @@ size_t TreeLikelihood_initialize_gradient(Model *self, int flags){
 		gradient_length += tlk->m->simplex->K - 1;
 		tlk->include_root_freqs = false;
 	}
-	else if (prepare_substitution_model) {
-		gradient_length += tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K;
-		gradient_length += tlk->m->simplex->K;
-		tlk->m->grad_wrt_reparam = false;
-		tlk->include_root_freqs = false;
-	}
+	else{
+		if (prepare_substitution_model_rates) {
+			gradient_length += tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K;
+			tlk->m->grad_wrt_reparam = false;
+			tlk->include_root_freqs = false;
+		}
+		if (prepare_substitution_model_frequencies) {
+			gradient_length += tlk->m->simplex->K;
+			tlk->m->grad_wrt_reparam = false;
+			tlk->include_root_freqs = false;
+		}
+	} 
 
 	if(tlk->gradient == NULL){
 		tlk->gradient = calloc(gradient_length, sizeof(double));
@@ -3002,6 +3010,29 @@ void gradient_PMatrix(SingleTreeLikelihood* tlk, const double* pattern_likelihoo
 	}
 }
 
+void gradient_PMatrix_rates(SingleTreeLikelihood* tlk, const double* pattern_likelihoods, double* gradient){
+	size_t parameter_count = tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K;
+	if(tlk->m->rates_simplex != NULL && tlk->m->grad_wrt_reparam){
+		parameter_count--;
+	}
+	for(size_t i = 0; i < parameter_count; i++){
+		gradient[i] = calculate_dlnl_dQ(tlk, i, pattern_likelihoods);
+	}
+}
+
+void gradient_PMatrix_frequencies(SingleTreeLikelihood* tlk, const double* pattern_likelihoods, double* gradient){
+	size_t start = tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K;
+	size_t parameter_count = tlk->m->simplex->K;
+	if(tlk->m->grad_wrt_reparam) parameter_count--;
+
+	if(tlk->m->rates_simplex != NULL && tlk->m->grad_wrt_reparam){
+		start--;
+	}
+	for(size_t i = 0; i < parameter_count; i++){
+		gradient[i] = calculate_dlnl_dQ(tlk, i+start, pattern_likelihoods);
+	}
+}
+
 void gradient_branch_length_from_cat(SingleTreeLikelihood* tlk, const double* cat_branch_gradient, double* gradient){
 	size_t nodeCount = Tree_node_count(tlk->tree);
 	size_t catCount = tlk->sm->cat_count;
@@ -3073,7 +3104,9 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
 	bool prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE;
 	bool prepare_site_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SITE_MODEL;
 	bool prepare_branch_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_BRANCH_MODEL;
-	bool prepare_subsitution_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_UNCONSTRAINED || tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;
+	bool prepare_substitution_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_UNCONSTRAINED || tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;
+	bool prepare_substitution_model_rates = prepare_substitution_model || (tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_RATES);
+	bool prepare_substitution_model_frequencies = prepare_substitution_model || (tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_FREQUENCIES);
 	
 	size_t nodeCount = Tree_node_count(tlk->tree);
 	size_t catCount = tlk->sm->cat_count;
@@ -3167,8 +3200,18 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
 		offset += Parameters_count(tlk->bm->rates);
 	}
 
-	if(prepare_subsitution_model){
+	if(prepare_substitution_model){
 		gradient_PMatrix(tlk, pattern_likelihoods, grads+offset);
+	}
+	else{
+		if(prepare_substitution_model_rates){
+			gradient_PMatrix_rates(tlk, pattern_likelihoods, grads+offset);
+			offset += tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K;
+			if(tlk->m->grad_wrt_reparam) offset--;
+		}
+		if(prepare_substitution_model_frequencies){
+			gradient_PMatrix_frequencies(tlk, pattern_likelihoods, grads+offset);
+		}
 	}
 
 	free(branch_lengths);
