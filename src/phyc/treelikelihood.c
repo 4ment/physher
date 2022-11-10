@@ -60,7 +60,7 @@ static double _calculate( SingleTreeLikelihood *tlk );
 
 double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 
-void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads );
+void TreeLikelihood_calculate_gradient( Model *model, double* grads );
 
 void allocate_storage(SingleTreeLikelihood* tlk, size_t index);
 
@@ -73,8 +73,14 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 	if ( model->type == MODEL_TREE ) {
 		if(index == -1){
 			SingleTreeLikelihood_update_all_nodes(tlk);
+			// a reparameterized node height has changed but we wait for the node heights
+			// to be updated to know which partials need to be recomputed
+			// tlk->update = true;
+			// tlk->update_upper = true;
+			// printf("MODEL_TREE1\n");
 		}
 		else{
+			// printf("MODEL_TREE\n");
 			tlk->update_nodes[index] = true;
 			tlk->update = true;
 			tlk->update_upper = true;
@@ -83,8 +89,10 @@ void _treelikelihood_handle_change( Model *self, Model *model, int index ){
 	else if ( model->type == MODEL_BRANCHMODEL ) {
 		if(index == -1){
 			SingleTreeLikelihood_update_all_nodes(tlk);
+			// printf("MODEL_BRANCHMODEL2\n");
 		}
 		else{
+			// printf("MODEL_BRANCHMODEL\n");
 			tlk->update_nodes[index] = true;
 			tlk->update = true;
 			tlk->update_upper = true;
@@ -318,7 +326,7 @@ double* TreeLikelihood_gradient(Model *self){
 //				return logP;
 		}
 		update_upper_partials(tlk, Tree_root(tlk->tree), tlk->include_root_freqs);
-		SingleTreeLikelihood_gradient(tlk, tlk->gradient);
+		TreeLikelihood_calculate_gradient(self, tlk->gradient);
 		tlk->update_upper = false;
 	}
 	return tlk->gradient;
@@ -340,7 +348,7 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 				return logP;
 		}
 		update_upper_partials(tlk, Tree_root(tlk->tree), tlk->include_root_freqs);
-		SingleTreeLikelihood_gradient(tlk, tlk->gradient);
+		TreeLikelihood_calculate_gradient(self, tlk->gradient);
 		tlk->update_upper = false;
 	}
 	
@@ -3095,7 +3103,8 @@ void gradient_ratios(SingleTreeLikelihood* tlk, const double* branch_gradient, d
 // compute gradient wrt every parameter
 // derivative are concatenated in this order:
 // (branch length or ratios), site model, clock model, susbtitution model
-void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
+void TreeLikelihood_calculate_gradient( Model *model, double* grads ){
+	SingleTreeLikelihood* tlk = model->obj;
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	for (int i = 0; i < tlk->sp->count; i++) {
 		pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
@@ -3205,7 +3214,16 @@ void SingleTreeLikelihood_gradient( SingleTreeLikelihood *tlk, double* grads ){
 	}
 	else{
 		if(prepare_substitution_model_rates){
-			gradient_PMatrix_rates(tlk, pattern_likelihoods, grads+offset);
+			//TODO: frequency parameters
+			if(tlk->m->dPdp == NULL || tlk->m->modeltype == NONREVERSIBLE){
+				Parameters* params = tlk->m->rates_simplex == NULL ? tlk->m->rates : tlk->m->rates_simplex->parameters;
+				for(size_t i = 0; i < Parameters_count(params); i++){
+					grads[offset+i] = Model_first_derivative(model, Parameters_at(params, i), 0.000001);
+				}
+			}
+			else{
+				gradient_PMatrix_rates(tlk, pattern_likelihoods, grads+offset);
+			}
 			offset += tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K;
 			if(tlk->m->grad_wrt_reparam) offset--;
 		}

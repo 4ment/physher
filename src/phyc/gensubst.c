@@ -67,9 +67,9 @@ void _nonreversible_update_Q( SubstitutionModel *m ){
             m->Q[i][j] = Parameters_value(m->rates, model[index++]) * freqs[j];
         }
     }
-    for ( int i = 0; i < m->nstate; i++ )  {   
-        for (size_t j = i + 1; j < m->nstate; j++ ) {
-            m->Q[j][i] = Parameters_value(m->rates, model[index++]) * freqs[j];
+    for ( size_t i = 1; i < m->nstate; i++ )  {   
+        for (size_t j = 0; j < i; j++ ) {
+			m->Q[i][j] = Parameters_value(m->rates, model[index++]) * freqs[j];
         }
     }
     make_zero_rows( m->Q, m->nstate);
@@ -176,7 +176,7 @@ void _reversible_update_Q( SubstitutionModel *m ){
 
 SubstitutionModel * new_GeneralModel_with_parameters( DataType* datatype, DiscreteParameter* model, const Parameters* rates, Simplex* freqs, int relativeTo, bool normalize ){
 	size_t stateCount = datatype->state_count(datatype);
-	bool sym = stateCount*(stateCount-1) == model->length;
+	bool sym = stateCount*(stateCount-1)/2 == model->length;
     SubstitutionModel *m = NULL;
     if(sym){
         m = create_general_model("GENERAL", REVERSIBLE, datatype, freqs);
