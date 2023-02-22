@@ -73,6 +73,7 @@ typedef struct DataType{
     int stateCount;
     int symbolLength; //1 for nucletoide and aa. 3 for codon and whatever for general DataType
     char **states;
+    Hashtable* ambiguities;
     int (*encoding)( struct DataType *, char );
     char (*state)( struct DataType *, int  );
     
@@ -96,6 +97,8 @@ DataType *new_AminoAcidDataType();
 DataType *new_CodonDataType(int genetic_code);
 
 DataType *new_GenericDataType( const char* name, size_t count, const char **states) ;
+
+void GenericDataType_add_ambiguity(DataType *dataType, const char* ambiguity, size_t count, const char** states);
 
 void free_DataType( DataType *dataType);
 

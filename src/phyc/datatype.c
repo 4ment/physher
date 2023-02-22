@@ -46,9 +46,9 @@ static const char * _codon_state_string( const DataType *datatype, int encoding)
 
 static void _generic_partial(const DataType *datatype, int encoding, double* partial);
 
-static DataType SINGLETON_DATATYPE_NUCLEOTIDE = {"Nucleotide", DATA_TYPE_NUCLEOTIDE,  4, 1, 0, _nucleotide_encoding, _nucleotide_state, _nucleotide_encoding_string, _nucleotide_state_string, _nucleotide_partial, _state_count, 0, 1};
-static DataType SINGLETON_DATATYPE_AMINO_ACID = {"Amino Acid", DATA_TYPE_AMINO_ACID, 20, 1, 0, _aa_encoding,         _aa_state,         _aa_encoding_string,         _aa_state_string        , NULL, _state_count, 0, 1};
-static DataType SINGLETON_DATATYPE_CODON      = {"Codon",      DATA_TYPE_CODON,      60, 3, 0, _codon_encoding,      _codon_state,      _codon_encoding_string,      _codon_state_string     , NULL, _state_count,  0, 1};
+static DataType SINGLETON_DATATYPE_NUCLEOTIDE = {"Nucleotide", DATA_TYPE_NUCLEOTIDE,  4, 1, 0, 0, _nucleotide_encoding, _nucleotide_state, _nucleotide_encoding_string, _nucleotide_state_string, _nucleotide_partial, _state_count, 0, 1};
+static DataType SINGLETON_DATATYPE_AMINO_ACID = {"Amino Acid", DATA_TYPE_AMINO_ACID, 20, 1, 0, 0, _aa_encoding,         _aa_state,         _aa_encoding_string,         _aa_state_string        , NULL, _state_count, 0, 1};
+static DataType SINGLETON_DATATYPE_CODON      = {"Codon",      DATA_TYPE_CODON,      60, 3, 0, 0, _codon_encoding,      _codon_state,      _codon_encoding_string,      _codon_state_string     , NULL, _state_count,  0, 1};
 
 static char AMINO_ACIDS[26] = "ACDEFGHIKLMNPQRSTVWYBZX*?-";
 static const char *AMINO_ACIDS_STRING[26] = {"A","C","D","E","F","G","H","I","K","L","M","N","P","Q","R","S","T","V","W","Y","B","Z","X","*","?","-"};
@@ -174,6 +174,13 @@ DataType * clone_DataType(const DataType *dataType){
 #pragma mark-
 #pragma mark Generic
 
+
+typedef struct ambiguity_t{
+	char** states;
+	size_t count;
+    size_t encoding;
+} ambiguity_t;
+
 static int _encoding_string( DataType *datatype, const char *nuc){
     int i = 0;
     for (; i < datatype->stateCount; i++ ) {
@@ -181,7 +188,14 @@ static int _encoding_string( DataType *datatype, const char *nuc){
             return i;
         }
     }
-    return i;
+    if(datatype->ambiguities != NULL){
+        if(Hashtable_exists(datatype->ambiguities, nuc)){
+            ambiguity_t* ambiguity = Hashtable_get(datatype->ambiguities, nuc);
+            return ambiguity->encoding;
+        }
+        return Hashtable_length(datatype->ambiguities) + datatype->stateCount;
+    }
+    return datatype->stateCount;
 }
 
 static int _encoding( DataType *datatype, char nuc){
@@ -198,14 +212,46 @@ static int _encoding( DataType *datatype, char nuc){
 static void _generic_partial(const DataType *datatype, int encoding, double* partial){
 	size_t stateCount = datatype->stateCount;
 	if(encoding >= stateCount){
-		for (size_t j = 0; j < stateCount; j++) {
-			partial[j] = 1.0;
-		}
+        if(datatype->ambiguities != NULL){
+            memset(partial, 0.0, stateCount*sizeof(double));
+            Hashtable_init_iterator(datatype->ambiguities);
+	        HashEntry *entry = NULL;
+	        while ( (entry = Hashtable_next(datatype->ambiguities) ) != NULL ) {
+		        ambiguity_t *ambiguity = (ambiguity_t*)HashEntry_value(entry);
+                if(encoding == ambiguity->encoding){
+                    for (size_t i = 0; i < ambiguity->count; i++ ) {
+                        partial[_encoding_string(datatype, ambiguity->states[i])] = 1.0;
+                    }
+                    return;
+                }
+            }
+        }
+
+        for (size_t j = 0; j < stateCount; j++) {
+            partial[j] = 1.0;
+        }
 	}
 	else{
 		memset(partial, 0.0, stateCount*sizeof(double));
 		partial[encoding] = 1.0;
 	}
+}
+
+
+void GenericDataType_add_ambiguity(DataType *dataType, const char* ambiguity, size_t count, const char** states){
+    if(dataType->ambiguities == NULL){
+        dataType->ambiguities = new_Hashtable_string(1);
+    	hashtable_set_key_ownership( dataType->ambiguities, true );
+	    hashtable_set_value_ownership( dataType->ambiguities, false );
+    }
+    ambiguity_t *a = malloc(sizeof(ambiguity_t));
+    a->states = malloc(sizeof(char*)*count);
+    a->count = count;
+    for(size_t i = 0; i < count; i++){
+        a->states[i] = String_clone(states[i]);
+    }
+    a->encoding = dataType->stateCount + Hashtable_length(dataType->ambiguities);
+    Hashtable_add(dataType->ambiguities, String_clone(ambiguity), a);
 }
 
 DataType *new_GenericDataType( const char* name, size_t count, const char **states){
@@ -221,6 +267,7 @@ DataType *new_GenericDataType( const char* name, size_t count, const char **stat
     for ( int i = 0; i < count; i++ ) {
         dataType->states[i] = String_clone(states[i]);
     }
+    dataType->ambiguities = NULL;
     dataType->encoding = NULL;
     dataType->state = NULL;
     
@@ -245,6 +292,18 @@ void free_DataType( DataType *dataType ){
 			free(dataType->states);
 		}
 		free(dataType->name);
+        if(dataType->ambiguities != NULL){
+            Hashtable_init_iterator(dataType->ambiguities);
+	        HashEntry *entry = NULL;
+	        while ( (entry = Hashtable_next(dataType->ambiguities) ) != NULL ) {
+		        ambiguity_t *ambiguity = (ambiguity_t*)HashEntry_value(entry);
+                for(size_t i = 0; i < ambiguity->count; i++){
+                    free(ambiguity->states[i]);
+                }
+                free(ambiguity->states);
+            }
+            free_Hashtable(dataType->ambiguities);
+        }
 		free(dataType);
 	}
 	else{
@@ -270,6 +329,7 @@ DataType *new_NucleotideDataType(){
     for ( int i = 0; i < 4; i++ ) {
         dataType->states[i] = String_clone(NUCLEOTIDES_STRING[i]);
     }
+    dataType->ambiguities = NULL;
     dataType->encoding = _nucleotide_encoding;
     dataType->state    = _nucleotide_state;
     
@@ -323,6 +383,7 @@ DataType *new_AminoAcidDataType(){
     for ( int i = 0; i < 20; i++ ) {
         dataType->states[i] = String_clone(AMINO_ACIDS_STRING[i]);
     }
+    dataType->ambiguities = NULL;
     dataType->encoding = _aa_encoding;
     dataType->state    = _aa_state;
     
@@ -372,6 +433,7 @@ DataType *new_CodonDataType( int genetic_code ){
     for ( int i = 0; i < dataType->stateCount; i++ ) {
         dataType->states[i] = String_clone(CODON_TRIPLETS[i]);
     }
+    dataType->ambiguities = NULL;
     dataType->encoding = _codon_encoding;
     dataType->state    = _codon_state;
     
