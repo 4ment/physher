@@ -4,6 +4,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -50,13 +51,26 @@ class NucleotideDataTypeInterface : public DataTypeInterface {
 
 class GeneralDataTypeInterface : public DataTypeInterface {
    public:
-    GeneralDataTypeInterface(const std::vector<std::string> &states) {
+    GeneralDataTypeInterface(
+        const std::vector<std::string> &states,
+        std::optional<const std::map<std::string, std::vector<std::string>>>
+            ambiguities) {
         char **states_p = new char *[states.size()];
         for (size_t i = 0; i < states.size(); i++) {
             states_p[i] = const_cast<char *>(states[i].c_str());
         }
         dataType_ = new_GenericDataType("general_datatype", states.size(),
                                         const_cast<const char **>(states_p));
+        if (ambiguities.has_value()) {
+            for (const auto &[ambiguity, ambiguity_states] : *ambiguities) {
+                for (size_t i = 0; i < states.size(); i++) {
+                    states_p[i] = const_cast<char *>(ambiguity_states[i].c_str());
+                }
+                GenericDataType_add_ambiguity(dataType_, ambiguity.c_str(),
+                                              ambiguity_states.size(),
+                                              const_cast<const char **>(states_p));
+            }
+        }
         delete[] states_p;
     }
 };
@@ -326,6 +340,8 @@ class TreeLikelihoodInterface : public CallableModelInterface {
     void SetParameters(const double *parameters) override{};
 
     void GetParameters(double *parameters) override{};
+
+    void EnableSSE(bool flag);
 
    private:
     TreeModelInterface *treeModel_;

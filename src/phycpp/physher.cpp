@@ -584,6 +584,11 @@ void TreeLikelihoodInterface::Gradient(double *gradient) {
     }
 }
 
+void TreeLikelihoodInterface::EnableSSE(bool flag) {
+    SingleTreeLikelihood *tlk = reinterpret_cast<SingleTreeLikelihood *>(model_->obj);
+    SingleTreeLikelihood_enable_SSE(tlk, flag);
+}
+
 CTMCScaleModelInterface::CTMCScaleModelInterface(const std::vector<double> rates,
                                                  TreeModelInterface *treeModel)
     : treeModel_(treeModel) {
