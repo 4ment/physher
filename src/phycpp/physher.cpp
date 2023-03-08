@@ -188,6 +188,9 @@ JC69Interface::JC69Interface() {
         new_SimplexModel("jc69_frequencies", frequencies_simplex);
     dataType_ = new NucleotideDataTypeInterface();
     substModel_ = new_JC69(frequencies_simplex);
+    free_DataType(substModel_->datatype);
+    substModel_->datatype = dataType_->dataType_;
+    substModel_->datatype->ref_count++;
     model_ = new_SubstitutionModel2("jc69", substModel_, frequencies_model, nullptr);
     frequencies_model->free(frequencies_model);
     parameterCount_ = 0;
@@ -201,6 +204,9 @@ HKYInterface::HKYInterface(double kappa, const std::vector<double> &frequencies)
     Model *frequencies_model = new_SimplexModel("hky_frequencies", frequencies_simplex);
     dataType_ = new NucleotideDataTypeInterface();
     substModel_ = new_HKY_with_parameters(frequencies_simplex, kappa_parameter);
+    free_DataType(substModel_->datatype);
+    substModel_->datatype = dataType_->dataType_;
+    substModel_->datatype->ref_count++;
     model_ = new_SubstitutionModel2("hky", substModel_, frequencies_model, nullptr);
     free_Parameter(kappa_parameter);
     frequencies_model->free(frequencies_model);
@@ -252,6 +258,9 @@ GTRInterface::GTRInterface(const std::vector<double> &rates,
         SubstitutionModel_factory("gtr", dataType_->dataType_,
                                   reinterpret_cast<Simplex *>(frequencies_model->obj),
                                   rates_simplex, rates_parameters, assigments);
+    free_DataType(substModel_->datatype);
+    substModel_->datatype = dataType_->dataType_;
+    substModel_->datatype->ref_count++;
     model_ = new_SubstitutionModel2("gtr", substModel_, frequencies_model, rates_model);
     free_Parameters(rates_parameters);
     frequencies_model->free(frequencies_model);
@@ -298,7 +307,8 @@ GeneralSubstitutionModelInterface::GeneralSubstitutionModelInterface(
     substModel_ = new_GeneralModel_with_parameters(
         dataType->dataType_, reinterpret_cast<DiscreteParameter *>(mdp->obj),
         rate_parameters, frequencies_simplex, -1, normalize);
-    model_ = new_SubstitutionModel3("id", substModel_, frequencies_model, nullptr, mdp);
+    model_ = new_SubstitutionModel3("substmodel", substModel_, frequencies_model,
+                                    nullptr, mdp);
 
     free_Parameters(rate_parameters);
     frequencies_model->free(frequencies_model);
@@ -498,6 +508,7 @@ TreeLikelihoodInterface::TreeLikelihoodInterface(
                       new_Sequence(sequence.first.c_str(), sequence.second.c_str()));
     }
     sequences->datatype = substitutionModel->GetDataType()->dataType_;
+    sequences->datatype->ref_count++;
     SitePattern *sitePattern = new_SitePattern(sequences);
     free_Sequences(sequences);
     Model *mbm = branchModel.has_value() ? branchModel_->GetModel() : nullptr;
@@ -508,7 +519,7 @@ TreeLikelihoodInterface::TreeLikelihoodInterface(
         reinterpret_cast<SubstitutionModel *>(substitutionModel_->GetManagedObject()),
         reinterpret_cast<SiteModel *>(siteModel_->GetManagedObject()), sitePattern, bm,
         use_tip_states);
-    model_ = new_TreeLikelihoodModel("id", tlk, treeModel_->GetModel(),
+    model_ = new_TreeLikelihoodModel("treelike", tlk, treeModel_->GetModel(),
                                      substitutionModel_->GetModel(),
                                      siteModel_->GetModel(), mbm);
 
@@ -545,7 +556,7 @@ TreeLikelihoodInterface::TreeLikelihoodInterface(
         reinterpret_cast<SubstitutionModel *>(substitutionModel_->GetManagedObject()),
         reinterpret_cast<SiteModel *>(siteModel_->GetManagedObject()), sitePattern, bm,
         use_tip_states);
-    model_ = new_TreeLikelihoodModel("id", tlk, treeModel_->GetModel(),
+    model_ = new_TreeLikelihoodModel("treelike", tlk, treeModel_->GetModel(),
                                      substitutionModel_->GetModel(),
                                      siteModel_->GetModel(), mbm);
 

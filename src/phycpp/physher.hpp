@@ -195,6 +195,8 @@ class JC69Interface : public SubstitutionModelInterface {
    public:
     JC69Interface();
 
+    virtual ~JC69Interface() { delete dataType_; }
+
     void SetParameters(const double *parameters) override {}
 
     void GetParameters(double *parameters) override {}
@@ -203,6 +205,8 @@ class JC69Interface : public SubstitutionModelInterface {
 class HKYInterface : public SubstitutionModelInterface {
    public:
     HKYInterface(double kappa, const std::vector<double> &frequencies);
+
+    virtual ~HKYInterface() { delete dataType_; }
 
     void SetKappa(double kappa);
 
@@ -217,6 +221,8 @@ class GTRInterface : public SubstitutionModelInterface {
    public:
     GTRInterface(const std::vector<double> &rates,
                  const std::vector<double> &frequencies);
+
+    virtual ~GTRInterface() { delete dataType_; }
 
     void SetRates(const double *rates);
 
