@@ -1403,9 +1403,12 @@ void SingleTreeLikelihood_use_rescaling( SingleTreeLikelihood *tlk, bool use ){
 	if ( tlk->scaling_factors == NULL && use ) {
 		tlk->scaling_factors = (double***)malloc(2*sizeof(double**));
 		tlk->scaling_factors[0] = dmatrix(tlk->partials_dim, tlk->sp->count );
+		for(size_t i = 0; i < tlk->partials_dim; i++){
+			memset(tlk->scaling_factors[0][i], 0.0, sizeof(double)*tlk->sp->count);
+		}
         tlk->scaling_factors[1] = NULL;
         if(tlk->partials[1] != NULL){
-            tlk->scaling_factors[1] = dmatrix(tlk->partials_dim, tlk->sp->count );
+            tlk->scaling_factors[1] = clone_dmatrix( tlk->scaling_factors[0], tlk->partials_dim, tlk->sp->count );
         }
 	}
 }
@@ -1801,15 +1804,16 @@ void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeInde
 				v += (tlk->sp->count - 1) * tlk->m->nstate;
 			}
 			scaling_factors[i] = log(scaleFactor);
-			if(scaling_factors1 != NULL){
-				scaling_factors[i] += scaling_factors1[i];
-			}
-			if(scaling_factors2 != NULL){
-				scaling_factors[i] += scaling_factors2[i];
-			}
 		}
 		else {
 			scaling_factors[i] = 0.0;
+		}
+
+		if(scaling_factors1 != NULL){
+			scaling_factors[i] += scaling_factors1[i];
+		}
+		if(scaling_factors2 != NULL){
+			scaling_factors[i] += scaling_factors2[i];
 		}
 		u += tlk->m->nstate;
 	}
@@ -1820,6 +1824,14 @@ double getLogScalingFactor( const SingleTreeLikelihood *tlk, int pattern ) {
 	if ( tlk->scale ) {
 		size_t rootId = Tree_root(tlk->tree)->id;
 		return tlk->scaling_factors[tlk->current_partials_indexes[rootId]][rootId][pattern];
+	}
+	return log_scale_factor;
+}
+
+double getLogScalingFactorAtNode( const SingleTreeLikelihood *tlk, int pattern, size_t index ) {
+	double log_scale_factor = 0.0;
+	if ( tlk->scale && tlk->scaling_factors[tlk->current_partials_indexes[index]][index] != NULL) {
+		log_scale_factor = tlk->scaling_factors[tlk->current_partials_indexes[index]][index][pattern];
 	}
 	return log_scale_factor;
 }
@@ -2812,10 +2824,10 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 				}
 			}
 			else{
-				gradient_cat_branch_lengths_aux(tlk, spare_partials, nodeId, cat_dlikelihoodsNode, pattern_likelihoods);
+				gradient_cat_branch_lengths_aux_freq_included(tlk, spare_partials, nodeId, cat_dlikelihoodsNode, pattern_likelihoods);
 			}
 #else
-			gradient_cat_branch_lengths_aux(tlk, spare_partials, nodeId, cat_dlikelihoodsNode, pattern_likelihoods);
+			gradient_cat_branch_lengths_aux_freq_included(tlk, spare_partials, nodeId, cat_dlikelihoodsNode, pattern_likelihoods);
 #endif
 		}
 		else{
