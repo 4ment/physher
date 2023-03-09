@@ -37,7 +37,8 @@
 #define PARAMETER_NEGATIVE_INFINTY (-INFINITY)
 
 typedef enum model_t{
-	MODEL_BRANCHMODEL=0,
+	MODEL_ALIGNMENT=0,
+	MODEL_BRANCHMODEL,
 	MODEL_COALESCENT,
 	MODEL_COMPOUND,
 	MODEL_DISCRETE_PARAMETER,
@@ -55,6 +56,7 @@ typedef enum model_t{
 }model_t;
 
 static const char* model_type_strings[] = {
+	"alignment"
 	"branchmodel",
 	"coalescent",
 	"compound",

@@ -201,6 +201,7 @@ void memcpy_imatrix(  int **dst, int ** const src, const size_t nrow, const size
 
 
 void print_dmatrix( FILE *file, const double **m, const size_t dim1, const size_t dim2, char sep );
+void print_dmatrix_flat( FILE *file, const double *m, const size_t dim1, const size_t dim2, char sep );
 void print_imatrix( int **mat, const int m, const size_t n );
 
 void compare_dmatrix(  const double **m1, const double **m2, const size_t nrow, const size_t ncol );

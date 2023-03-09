@@ -457,7 +457,7 @@ bool isInt( const char *str ){
 	
 	if( *pch == '-' ){
 		pch++;
-		if ( pch == '\0') { // str cannot be "-"
+		if ( *pch == '\0') { // str cannot be "-"
 			return false;
 		}
 	}
@@ -477,7 +477,7 @@ bool isFloat2( const char *str ){
 	
 	if( *pch == '-' ){
 		pch++;
-		if ( pch == '\0') { // str cannot be "-"
+		if ( *pch == '\0') { // str cannot be "-"
 			return false;
 		}
 	}
@@ -512,7 +512,7 @@ bool isFloat3( const char *str ){
 	
 	if( *pch == '-' ){
 		pch++;
-		if ( pch == '\0') { // str cannot be "-"
+		if ( *pch == '\0') { // str cannot be "-"
 			return false;
 		}
 	}

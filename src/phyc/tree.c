@@ -1067,6 +1067,9 @@ void _tree_handle_restore( Model *self, Model *model, int index ){
 }
 
 static void _tree_model_free( Model *self ){
+#ifdef DEBUG_REF_COUNTING
+	printf("Free tree model: %d\n", self->ref_count);
+#endif
 	if(self->ref_count == 1){
 		//printf("Free tree model %s\n", self->name);
 		Tree *tree = (Tree*)self->obj;
@@ -1416,7 +1419,7 @@ Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* 
 		}
 		init_heights_from_distances(tree);
 	}
-	mtree = new_TreeModel("id", tree);
+	mtree = new_TreeModel("treemodel", tree);
 		
 	
 	if (!Tree_rooted(mtree->obj) && Node_distance(Tree_root(mtree->obj)->right) != 0) {
@@ -1442,7 +1445,7 @@ Model* new_TimeTreeModel_from_newick(const char* newick, char** taxa, const doub
 	tree->rooted = true;
 
 	init_heights_from_distances(tree);
-	mtree = new_TreeModel("id", tree);
+	mtree = new_TreeModel("treemodel", tree);
 	return mtree;
 }
 

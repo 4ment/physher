@@ -283,8 +283,10 @@ DataType *new_GenericDataType( const char* name, size_t count, const char **stat
 
 
 void free_DataType( DataType *dataType ){
+#ifdef DEBUG_REF_COUNTING
+	printf("free_DataType %d\n", dataType->ref_count);
+#endif
 	if(dataType->ref_count == 1){
-//		printf("free datatype\n");
 		if(dataType->states != NULL ){
 			for ( int i = 0; i < dataType->stateCount; i++ ) {
 				free(dataType->states[i]);

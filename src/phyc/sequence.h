@@ -24,6 +24,7 @@
 #include <stdint.h>
 
 #include "datatype.h"
+#include "parameters.h"
 
 //typedef enum distance_t{DISTANCE_RAW, DISTANCE_JC69}distance_t;
 
@@ -106,5 +107,7 @@ double Sequence_kappa_empirical( const Sequences *sequences, const double *freqs
 double Sequence_tstv_empirical( const Sequences *sequences );
 
 void Sequence_rel_rates_empirical( const Sequences *sequences, double *rel );
+
+Model* new_Alignment_from_json(json_node* node, Hashtable* hash);
 	
 #endif

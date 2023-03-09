@@ -685,8 +685,10 @@ double _singleTreeLikelihood_ddlogP(Model *self, const Parameter* p1, const Para
 }
 
 static void _treeLikelihood_model_free( Model *self ){
+#ifdef DEBUG_REF_COUNTING
+	printf("Free treelikelihood model: %d\n", self->ref_count);
+#endif
 	if(self->ref_count == 1){
-		//printf("Free treelikelihood model %s\n", self->name);
 		SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 		int count = (tlk->bm==NULL?3:4);
 		Model** list = (Model**)self->data;

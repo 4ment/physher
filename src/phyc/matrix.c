@@ -1009,6 +1009,15 @@ void print_dmatrix( FILE *file, const double **m, const size_t dim1, const size_
 	}
 }
 
+void print_dmatrix_flat( FILE *file, const double *m, const size_t dim1, const size_t dim2, char sep ){
+	size_t i,j;
+	for( i = 0; i < dim1; i++ ){
+		for( j = 0; j < dim2; j++ ){
+			fprintf(file, "%f%c",m[i*dim1+j], (j == dim2-1 ? '\n' : sep));
+		}
+	}
+}
+
 void print_dvector(  const double *m,  const size_t dim ){
 	fprintf(stdout, "\n=-------------------\n");
 	for( size_t i = 0; i < dim; i++ ){

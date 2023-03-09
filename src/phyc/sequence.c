@@ -29,6 +29,7 @@
 #include "geneticcode.h"
 #include "sitepattern.h"
 #include "random.h"
+#include "sequenceio.h"
 
 
 static const int NUCLEOTIDE_STATES[128] = {
@@ -708,3 +709,28 @@ Sequences ** Sequences_split001(Sequences *sequences ){
     
 }
 
+void free_Alignment( Model *model ){
+#ifdef DEBUG_REF_COUNTING
+    printf("free_Alignment %d\n", model->ref_count);
+#endif
+	assert(model->ref_count >= 1);
+	if(model->ref_count == 1){
+        Sequences* sequences = model->obj;
+        free_Sequences(sequences);
+		free(model->name);
+		model->listeners->free(model->listeners);
+		free(model);
+	}
+	else{
+		model->ref_count--;
+	}
+	
+}
+
+Model* new_Alignment_from_json(json_node* node, Hashtable* hash){
+    Sequences* sequences = new_Sequences_from_json(node, hash);
+    char* id = get_json_node_value_string(node, "id");
+    Model* model = new_Model(MODEL_ALIGNMENT, id, sequences);
+    model->free = free_Alignment;
+    return model;
+}

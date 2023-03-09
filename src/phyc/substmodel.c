@@ -88,8 +88,10 @@ static void _substitution_model_handle_restore( Model *self, Model *model, int i
 }
 
 static void _substitution_model_free( Model *self ){
+#ifdef DEBUG_REF_COUNTING
+	printf("Free substitution model: %d\n", self->ref_count);
+#endif
 	if(self->ref_count == 1){
-		//printf("Free subsitution model %s\n", self->name);
 		SubstitutionModel* m = (SubstitutionModel*)self->obj;
 		if(self->data != NULL){
 			Model** models = (Model**)self->data;

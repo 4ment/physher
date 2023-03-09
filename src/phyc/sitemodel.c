@@ -104,6 +104,9 @@ static void _site_model_handle_restore( Model *self, Model *model, int index ){
 }
 
 static void _site_model_free( Model *self ){
+#ifdef DEBUG_REF_COUNTING
+	printf("Free site model: %d\n", self->ref_count);
+#endif
 	if(self->ref_count == 1){
 		//printf("Free site model %s\n", self->name);
 		SiteModel *sm = (SiteModel*)self->obj;

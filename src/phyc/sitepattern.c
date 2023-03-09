@@ -353,6 +353,9 @@ SitePattern * new_AttributePattern( DataType* datatype, const char** taxa, const
 }
 
 void free_SitePattern( SitePattern *sp ){
+#ifdef DEBUG_REF_COUNTING
+	printf("free_SitePattern %d\n", sp->ref_count);
+#endif
 	if(sp->ref_count == 1){
 		if(sp->patterns != NULL ){
 			free_ui8matrix(sp->patterns, sp->size);
@@ -944,7 +947,16 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 	SitePattern* patterns = NULL;
 	
 	if (alignment_node != NULL) {
-		Sequences* sequences = new_Sequences_from_json(alignment_node, hash);
+		// sitepattern does not keep a reference of the alignment so no ref_count++
+		Model* sequenceModel = NULL;
+		if(alignment_node->node_type == MJSON_STRING){
+			sequenceModel = Hashtable_get(hash, (char*)alignment_node->value);
+		}
+		else{
+			sequenceModel = new_Alignment_from_json(alignment_node, hash);
+			Hashtable_add(hash, sequenceModel->name, sequenceModel);
+		}
+		Sequences* sequences = sequenceModel->obj;
 		if(sequences->datatype == NULL){
 			DataType* datatype = get_datatype(datatype_node, hash);
 			sequences->datatype = datatype;
