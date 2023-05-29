@@ -53,13 +53,14 @@ void UnRootedTreeModelInterface::SetParameters(const double *parameters) {
     Node *root = Tree_root(tree_);
     for (size_t i = 0; i < nodeCount_; i++) {
         Node *node = nodes[i];
-        if (node == root) continue;
-        if (root->right != node) {
-            Node_set_distance(node, parameters[nodeMap_[node->id]]);
-        } else if (Node_isleaf(node)) {
-            Node *sibling = Node_sibling(node);
-            Node_set_distance(sibling, parameters[nodeMap_[node->id]]);
-        }
+        if (node == root || node == root->left || node == root->right) continue;
+        Node_set_distance(node, parameters[nodeMap_[node->id]]);
+    }
+    if (Node_isleaf(root->left)) {
+        Node_set_distance(root->left, parameters[nodeMap_[root->left->id]]);
+    } else if (Node_isleaf(root->right)) {
+        Node *sibling = Node_sibling(root->right);
+        Node_set_distance(sibling, parameters[nodeMap_[root->right->id]]);
     }
 }
 

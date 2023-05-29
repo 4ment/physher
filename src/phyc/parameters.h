@@ -56,7 +56,7 @@ typedef enum model_t{
 }model_t;
 
 static const char* model_type_strings[] = {
-	"alignment"
+	"alignment",
 	"branchmodel",
 	"coalescent",
 	"compound",

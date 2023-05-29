@@ -1,7 +1,7 @@
 physher
 =======
 
-[![Build Status](https://travis-ci.org/4ment/physher.svg?branch=master)](https://travis-ci.org/4ment/physher)
+[![CMake](https://github.com/4ment/physher/actions/workflows/cmake.yml/badge.svg)](https://github.com/4ment/physher/actions/workflows/cmake.yml)
 
 Introduction
 ------------
