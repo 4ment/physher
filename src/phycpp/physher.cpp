@@ -56,11 +56,10 @@ void UnRootedTreeModelInterface::SetParameters(const double *parameters) {
         if (node == root || node == root->left || node == root->right) continue;
         Node_set_distance(node, parameters[nodeMap_[node->id]]);
     }
-    if (Node_isleaf(root->left)) {
+    if (Node_isleaf(root->right)) {
+        Node_set_distance(root->left, parameters[nodeMap_[root->right->id]]);
+    } else {
         Node_set_distance(root->left, parameters[nodeMap_[root->left->id]]);
-    } else if (Node_isleaf(root->right)) {
-        Node *sibling = Node_sibling(root->right);
-        Node_set_distance(sibling, parameters[nodeMap_[root->right->id]]);
     }
 }
 
