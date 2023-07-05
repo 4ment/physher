@@ -21,7 +21,6 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
-#include <unistd.h> // for sleep
 
 #include "tree.h"
 #include "node.h"
@@ -3155,6 +3154,35 @@ void gradient_ratios(SingleTreeLikelihood* tlk, const double* branch_gradient, d
 	free(height_gradient);
 }
 
+// derivatives are with respect to the constrained values
+void central_finite_differences_simplex(Model* model, Simplex* simplex, double epsilon, double* gradient){
+	const double* const_freqs = simplex->get_values(simplex);
+	double* freqs = clone_dvector(const_freqs, simplex->K);
+	for(size_t i = 0; i < simplex->K; i++){
+		double v = freqs[i];
+
+		freqs[i] = v + epsilon;
+		simplex->set_values(simplex, freqs);
+		double pp = model->logP(model);
+		
+		freqs[i] = v - epsilon;
+		simplex->set_values(simplex, freqs);
+		double mm = model->logP(model);
+		
+		freqs[i] = v;
+		simplex->set_values(simplex, freqs);
+		
+		gradient[i] = (pp - mm)/(2.0*epsilon);
+	}
+	free(freqs);
+}
+
+void central_finite_differences_parameters(Model* model, Parameters* parameters, double epsilon, double* gradient){
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		gradient[i] = Model_first_derivative(model, Parameters_at(parameters, i), epsilon);
+	}
+}
+
 // compute gradient wrt every parameter
 // derivative are concatenated in this order:
 // (branch length or ratios), site model, clock model, susbtitution model
@@ -3268,6 +3296,9 @@ void TreeLikelihood_calculate_gradient( Model *model, double* grads ){
 		gradient_PMatrix(tlk, pattern_likelihoods, grads+offset);
 	}
 	else{
+		Model** models = (Model**)model->data;
+		double epsilon = models[1]->epsilon;
+
 		if(prepare_substitution_model_rates){
 			//TODO: frequency parameters
 			if(tlk->m->dPdp == NULL || tlk->m->modeltype == NONREVERSIBLE){
@@ -3277,13 +3308,35 @@ void TreeLikelihood_calculate_gradient( Model *model, double* grads ){
 				}
 			}
 			else{
-				gradient_PMatrix_rates(tlk, pattern_likelihoods, grads+offset);
+				if(epsilon > 0.0){
+					if(!tlk->m->grad_wrt_reparam && tlk->m->rates_simplex != NULL){
+						central_finite_differences_simplex(model, tlk->m->rates_simplex, epsilon, grads+offset);
+					}
+					else{
+						Parameters* params = tlk->m->rates_simplex == NULL ? tlk->m->rates : tlk->m->rates_simplex->parameters;
+						central_finite_differences_parameters(model, params, epsilon, grads+offset);
+					}
+				}
+				else{
+					gradient_PMatrix_rates(tlk, pattern_likelihoods, grads+offset);
+				}
 			}
 			offset += tlk->m->rates_simplex == NULL ? Parameters_count(tlk->m->rates) : tlk->m->rates_simplex->K;
 			if(tlk->m->grad_wrt_reparam) offset--;
 		}
 		if(prepare_substitution_model_frequencies){
-			gradient_PMatrix_frequencies(tlk, pattern_likelihoods, grads+offset);
+			if(epsilon > 0.0){
+				if(!tlk->m->grad_wrt_reparam){
+					central_finite_differences_simplex(model, tlk->m->simplex, epsilon, grads+offset);
+				}
+				else{
+					Parameters* params = tlk->m->simplex->parameters;
+					central_finite_differences_parameters(model, params, epsilon, grads+offset);
+				}
+			}
+			else{
+				gradient_PMatrix_frequencies(tlk, pattern_likelihoods, grads+offset);
+			}
 		}
 	}
 

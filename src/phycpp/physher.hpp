@@ -86,6 +86,8 @@ class ModelInterface {
 
     void *GetManagedObject() { return model_->obj; }
 
+    void SetEpsilon(double epsilon) { model_->epsilon = epsilon; }
+
     size_t parameterCount_;
 
    protected:

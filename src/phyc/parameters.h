@@ -360,6 +360,7 @@ struct _Model {
 	bool samplable; // model is a distribution that can sampled directly
 	void (*print)(Model*, FILE*);
     void (*jsonize)(Model*, json_node*);
+	double epsilon; // for finite differences
 };
 
 

@@ -943,6 +943,7 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->print = NULL;
 	model->prepare_gradient = _dummy_prepare_gradient;
     model->jsonize = _dummy_jsonize;
+	model->epsilon = 0.0;
 	return model;
 }
 
