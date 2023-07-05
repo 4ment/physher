@@ -9,7 +9,6 @@
 #ifndef compoundmodel_h
 #define compoundmodel_h
 
-#include "model.h"
 #include "parameters.h"
 #include "simplex.h"
 #include "mjson.h"

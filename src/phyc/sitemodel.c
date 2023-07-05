@@ -30,9 +30,9 @@
 #include "gaussian.h"
 #include "distkumaraswamy.h"
 
-#include "model.h"
-
+#ifndef GSL_DISABLED
 #include <gsl/gsl_cdf.h>
+#endif
 
 static void _gamma_approx_quantile( SiteModel *sm );
 static void _calculate_rates_discrete( SiteModel *sm );
@@ -266,10 +266,18 @@ double _gamma_shape_derivative( SiteModel *sm, const double* ingrad ){
 	double* temp = dvector(variableCat*2);
 	for (size_t i = 0; i < variableCat; i++, j++) {
 		double prob = (2.0*i + 1.0)/(2.0*variableCat);
+#ifndef GSL_DISABLED
 		double plus = gsl_cdf_gamma_Qinv( prob, shape + sm->epsilon, 1.0/(shape + sm->epsilon) );
 		double minus = gsl_cdf_gamma_Qinv( prob, shape - sm->epsilon, 1.0/(shape - sm->epsilon) );
-		temp[i] = (plus - minus)/(2.0*sm->epsilon);
 		temp[i+variableCat] = gsl_cdf_gamma_Qinv( prob, shape, 1.0/shape);
+#else
+		double plus = qgamma( prob, shape + sm->epsilon, shape + sm->epsilon );
+		double minus = qgamma( prob, shape - sm->epsilon, shape - sm->epsilon );
+		temp[i+variableCat] = qgamma( prob, shape, shape);
+#endif
+		temp[i] = (plus - minus)/(2.0*sm->epsilon);
+
+		
 		derivsum += temp[i] * proportions[j];
 		sum += temp[i+variableCat] * proportions[j];
 	}
@@ -285,24 +293,6 @@ double _gamma_shape_derivative( SiteModel *sm, const double* ingrad ){
 	return shape_gradient;
 }
 
-double _gamma_shape_derivativew( SiteModel *sm, const double* ingrad ){
-	double derivsum = 0;
-	double sum = 0;
-	size_t catCount = sm->cat_count;
-	size_t variableCat = sm->proportions != NULL ? catCount - 1 : catCount;
-	double* proportions = sm->get_proportions(sm);
-	double shape = Parameters_value(sm->rates, 0);
-	double shape_gradient = 0;
-	size_t j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
-	for (size_t i = 0; i < variableCat; i++, j++) {
-		double prob = (2.0*i + 1.0)/(2.0*variableCat);
-		double plus = gsl_cdf_gamma_Qinv( prob, shape + sm->epsilon, 1.0/(shape + sm->epsilon) );
-		double minus = gsl_cdf_gamma_Qinv( prob, shape - sm->epsilon, 1.0/(shape - sm->epsilon) );
-		shape_gradient += ingrad[j] * (plus - minus)/(2.0*sm->epsilon) * proportions[j];
-	}
-	return shape_gradient;
-}
-
 double _gamma_inv_derivative( SiteModel *sm, const double* ingrad ){
 	double* proportions = sm->get_proportions(sm);
 	assert(proportions[0] == Parameters_value(sm->proportions->parameters, 0));
@@ -314,12 +304,20 @@ double _gamma_inv_derivative( SiteModel *sm, const double* ingrad ){
 		double sum_rate = 0;
 		for (size_t i = 0; i < variableCatCount; i++) {
 			double prob = (2.0*i + 1.0)/(2.0*variableCatCount);
+#ifndef GSL_DISABLED
 			sum_rate += gsl_cdf_gamma_Qinv( prob, shape, 1.0/shape );
+#else
+			sum_rate += qgamma( prob, shape, shape );
+#endif
 		}
 		double pinv_gradient = 0;
 		for (size_t i = 0; i < variableCatCount; i++) {
 			double prob = (2.0*i + 1.0)/(2.0*variableCatCount);
+#ifndef GSL_DISABLED
 			pinv_gradient += ingrad[i+1] * gsl_cdf_gamma_Qinv( prob, shape, 1.0/shape );
+#else
+			pinv_gradient += ingrad[i+1] * qgamma( prob, shape, shape );
+#endif
 		}
 		return ingrad[0] + pinv_gradient/(sum_rate*(1.0 - proportions[0]));
 	}
@@ -552,6 +550,7 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 	const int nCat = sm->cat_count - cat;
 	double* quantiles = dvector(sm->cat_count); // cat_count includes invariant sites if specified
 
+#ifndef GSL_DISABLED
 	// proportions are estimated from beta distribution
 	if (sm->quadrature == QUADRATURE_BETA || sm->quadrature == QUADRATURE_KUMARASWAMY){
 		double shape_alpha = Parameters_value(sm->rates, Parameters_count(sm->rates)-2);
@@ -601,6 +600,9 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 	}
 	// That's +G+D or +G+I+D
 	else if(sm->quadrature == QUADRATURE_DISCRETE){
+#else
+	if(sm->quadrature == QUADRATURE_DISCRETE){
+#endif
 		const double* values = sm->proportions->get_values(sm->proportions);
 		double sum = 0;
 		for (int i = 0; i < sm->cat_count-cat; i++) {
@@ -656,7 +658,11 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 		sm->cat_rates[0] = 0;
 		if(sm->distribution == DISTRIBUTION_GAMMA){
 			for (int i = 0; i < sm->cat_count - cat; i++) {
+#ifndef GSL_DISABLED
 				sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( quantiles[i+cat], alpha, 1.0/alpha );
+#else
+				sm->cat_rates[i + cat] = qgamma( quantiles[i+cat], alpha, alpha );
+#endif
 			}
 		}
 		else if(sm->distribution == DISTRIBUTION_WEIBULL){
@@ -667,6 +673,7 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 				sm->cat_rates[i + cat] = icdf_weibull_1( quantiles[i+cat], alpha);
 			}
 		}
+#ifndef GSL_DISABLED		
 		else if(sm->distribution == DISTRIBUTION_LOGNORMAL){
 			for (int i = 0; i < sm->cat_count - cat; i++) {
 				sm->cat_rates[i + cat] = gsl_cdf_lognormal_Qinv( quantiles[i+cat], -alpha*alpha/2, alpha );
@@ -677,6 +684,7 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 				sm->cat_rates[i + cat] = gsl_cdf_beta_Qinv( quantiles[i+cat], alpha, Parameters_value(sm->rates, 1) );
 			}
 		}
+#endif
 		
 		if (sm->quadrature == QUADRATURE_BETA || sm->quadrature == QUADRATURE_KUMARASWAMY) {
 			for (int i = 0; i < sm->cat_count - cat; i++) {

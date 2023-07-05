@@ -27,6 +27,7 @@
 #include <time.h>
 
 #include "treeio.h"
+#include "optimizer.h"
 
 #ifdef _OPENMP
 #include <omp.h>

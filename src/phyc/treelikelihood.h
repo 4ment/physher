@@ -19,15 +19,12 @@
 #ifndef _TREELIKELIHOOD_H_
 #define _TREELIKELIHOOD_H_
 
-#include "utils.h"
 #include "tree.h"
 #include "node.h"
 #include "sitepattern.h"
 #include "substmodel.h"
 #include "sitemodel.h"
 #include "branchmodel.h"
-#include "optimizer.h"
-#include "treesearch.h"
 #include "mjson.h"
 
 static double TWENTY_DOUBLE_ONES[20] = {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
@@ -198,9 +195,6 @@ void calculate_dldh_uppper( SingleTreeLikelihood *tlk, Node *node, double* patte
 double dlnldt_uppper( SingleTreeLikelihood *tlk, const double* pattern_likelihoods, const double* pattern_dlikelihoods );
 
 double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pattern_likelihoods, const double* pattern_dlikelihoods);
-
-
-double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 
 void SingleTreeLikelihood_update_uppers(SingleTreeLikelihood *tlk);
 void SingleTreeLikelihood_update_uppers2(SingleTreeLikelihood *tlk);

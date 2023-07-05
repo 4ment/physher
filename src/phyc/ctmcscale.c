@@ -8,8 +8,6 @@
 
 #include "ctmcscale.h"
 
-#include <gsl/gsl_sf_gamma.h>
-
 #include "mathconstant.h"
 #include "matrix.h"
 #include "gradient.h"
@@ -28,7 +26,8 @@ double DistributionModel_log_ctmc_scale(DistributionModel* dm){
 			totalTreeTime += Node_time_elapsed(nodes[i]);
 		}
 	}
-	double logNormalization = shape * log(totalTreeTime) - gsl_sf_lngamma(0.5);
+	double logGammaHalf = 0.57236494292470041501;
+	double logNormalization = shape * log(totalTreeTime) - logGammaHalf;
 	dm->lp = 0.0;
 	for(size_t i = 0; i < rateCount; i++){
 		dm->lp += logNormalization - shape * log(Parameters_value(dm->x, i)) - Parameters_value(dm->x, i) * totalTreeTime;
@@ -51,7 +50,8 @@ double DistributionModel_log_ctmc_scale_with_values(DistributionModel* dm, const
 		}
 	}
 	size_t rateCount = Parameters_count(dm->x);
-	double logNormalization = shape * log(totalTreeTime) - gsl_sf_lngamma(shape);
+	double logGammaHalf = 0.57236494292470041501;
+	double logNormalization = shape * log(totalTreeTime) - logGammaHalf;
 	dm->lp = 0.0;
 	for(size_t i = 0; i < rateCount; i++){
 		dm->lp += logNormalization - shape * log(values[i]) - values[i] * totalTreeTime;
@@ -264,8 +264,8 @@ Model* new_CTMCScaleModel_from_json(json_node* node, Hashtable* hash){
 	Model *mtree = Hashtable_get(hash, model_key+1);
 	DistributionModel* dm = new_CTMCScale_with_parameters(x, mtree->obj);
 	Model* model = new_CTMCScaleModel(id, dm, mtree);
-	
+#ifndef GSL_DISABLED	
 	dm->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
-	
+#endif
 	return model;
 }

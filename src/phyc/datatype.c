@@ -28,20 +28,20 @@
 static int  _state_count( DataType *datatype);
 
 
-static int  _nucleotide_encoding( DataType *datatype, char nuc);
-static char _nucleotide_state( DataType *datatype, int encoding);
-static int _nucleotide_encoding_string( DataType *datatype, const char *nuc);
+static int  _nucleotide_encoding( const DataType *datatype, char nuc);
+static char _nucleotide_state( const DataType *datatype, int encoding);
+static int _nucleotide_encoding_string( const DataType *datatype, const char *nuc);
 static const char * _nucleotide_state_string( const DataType *datatype, int encoding);
 static void _nucleotide_partial(const struct DataType *datatype, int encoding, double* partial);
 
-static int  _aa_encoding( DataType *datatype, char nuc);
-static char _aa_state( DataType *datatype, int encoding);
-static int _aa_encoding_string( DataType *datatype, const char *aa);
+static int  _aa_encoding( const DataType *datatype, char nuc);
+static char _aa_state( const DataType *datatype, int encoding);
+static int _aa_encoding_string( const  DataType *datatype, const char *aa);
 static const char * _aa_state_string( const DataType *datatype, int encoding);
 
-static int  _codon_encoding( DataType *datatype, char nuc);
-static char _codon_state( DataType *datatype, int encoding);
-static int _codon_encoding_string( DataType *datatype, const char *codon);
+static int  _codon_encoding( const DataType *datatype, char nuc);
+static char _codon_state( const DataType *datatype, int encoding);
+static int _codon_encoding_string( const DataType *datatype, const char *codon);
 static const char * _codon_state_string( const DataType *datatype, int encoding);
 
 static void _generic_partial(const DataType *datatype, int encoding, double* partial);
@@ -181,7 +181,7 @@ typedef struct ambiguity_t{
     size_t encoding;
 } ambiguity_t;
 
-static int _encoding_string( DataType *datatype, const char *nuc){
+static int _encoding_string( const DataType *datatype, const char *nuc){
     int i = 0;
     for (; i < datatype->stateCount; i++ ) {
         if( strcmp(datatype->states[i], nuc) == 0){
@@ -198,7 +198,7 @@ static int _encoding_string( DataType *datatype, const char *nuc){
     return datatype->stateCount;
 }
 
-static int _encoding( DataType *datatype, char nuc){
+static int _encoding( const DataType *datatype, char nuc){
     int i = 0;
     for (; i < datatype->stateCount; i++ ) {
         if( datatype->states[i][0] == nuc ){
@@ -349,15 +349,15 @@ DataType *nucleotide_datatype(){
     return &SINGLETON_DATATYPE_NUCLEOTIDE;
 }
 
-int _nucleotide_encoding( DataType *datatype, char nuc){
+int _nucleotide_encoding( const DataType *datatype, char nuc){
     return NUCLEOTIDE_STATES[nuc];
 }
 
-int _nucleotide_encoding_string( DataType *datatype, const char *nuc){
+int _nucleotide_encoding_string( const DataType *datatype, const char *nuc){
     return NUCLEOTIDE_STATES[nuc[0]];
 }
 
-char _nucleotide_state( DataType *datatype, int encoding){
+char _nucleotide_state( const DataType *datatype, int encoding){
     return NUCLEOTIDES[encoding];
 }
 
@@ -403,15 +403,15 @@ DataType *amino_acid_datatype(){
     return &SINGLETON_DATATYPE_AMINO_ACID;
 }
 
-int _aa_encoding( DataType *datatype, char aa){
+int _aa_encoding( const DataType *datatype, char aa){
     return AMINO_ACID_STATES[aa];
 }
 
-char _aa_state( DataType *datatype, int encoding){
+char _aa_state( const DataType *datatype, int encoding){
     return AMINO_ACIDS[encoding];
 }
 
-int _aa_encoding_string( DataType *datatype, const char *aa){
+int _aa_encoding_string( const DataType *datatype, const char *aa){
     return AMINO_ACID_STATES[aa[0]];
 }
 
@@ -454,11 +454,11 @@ DataType *codon_datatype( int genetic_code ){
     return &SINGLETON_DATATYPE_CODON;
 }
 
-int _codon_encoding( DataType *datatype, char nuc){
+int _codon_encoding( const DataType *datatype, char nuc){
     return 0;
 }
 
-char _codon_state( DataType *datatype, int encoding){
+char _codon_state( const DataType *datatype, int encoding){
     return ' ';
 }
 
@@ -529,7 +529,7 @@ const char * _codon_state_string( const DataType *datatype, int encoding){
     return CODON_TRIPLETS[i];
 }
 
-int _codon_encoding_string( DataType *datatype, const char *codon){
+int _codon_encoding_string( const DataType *datatype, const char *codon){
     DataType nuctype = SINGLETON_DATATYPE_NUCLEOTIDE;
     
     int n1 = nuctype.encoding(&nuctype, codon[0] );

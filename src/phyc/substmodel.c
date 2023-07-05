@@ -31,8 +31,6 @@
 #include "mstring.h"
 #include "geneticcode.h"
 
-#include "model.h"
-
 #include "hashtable.h"
 
 #include "sitepattern.h"
@@ -1358,7 +1356,7 @@ void bufferize_rates( StringBuffer *buffer, const SubstitutionModel *m ){
 			StringBuffer_append_string(buffer, "   GT: 1\n");
 		}
 		else if ( m->modeltype == HKY ) {
-			StringBuffer_append_format(buffer, "   Kappa: %f (Ts/Tv: %f)\n", Parameters_value(m->rates, 0), kappa_to_tstv(Parameters_value(m->rates, 0), m->get_frequencies(m)) );
+			StringBuffer_append_format(buffer, "   Kappa: %f (Ts/Tv: %f)\n", Parameters_value(m->rates, 0), kappa_to_tstv(Parameters_value(m->rates, 0), m->get_frequencies((SubstitutionModel*)m)) );
 		}
 		else if ( m->modeltype == K80 ) {
 			StringBuffer_append_format(buffer, "   Kappa: %f (Ts/Tv: %f)\n", Parameters_value(m->rates, 0), Parameters_value(m->rates, 0) );

@@ -23,9 +23,7 @@
 #include <ctype.h>
 #include <strings.h>
 
-#ifndef DISABLED_CONFIG_HEADER
 #include "phyc/PhyCConfig.h"
-#endif
 
 #include "phyc/parsimony.h"
 #include "phyc/treelikelihood.h"
@@ -33,7 +31,7 @@
 #include "phyc/args.h"
 #include "phyc/filereader.h"
 #include "phyc/compoundmodel.h"
-#include "phyc/distmodel.h"
+#include "phyc/distmodelfactory.h"
 #include "phyc/mjson.h"
 #include "phyc/logger.h"
 #include "phyc/vb.h"
@@ -55,6 +53,7 @@
 #include "phyc/cat.h"
 #include "phyc/sbn.h"
 #include "phyc/checkpoint.h"
+#include "phyc/optimizer.h"
 
 #include "phyc/physhercmd.h"
 
@@ -75,9 +74,8 @@ int main(int argc, const char* argv[]){
         printf("Fourment M and Holmes EC. Novel non-parametric models to estimate evolutionary rates and divergence times from heterochronous sequence data.\n");
         printf("BMC Evolutionary Biology 14:163, 2014\n\n");
 		
-#ifndef DISABLED_CONFIG_HEADER
         fprintf(stdout, "\nLibrary used:\n");
-        fprintf(stdout, "PhyC v%d.%d\n", PHYC_VERSION_MAJOR, PHYC_VERSION_MINOR );
+        fprintf(stdout, "PhyC v%d.%d.%s\n", PHYC_VERSION_MAJOR, PHYC_VERSION_MINOR, PHYC_PATCH_LEVEL );
         if(PHYC_SSE_ENABLED){
             fprintf(stdout, "  SSE     support: %s\n", PHYC_SSE_LEVEL);
         }
@@ -88,9 +86,11 @@ int main(int argc, const char* argv[]){
         fprintf(stdout, "  OpenMP  support: %s\n", (PHYC_OPENMP_ENABLED ? "enabled" : "disabled") );
         fprintf(stdout, "  PThread support: %s\n", (PHYC_PTHREAD_ENABLED ? "enabled" : "disabled") );
         fprintf(stdout, "\n\n");
-        fprintf(stdout, "Git:\nBranch: %s\nCommit: %s\n", GIT_BRANCH, GIT_COMMIT_HASH);
-        fprintf(stdout, "\n\n");
-#endif
+
+		if(strcmp(GIT_BRANCH, "") != 0 && strcmp(GIT_COMMIT_HASH, "") != 0){
+        	fprintf(stdout, "Git:\nBranch: %s\nCommit: %s\n", GIT_BRANCH, GIT_COMMIT_HASH);
+        	fprintf(stdout, "\n\n");
+		}
 		return 0;
 	}
 	else if(array_of_string_contains("--dry", argv, argc, true)){

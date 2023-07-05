@@ -2503,10 +2503,26 @@ double calculate_dlnl_dQ( SingleTreeLikelihood *tlk, int index, const double* pa
 			const double* freqs = tlk->get_root_frequencies(tlk);
 
 			if(tlk->include_root_freqs){
-				for ( size_t k = 0; k < patternCount; k++ ) {
-					for ( i = 0; i < nstate; i++ ) {
-						pattern_dlnl[k] += root_partials[v];
-						v++;
+				if(tlk->scale){
+					tlk->calculate_per_cat_partials(tlk, spare_partials, nodeId, tlk->upper_partial_indexes[nodeId], nodeId );
+					tlk->integrate_partials(tlk, spare_partials, tlk->sm->get_proportions(tlk->sm), root_partials2 );
+					for ( size_t k = 0; k < patternCount; k++ ) {
+						double dlikelihood = 0;
+						double likelihood = 0;
+						for ( i = 0; i < nstate; i++, v++ ) {
+							dlikelihood += root_partials[v];
+							likelihood += root_partials2[v];
+						}
+						pattern_dlnl[k] += dlikelihood/likelihood;
+						// double logP = log(likelihood) + getLogScalingFactorAtNode(tlk, k, nodeId) + getLogScalingFactorAtNode(tlk, k, tlk->upper_partial_indexes[nodeId] );
+						// printf("%d] logP %f %f (%f)\n", nodeId, log(likelihood), logP, tlk->lk);
+					}
+				}
+				else{
+					for ( size_t k = 0; k < patternCount; k++ ) {
+						for ( i = 0; i < nstate; i++, v++ ) {
+							pattern_dlnl[k] += root_partials[v];
+						}
 					}
 				}
 			}
@@ -2651,6 +2667,31 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 	
 	// set for update later
 	//SingleTreeLikelihood_update_one_node(tlk, node);
+	return lk;
+}
+
+
+// should be used for debugging
+double calculate_log_likelihood_from_preorder(SingleTreeLikelihood* tlk, size_t index_pre, size_t index_post, size_t index_matrix, bool root_frequencies_included){
+	double* spare_partials = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+	double* root_partials = (double*)aligned16_malloc( tlk->root_partials_size * sizeof(double) );
+	tlk->calculate_per_cat_partials(tlk, spare_partials, index_pre, index_post, index_matrix );
+	tlk->integrate_partials(tlk, spare_partials, tlk->sm->get_proportions(tlk->sm), root_partials );
+
+	if(!root_frequencies_included){
+		// return tlk->node_log_likelihoods( tlk, root_partials, tlk->get_root_frequencies(tlk), pattern_lk);
+	}
+	double lk = 0;
+	size_t v = 0;
+	for ( size_t k = 0; k < tlk->pattern_count; k++ ) {
+		double temp = 0;
+		for ( size_t i = 0; i < tlk->m->nstate; i++ ) {
+			temp += root_partials[v++];
+		}
+		lk += log(temp)* tlk->sp->weights[k];
+	}
+	free(spare_partials);
+	free(root_partials);
 	return lk;
 }
 

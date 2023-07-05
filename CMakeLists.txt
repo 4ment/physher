@@ -6,7 +6,7 @@ PROJECT(phyc C CXX)
 
 SET( LIBRARY_NAME "PHYC" )
 
-SET( ${LIBRARY_NAME}_MAJOR_VERSION 1 )
+SET( ${LIBRARY_NAME}_MAJOR_VERSION 2 )
 SET( ${LIBRARY_NAME}_MINOR_VERSION 0 )
 SET( ${LIBRARY_NAME}_PATCH_LEVEL 0 )
 
@@ -34,6 +34,7 @@ OPTION(USE_OPENMP_SUPPORT "Use OpenMP if available." OFF)
 OPTION(USE_PTHREAD_SUPPORT "Use PThread if available." ON)
 
 OPTION(LIBRARY_ONLY "Compile library only." OFF)
+OPTION(DISABLE_GSL "Compile without GSL." OFF)
 
 
 #####################################################################
@@ -212,9 +213,14 @@ ENDIF(USE_SSE_SUPPORT)
 # GSL
 #####################################################################
 
-find_package(GSL REQUIRED)
-include_directories(BEFORE SYSTEM ${GSL_INCLUDE_DIRS})
-link_directories(${GSL_LIBRARY_DIRS})
+IF(NOT DISABLE_GSL)
+	find_package(GSL REQUIRED)
+	include_directories(BEFORE SYSTEM ${GSL_INCLUDE_DIRS})
+	link_directories(${GSL_LIBRARY_DIRS})
+ELSE()
+	add_definitions("-DGSL_DISABLED")
+	SET(LIBRARY_ONLY ON)
+ENDIF()
 
 #####################################################################
 # Config header file
@@ -236,9 +242,6 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-add_definitions("-DGIT_COMMIT_HASH=${GIT_COMMIT_HASH}")
-add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
-
 configure_file (
 	"${PROJECT_SOURCE_DIR}/src/phyc/PhyCConfig.h.in"
 	"${PROJECT_BINARY_DIR}/phyc/PhyCConfig.h"
@@ -250,8 +253,79 @@ configure_file (
 
 link_libraries(m)
 
-file(GLOB SRC_FILES src/phyc/*.c)
-file(GLOB HEADER_FILES src/phyc/*.h)
+IF(DISABLE_GSL)
+	SET(SRC_FILES
+		src/phyc/branchmodel.c
+		src/phyc/ctmcscale.c
+		src/phyc/datatype.c
+		src/phyc/dayhoff.c
+		src/phyc/demographicmodels.c
+		src/phyc/discreteparameter.c
+		src/phyc/distancematrix.c
+		src/phyc/distmodel.c
+		src/phyc/eigen.c
+		src/phyc/errorfuntion.c
+		src/phyc/exponential.c
+		src/phyc/f81.c
+		src/phyc/filereader.c
+		src/phyc/gamma.c
+		src/phyc/gausslaguerre.c
+		src/phyc/gaussian.c
+		src/phyc/geneticcode.c
+		src/phyc/gensubst.c
+		src/phyc/gtr.c
+		src/phyc/hashfunctions.c
+		src/phyc/hashtable.c
+		src/phyc/hessenberg.c
+		src/phyc/hky.c
+		src/phyc/jc69.c
+		src/phyc/K80.c
+		src/phyc/lg.c
+		src/phyc/lognormal.c
+		src/phyc/matrix.c
+		src/phyc/mjson.c
+		src/phyc/mstring.c
+		src/phyc/mt19937ar.c # no .h
+		src/phyc/nj.c
+		src/phyc/node.c
+		src/phyc/nonstat.c
+		src/phyc/nucsubst.c
+		src/phyc/parameters.c
+		src/phyc/random.c
+		src/phyc/sequence.c
+		src/phyc/sequenceio.c
+		src/phyc/simplex.c
+		src/phyc/sitemodel.c
+		src/phyc/sitepattern.c
+		src/phyc/solve.c
+		src/phyc/statistics.c
+		src/phyc/sitemodel.c
+		src/phyc/substmodel.c
+		src/phyc/transforms.c
+		src/phyc/tree.c
+		src/phyc/treeio.c
+		src/phyc/treelikelihood.c
+		src/phyc/treelikelihood4.c
+		src/phyc/treelikelihood20.c
+		src/phyc/treelikelihoodCodon.c
+		src/phyc/treelikelihoodX.c
+		src/phyc/treetransform.c
+		src/phyc/unrest.c
+		src/phyc/upgma.c
+		src/phyc/utils.c
+		src/phyc/wag.c
+	)
+	foreach (SRC_FILE ${SRC_FILES})
+		string(REGEX REPLACE "[.]c$" ".h" OBJ ${SRC_FILE})
+		set(HEADER_FILES ${HEADER_FILES} ${OBJ})
+	endforeach ()
+	list(REMOVE_ITEM HEADER_FILES src/phyc/mt19937ar.h)
+	list(APPEND HEADER_FILES src/phyc/gradient.h src/phyc/mathconstant.h src/phyc/substmodels.h)
+
+ELSE()
+	file(GLOB SRC_FILES src/phyc/*.c)
+	file(GLOB HEADER_FILES src/phyc/*.h)
+ENDIF(DISABLE_GSL)
 
 SET(HEADER_FILES "${HEADER_FILES};${PROJECT_BINARY_DIR}/phyc/PhyCConfig.h")
 
@@ -298,7 +372,9 @@ ADD_CUSTOM_COMMAND(
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/phyc"
 )
 
-target_link_libraries(phyc GSL::gsl GSL::gslcblas)
+IF(NOT DISABLE_GSL)
+	target_link_libraries(phyc GSL::gsl GSL::gslcblas)
+ENDIF()
 
 IF(NOT LIBRARY_ONLY)	
 	add_executable(physher src/physher.c)
@@ -339,6 +415,8 @@ if(BUILD_CPP_WRAPPER)
 	install(FILES "src/phycpp/physher.hpp" DESTINATION include/phycpp)
 	install(EXPORT phycpp-targets DESTINATION lib/phycpp)
 ENDIF(BUILD_CPP_WRAPPER)
+
+add_custom_target(uninstall COMMAND xargs rm -vf <install_manifest.txt )
 
 #
 # Tests

@@ -26,7 +26,6 @@
 #include "tree.h"
 #include "mstring.h"
 #include "matrix.h"
-#include "combinatorics.h"
 #include "mathconstant.h"
 #include "gradient.h"
 
@@ -1527,7 +1526,7 @@ double _skyride_calculate_dlogP( Coalescent* coal, const Parameter* p ){
         }
         else{
             proportion_derivatives[Node_id(node)] = Node_height(Node_parent(node)) - lower;
-            dlogP = proportion_derivatives[Node_id(node)]*choose(coal->lineages[index+1], 2)/exp(Parameters_value(coal->p, theta_index+1));
+            dlogP = proportion_derivatives[Node_id(node)]*CHOOSE2(coal->lineages[index+1])/exp(Parameters_value(coal->p, theta_index+1));
         }
         _premultiply_proportions(node->left, proportion_derivatives, reparams);
         _premultiply_proportions(node->right, proportion_derivatives, reparams);
@@ -1535,7 +1534,7 @@ double _skyride_calculate_dlogP( Coalescent* coal, const Parameter* p ){
         Node* parent = node;
         Node* n = Tree_node(coal->tree, coal->nodes[index]->index);
         while(index != 0){
-            dlogP -= (proportion_derivatives[Node_id(parent)] - proportion_derivatives[Node_id(n)])*choose(coal->lineages[index+1], 2)/exp(Parameters_value(coal->p, theta_index));
+            dlogP -= (proportion_derivatives[Node_id(parent)] - proportion_derivatives[Node_id(n)])*CHOOSE2(coal->lineages[index+1])/exp(Parameters_value(coal->p, theta_index));
             parent = n;
             index--;
             n = Tree_node(coal->tree, coal->nodes[index]->index);

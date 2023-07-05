@@ -23,7 +23,6 @@
 #include <float.h>
 
 #include "mstring.h"
-#include "model.h"
 
 #include "mjson.h"
 #include "hashtable.h"

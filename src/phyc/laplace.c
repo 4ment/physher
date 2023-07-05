@@ -12,7 +12,7 @@
 
 #include "gamma.h"
 #include "beta.h"
-#include "distmodel.h"
+#include "distmodelfactory.h"
 #include "matrix.h"
 #include "utils.h"
 #include "optimizer.h"

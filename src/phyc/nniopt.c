@@ -23,6 +23,7 @@
 #include "topologyopt.h"
 #include "matrix.h"
 #include "treeio.h"
+#include "optimizer.h"
 
 
 

@@ -294,7 +294,7 @@ bool Hashtable_add( Hashtable *hash, const void *key, void *value ){
 //		}
 //	}
 //	else {
-		entry->key = key;
+		entry->key = (void*)key;
 //	}
 
 	entry->value = value;

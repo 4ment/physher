@@ -14,7 +14,7 @@
 #include <strings.h>
 
 #include "treelikelihood.h"
-#include "distmodel.h"
+#include "distmodelfactory.h"
 #include "demographicmodels.h"
 
 
@@ -299,10 +299,23 @@ double _compoundModel_ddlogP2(Model *self, const Parameter* p1, const Parameter*
 }
 
 void _compound_model_sample(Model *self, double* samples, double* logP){
-	CompoundModel* cm = (CompoundModel*)self->obj;
-	if (logP != NULL) {
+	if (samples != NULL) {
 		fprintf(stderr, "_compound_model_sample not implemented\n");
 		exit(1);
+	}
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	if(logP != NULL){
+		*logP = 0;
+	}
+	for (size_t i = 0; i < cm->count; i++) {
+		if(logP != NULL){
+			double model_logP = 0;
+			cm->models[i]->sample(cm->models[i], NULL, &model_logP);
+			*logP += model_logP;
+		}
+		else{
+			cm->models[i]->sample(cm->models[i], NULL, NULL);
+		}
 	}
 }
 

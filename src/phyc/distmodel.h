@@ -11,13 +11,14 @@
 
 #include <stdio.h>
 
-#include "model.h"
 #include "parameters.h"
 #include "simplex.h"
 #include "tree.h"
 #include "mjson.h"
 
+#ifndef GSL_DISABLED
 #include <gsl/gsl_rng.h>
+#endif
 
 struct _DistributionModel;
 typedef struct _DistributionModel DistributionModel;
@@ -76,7 +77,9 @@ struct _DistributionModel{
 	double stored_lp;
 	bool need_update;
 	distribution_parameterization parameterization;
+#ifndef GSL_DISABLED
 	gsl_rng* rng;
+#endif
 	double shift;
 	
 	int prepared_gradient;
@@ -95,8 +98,6 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex);
-
-Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash);
 
 double DistributionModel_dlog_0(DistributionModel* dm, const Parameter* p);
 

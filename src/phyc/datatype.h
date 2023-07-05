@@ -74,10 +74,10 @@ typedef struct DataType{
     int symbolLength; //1 for nucletoide and aa. 3 for codon and whatever for general DataType
     char **states;
     Hashtable* ambiguities;
-    int (*encoding)( struct DataType *, char );
-    char (*state)( struct DataType *, int  );
+    int (*encoding)( const struct DataType *, char );
+    char (*state)( const struct DataType *, int  );
     
-    int (*encoding_string)( struct DataType *, const char *);
+    int (*encoding_string)( const struct DataType *, const char *);
     const char * (*state_string)( const struct DataType *, int  );
 	void (*partial)(const struct DataType *, int, double*);
     

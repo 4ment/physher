@@ -34,7 +34,7 @@ double inverse_logit(const double y){
 }
 
 double grad_inverse_logit(const double y){
-    const double exp_y = exp(y);
+    const double exp_y = exp(-y);
     return exp_y/pow(exp_y+1.0, 2);
 }
 
