@@ -28,6 +28,7 @@
 typedef enum demography{
 	COALESCENT_CONSTANT,
 	COALESCENT_EXPONENTIAL,
+	COALESCENT_PIECEWISE_LINEAR_GRID,
 	COALESCENT_SKYGRID,
 	COALESCENT_SKYLINE,
 	COALESCENT_SKYLINE_CLASSIC,
@@ -102,6 +103,9 @@ Coalescent * new_SkyrideCoalescent_with_data(Parameters* parameters, double* tim
 
 Coalescent * new_GridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff, parameterization_t parameterization );
 Coalescent * new_GridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff, parameterization_t parameterization);
+
+Coalescent * new_PiecewiseLinearGridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff, parameterization_t parameterization );
+Coalescent * new_PiecewiseLinearGridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff, parameterization_t parameterization);
 
 size_t Coalescent_initialize_gradient(Model *self, int flags);
 

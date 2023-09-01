@@ -37,6 +37,7 @@ static void _skyride_calculate_gradient( Coalescent* coal );
 static void _skyride_calculate_gradient_real( Coalescent* coal );
 static void _skygrid_calculate_gradient( Coalescent* coal );
 static void _skygrid_calculate_gradient_real( Coalescent* coal );
+static void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal );
 
 Coalescent * create_Coalescent(demography type, size_t size);
 
@@ -205,6 +206,15 @@ double* Coalescent_gradient(Model *self){
 			}
 			else if(coal->parameterization == COALESCENT_THETA){
 				_skygrid_calculate_gradient_real(coal);
+			}
+		}
+		else if(coal->type == COALESCENT_PIECEWISE_LINEAR_GRID){
+			if(coal->parameterization == COALESCENT_THETA){
+				_coalescent_piecewise_linear_grid_gradient_time(coal);
+			}
+			else{
+				fprintf(stderr, "COALESCENT_THETA_LOG is not implemented for COALESCENT_PIECEWISE_LINEAR_GRID\n");
+				exit(1);
 			}
 		}
 	}
@@ -567,7 +577,7 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		Hashtable_add(hash, Parameters_name(ps, 0), Parameters_at(ps, 0));
 		Hashtable_add(hash, Parameters_name(ps, 1), Parameters_at(ps, 1));
 	}
-	else if(strcasecmp(model, "skygrid") == 0){
+	else if(strcasecmp(model, "skygrid") == 0 || strcasecmp(model, "piecewise-linear") == 0){
 		int gridCount = Parameters_count(ps);
 		
 		double cutoff = get_json_node_value_double(node, "cutoff", -1);
@@ -575,11 +585,19 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 			fprintf(stderr, "cutoff is not optional and should be greater than 0\n");
 			exit(3);
 		}
-		if(tree != NULL)
-			c = new_GridCoalescent(tree, ps, gridCount, cutoff, parameterization);
-		else
-			c = new_GridCoalescent_with_data(ps, times, coalescent, intervalCount, gridCount, cutoff, parameterization);
 
+		if(strcasecmp(model, "skygrid") == 0){
+			if(tree != NULL)
+				c = new_GridCoalescent(tree, ps, gridCount, cutoff, parameterization);
+			else
+				c = new_GridCoalescent_with_data(ps, times, coalescent, intervalCount, gridCount, cutoff, parameterization);
+		}
+		else if(strcasecmp(model, "piecewise-linear") == 0){
+			if(tree != NULL)
+				c = new_PiecewiseLinearGridCoalescent(tree, ps, gridCount, cutoff, parameterization);
+			else
+				c = new_PiecewiseLinearGridCoalescent_with_data(ps, times, coalescent, intervalCount, gridCount, cutoff, parameterization);
+		}
 	}
 	else if(strcasecmp(model, "skyline") == 0){
 		json_node* groups_node = get_json_node(node, "groups");
@@ -1959,6 +1977,361 @@ Coalescent * new_GridCoalescent( Tree *tree, Parameters* parameters, int grid, d
 
 Coalescent * new_GridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff, parameterization_t parameterization){
 	Coalescent *coal = create_GridCoalescent_with_parameters(parameters, size, grid, cutoff, parameterization);
+	memcpy(coal->times, times, sizeof(double)*size);
+	memcpy(coal->iscoalescent, coalescent, sizeof(bool)*size);
+	coalescentToLineage(coal);
+	coal->need_update_intervals = false;
+	return coal;
+}
+
+#pragma mark -
+#pragma mark piecewise linear with grid
+
+double _coalescent_piecewise_linear_grid_calculate( Coalescent* coal ){
+	if ( coal->need_update_intervals ) {
+		coal->update_intervals(coal);
+	}
+	
+	if ( coal->need_update ) {
+		coal->logP = 0;
+		size_t currentGridIndex = 0;
+		double popSizeGridStart = Parameters_value(coal->p, 0);
+		double popSizeGridEnd = Parameters_value(coal->p, 1);
+		double timeGridStart = 0;
+		double timeGridEnd = coal->grid[0];
+		double lchoose2;
+		double t = 0;
+		double popSizeCurrent = popSizeGridStart; // can be a grid pop size or any interval
+		
+		for(size_t i = 0; i < coal->n; i++){
+			t += coal->times[i];
+			if(coal->times[i] != 0.0){
+				lchoose2 = CHOOSE2(coal->lineages[i]);
+				double popSize;
+				if (coal->nodes[i]->index >= 0){
+					// after the last grid point we use piecewise constant
+					if(currentGridIndex >= coal->gridCount){
+						popSize = popSizeGridEnd;
+					}
+					else{
+						popSize = popSizeGridStart + (popSizeGridEnd - popSizeGridStart) * (t - timeGridStart)/(timeGridEnd - timeGridStart);
+					}
+					if( coal->iscoalescent[i]){
+						coal->logP -= log(popSize);
+					}
+				}
+				else{
+					popSize = popSizeGridEnd;
+				}
+
+				// integral
+				double integral;
+				if (currentGridIndex < coal->gridCount){
+					// coal->times[i] == t_i-t_i-1
+					integral = lchoose2 * coal->times[i] * (log(popSize) - log(popSizeCurrent))/(popSize - popSizeCurrent);
+					coal->logP -= lchoose2 * coal->times[i] * (log(popSize) - log(popSizeCurrent))/(popSize - popSizeCurrent);
+					
+				}
+				else{
+					coal->logP -= lchoose2 * coal->times[i] / popSize;
+					integral = lchoose2 * coal->times[i] / popSize;
+					// fprintf(stderr, "%f\n", integral);
+				}
+
+				popSizeCurrent = popSize;
+
+				if (coal->nodes[i]->index < 0) {
+					currentGridIndex++;
+					if(currentGridIndex < coal->gridCount){
+						timeGridStart = timeGridEnd;
+						timeGridEnd = coal->grid[currentGridIndex];
+						popSizeGridStart = popSizeGridEnd;
+						popSizeGridEnd = Parameters_value(coal->p, currentGridIndex+1);
+					}
+				}
+			}
+		}
+		coal->need_update = false;
+	}
+	return coal->logP;
+}
+
+void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal ){
+	if ( coal->need_update_intervals ) {
+		coal->update_intervals(coal);
+	}
+	double eps = 1.e-6;
+	size_t offset = 0;
+	bool useFiniteDifferences = false;
+	bool compute_grad_theta = coal->prepared_gradient & GRADIENT_FLAG_COALESCENT_THETA;
+	bool compute_grad_time = coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS || coal->prepared_gradient & GRADIENT_FLAG_TREE_HEIGHTS;
+
+	if(compute_grad_theta){
+		memset(coal->gradient, 0, Parameters_count(coal->p)*sizeof(double));
+		// analytical derivatives not working yet
+		// if(useFiniteDifferences){
+			for(size_t i = 0; i < Parameters_count(coal->p); i++){
+				double value = Parameters_value(coal->p, i);
+				Parameters_set_value(coal->p, i, value+eps);
+				double p = coal->calculate(coal);
+				Parameters_set_value(coal->p, i, value-eps);
+				double m = coal->calculate(coal);
+				coal->gradient[i] = (p-m)/(2.*eps);
+				Parameters_set_value(coal->p, i, value);
+			}
+			compute_grad_theta = false;
+		// }
+
+		offset += Parameters_count(coal->p);
+	}
+
+	if(compute_grad_time){
+		memset(coal->gradient+offset, 0.0, sizeof(double)*(Tree_tip_count(coal->tree)-1));
+		// derivatives wrt to reparameterization
+		if(useFiniteDifferences && get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
+			Parameters* reparams = get_reparams(coal->tree);
+			for(size_t i = 0; i < Parameters_count(reparams); i++){
+				double value = Parameters_value(reparams, i);
+				Parameters_set_value(reparams, i, value+eps);
+				double p = coal->calculate(coal);
+				Parameters_set_value(reparams, i, value-eps);
+				double m = coal->calculate(coal);
+				coal->gradient[i+offset] = (p-m)/(2.*eps);
+				Parameters_set_value(reparams, i, value);
+			}
+			compute_grad_time = false;
+		}
+		else if(useFiniteDifferences){
+			Node** nodes = Tree_nodes(coal->tree);
+			for(size_t i = 0; i < Tree_node_count(coal->tree); i++){
+				if(!Node_isleaf(nodes[i])){
+					double value = Node_height(nodes[i]);
+					Node_set_height(nodes[i], value+eps);
+					double p = coal->calculate(coal);
+					Node_set_height(nodes[i], value-eps);
+					double m = coal->calculate(coal);
+					coal->gradient[Node_class_id(nodes[i]) + offset] = (p-m)/(2.*eps);
+					Node_set_height(nodes[i], value);
+				}
+			}
+			compute_grad_time = false;
+		}
+	}
+
+	if ( compute_grad_time || compute_grad_theta ) {
+		double* heightGradient = NULL;
+		
+		if(compute_grad_time){
+			heightGradient = dvector(Tree_tip_count(coal->tree)-1);
+			memset(heightGradient, 0.0, sizeof(double)*(Tree_tip_count(coal->tree)-1));
+		}
+
+		coal->logP = 0;
+		size_t currentGridIndex = 0;
+		double popSizeGridStart = Parameters_value(coal->p, currentGridIndex);
+		double popSizeGridEnd = Parameters_value(coal->p, currentGridIndex + 1);
+		double timeGridStart = 0.0;
+		double timeGridEnd = coal->grid[0];
+		double lchoose2;
+		double t = 0;
+		double popSizeCurrent = popSizeGridStart; // can be a grid pop size or any interval
+		Node** nodes = Tree_nodes(coal->tree);
+		
+		for(size_t i = 0; i < coal->n; i++){
+			t += coal->times[i];
+			if(coal->times[i] != 0.0){
+				lchoose2 = CHOOSE2(coal->lineages[i]);
+				double popSize;
+				double logPopSize;
+				if (coal->nodes[i]->index >= 0){
+					// after the last grid point we use piecewise constant
+					if(currentGridIndex >= coal->gridCount){
+						popSize = popSizeGridEnd;
+						logPopSize = log(popSize);
+						if( coal->iscoalescent[i]){
+							coal->logP -= logPopSize;
+							if(compute_grad_theta){
+								coal->gradient[currentGridIndex] -= 1.0/popSize;
+							}
+						}
+					}
+					else{
+						popSize = popSizeGridStart + (popSizeGridEnd - popSizeGridStart) * (t - timeGridStart)/(timeGridEnd - timeGridStart);
+						logPopSize = log(popSize);
+
+						if( coal->iscoalescent[i]){
+							coal->logP -= logPopSize;
+							if(compute_grad_time){
+								double dpopSizedt = (popSizeGridEnd - popSizeGridStart)/(timeGridEnd - timeGridStart);
+								size_t node_class_id = Node_class_id(nodes[coal->nodes[i]->index]);
+								heightGradient[node_class_id] -= dpopSizedt/popSize;
+							}
+
+							if(compute_grad_theta){
+								double c = (t - timeGridStart)/(timeGridEnd - timeGridStart);
+								coal->gradient[currentGridIndex] -= (1.0 - c)/popSize;
+								coal->gradient[currentGridIndex + 1] -=  c/popSize;
+							}
+						}
+					}
+				}
+				else{
+					popSize = popSizeGridEnd;
+					logPopSize = log(popSize);
+				}
+
+				// integral
+				if (currentGridIndex < coal->gridCount){
+					coal->logP -= lchoose2 * coal->times[i] * (log(popSize) - log(popSizeCurrent))/(popSize - popSizeCurrent);
+
+					if(compute_grad_theta){
+						double gradStart = 0.0;
+						double gradEnd = 0.0;
+						// interval is 2 consecutive grid points or starts with a sampling event at time 0 followed by grid
+						if (coal->nodes[i]->index < 0 && (coal->nodes[i-1]->index < 0 || t - coal->times[i] == 0.0)){
+							gradStart = (popSizeGridStart*(log(popSizeGridEnd) + 1.0 - log(popSizeGridStart)) - popSizeGridEnd)/(popSizeGridStart*pow(popSizeGridEnd - popSizeGridStart, 2.0));
+							gradEnd = (popSizeGridEnd*(log(popSizeGridStart) + 1.0 - log(popSizeGridEnd)) - popSizeGridStart)/(popSizeGridEnd*pow(popSizeGridEnd - popSizeGridStart, 2.0));
+						}
+						// interval ends with a grid point
+						else if (coal->nodes[i]->index < 0){
+							double dpopSizeCurrent_dEnd = (t-coal->times[i-1] - timeGridStart)/(timeGridEnd - timeGridStart);
+							double dpopSizeCurrent_dStart = 1.0 - dpopSizeCurrent_dEnd;
+
+							gradStart = -(dpopSizeCurrent_dStart*(popSizeCurrent*(log(popSizeCurrent) - log(popSizeGridEnd) - 1.0) + popSizeGridEnd))/(popSizeCurrent*pow(popSizeGridEnd - popSizeCurrent, 2.0));
+							gradEnd = ((popSizeGridEnd - popSizeCurrent)*(1./popSizeGridEnd - dpopSizeCurrent_dEnd/popSizeCurrent) + (dpopSizeCurrent_dEnd - 1.0)*(log(popSizeGridEnd) - log(popSizeCurrent)))/pow(popSizeGridEnd - popSizeCurrent, 2.0);
+						}
+						// interval starts with a grid point or sampling event at time 0
+						else if (coal->nodes[i-1]->index < 0 || t - coal->times[i] == 0.0){
+							double dPopSize_dEnd = (t - timeGridStart)/(timeGridEnd - timeGridStart);
+							double dPopSize_dStart = 1.0 - dPopSize_dEnd;
+							
+							gradStart = ((popSize - popSizeGridStart)*(dPopSize_dStart/popSize - 1./popSizeGridStart) + (dPopSize_dStart - 1.0)*(log(popSizeGridStart) - log(popSize)))/pow(popSize - popSizeGridStart, 2.0);
+							gradEnd = (dPopSize_dEnd*(popSize*(log(popSizeGridStart) + 1.0 - log(popSize)) - popSizeGridStart))/(popSize*pow(popSize - popSizeGridStart, 2.0));
+						}
+						else{
+							double dpopSizeCurrent_dEnd = (t-coal->times[i-1] - timeGridStart)/(timeGridEnd - timeGridStart);
+							double dpopSizeCurrent_dStart = 1.0 - dpopSizeCurrent_dEnd;
+							
+							double dPopSize_dEnd = (t - timeGridStart)/(timeGridEnd - timeGridStart);
+							double dPopSize_dStart = 1.0 - dPopSize_dEnd;
+
+							gradStart = (dPopSize_dStart/popSize - dpopSizeCurrent_dStart/popSizeCurrent)/(popSize - popSizeCurrent) - (dPopSize_dStart - dpopSizeCurrent_dStart)*(log(popSize) - log(popSizeCurrent))/pow(popSize - popSizeCurrent, 2.0);
+							gradEnd = (dPopSize_dEnd/popSize - dpopSizeCurrent_dEnd/popSizeCurrent)/(popSize - popSizeCurrent) - (dPopSize_dEnd - dpopSizeCurrent_dEnd)*(log(popSize) - log(popSizeCurrent))/pow(popSize - popSizeCurrent, 2.0);
+						}
+						coal->gradient[currentGridIndex] += -lchoose2*coal->times[i]*gradStart;
+						coal->gradient[currentGridIndex+1] += -lchoose2*coal->times[i]*gradEnd;
+					}
+					
+					if(compute_grad_time){
+						if(coal->nodes[i]->index >= 0 && coal->iscoalescent[i]){
+							double dpopSizedt = (popSizeGridEnd - popSizeGridStart)/(timeGridEnd - timeGridStart);
+							double d = -coal->times[i]*dpopSizedt*(log(popSize) - log(popSizeCurrent))/pow(popSize - popSizeCurrent, 2);
+							d += coal->times[i]*dpopSizedt/(popSize*(popSize - popSizeCurrent)) + (log(popSize) - log(popSizeCurrent))/(popSize - popSizeCurrent);
+
+							size_t node_class_id = Node_class_id(nodes[coal->nodes[i]->index]);
+							heightGradient[node_class_id] -= lchoose2*d;
+						}
+						if(coal->nodes[i-1]->index >= 0 && coal->iscoalescent[i-1]){
+							double dpopSizedt = (popSizeGridEnd - popSizeGridStart)/(timeGridEnd - timeGridStart);
+							double d = coal->times[i]*dpopSizedt*(log(popSize) - log(popSizeCurrent))/pow(popSize - popSizeCurrent, 2);
+							d += -coal->times[i]*dpopSizedt/(popSizeCurrent*(popSize - popSizeCurrent)) - (log(popSize) - log(popSizeCurrent))/(popSize - popSizeCurrent);
+
+							size_t start_node_class_id = Node_class_id(nodes[coal->nodes[i-1]->index]);
+							heightGradient[start_node_class_id] -= lchoose2*d;
+						}
+					}
+				}
+				else{
+					coal->logP -= lchoose2 * coal->times[i] / popSize;
+					
+					if(compute_grad_theta){
+						coal->gradient[currentGridIndex+1] += lchoose2 * coal->times[i] / (popSize*popSize);
+					}
+
+					if(compute_grad_time){
+						if(coal->nodes[i]->index >= 0 && coal->iscoalescent[i]){
+							size_t node_class_id = Node_class_id(nodes[coal->nodes[i]->index]);
+							heightGradient[node_class_id] -= lchoose2/popSize;
+						}
+						if(coal->nodes[i-1]->index >= 0 && coal->iscoalescent[i-1]){
+							size_t start_node_class_id = Node_class_id(nodes[coal->nodes[i-1]->index]);
+							heightGradient[start_node_class_id] += lchoose2/popSize;
+						}
+					}
+				}
+
+				popSizeCurrent = popSize;
+
+				if (coal->nodes[i]->index < 0) {
+					currentGridIndex++;
+					if(currentGridIndex < coal->gridCount){
+						timeGridStart = timeGridEnd;
+						timeGridEnd = coal->grid[currentGridIndex];
+						popSizeGridStart = popSizeGridEnd;
+						popSizeGridEnd = Parameters_value(coal->p, currentGridIndex + 1);
+					}
+				}
+			}
+		}
+		coal->need_update = false;
+
+		if(compute_grad_time){
+			if(get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
+				Tree_node_transform_jvp(coal->tree, heightGradient, coal->gradient+offset);
+			}
+			else{
+				memcpy(coal->gradient+offset, heightGradient, sizeof(double)*(Tree_tip_count(coal->tree)-1));
+			}
+			free(heightGradient);
+		}
+	}
+	else{
+		coal->logP = coal->calculate(coal);
+	}
+}
+
+Coalescent * create_PiecewiseLinearGridCoalescent_with_parameters(Parameters* parameters, int size, int grid, double cutoff, parameterization_t parameterization){
+	Coalescent *coal = create_GridCoalescent(COALESCENT_PIECEWISE_LINEAR_GRID, size, grid - 1);
+	assert(coal);
+	coal->grid = dvector(grid-1); // not 0 at grid[0]
+	coal->gridCount = grid-1; // number of lines-1
+	assert(coal->gridCount+1 == Parameters_count(parameters));
+	coal->p = new_Parameters(Parameters_count(parameters));
+	Parameters_add_parameters(coal->p, parameters);
+	for (int i = 0; i < Parameters_count(parameters); i++) {
+		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
+		Parameters_at(parameters, i)->id = i;
+	}
+	coal->parameterization = parameterization;
+	if(parameterization == COALESCENT_THETA){
+		coal->calculate = _coalescent_piecewise_linear_grid_calculate;
+	}
+	else{
+		fprintf(stderr, "Piecewise linear ony supports theta in real space\n");
+		exit(1);
+	}
+	coal->dlogP = NULL;
+	coal->d2logP = NULL;
+	coal->ddlogP = NULL;
+	for(int i = 1; i <= coal->gridCount; i++){
+		coal->grid[i-1] = cutoff*i/coal->gridCount;
+	}
+	return coal;
+}
+
+
+Coalescent * new_PiecewiseLinearGridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff, parameterization_t parameterization ){
+	Coalescent *coal = create_PiecewiseLinearGridCoalescent_with_parameters(parameters, Tree_node_count(tree), grid, cutoff, parameterization);
+	coal->tree = tree;
+	coal->nodes = malloc(coal->n*sizeof(double_int_pair_t*));
+	for (int i = 0; i < coal->n; i++) {
+		coal->nodes[i] = malloc(sizeof(double_int_pair_t));
+	}
+	return coal;
+}
+
+Coalescent * new_PiecewiseLinearGridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff, parameterization_t parameterization){
+	Coalescent *coal = create_PiecewiseLinearGridCoalescent_with_parameters(parameters, size, grid, cutoff, parameterization);
 	memcpy(coal->times, times, sizeof(double)*size);
 	memcpy(coal->iscoalescent, coalescent, sizeof(bool)*size);
 	coalescentToLineage(coal);

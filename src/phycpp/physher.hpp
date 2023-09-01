@@ -419,3 +419,10 @@ class PiecewiseConstantCoalescentGridInterface : public CoalescentModelInterface
                                              TreeModelInterface *treeModel,
                                              double cutoff);
 };
+
+class PiecewiseLinearCoalescentGridInterface : public CoalescentModelInterface {
+   public:
+    PiecewiseLinearCoalescentGridInterface(const std::vector<double> &thetas,
+                                           TreeModelInterface *treeModel,
+                                           double cutoff);
+};

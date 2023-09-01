@@ -18,6 +18,7 @@
 #include <gsl/gsl_randist.h>
 
 #include "phyc/demographicmodels.h"
+#include "phyc/gradient.h"
 #include "phyc/parameters.h"
 #include "phyc/tree.h"
 
@@ -261,6 +262,56 @@ char* test_constant_clone() {
     return NULL;
 }
 
+char* test_piecewise_linear() {
+    double dates[4] = {0.0, 0.0, 0.0, 0.0};
+    char* taxa[4] = {"a", "b", "c", "d"};
+    Model* mtree =
+        new_TreeModel_from_newick("(((a:2,b:2):4,c:6):6,d:12);", taxa, dates);
+    Tree* tree = mtree->obj;
+
+    Parameters* ps = new_Parameters(5);
+    double thetas[5] = {3., 10., 4., 2., 3.};
+    for (int i = 0; i < 5; i++) {
+        Parameter* p = new_Parameter("", thetas[i], new_Constraint(0, INFINITY));
+        Parameters_move(ps, p);
+        p->id = i;
+    }
+    double cutoff = 10;
+    int grid = 5;
+    Coalescent* coal =
+        new_PiecewiseLinearGridCoalescent(tree, ps, grid, cutoff, COALESCENT_THETA);
+
+    Model* model = new_CoalescentModel("", coal, mtree);
+
+    double logP = model->logP(model);
+    double logP2 = -11.08185677776700117647;
+    mu_assert(fabs(logP - logP2) < 0.00001, "logP not matching");
+
+    size_t gradient_size = Coalescent_initialize_gradient(
+        model, GRADIENT_FLAG_COALESCENT_THETA | GRADIENT_FLAG_TREE_HEIGHTS);
+    double true_gradient_thetas[5] = {0.32063498962941356, 0.11153798261181064,
+                                      0.17750252451894566, 0.33669080273686075,
+                                      0.06921832582596682};
+    double true_gradient_heights[3] = {-0.6744186046511627, -0.375,
+                                       -0.3333333333333333};
+
+    double* gradient = Coalescent_gradient(model);
+    for (int i = 0; i < 5; i++) {
+        mu_assert(fabs(gradient[i] - true_gradient_thetas[i]) < 0.00001,
+                  "d.logP/d.time not matching");
+    }
+
+    for (int i = 0; i < 3; i++) {
+        mu_assert(fabs(gradient[i + 5] - true_gradient_heights[i]) < 0.00001,
+                  "d.logP/d.theta not matching");
+    }
+
+    model->free(model);
+    mtree->free(mtree);
+    free_Parameters(ps);
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_constant);
@@ -268,6 +319,7 @@ char* all_tests() {
     mu_run_test(test_constant_clone);
     mu_run_test(test_skyride);
     mu_run_test(test_skygrid);
+    mu_run_test(test_piecewise_linear);
     return NULL;
 }
 

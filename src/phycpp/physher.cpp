@@ -702,3 +702,21 @@ PiecewiseConstantCoalescentGridInterface::PiecewiseConstantCoalescentGridInterfa
     RequestGradient();
     parameterCount_ = thetas.size();
 }
+
+PiecewiseLinearCoalescentGridInterface::PiecewiseLinearCoalescentGridInterface(
+    const std::vector<double> &thetas, TreeModelInterface *treeModel, double cutoff)
+    : CoalescentModelInterface(treeModel) {
+    Parameters *thetas_param = new_Parameters(thetas.size());
+    for (const auto &theta : thetas) {
+        Parameters_move(thetas_param, new_Parameter("piecewise-linear.theta", theta,
+                                                    new_Constraint(0, INFINITY)));
+    }
+    coalescent_ = new_PiecewiseLinearGridCoalescent(
+        reinterpret_cast<Tree *>(treeModel->GetManagedObject()), thetas_param,
+        thetas.size(), cutoff, COALESCENT_THETA);
+    free_Parameters(thetas_param);
+    model_ = new_CoalescentModel2("piecewise-linear", coalescent_,
+                                  treeModel->GetModel(), nullptr);
+    RequestGradient();
+    parameterCount_ = thetas.size();
+}
