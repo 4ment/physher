@@ -114,7 +114,10 @@ bool operator_interval_scaler(Operator* op, double* logHR){
 
 bool operator_scaler(Operator* op, double* logHR){
 	if(op->x != NULL){
-		size_t index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
+		size_t index = 0;
+		if(Parameters_count(op->x) != 1){
+			index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
+		}
 		Parameter* p = Parameters_at(op->x, index);
 		double scaler_scaleFactor = op->parameters[0];
 		double v = Parameter_value(p);

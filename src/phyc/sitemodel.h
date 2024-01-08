@@ -46,6 +46,7 @@ typedef struct SiteModel{
     
     void     (*set_rate)( struct SiteModel *, const int, const double );
     
+	bool     (*update)( struct SiteModel * );    
     double   (*get_rate)( struct SiteModel *, const int );
 	double   (*get_proportion)( struct SiteModel *, const int );
 	double * (*get_proportions)( struct SiteModel * );

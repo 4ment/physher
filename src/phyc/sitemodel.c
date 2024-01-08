@@ -34,7 +34,7 @@
 #include <gsl/gsl_cdf.h>
 #endif
 
-static void _gamma_approx_quantile( SiteModel *sm );
+static bool _gamma_approx_quantile( SiteModel *sm );
 static void _calculate_rates_discrete( SiteModel *sm );
 
 static double _get_rate( SiteModel *sm, const int index );
@@ -264,30 +264,44 @@ double _gamma_shape_derivative( SiteModel *sm, const double* ingrad ){
 	double shape = Parameters_value(sm->rates, 0);
 	size_t j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
 	double* temp = dvector(variableCat*2);
-	for (size_t i = 0; i < variableCat; i++, j++) {
-		double prob = (2.0*i + 1.0)/(2.0*variableCat);
+	const double eps = pow(DBL_EPSILON, 1.0/3.0);
 #ifndef GSL_DISABLED
-		double plus = gsl_cdf_gamma_Qinv( prob, shape + sm->epsilon, 1.0/(shape + sm->epsilon) );
-		double minus = gsl_cdf_gamma_Qinv( prob, shape - sm->epsilon, 1.0/(shape - sm->epsilon) );
+	gsl_error_handler_t* handler = gsl_set_error_handler_off();
+#endif
+	size_t i = 0;
+	for ( ; i < variableCat; i++, j++) {
+		double prob = (2.0*i + 1.0)/(2.0*variableCat);
+		double xp = shape*(1.0 + eps);
+		double xm = shape*(1.0 - eps);
+#ifndef GSL_DISABLED
+		double plus = gsl_cdf_gamma_Qinv( prob, xp, 1.0/xp );
+		double minus = gsl_cdf_gamma_Qinv( prob, xm, 1.0/xm );
 		temp[i+variableCat] = gsl_cdf_gamma_Qinv( prob, shape, 1.0/shape);
 #else
-		double plus = qgamma( prob, shape + sm->epsilon, shape + sm->epsilon );
-		double minus = qgamma( prob, shape - sm->epsilon, shape - sm->epsilon );
+		double plus = qgamma( prob, xp, xp );
+		double minus = qgamma( prob, xm, xm );
 		temp[i+variableCat] = qgamma( prob, shape, shape);
 #endif
-		temp[i] = (plus - minus)/(2.0*sm->epsilon);
-
+		temp[i] = (plus - minus)/(xp-xm);
+		if(isnan(plus) || isnan(minus) || isnan(temp[i+variableCat])){
+			break;
+		}
 		
 		derivsum += temp[i] * proportions[j];
 		sum += temp[i+variableCat] * proportions[j];
 	}
-
-	double shape_gradient = 0;
-	j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
-	for (size_t i = 0; i < variableCat; i++, j++) {
-		double prob = (2.0*i + 1.0)/(2.0*variableCat);
-		double deriv_rate = temp[i]/sum - (temp[i+variableCat]*derivsum)/sum/sum;
-		shape_gradient += ingrad[j] * deriv_rate * proportions[j];
+#ifndef GSL_DISABLED
+	gsl_set_error_handler(handler);
+#endif
+	double shape_gradient = NAN;
+	if(i == variableCat){
+		shape_gradient = 0.0;
+		j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
+		for (size_t i = 0; i < variableCat; i++, j++) {
+			double prob = (2.0*i + 1.0)/(2.0*variableCat);
+			double deriv_rate = temp[i]/sum - (temp[i+variableCat]*derivsum)/sum/sum;
+			shape_gradient += ingrad[j] * deriv_rate * proportions[j];
+		}
 	}
 	free(temp);
 	return shape_gradient;
@@ -421,6 +435,17 @@ void _weibull_gradient( SiteModel *sm, const double* ingrad, double* grad ){
 	}
 }
 
+bool _update_gamma_approx_quantile(SiteModel *sm){
+	if ( sm->need_update ) {
+        return _gamma_approx_quantile(sm);
+    }
+	return true;
+}
+
+bool _update_nothing(SiteModel *sm){
+	return true;
+}
+
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
 SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad){
@@ -463,7 +488,8 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* pr
 	sm->cat_proportions = dvector(sm->cat_count);
 	sm->gradient = _no_gradient;
 	sm->derivative = _no_derivative;
-	
+	sm->update = _update_nothing;
+
 	if (distribution == DISTRIBUTION_UNIFORM) {
 		sm->get_rate        = _get_rate;
 		sm->get_proportion  = _get_proportion;
@@ -484,6 +510,7 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* pr
 		sm->get_rate        = _get_rate_gamma;
 		sm->get_proportion  = _get_proportion_gamma;
 		sm->get_proportions = _get_proportions_gamma;
+		sm->update = _update_gamma_approx_quantile;
 	}
     
 	// Discrete gamma or prop of invariant or both
@@ -543,7 +570,7 @@ double icdf_weibull_1(double p, double k){
 	return pow(-log(1.0 - p), 1.0/k);
 }
 
-void _gamma_approx_quantile( SiteModel *sm ) {
+bool _gamma_approx_quantile( SiteModel *sm ) {
 	
 	double propVariable = 1.0;
 	int cat = (sm->invariant ? 1 : 0);
@@ -622,20 +649,19 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 			sm->cat_rates[0] = 0;
 			sm->cat_rates[1] = 1.0 / sm->cat_proportions[1];
 			sm->need_update = false;
-			return;
+			free(quantiles);
+			return true;
 		}
 		// +G+I
 		else{
 			cat = 1;
 			sm->cat_proportions[0] = values[0];
-//			printf("%f %f\n", values[0], values[1]);
 			propVariable = values[1];
 			int gammaCat = sm->cat_count - 1;
 			for (int i = 0; i < gammaCat; i++) {
 				quantiles[i+cat] = (2.0 * i + 1.0) / (2.0 * gammaCat);
 				sm->cat_proportions[i+cat] = propVariable/gammaCat;
 			}
-//			exit(2);
 		}
 	}
 	// distribution without invariant and proportions not estimated
@@ -656,35 +682,56 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 	if(sm->quadrature == QUADRATURE_QUANTILE_MEDIAN || sm->quadrature == QUADRATURE_DISCRETE ||
 	   sm->quadrature == QUADRATURE_BETA ||	sm->quadrature == QUADRATURE_KUMARASWAMY){
 		sm->cat_rates[0] = 0;
+		size_t i = 0;
 		if(sm->distribution == DISTRIBUTION_GAMMA){
-			for (int i = 0; i < sm->cat_count - cat; i++) {
 #ifndef GSL_DISABLED
+			gsl_error_handler_t* handler = gsl_set_error_handler_off();
+			for ( ; i < sm->cat_count - cat; i++) {
 				sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( quantiles[i+cat], alpha, 1.0/alpha );
-#else
-				sm->cat_rates[i + cat] = qgamma( quantiles[i+cat], alpha, alpha );
-#endif
+				if(isnan(sm->cat_rates[i + cat])){
+					break;
+				}
 			}
+			gsl_set_error_handler(handler);
+#else
+			for ( ; i < sm->cat_count - cat; i++) {
+				sm->cat_rates[i + cat] = qgamma( quantiles[i+cat], alpha, alpha );
+				if(isnan(sm->cat_rates[j + cat])){
+					break;
+				}
+			}
+#endif
 		}
 		else if(sm->distribution == DISTRIBUTION_WEIBULL){
-			for (int i = 0; i < sm->cat_count - cat; i++) {
+			for ( ; i < sm->cat_count - cat; i++) {
 				// Unit mean Weibull
 				// sm->cat_rates[i + cat] = gsl_cdf_weibull_Qinv( sm->cat_proportions[i + cat], alpha, 1.0/exp(gammln(1.0 + 1.0/alpha)) );
 				// Fix lambda:=1
 				sm->cat_rates[i + cat] = icdf_weibull_1( quantiles[i+cat], alpha);
+				if(isnan(sm->cat_rates[i + cat])){
+					break;
+				}
+
 			}
 		}
 #ifndef GSL_DISABLED		
 		else if(sm->distribution == DISTRIBUTION_LOGNORMAL){
-			for (int i = 0; i < sm->cat_count - cat; i++) {
+			for ( ; i < sm->cat_count - cat; i++) {
 				sm->cat_rates[i + cat] = gsl_cdf_lognormal_Qinv( quantiles[i+cat], -alpha*alpha/2, alpha );
 			}
 		}
 		else if(sm->distribution == DISTRIBUTION_BETA){
-			for (int i = 0; i < sm->cat_count - cat; i++) {
+			for ( ; i < sm->cat_count - cat; i++) {
 				sm->cat_rates[i + cat] = gsl_cdf_beta_Qinv( quantiles[i+cat], alpha, Parameters_value(sm->rates, 1) );
 			}
 		}
 #endif
+
+		if(i != sm->cat_count - cat){
+			free(quantiles);
+			sm->need_update = false;
+			return false;
+		}
 		
 		if (sm->quadrature == QUADRATURE_BETA || sm->quadrature == QUADRATURE_KUMARASWAMY) {
 			for (int i = 0; i < sm->cat_count - cat; i++) {
@@ -728,6 +775,7 @@ void _gamma_approx_quantile( SiteModel *sm ) {
 	}
 	free(quantiles);
 	sm->need_update = false;
+	return true;
 }
 
 // Gamma distribution approximated using Laguerre quadrature
@@ -886,6 +934,7 @@ SiteModel * new_CATSiteModel_with_parameters( const Parameters *params,  const s
 	sm->get_rate        = _get_rate_cat;
 	sm->get_proportion  = _get_proportion;
 	sm->get_proportions = _get_proportions;
+	sm->update = _update_nothing;
 	
 	sm->integrate   = false;
 	sm->need_update = true;
@@ -932,6 +981,7 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm ){
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
     newsm->get_site_category = sm->get_site_category;
+	newsm->update = sm->update;
 	
 	newsm->distribution = sm->distribution;
 	newsm->invariant = sm->invariant;
@@ -985,6 +1035,7 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Simplex* props
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
     newsm->get_site_category = sm->get_site_category;
+	newsm->update = sm->update;
 	
 	newsm->gradient = sm->gradient;
 	newsm->derivative = sm->derivative;

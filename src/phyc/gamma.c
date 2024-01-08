@@ -119,7 +119,7 @@ double gser( double *gamser, double a, double x){
 	double gln = gammln(a);
 	
 	if (x <= 0.0) {
-		if (x < 0.0) error("x less than 0 in routine gser");
+		if (x < 0.0) return NAN; // error("x less than 0 in routine gser");
 		*gamser=0.0; 
 		return gln;
 	} 
@@ -135,8 +135,8 @@ double gser( double *gamser, double a, double x){
 				return gln;
 			}
 		} 
-		error("a too large, ITMAX too small in routine gser");
-		return -1;
+		// error("a too large, ITMAX too small in routine gser");
+		return NAN;
 	}
 }
 
@@ -197,8 +197,8 @@ double invgammp( const double p, const double a) {
 	double afac = 0;
 	double lna1 = 0;
 	double eps = 1.e-8; //Accuracy is the square of EPS.
-	double gln = gammln(a); 
-	if (a <= 0.) error("a must be pos in invgammap"); 
+	double gln = gammln(a);
+	if (a <= 0.) return NAN; //error("a must be pos in invgammap"); 
 	if (p >= 1.) return dmax(100.,a + 100.*sqrt(a)); 
 	if (p <= 0.) return 0.0; 
 	if (a > 1.) {

@@ -322,11 +322,15 @@ double* TreeLikelihood_gradient(Model *self){
 		}
 		double logP = tlk->calculate(tlk); // make sure it is updated
 		if (isnan(logP) || isinf(logP)) {
-//				return logP;
+			for(size_t i = 0; i < tlk->gradient_length; i++){
+				tlk->gradient[i] = NAN;
+			}
 		}
-		update_upper_partials(tlk, Tree_root(tlk->tree), tlk->include_root_freqs);
-		TreeLikelihood_calculate_gradient(self, tlk->gradient);
-		tlk->update_upper = false;
+		else{
+			update_upper_partials(tlk, Tree_root(tlk->tree), tlk->include_root_freqs);
+			TreeLikelihood_calculate_gradient(self, tlk->gradient);
+			tlk->update_upper = false;
+		}
 	}
 	return tlk->gradient;
 }
@@ -1450,6 +1454,13 @@ double _calculate_simple( SingleTreeLikelihood *tlk ){
 	if( !tlk->update ){
 		return tlk->lk;
 	}
+
+	bool success = tlk->sm->update(tlk->sm);
+	if(!success){
+		tlk->lk = NAN;
+		return NAN;
+	}
+
 	if(Tree_is_time_mode(tlk->tree)){
 		Tree_update_heights(tlk->tree);
 	}
@@ -2124,10 +2135,11 @@ void update_upper_partials(SingleTreeLikelihood *tlk, Node* node, bool include_r
 		
 		if(!Node_isroot(parent)){
 			int idMatrix = Node_id(parent);
-	
+			// u_n = (P_p u_p) o (P_s p_s)
 			tlk->update_partials(tlk, tlk->upper_partial_indexes[idNode], tlk->upper_partial_indexes[Node_id(parent)], idMatrix, idSibling, idSibling);
 		}
 		else{
+			// u_n = P_s u_s
 			tlk->update_partials(tlk, tlk->upper_partial_indexes[idNode], idSibling, idSibling, -1, -1);
 			if(include_root_freqs){
 				const double* freqs = tlk->get_root_frequencies(tlk);
