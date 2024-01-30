@@ -63,32 +63,65 @@ void UnRootedTreeModelInterface::SetParameters(const double *parameters) {
     }
 }
 
-ReparameterizedTimeTreeModelInterface::ReparameterizedTimeTreeModelInterface(
-    const std::string &newick, const std::vector<std::string> &taxa,
-    const std::vector<double> dates, TreeTransformFlags transform) {
+TimeTreeModelInterface::TimeTreeModelInterface(const std::string &newick,
+                                               const std::vector<std::string> &taxa,
+                                               const std::vector<double> dates) {
     char **taxa_p = new char *[taxa.size()];
     for (size_t i = 0; i < taxa.size(); i++) {
         taxa_p[i] = const_cast<char *>(taxa[i].c_str());
     }
     model_ = new_TimeTreeModel_from_newick(newick.c_str(), taxa_p, dates.data());
     delete[] taxa_p;
-    int int_transform =
-        static_cast<std::underlying_type<TreeLikelihoodGradientFlags>::type>(transform);
-    TreeModel_set_transform(model_, int_transform);
 
     tree_ = reinterpret_cast<Tree *>(model_->obj);
     nodeCount_ = Tree_node_count(tree_);
     tipCount_ = Tree_tip_count(tree_);
 
     InitializeMap(taxa);
-    transformModel_ = reinterpret_cast<Model *>(model_->data);
     parameterCount_ = tipCount_ - 1;
+}
+
+void TimeTreeModelInterface::SetParameters(const double *parameters) {
+    Node **nodes = Tree_nodes(tree_);
+    for (size_t i = 0; i < nodeCount_; i++) {
+        if (!Node_isleaf(nodes[i])) {
+            Node_set_height(nodes[i], parameters[nodes[i]->class_id]);
+        }
+    }
+}
+
+void TimeTreeModelInterface::GetParameters(double *parameters) {
+    Node **nodes = Tree_nodes(tree_);
+    for (size_t i = 0; i < nodeCount_; i++) {
+        if (!Node_isleaf(nodes[i])) {
+            parameters[nodes[i]->class_id] = Node_height(nodes[i]);
+        }
+    }
+}
+
+void TimeTreeModelInterface::GetNodeHeights(double *parameters) {
+    this->GetParameters(parameters);
+}
+
+ReparameterizedTimeTreeModelInterface::ReparameterizedTimeTreeModelInterface(
+    const std::string &newick, const std::vector<std::string> &taxa,
+    const std::vector<double> dates, TreeTransformFlags transform)
+    : TimeTreeModelInterface(newick, taxa, dates) {
+    int int_transform =
+        static_cast<std::underlying_type<TreeLikelihoodGradientFlags>::type>(transform);
+    TreeModel_set_transform(model_, int_transform);
+    transformModel_ = reinterpret_cast<Model *>(model_->data);
 }
 
 void ReparameterizedTimeTreeModelInterface::SetParameters(const double *parameters) {
     TreeTransform *tt = reinterpret_cast<TreeTransform *>(transformModel_->obj);
     Parameters_set_values_quietly(tt->parameters, parameters);
     transformModel_->listeners->fire(transformModel_->listeners, transformModel_, -1);
+}
+
+void ReparameterizedTimeTreeModelInterface::GetParameters(double *parameters) {
+    TreeTransform *tt = reinterpret_cast<TreeTransform *>(transformModel_->obj);
+    Parameters_set_values(tt->parameters, parameters);
 }
 
 void ReparameterizedTimeTreeModelInterface::GetNodeHeights(double *heights) {
@@ -356,6 +389,13 @@ void ConstantSiteModelInterface::GetParameters(double *parameters) {
         parameters[0] = Parameter_value(siteModel_->mu);
     }
 }
+void ConstantSiteModelInterface::GetRates(double *rates) {
+    rates[0] = (siteModel_->mu != nullptr ? Parameter_value(siteModel_->mu) : 1.0);
+}
+
+void ConstantSiteModelInterface::GetProportions(double *proportions) {
+    proportions[0] = 1.0;
+}
 
 InvariantSiteModelInterface::InvariantSiteModelInterface(double proportionInvariant,
                                                          std::optional<double> mu) {
@@ -404,6 +444,17 @@ void InvariantSiteModelInterface::GetParameters(double *parameters) {
     }
 }
 
+void InvariantSiteModelInterface::GetRates(double *rates) {
+    siteModel_->update(siteModel_);
+    memcpy(rates, siteModel_->cat_rates, sizeof(double) * siteModel_->cat_count);
+}
+
+void InvariantSiteModelInterface::GetProportions(double *proportions) {
+    siteModel_->update(siteModel_);
+    memcpy(proportions, siteModel_->cat_proportions,
+           sizeof(double) * siteModel_->cat_count);
+}
+
 DiscretizedSiteModelInterface::DiscretizedSiteModelInterface(
     distribution_t distribution, double shape, size_t categories,
     std::optional<double> proportionInvariant, std::optional<double> mu) {
@@ -438,6 +489,7 @@ DiscretizedSiteModelInterface::DiscretizedSiteModelInterface(
         propInvModel->free(propInvModel);
         parameterCount_ += propInvSimplex->K - 1;
     }
+    categoryCount_ = siteModel_->cat_count;
 }
 
 void DiscretizedSiteModelInterface::SetParameter(double parameter) {
@@ -479,6 +531,17 @@ void DiscretizedSiteModelInterface::GetParameters(double *parameters) {
         parameters[shift] = Parameter_value(siteModel_->mu);
         shift++;
     }
+}
+
+void DiscretizedSiteModelInterface::GetRates(double *rates) {
+    siteModel_->update(siteModel_);
+    memcpy(rates, siteModel_->cat_rates, sizeof(double) * siteModel_->cat_count);
+}
+
+void DiscretizedSiteModelInterface::GetProportions(double *proportions) {
+    siteModel_->update(siteModel_);
+    memcpy(proportions, siteModel_->cat_proportions,
+           sizeof(double) * siteModel_->cat_count);
 }
 
 void WeibullSiteModelInterface::SetShape(double shape) {

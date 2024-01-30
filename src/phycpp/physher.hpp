@@ -25,7 +25,7 @@ enum class GradientFlags {
 };
 
 enum class TreeLikelihoodGradientFlags {
-    TREE_HEIGHT = TREELIKELIHOOD_FLAG_TREE,
+    TREE_HEIGHT = TREELIKELIHOOD_FLAG_TREE_MODEL,
     SITE_MODEL = TREELIKELIHOOD_FLAG_SITE_MODEL,
     SUBSTITUTION_MODEL = TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL,
     SUBSTITUTION_MODEL_RATES = TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_RATES,
@@ -133,7 +133,20 @@ class UnRootedTreeModelInterface : public TreeModelInterface {
     void GetParameters(double *parameters) override {}
 };
 
-class ReparameterizedTimeTreeModelInterface : public TreeModelInterface {
+class TimeTreeModelInterface : public TreeModelInterface {
+   public:
+    TimeTreeModelInterface(const std::string &newick,
+                           const std::vector<std::string> &taxa,
+                           const std::vector<double> dates);
+
+    void SetParameters(const double *parameters) override;
+
+    void GetParameters(double *parameters) override;
+
+    virtual void GetNodeHeights(double *heights);
+};
+
+class ReparameterizedTimeTreeModelInterface : public TimeTreeModelInterface {
    public:
     ReparameterizedTimeTreeModelInterface(const std::string &newick,
                                           const std::vector<std::string> &taxa,
@@ -142,9 +155,9 @@ class ReparameterizedTimeTreeModelInterface : public TreeModelInterface {
 
     void SetParameters(const double *parameters) override;
 
-    void GetParameters(double *parameters) override {}
+    void GetParameters(double *parameters) override;
 
-    void GetNodeHeights(double *heights);
+    void GetNodeHeights(double *heights) override;
 
     void GradientTransformJVP(double *gradient, const double *height_gradient);
 
@@ -256,6 +269,10 @@ class SiteModelInterface : public ModelInterface {
    public:
     void SetMu(double mu);
 
+    virtual void GetRates(double *rates) = 0;
+
+    virtual void GetProportions(double *proportions) = 0;
+
    protected:
     SiteModel *siteModel_;
 };
@@ -267,6 +284,10 @@ class ConstantSiteModelInterface : public SiteModelInterface {
     void SetParameters(const double *parameters) override;
 
     void GetParameters(double *parameters) override;
+
+    void GetRates(double *rates) override;
+
+    void GetProportions(double *proportions) override;
 };
 
 class InvariantSiteModelInterface : public SiteModelInterface {
@@ -278,6 +299,10 @@ class InvariantSiteModelInterface : public SiteModelInterface {
     void SetParameters(const double *parameters) override;
 
     void GetParameters(double *parameters) override;
+
+    void GetRates(double *rates) override;
+
+    void GetProportions(double *proportions) override;
 };
 
 class DiscretizedSiteModelInterface : public SiteModelInterface {
@@ -294,6 +319,15 @@ class DiscretizedSiteModelInterface : public SiteModelInterface {
     void SetParameters(const double *parameters) override;
 
     void GetParameters(double *parameters) override;
+
+    void GetRates(double *rates) override;
+
+    void GetProportions(double *proportions) override;
+
+    size_t GetCategoryCount() { return categoryCount_; }
+
+   protected:
+    size_t categoryCount_;
 };
 
 class WeibullSiteModelInterface : public DiscretizedSiteModelInterface {

@@ -188,7 +188,7 @@ void _model_prepare_gradient(Model* self, const Parameters* ps){
 		Parameter* p = Parameters_at(ps, i);
 		if ((p->model == MODEL_TREE || p->model == MODEL_TREE_TRANSFORM) && !prepare_tree) {
 			prepare_tree = true;
-			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_TREE;
+			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_TREE_MODEL;
 			if(!Tree_is_time_mode(tlk->tree)){
 				gradient_length += Tree_node_count(tlk->tree);
 			}
@@ -236,7 +236,7 @@ size_t TreeLikelihood_initialize_gradient(Model *self, int flags){
 	size_t gradient_length = 0;
 	tlk->include_root_freqs = true;
 	
-	int prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE;
+	int prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE_MODEL;
 	int prepare_site_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SITE_MODEL;
 	int prepare_branch_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_BRANCH_MODEL;
 	int prepare_substitution_model_unconstrained = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_UNCONSTRAINED;
@@ -253,7 +253,7 @@ size_t TreeLikelihood_initialize_gradient(Model *self, int flags){
 		prepare_site_model = tlk->sm->proportions != NULL || Parameters_count(tlk->sm->rates) > 0 || tlk->sm->mu != NULL;
 		prepare_branch_model = tlk->bm!= NULL;
 		prepare_substitution_model = tlk->m->dPdp != NULL;
-		tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_TREE;
+		tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_TREE_MODEL;
 		if(prepare_site_model){
 			tlk->prepared_gradient |= TREELIKELIHOOD_FLAG_SITE_MODEL;
 		}
@@ -355,7 +355,7 @@ double _singleTreeLikelihood_dlogP_prepared(Model *self, const Parameter* p){
 		tlk->update_upper = false;
 	}
 	
-	int prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE;
+	int prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE_MODEL;
 	int prepare_site_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SITE_MODEL;
 	int prepare_branch_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_BRANCH_MODEL;
 	int prepare_substitution_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_UNCONSTRAINED;
@@ -3205,7 +3205,7 @@ void TreeLikelihood_calculate_gradient( Model *model, double* grads ){
 		pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
 	}
 	
-	bool prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE;
+	bool prepare_tree = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_TREE_MODEL;
 	bool prepare_site_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SITE_MODEL;
 	bool prepare_branch_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_BRANCH_MODEL;
 	bool prepare_substitution_model = tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_UNCONSTRAINED || tlk->prepared_gradient & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL;

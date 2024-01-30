@@ -285,7 +285,7 @@ char* test_piecewise_linear() {
 
     double logP = model->logP(model);
     double logP2 = -11.08185677776700117647;
-    mu_assert(fabs(logP - logP2) < 0.00001, "logP not matching");
+    mu_assert(fabs(logP - logP2) < 0.00001, "test_piecewise_linear: logP not matching");
 
     size_t gradient_size = Coalescent_initialize_gradient(
         model, GRADIENT_FLAG_COALESCENT_THETA | GRADIENT_FLAG_TREE_HEIGHTS);
@@ -298,12 +298,12 @@ char* test_piecewise_linear() {
     double* gradient = Coalescent_gradient(model);
     for (int i = 0; i < 5; i++) {
         mu_assert(fabs(gradient[i] - true_gradient_thetas[i]) < 0.00001,
-                  "d.logP/d.time not matching");
+                  "test_piecewise_linear: d.logP/d.time not matching");
     }
 
     for (int i = 0; i < 3; i++) {
         mu_assert(fabs(gradient[i + 5] - true_gradient_heights[i]) < 0.00001,
-                  "d.logP/d.theta not matching");
+                  "test_piecewise_linear: d.logP/d.theta not matching");
     }
 
     model->free(model);
