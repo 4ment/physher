@@ -405,7 +405,7 @@ class CTMCScaleModelInterface : public CallableModelInterface {
 
     void SetParameters(const double *parameters) override;
 
-    void GetParameters(double *parameters) override {}
+    void GetParameters(double *parameters) override;
 
    protected:
     DistributionModel *ctmcScale_;
@@ -416,7 +416,7 @@ class CTMCScaleModelInterface : public CallableModelInterface {
 
 class CoalescentModelInterface : public CallableModelInterface {
    protected:
-    explicit CoalescentModelInterface(TreeModelInterface *treeModel)
+    explicit CoalescentModelInterface(TimeTreeModelInterface *treeModel)
         : treeModel_(treeModel) {}
 
    public:
@@ -433,30 +433,31 @@ class CoalescentModelInterface : public CallableModelInterface {
     Coalescent *coalescent_;
 
    private:
-    TreeModelInterface *treeModel_;
+    TimeTreeModelInterface *treeModel_;
 };
 
 class ConstantCoalescentModelInterface : public CoalescentModelInterface {
    public:
-    ConstantCoalescentModelInterface(double theta, TreeModelInterface *treeModel);
+    ConstantCoalescentModelInterface(double theta, TimeTreeModelInterface *treeModel);
+    double LogLikelihood2() { return 0.0; }
 };
 
 class PiecewiseConstantCoalescentInterface : public CoalescentModelInterface {
    public:
     PiecewiseConstantCoalescentInterface(const std::vector<double> &thetas,
-                                         TreeModelInterface *treeModel);
+                                         TimeTreeModelInterface *treeModel);
 };
 
 class PiecewiseConstantCoalescentGridInterface : public CoalescentModelInterface {
    public:
     PiecewiseConstantCoalescentGridInterface(const std::vector<double> &thetas,
-                                             TreeModelInterface *treeModel,
+                                             TimeTreeModelInterface *treeModel,
                                              double cutoff);
 };
 
 class PiecewiseLinearCoalescentGridInterface : public CoalescentModelInterface {
    public:
     PiecewiseLinearCoalescentGridInterface(const std::vector<double> &thetas,
-                                           TreeModelInterface *treeModel,
+                                           TimeTreeModelInterface *treeModel,
                                            double cutoff);
 };

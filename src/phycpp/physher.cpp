@@ -85,9 +85,10 @@ void TimeTreeModelInterface::SetParameters(const double *parameters) {
     Node **nodes = Tree_nodes(tree_);
     for (size_t i = 0; i < nodeCount_; i++) {
         if (!Node_isleaf(nodes[i])) {
-            Node_set_height(nodes[i], parameters[nodes[i]->class_id]);
+            Node_set_height_quietly(nodes[i], parameters[nodes[i]->class_id]);
         }
     }
+    model_->listeners->fire(model_->listeners, model_, -1);
 }
 
 void TimeTreeModelInterface::GetParameters(double *parameters) {
@@ -696,6 +697,10 @@ void CTMCScaleModelInterface::SetParameters(const double *parameters) {
     Parameters_set_values(ctmcScale_->x, parameters);
 }
 
+void CTMCScaleModelInterface::GetParameters(double *parameters) {
+    Parameters_store_value(ctmcScale_->x, parameters);
+}
+
 void CoalescentModelInterface::RequestGradient(std::vector<GradientFlags> flags) {
     int flags_int = 0;
     for (auto flag : flags) {
@@ -717,7 +722,7 @@ void CoalescentModelInterface::GetParameters(double *parameters) {
 }
 
 ConstantCoalescentModelInterface::ConstantCoalescentModelInterface(
-    double theta, TreeModelInterface *treeModel)
+    double theta, TimeTreeModelInterface *treeModel)
     : CoalescentModelInterface(treeModel) {
     Parameter *theta_param =
         new_Parameter("constant.theta", theta, new_Constraint(0, INFINITY));
@@ -731,7 +736,7 @@ ConstantCoalescentModelInterface::ConstantCoalescentModelInterface(
 }
 
 PiecewiseConstantCoalescentInterface::PiecewiseConstantCoalescentInterface(
-    const std::vector<double> &thetas, TreeModelInterface *treeModel)
+    const std::vector<double> &thetas, TimeTreeModelInterface *treeModel)
     : CoalescentModelInterface(treeModel) {
     Parameters *thetas_param = new_Parameters(thetas.size());
     for (const auto &theta : thetas) {
@@ -749,7 +754,7 @@ PiecewiseConstantCoalescentInterface::PiecewiseConstantCoalescentInterface(
 }
 
 PiecewiseConstantCoalescentGridInterface::PiecewiseConstantCoalescentGridInterface(
-    const std::vector<double> &thetas, TreeModelInterface *treeModel, double cutoff)
+    const std::vector<double> &thetas, TimeTreeModelInterface *treeModel, double cutoff)
     : CoalescentModelInterface(treeModel) {
     Parameters *thetas_param = new_Parameters(thetas.size());
     for (const auto &theta : thetas) {
@@ -767,7 +772,7 @@ PiecewiseConstantCoalescentGridInterface::PiecewiseConstantCoalescentGridInterfa
 }
 
 PiecewiseLinearCoalescentGridInterface::PiecewiseLinearCoalescentGridInterface(
-    const std::vector<double> &thetas, TreeModelInterface *treeModel, double cutoff)
+    const std::vector<double> &thetas, TimeTreeModelInterface *treeModel, double cutoff)
     : CoalescentModelInterface(treeModel) {
     Parameters *thetas_param = new_Parameters(thetas.size());
     for (const auto &theta : thetas) {
