@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5)
 
 SET(DEFAULT_SSE_LEVEL "sse3")
 
@@ -8,7 +8,7 @@ SET( LIBRARY_NAME "PHYC" )
 
 SET( ${LIBRARY_NAME}_MAJOR_VERSION 2 )
 SET( ${LIBRARY_NAME}_MINOR_VERSION 0 )
-SET( ${LIBRARY_NAME}_PATCH_LEVEL 0 )
+SET( ${LIBRARY_NAME}_PATCH_LEVEL 1-dev )
 
 
 #####################################################################
@@ -144,65 +144,22 @@ ENDIF(USE_AVX_SUPPORT)
 #####################################################################
 
 IF(USE_SSE_SUPPORT)
-	
-	IF(AUTO_SSE_SUPPORT)
-		SET(SSE_C_TESTS "sse4_2" "sse4_1" "sse4" "sse3" "sse2" "sse")
-		
-		message(STATUS "Checking SSE instructions support by current CPU")
-		foreach(sse_test ${SSE_C_TESTS})
-			#IF(NOT SSE_FOUND)
-				IF(WIN32)
-					SET(SSE_CHECK_COMMAND "FAILURE")
-				elseif(APPLE)
-					SET(SSE_CHECK_COMMAND "sysctl -a | grep ${sse_test}")
-				else()#other os
-					SET(SSE_CHECK_COMMAND "grep ${sse_test} /proc/cpuinfo")
-				ENDIF(WIN32)
-				
-				#execute_process(COMMAND ${SSE_CHECK_COMMAND} RESULT_VARIABLE ret_var OUTPUT_VARIABLE out_var)
-				execute_process(COMMAND sh -c ${SSE_CHECK_COMMAND} OUTPUT_VARIABLE out_var)
-	
-				IF(NOT out_var STREQUAL "")
-					SET(SSE_FOUND TRUE)
-					MESSAGE(STATUS "${sse_test} detected and working")
-					set(USE_SSE_SET ${sse_test})
-					
-					STRING(REGEX REPLACE "_" "." USE_SSE_SET ${USE_SSE_SET}) 
-					SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m${USE_SSE_SET}")
-					
-					#string(TOUPPER ${USE_SSE_SET} UPPER)
-					#SET(UPPER "__${UPPER}__")
-					#add_definitions("-D${UPPER}")
-					#MESSAGE(STATUS "${UPPER}")
-			
-				ENDIF(NOT out_var STREQUAL "")
-	
-			#ENDIF(NOT SSE_FOUND)
-		endforeach(sse_test)
-		
-		IF(NOT SSE_FOUND)
-			message(STATUS "SSE not supported")
-			SET(${LIBRARY_NAME}_SSE_ENABLED, "0")
-		ELSE(NOT SSE_FOUND)
-			add_definitions("-DSSE3_ENABLED")
-			
-			STRING(REGEX REPLACE "_" "." USE_SSE_SET ${USE_SSE_SET}) 
-			SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m${USE_SSE_SET}")
-			SET(${LIBRARY_NAME}_SSE_ENABLED "1")
-			SET(${LIBRARY_NAME}_SSE_LEVEL ${USE_SSE_SET})
-		ENDIF(NOT SSE_FOUND)
-	ELSE(AUTO_SSE_SUPPORT)		
-		IF(NOT SSE_LEVEL)
-			SET(SSE_LEVEL ${DEFAULT_SSE_LEVEL})
-		ENDIF(NOT SSE_LEVEL)
-		
-		message(STATUS "Using SSE ${SSE_LEVEL}")
+	IF(NOT SSE_LEVEL)
+		SET(SSE_LEVEL ${DEFAULT_SSE_LEVEL})
+	ENDIF(NOT SSE_LEVEL)
 
-		add_definitions("-DSSE3_ENABLED")
+	add_definitions("-DSSE3_ENABLED")
+
+	IF(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+		MESSAGE(STATUS "Using sse2neon for arm64 Apple M1")
+		SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv8-a+fp+simd+crypto+crc")
+	ELSE()
+		MESSAGE(STATUS "Using SSE ${SSE_LEVEL}")
 		SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m${SSE_LEVEL}")
-		SET(${LIBRARY_NAME}_SSE_ENABLED "1")
-		SET(${LIBRARY_NAME}_SSE_LEVEL ${SSE_LEVEL})
-	ENDIF(AUTO_SSE_SUPPORT)
+	ENDIF()
+
+	SET(${LIBRARY_NAME}_SSE_ENABLED "1")
+	SET(${LIBRARY_NAME}_SSE_LEVEL ${SSE_LEVEL})
 ELSE(USE_SSE_SUPPORT)
 	SET(${LIBRARY_NAME}_SSE_ENABLED "0")
 	SET(${LIBRARY_NAME}_SSE_LEVEL "0")
@@ -326,6 +283,11 @@ ELSE()
 	file(GLOB SRC_FILES src/phyc/*.c)
 	file(GLOB HEADER_FILES src/phyc/*.h)
 ENDIF(DISABLE_GSL)
+
+include_directories("${PROJECT_SOURCE_DIR}/contrib")
+SET(HEADER_FILES "${HEADER_FILES};${PROJECT_BINARY_DIR}/phyc/neon2sse.h")
+file(COPY ${PROJECT_SOURCE_DIR}/contrib/neon2sse.h
+  DESTINATION ${PROJECT_BINARY_DIR}/phyc)
 
 SET(HEADER_FILES "${HEADER_FILES};${PROJECT_BINARY_DIR}/phyc/PhyCConfig.h")
 

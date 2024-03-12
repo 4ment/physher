@@ -22,9 +22,13 @@
 #include <math.h>
 
 #ifdef SSE3_ENABLED
-#include <xmmintrin.h>
+#if defined(__aarch64__)
+#include "neon2sse.h"
+#else
+#include <xmmintrin.h> // SSE
 #include <pmmintrin.h> // SSE3
 /*#include <tmmintrin.h>*/
+#endif
 #endif
 
 #ifdef _OPENMP

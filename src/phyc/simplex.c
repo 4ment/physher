@@ -178,7 +178,7 @@ Simplex* new_Simplex_with_values(const char* name, const double *x, size_t K){
         sum += x[i];
     }
     if(fabs(sum - 1.0) > 0.0001) {
-        fprintf(stderr, "simplex %s does not sum to 1.0 (+- 0.0001)\n", name);
+        fprintf(stderr, "simplex %s does not sum to 1.0 (+- 0.0001) %f\n", name, sum);
         exit(1);
     }
 
@@ -331,6 +331,7 @@ Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
 	
     char* id = get_json_node_value_string(node, "id");
 	json_node* values = get_json_node(node, "values");
+	json_node* dimension_node = get_json_node(node, "dimension");
 	Simplex* simplex = NULL;
 	
 	if(values != NULL){
@@ -362,9 +363,17 @@ Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
 		simplex = new_Simplex_with_values(id, x, values->child_count);
 		free(x);
 	}
+	else if(dimension_node != NULL){
+		size_t dimension = get_json_node_value_size_t(node, "dimension", 0);
+		if(dimension < 2){
+            fprintf(stderr, "the dimension (%lu) of simplex %s should be greater than 1\n", dimension, id);
+            exit(1);
+		}
+		simplex = new_Simplex(id, dimension);
+	}
 	else{
-		json_node* dimension = get_json_node(node, "dimension");
-		simplex = new_Simplex(id, atoi((char*)dimension->value));
+		fprintf(stderr, "simplex %s requires a `dimension' or `values' attribute\n", id);
+        exit(1);
 	}
 	Model* model = new_SimplexModel(id, simplex);
 	return model;

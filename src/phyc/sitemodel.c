@@ -696,7 +696,7 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 #else
 			for ( ; i < sm->cat_count - cat; i++) {
 				sm->cat_rates[i + cat] = qgamma( quantiles[i+cat], alpha, alpha );
-				if(isnan(sm->cat_rates[j + cat])){
+				if(isnan(sm->cat_rates[i + cat])){
 					break;
 				}
 			}

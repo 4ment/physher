@@ -24,10 +24,14 @@
 #include "matrix.h"
 
 #ifdef SSE3_ENABLED
+#if defined(__aarch64__)
+#include "neon2sse.h"
+#else
 //#include <xmmintrin.h> // SSE
 //#include <emmintrin.h> // SSE2
 #include <pmmintrin.h> // SSE3
 //#include <tmmintrin.h> // SSSE3
+#endif
 #endif
 
 #if 0

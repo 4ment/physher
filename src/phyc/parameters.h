@@ -350,7 +350,6 @@ struct _Model {
 	double (*sample_evaluate)(Model*);
 	
 	ListenerList *listeners;
-	bool need_update;
 	int ref_count;
 	
 	void(*store)(Model*);

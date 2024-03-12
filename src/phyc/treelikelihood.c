@@ -42,8 +42,12 @@
 #include "treelikelihoodCodon.h"
 
 #ifdef SSE3_ENABLED
+#if defined(__aarch64__)
+#include "neon2sse.h"
+#else
 #include <xmmintrin.h> // SSE
 #include <pmmintrin.h> // SSE3
+#endif
 #endif
 
 #ifdef AVX_ENABLED

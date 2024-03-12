@@ -24,9 +24,13 @@
 #include "treelikelihood.h"
 
 #ifdef SSE3_ENABLED
+#if defined(__aarch64__)
+#include "neon2sse.h"
+#else
 #include <xmmintrin.h> // SSE
 #include <pmmintrin.h> // SSE3
 //#include <tmmintrin.h> // SSSE3
+#endif
 #endif
 
 // I get 6% increase in speed for a codon dataset (2.09s vs. 2.21s)

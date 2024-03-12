@@ -1335,11 +1335,8 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		json_node* ratios_node = get_json_node(node, "ratios");
 		json_node* root_height_node = get_json_node(node, "root_height");
 		p = get_json_node_value_string(node, "reparam");
-		if (ratios_node != NULL && p != NULL){
-			fprintf(stderr, "Choose either ratios or reparam to parameterize the tree model\n");
-			exit(2);
-		}
-		if(ratios_node != NULL){
+
+		if(ratios_node != NULL && ratios_node->node_type == MJSON_OBJECT){
 			Parameters_set_name2(tree->tt->parameters, "reparam");
 			Hashtable_add(hash, Parameters_name2(tree->tt->parameters), tree->tt->parameters);
 
@@ -1380,6 +1377,14 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			Hashtable_add(hash, Parameters_name2(tree->tt->parameters), tree->tt->parameters);
 			for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
 				Hashtable_add(hash, Parameters_name(tree->tt->parameters, i), Parameters_at(tree->tt->parameters, i));
+			}
+			if(ratios_node != NULL && ratios_node->node_type == MJSON_STRING){
+				char* ratiosID = get_json_node_value_string(node, "ratios");
+				char* rootID = get_json_node_value_string(node, "root_height");
+				Parameters_set_name2(tree->tt->ratios, ratiosID);
+				Parameter_set_name(tree->tt->rootHeight, rootID);
+				Hashtable_add(hash, Parameter_name(tree->tt->rootHeight), tree->tt->rootHeight);
+				Hashtable_add(hash, Parameters_name2(tree->tt->ratios), tree->tt->ratios);
 			}
 		}
 		

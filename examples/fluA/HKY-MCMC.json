@@ -1,0 +1,320 @@
+{
+  "joint": {
+    "id": "joint",
+    "type": "compound",
+    "distributions": [
+      {
+        "id": "treelikelihood",
+        "type": "treelikelihood",
+        "include_jacobian": true,
+        "tree": {
+          "id": "tree",
+          "type": "tree",
+          "time": true,
+          "parameters": "tree.distances",
+          "heights": "tree.heights",
+          "reparam": "tree.scalers",
+          "ratios": "tree.ratios",
+          "root_height": "tree.root_height",
+          "dates": {
+            "A_Belgium_2_1981": 1981,
+            "A_ChristHospital_231_1982": 1982,
+            "A_Philippines_2_1982": 1982,
+            "A_Baylor1B_1983": 1983,
+            "A_Oita_3_1983": 1983,
+            "A_Texas_12764_1983": 1983,
+            "A_Alaska_8_1984": 1984,
+            "A_Caen_1_1984": 1984,
+            "A_Texas_17988_1984": 1984,
+            "A_Colorado_2_1987": 1987,
+            "A_Guangdong_9_1987": 1987,
+            "A_Guizhou_1_1987": 1987,
+            "A_LosAngeles_1987": 1987,
+            "A_Qingdao_10_1987": 1987,
+            "A_Shanghai_11_1987": 1987,
+            "A_Sichuan_2_1987": 1987,
+            "A_Sydney_1_1987": 1987,
+            "A_Tokyo_1275_1987": 1987,
+            "A_Victoria_7_1987": 1987,
+            "A_Alaska_9_1992": 1992,
+            "A_Beijing_32_1992": 1992,
+            "A_California_271_1992": 1992,
+            "A_Finland_205_1992": 1992,
+            "A_Harbin_15_1992": 1992,
+            "A_Hawaii_3_1992": 1992,
+            "A_Indonesia_3946_1992": 1992,
+            "A_Perth_1_1992": 1992,
+            "A_Qingdao_53_1992": 1992,
+            "A_Sapporo_304_1992": 1992,
+            "A_SouthAustralia_36_1992": 1992,
+            "A_Tianjin_33_1992": 1992,
+            "A_Umea_1_1992": 1992,
+            "A_Victoria_29_1992": 1992,
+            "A_Wellington_66_1992": 1992,
+            "A_Aichi_69_1994": 1994,
+            "A_Akita_1_1994": 1994,
+            "A_Argentina_3779_1994": 1994,
+            "A_England_67_1994": 1994,
+            "A_France_1109_1994": 1994,
+            "A_HongKong_1_1994": 1994,
+            "A_Johannesburg_33_1994": 1994,
+            "A_Mexico_3255_1994": 1994,
+            "A_Pennsylvania_7_1994": 1994,
+            "A_Romania_160_1994": 1994,
+            "A_Santiago_7198_1994": 1994,
+            "A_Shangdong_5_1994": 1994,
+            "A_Singapore_7_1994": 1994,
+            "A_Thailand_75_1994": 1994,
+            "A_Vermont_3_1994": 1994,
+            "A_Athens_1_1998": 1998,
+            "A_Christchurch_45_1998": 1998,
+            "A_Cordoba_V185_1998": 1998,
+            "A_Greece_103_1998": 1998,
+            "A_JOHANNESBURG_3_1998": 1998,
+            "A_MALMO_1_1998": 1998,
+            "A_Nagasaki_76_1998": 1998,
+            "A_Neuquen_V541_1998": 1998,
+            "A_PERTH_24_1998": 1998,
+            "A_Pusan_68_1998": 1998,
+            "A_Seoul_37_1998": 1998,
+            "A_Switzerland_7729_1998": 1998,
+            "A_Tucuman_V425_1998": 1998,
+            "A_Ushuaia_R127_1998": 1998,
+            "A_Waikato_12_1998": 1998,
+            "A_Czechoslovakia_4_1986": 1986,
+            "A_Leningrad_360_1986": 1986,
+            "A_Memphis_6_1986": 1986,
+            "A_Wellington_4_1985": 1985,
+            "A_Tonga_23_1985": 1985
+          },
+          "file": "fluA-rooted.nxs"
+        },
+        "sitemodel": {
+          "id": "sitemodel",
+          "type": "sitemodel"
+        },
+        "substitutionmodel": {
+          "id": "substmodel",
+          "type": "substitutionmodel",
+          "model": "hky",
+          "frequencies": {
+            "id": "frequencies",
+            "type": "simplex",
+            "values": [
+              0.25,
+              0.25,
+              0.25,
+              0.25
+            ]
+          },
+          "datatype": "nucleotide",
+          "rates": {
+            "kappa": {
+              "id": "kappa",
+              "type": "parameter",
+              "value": 1.0,
+              "lower": 0
+            }
+          }
+        },
+        "sitepattern": {
+          "id": "patterns",
+          "type": "sitepattern",
+          "datatype": "nucleotide",
+          "alignment": {
+            "id": "seqs",
+            "type": "alignment",
+            "file": "fluA.fa"
+          }
+        },
+        "branchmodel": {
+          "id": "branchmodel",
+          "type": "branchmodel",
+          "tree": "&tree",
+          "model": "strict",
+          "rate": {
+            "id": "rate",
+            "type": "parameter",
+            "value": 0.003,
+            "lower": 0.0
+          }
+        }
+      },
+      {
+        "id": "coalescent",
+        "type": "coalescent",
+        "model": "constant",
+        "parameters": {
+          "n0": {
+            "id": "n0",
+            "type": "parameter",
+            "value": 3,
+            "lower": 0.0,
+            "upper": "infinity"
+          }
+        },
+        "tree": "&tree"
+      },
+      {
+        "id": "coalescent.theta.prior",
+        "type": "distribution",
+        "distribution": "oneonx",
+        "x": "&n0"
+      },
+      {
+        "id": "priorrate",
+        "type": "distribution",
+        "distribution": "ctmcscale",
+        "x": "&rate",
+        "tree": "&tree"
+      },
+      {
+        "id": "priorfreqs",
+        "type": "distribution",
+        "distribution": "dirichlet",
+        "x": "&frequencies"
+      },
+      {
+        "id": "priorrates",
+        "type": "distribution",
+        "distribution": "lognormal",
+        "parameters": {
+          "mu": {
+            "id": "mean.kappa",
+            "type": "parameter",
+            "value": 1
+          },
+          "sigma": {
+            "id": "sigma.kappa",
+            "type": "parameter",
+            "value": 1.25,
+            "lower": 0.0
+          }
+        },
+        "x": [
+          "&kappa"
+        ]
+      }
+    ]
+  },
+  "physher": [
+    {
+      "id": "mcmc",
+      "type": "mcmc",
+      "model": "&joint",
+      "length": 1000000,
+      "log": [
+        {
+          "id": "screenlogger",
+          "type": "logger",
+          "every": 1000,
+          "models": [
+            "&joint",
+            "&treelikelihood"
+          ],
+          "x": [
+            "&tree.root_height",
+            "&rate",
+            "&n0"
+          ]
+        },
+        {
+          "id": "logger",
+          "type": "logger",
+          "file": "samples.log",
+          "every": 1000,
+          "models": [
+            "&joint",
+            "&treelikelihood",
+            "$frequencies"
+          ],
+          "x": [
+            "&tree.root_height",
+            "&kappa",
+            "&rate",
+            "&n0"
+          ]
+        },
+        {
+          "id": "treelogger",
+          "type": "logger",
+          "file": "samples.trees",
+          "every": 1000,
+          "models": "&tree"
+        }
+      ],
+      "operators": [
+        {
+          "id": "scaler",
+          "type": "operator",
+          "algorithm": "beta",
+          "x": "%tree.ratios",
+          "weight": 1
+        },
+        {
+          "id": "scaler",
+          "type": "operator",
+          "algorithm": "scaler",
+          "x": "&tree.root_height",
+          "weight": 1
+        },
+        {
+          "id": "slider",
+          "type": "operator",
+          "algorithm": "slider",
+          "x": "&tree.root_height",
+          "weight": 1
+        },
+        {
+          "id": "dirichlet",
+          "type": "operator",
+          "algorithm": "dirichlet",
+          "x": "$frequencies",
+          "weight": 1
+        },
+        {
+          "id": "scaler",
+          "type": "operator",
+          "algorithm": "scaler",
+          "x": "&kappa",
+          "weight": 1
+        },
+        {
+          "id": "slider",
+          "type": "operator",
+          "algorithm": "slider",
+          "x": "&kappa",
+          "weight": 1
+        },
+        {
+          "id": "scaler",
+          "type": "operator",
+          "algorithm": "scaler",
+          "x": "&rate",
+          "weight": 1
+        },
+        {
+          "id": "slider",
+          "type": "operator",
+          "algorithm": "slider",
+          "x": "&rate",
+          "weight": 1
+        },
+        {
+          "id": "scaler",
+          "type": "operator",
+          "algorithm": "scaler",
+          "x": "&n0",
+          "weight": 1
+        },
+        {
+          "id": "slider",
+          "type": "operator",
+          "algorithm": "slider",
+          "x": "&n0",
+          "weight": 1
+        }
+      ]
+    }
+  ]
+}

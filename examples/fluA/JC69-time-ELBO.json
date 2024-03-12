@@ -1,0 +1,266 @@
+{
+  "model": {
+    "id": "posterior",
+    "type": "compound",
+    "distributions": [
+      {
+        "id": "treelikelihood",
+        "type": "treelikelihood",
+        "include_jacobian": true,
+        "sse": true,
+        "tipstates": false,
+        "sitepattern": {
+          "id": "patterns",
+          "type": "sitepattern",
+          "datatype": "nucleotide",
+          "alignment": {
+            "id": "seqs",
+            "type": "alignment",
+            "file": "fluA.fa"
+          }
+        },
+        "sitemodel": {
+          "id": "sitemodel",
+          "type": "sitemodel",
+          "substitutionmodel": {
+            "id": "sm",
+            "type": "substitutionmodel",
+            "model": "jc69",
+            "datatype": "nucleotide",
+            "frequencies": {
+              "id": "freqs",
+              "type": "Simplex",
+              "values": [
+                0.25,
+                0.25,
+                0.25,
+                0.25
+              ]
+            }
+          }
+        },
+        "tree": {
+          "id": "tree",
+          "type": "tree",
+          "time": true,
+          "parameters": "tree.distances",
+          "heights": "tree.heights",
+          "reparam": "tree.scalers",
+          "dates": {
+            "A_Belgium_2_1981": 1981,
+            "A_ChristHospital_231_1982": 1982,
+            "A_Philippines_2_1982": 1982,
+            "A_Baylor1B_1983": 1983,
+            "A_Oita_3_1983": 1983,
+            "A_Texas_12764_1983": 1983,
+            "A_Alaska_8_1984": 1984,
+            "A_Caen_1_1984": 1984,
+            "A_Texas_17988_1984": 1984,
+            "A_Colorado_2_1987": 1987,
+            "A_Guangdong_9_1987": 1987,
+            "A_Guizhou_1_1987": 1987,
+            "A_LosAngeles_1987": 1987,
+            "A_Qingdao_10_1987": 1987,
+            "A_Shanghai_11_1987": 1987,
+            "A_Sichuan_2_1987": 1987,
+            "A_Sydney_1_1987": 1987,
+            "A_Tokyo_1275_1987": 1987,
+            "A_Victoria_7_1987": 1987,
+            "A_Alaska_9_1992": 1992,
+            "A_Beijing_32_1992": 1992,
+            "A_California_271_1992": 1992,
+            "A_Finland_205_1992": 1992,
+            "A_Harbin_15_1992": 1992,
+            "A_Hawaii_3_1992": 1992,
+            "A_Indonesia_3946_1992": 1992,
+            "A_Perth_1_1992": 1992,
+            "A_Qingdao_53_1992": 1992,
+            "A_Sapporo_304_1992": 1992,
+            "A_SouthAustralia_36_1992": 1992,
+            "A_Tianjin_33_1992": 1992,
+            "A_Umea_1_1992": 1992,
+            "A_Victoria_29_1992": 1992,
+            "A_Wellington_66_1992": 1992,
+            "A_Aichi_69_1994": 1994,
+            "A_Akita_1_1994": 1994,
+            "A_Argentina_3779_1994": 1994,
+            "A_England_67_1994": 1994,
+            "A_France_1109_1994": 1994,
+            "A_HongKong_1_1994": 1994,
+            "A_Johannesburg_33_1994": 1994,
+            "A_Mexico_3255_1994": 1994,
+            "A_Pennsylvania_7_1994": 1994,
+            "A_Romania_160_1994": 1994,
+            "A_Santiago_7198_1994": 1994,
+            "A_Shangdong_5_1994": 1994,
+            "A_Singapore_7_1994": 1994,
+            "A_Thailand_75_1994": 1994,
+            "A_Vermont_3_1994": 1994,
+            "A_Athens_1_1998": 1998,
+            "A_Christchurch_45_1998": 1998,
+            "A_Cordoba_V185_1998": 1998,
+            "A_Greece_103_1998": 1998,
+            "A_JOHANNESBURG_3_1998": 1998,
+            "A_MALMO_1_1998": 1998,
+            "A_Nagasaki_76_1998": 1998,
+            "A_Neuquen_V541_1998": 1998,
+            "A_PERTH_24_1998": 1998,
+            "A_Pusan_68_1998": 1998,
+            "A_Seoul_37_1998": 1998,
+            "A_Switzerland_7729_1998": 1998,
+            "A_Tucuman_V425_1998": 1998,
+            "A_Ushuaia_R127_1998": 1998,
+            "A_Waikato_12_1998": 1998,
+            "A_Czechoslovakia_4_1986": 1986,
+            "A_Leningrad_360_1986": 1986,
+            "A_Memphis_6_1986": 1986,
+            "A_Wellington_4_1985": 1985,
+            "A_Tonga_23_1985": 1985
+          },
+          "file": "fluA-rooted.nxs"
+        },
+        "branchmodel": {
+          "id": "bm",
+          "type": "branchmodel",
+          "model": "strict",
+          "tree": "&tree",
+          "rate": {
+            "id": "rate",
+            "type": "parameter",
+            "value": 0.001,
+            "lower": 0
+          }
+        }
+      },
+      {
+        "id": "prior",
+        "type": "compound",
+        "distributions": [
+          {
+            "id": "coalescent",
+            "type": "coalescent",
+            "model": "constant",
+            "parameters": {
+              "n0": {
+                "id": "n0",
+                "type": "parameter",
+                "value": 10,
+                "lower": 0,
+                "upper": "infinity"
+              }
+            },
+            "tree": "&tree"
+          },
+          {
+            "id": "priortheta",
+            "type": "distribution",
+            "distribution": "oneonx",
+            "x": "&n0"
+          },
+          {
+            "id": "priorrate",
+            "type": "distribution",
+            "distribution": "ctmcscale",
+            "x": "&rate",
+            "tree": "&tree"
+          }
+        ]
+      }
+    ]
+  },
+  "varmodel": {
+    "id": "varnormal",
+    "type": "variational",
+    "posterior": "&posterior",
+    "elbosamples": 100,
+    "gradsamples": 1,
+    "distributions": [
+      {
+        "id": "block1",
+        "type": "block",
+        "distribution": "normal",
+        "x": "%tree.scalers",
+        "initialize": true,
+        "parameters": {
+          "mu": {
+            "id": "mu",
+            "type": "parameter",
+            "values": [
+              0.5
+            ],
+            "dimension": 68
+          },
+          "sigma": {
+            "id": "sigma",
+            "type": "parameter",
+            "values": [
+              0.15
+            ],
+            "lower": 0,
+            "dimension": 68
+          }
+        }
+      },
+      {
+        "id": "block2",
+        "type": "block",
+        "distribution": "normal",
+        "x": "&n0",
+        "parameters": {
+          "mu": {
+            "id": "mu.theta",
+            "type": "parameter",
+            "value": 1.45
+          },
+          "sigma": {
+            "id": "sigma.theta",
+            "type": "parameter",
+            "value": 0.13,
+            "lower": 0
+          }
+        }
+      },
+      {
+        "id": "block3",
+        "type": "block",
+        "distribution": "normal",
+        "x": "&rate",
+        "initialize": true,
+        "parameters": {
+          "mu": {
+            "id": "mu.rate",
+            "type": "parameter",
+            "value": -5.6
+          },
+          "sigma": {
+            "id": "sigma.rate",
+            "type": "parameter",
+            "value": 0.07,
+            "lower": 0
+          }
+        }
+      }
+    ]
+  },
+  "physher": [
+    {
+      "id": "sg",
+      "algorithm": "sg",
+      "type": "optimizer",
+      "tol": 1e-05,
+      "eta": 0.1,
+      "model": "&varnormal",
+      "update": "adam",
+      "checkpoint": "checkpoint.jon",
+      "parameters": [
+        "%mu",
+        "%sigma",
+        "&mu.rate",
+        "&sigma.rate",
+        "&mu.theta",
+        "&sigma.theta"
+      ],
+      "max": 10000
+    }
+  ]
+}

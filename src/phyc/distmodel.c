@@ -144,7 +144,6 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	if(dm->tempx != NULL) clone->tempx = clone_dvector(dm->tempx, Parameters_count(dm->x));
 	clone->lp = dm->lp;
     clone->stored_lp = dm->stored_lp;
-	clone->need_update = dm->need_update;
 	clone->shift = dm->shift;
 	clone->type = dm->type;
 	clone->parameterization = dm->parameterization;
@@ -154,7 +153,6 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
     clone->data = NULL;
 	clone->gradient = NULL;
 	clone->gradient_length = dm->gradient_length;
-	clone->need_update = dm->need_update;
 	clone->need_update_gradient = dm->need_update_gradient;
 	clone->prepared_gradient = dm->prepared_gradient;
 	if(dm->gradient != NULL){
@@ -470,7 +468,7 @@ static Model* _dist_model_clone( Model *self, Hashtable* hash ){
 	clone->lp = self->lp;
 	clone->sample = self->sample;
 	clone->samplable = self->samplable;
-    clone->need_update = self->need_update;
+    // clone->need_update = self->need_update;
 	return clone;
 }
 
