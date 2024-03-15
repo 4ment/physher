@@ -420,7 +420,7 @@ int * args_get_pint( int argc, char* argv[], const char flag[] ){
 	return option;
 }
 
-int args_get_int( int argc, char* argv[], const char flag[], bool *success ){
+int args_get_int2( int argc, char* argv[], const char flag[], bool *success ){
     int i = 0;
     char *str = NULL;
     
@@ -444,6 +444,54 @@ int args_get_int( int argc, char* argv[], const char flag[], bool *success ){
 	}
 	*success = false;
 	return 0;
+}
+
+int args_get_int( int argc, char* argv[], const char flag[], int defaultv ){
+    int i = 0;
+    char *str = NULL;
+    
+    for ( ; i < argc; i++) {
+        if ( strncmp(argv[i], flag, strlen(flag)) == 0  ) {
+            str = NULL;
+            if( strlen(argv[i]) > strlen(flag) ){
+                str = argv[i]+strlen(flag);
+            }
+            else if( i+1 < argc ){
+                str = argv[i+1];
+            }
+            
+            if( str != NULL && isInt(str) ){
+                return atoi( str );
+            }
+            break;
+        }
+        
+	}
+	return defaultv;
+}
+
+long args_get_long( int argc, char* argv[], const char flag[], long defaultv ){
+    int i = 0;
+    char *str = NULL;
+    
+    for ( ; i < argc; i++) {
+        if ( strncmp(argv[i], flag, strlen(flag)) == 0  ) {
+            str = NULL;
+            if( strlen(argv[i]) > strlen(flag) ){
+                str = argv[i]+strlen(flag);
+            }
+            else if( i+1 < argc ){
+                str = argv[i+1];
+            }
+            
+            if( str != NULL && isInt(str) ){
+                return atoi( str );
+            }
+            break;
+        }
+        
+	}
+	return defaultv;
 }
 
 double * args_get_pdouble( int argc, char* argv[], const char flag[] ){

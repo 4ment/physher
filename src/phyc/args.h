@@ -87,7 +87,11 @@ char * args_get_string( int argc, char* argv[], const char flag[] );
 
 int * args_get_pint( int argc, char* argv[], const char flag[] );
 
-int args_get_int( int argc, char* argv[], const char flag[], bool *success );
+int args_get_int2( int argc, char* argv[], const char flag[], bool *success );
+
+int args_get_int( int argc, char* argv[], const char flag[], int defaultv );
+
+long args_get_long( int argc, char* argv[], const char flag[], long defaultv );
 
 double * args_get_pdouble( int argc, char* argv[], const char flag[] );
 

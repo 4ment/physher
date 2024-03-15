@@ -61,7 +61,7 @@ int main(int argc, char* argv[]){
 	
     if ( args_contains(argc, argv, "-c") ) {
         bool success = false;
-        nclasses = args_get_int(argc, argv, "-c", &success );
+        nclasses = args_get_int2(argc, argv, "-c", &success );
         if( !success || nclasses <= 0 ){
             error("Could not read the number of classes [-c]");
         }

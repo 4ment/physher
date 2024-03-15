@@ -8,7 +8,7 @@ SET( LIBRARY_NAME "PHYC" )
 
 SET( ${LIBRARY_NAME}_MAJOR_VERSION 2 )
 SET( ${LIBRARY_NAME}_MINOR_VERSION 0 )
-SET( ${LIBRARY_NAME}_PATCH_LEVEL 1-dev )
+SET( ${LIBRARY_NAME}_PATCH_LEVEL 0 )
 
 
 #####################################################################
@@ -183,12 +183,21 @@ ENDIF()
 # Config header file
 #####################################################################
 
+execute_process(
+  COMMAND git tag --points-at HEAD
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_HEAD_TAG
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+
 # Get the current working branch
 execute_process(
   COMMAND git rev-parse --abbrev-ref HEAD
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   OUTPUT_VARIABLE GIT_BRANCH
   OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
 )
 
 # Get the latest abbreviated commit hash of the working branch
@@ -197,6 +206,7 @@ execute_process(
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   OUTPUT_VARIABLE GIT_COMMIT_HASH
   OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
 )
 
 configure_file (
@@ -338,7 +348,7 @@ IF(NOT DISABLE_GSL)
 	target_link_libraries(phyc GSL::gsl GSL::gslcblas)
 ENDIF()
 
-IF(NOT LIBRARY_ONLY)	
+IF(NOT LIBRARY_ONLY AND NOT DISABLE_GSL)
 	add_executable(physher src/physher.c)
 	target_link_libraries(physher phyc)
 

@@ -11,6 +11,9 @@ target_link_libraries(test_distributions phyc)
 add_executable(test_coalescent test_coalescent.c)
 target_link_libraries(test_coalescent phyc)
 
+add_executable(test_simplex test_simplex.c)
+target_link_libraries(test_simplex phyc)
+
 add_executable(test_tree test_tree.c)
 target_link_libraries(test_tree phyc)
 
@@ -38,6 +41,9 @@ add_test (NAME Test_coalescent
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_coalescent)
 
+add_test (NAME Test_simplex
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_simplex)
 add_test (NAME Test_tree
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_tree)

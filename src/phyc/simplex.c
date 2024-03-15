@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "matrix.h"
+#include "transforms.h"
 
 // free to constrained
 void _inverse_transform(const Parameters* parameters, double* values){
@@ -52,6 +53,27 @@ void _transform_stick(const double* values, Parameters* parameters){
 	for (int i = 0; i < N; i++) {
 		Parameters_set_value(parameters, i, values[i]/stick);
 		stick -= values[i];
+	}
+}
+
+void _inverse_transform_stick_stan(const Parameters* parameters, double* values){
+	size_t N = Parameters_count(parameters); // N=K-1
+	double stick = 1.0;
+	for(size_t k = 0; k < N; k++){
+		double z = inverse_logit(Parameters_value(parameters, k) - log(N-k));
+		values[k] = stick * z;
+		stick -= values[k];
+	}
+	values[N] = stick;
+}
+
+void _transform_stick_stan(const double* values, Parameters* parameters){
+	size_t N = Parameters_count(parameters); // N=K-1
+	double sum = 0;
+	for (size_t i = 0; i < N; i++) {
+		double z = values[i] / (1.0 - sum);
+		Parameters_set_value(parameters, i, logit(z) + log(N-i));
+		sum += values[i];
 	}
 }
 
@@ -103,6 +125,27 @@ double get_value(Simplex* simplex, int i){
 	return simplex->values[i];
 }
 
+void set_values_stan(Simplex* simplex, const double* values){
+	memcpy(simplex->values, values, sizeof(double)*simplex->K);
+	_transform_stick_stan(simplex->values, simplex->parameters);
+}
+
+const double* get_values_stan(Simplex* simplex){
+	if (simplex->need_update) {
+		_inverse_transform_stick_stan(simplex->parameters, simplex->values);
+		simplex->need_update  = false;
+	}
+	return simplex->values;
+}
+
+double get_value_stan(Simplex* simplex, int i){
+	if (simplex->need_update) {
+		_inverse_transform_stick_stan(simplex->parameters, simplex->values);
+		simplex->need_update  = false;
+	}
+	return simplex->values[i];
+}
+
 // dp/dphi_index
 void _simplex_gradient(Simplex* simplex, size_t index, double* gradient){
 	const double* freqs = simplex->get_values(simplex);
@@ -112,16 +155,28 @@ void _simplex_gradient(Simplex* simplex, size_t index, double* gradient){
 	gradient[index] = freqs[index]/p;
 	double cum = gradient[index];
 	for (size_t i = index+1; i <simplex->K-1; i++) {
-//		for (size_t j = 0; j < i; j++) {
-//			gradient[i] -= gradient[j];
-//		}
-//		gradient[i] *= Parameters_value(simplex->parameters, i);
 		gradient[i] = -cum*Parameters_value(simplex->parameters, i);
 		cum += gradient[i];
 	}
-//	for (size_t j = 0; j < simplex->K-1; j++) {
-//		gradient[simplex->K-1] -= gradient[j];
-//	}
+	gradient[simplex->K-1] = -cum;
+}
+
+// dp/dphi_index
+void _simplex_gradient_stan(Simplex* simplex, size_t index, double* gradient){
+	const double* freqs = simplex->get_values(simplex);
+	memset(gradient, 0, sizeof(double)*simplex->K);
+	
+	double p = Parameters_value(simplex->parameters, index);
+	double stickRemaining = 1.0;
+	for(size_t i = 0; i < index; i++){
+		stickRemaining -= freqs[i];
+	}
+	gradient[index] = stickRemaining * grad_inverse_logit(p - log(simplex->K-1-index));
+	double cum = gradient[index];
+	for (size_t i = index+1; i <simplex->K-1; i++) {
+		gradient[i] = -cum*inverse_logit(Parameters_value(simplex->parameters, i) - log(simplex->K-1-i));
+		cum += gradient[i];
+	}
 	gradient[simplex->K-1] = -cum;
 }
 
@@ -150,21 +205,24 @@ void _simplex4_gradient(Simplex* simplex, size_t index, double* gradient){
 	}
 }
 
-// x is a simplex of dimension K
-//Simplex* new_Simplex_with_parameters(const Parameters *x){
-//	Simplex* simplex = (Simplex*)malloc(sizeof(Simplex));
-//	simplex->K = Parameters_count(x);
-//	simplex->cparameters = new_Parameters(simplex->K);
-//	for(int i = 0; i < simplex->K; i++){
-//		Parameters_move(simplex->cparameters, Parameters_at(x, i));
-//	}
-//	simplex->values = dvector(simplex->K);
-//	simplex->get_values = get_values;
-//	simplex->need_update = true;
-//	return simplex;
-//}
+void Simplex_use_stan_transform(Simplex* simplex, bool use_stan){
+	if(use_stan){
+		simplex->get_values = get_values_stan;
+		simplex->get_value = get_value_stan;
+		simplex->set_values = set_values_stan;
+		simplex->gradient = _simplex_gradient_stan;
+	}
+	else{
+		simplex->get_values = get_values;
+		simplex->get_value = get_value;
+		simplex->set_values = set_values;
+		simplex->gradient = _simplex_gradient;
+	}
+	simplex->need_update = true;
+}
 
-// x is of dimension K
+// Simplex uses the reparameterization of Stan
+// If unconstrained parameters are all equal to zero then constrained values are all equal
 Simplex* new_Simplex_with_values(const char* name, const double *x, size_t K){
 	Simplex* simplex = (Simplex*)malloc(sizeof(Simplex));
 	simplex->K = K;
@@ -172,7 +230,6 @@ Simplex* new_Simplex_with_values(const char* name, const double *x, size_t K){
 	simplex->values = clone_dvector(x, K);
     StringBuffer* buffer = new_StringBuffer(10);
 	size_t N = K-1;
-	double stick = 1;
     double sum = 0;
     for(int i = 0; i < K; i++){
         sum += x[i];
@@ -187,50 +244,27 @@ Simplex* new_Simplex_with_values(const char* name, const double *x, size_t K){
         StringBuffer_append_format(buffer, "%s.phi%d", name, i);
         Constraint* constraint = new_Constraint(0, 1);
         Constraint_set_fupper(constraint, 0.99);
-		double phi = simplex->values[i]/stick;
-		Parameters_move(simplex->parameters, new_Parameter(buffer->c, phi, constraint));
+		Parameters_move(simplex->parameters, new_Parameter(buffer->c, 0, constraint));
 		Parameters_at(simplex->parameters, i)->id = i;
-		stick -= simplex->values[i];
 	}
     free_StringBuffer(buffer);
-	simplex->get_values = get_values;
-	simplex->get_value = get_value;
-	simplex->set_values = set_values;
+	simplex->get_values = get_values_stan;
+	simplex->get_value = get_value_stan;
+	simplex->set_values = set_values_stan;
 	simplex->set_parameter_value = set_parameter_value;
-	simplex->gradient = _simplex_gradient;
+	simplex->gradient = _simplex_gradient_stan;
 	simplex->need_update = true;
+	simplex->set_values(simplex, x);
 	return simplex;
 }
 
 Simplex* new_Simplex(const char* name, size_t K){
-	Simplex* simplex = (Simplex*)malloc(sizeof(Simplex));
-	simplex->K = K;
-	simplex->parameters = new_Parameters(K-1);
-    Parameters_set_name2(simplex->parameters, name);
-	simplex->values = dvector(K);
-	size_t N = K-1;
-    StringBuffer* buffer = new_StringBuffer(10);
-	double p = 1.0/K;
-	for(int i = 0; i < K; i++){
-		simplex->values[i] = p;
+	double* values = dvector(K);
+	for(size_t i = 0; i < K; i++){
+		values[i] = 1.0/K;
 	}
-	double stick = 1;
-	for(int i = 0; i < N; i++){
-        Constraint* constraint = new_Constraint(0, 1);
-        Constraint_set_fupper(constraint, 0.999);
-        Constraint_set_flower(constraint, 0.001);
-		double phi = simplex->values[i]/stick;
-        Parameters_move(simplex->parameters, new_Parameter(buffer->c, phi, constraint));
-		Parameters_at(simplex->parameters, i)->id = i;
-		stick -= simplex->values[i];
-	}
-    free_StringBuffer(buffer);
-	simplex->get_values = get_values;
-	simplex->get_value = get_value;
-	simplex->set_values = set_values;
-	simplex->set_parameter_value = set_parameter_value;
-	simplex->gradient = _simplex_gradient;
-	simplex->need_update = true;
+	Simplex* simplex = new_Simplex_with_values(name, values, K);
+	free(values);
 	return simplex;
 }
 
@@ -324,6 +358,7 @@ Model * new_SimplexModel( const char* name, Simplex *simplex ){
 
 Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
 	char* allowed[] = {
+		"centered",
 		"dimension",
 		"values"
 	};
@@ -332,6 +367,7 @@ Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
     char* id = get_json_node_value_string(node, "id");
 	json_node* values = get_json_node(node, "values");
 	json_node* dimension_node = get_json_node(node, "dimension");
+	bool centered = get_json_node_value_bool(node, "centered", true);
 	Simplex* simplex = NULL;
 	
 	if(values != NULL){
@@ -374,6 +410,9 @@ Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash){
 	else{
 		fprintf(stderr, "simplex %s requires a `dimension' or `values' attribute\n", id);
         exit(1);
+	}
+	if(!centered){
+		Simplex_use_stan_transform(simplex, false);
 	}
 	Model* model = new_SimplexModel(id, simplex);
 	return model;

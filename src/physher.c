@@ -69,28 +69,45 @@ int main(int argc, const char* argv[]){
 	
 	json_node* json = NULL;
 	
-    if (argc == 1) {
-        fprintf(stdout, "\n%s:\n\n", get_program_name(argv));
-        printf("Fourment M and Holmes EC. Novel non-parametric models to estimate evolutionary rates and divergence times from heterochronous sequence data.\n");
-        printf("BMC Evolutionary Biology 14:163, 2014\n\n");
-		
-        fprintf(stdout, "\nLibrary used:\n");
-        fprintf(stdout, "PhyC v%d.%d.%s\n", PHYC_VERSION_MAJOR, PHYC_VERSION_MINOR, PHYC_PATCH_LEVEL );
-        if(PHYC_SSE_ENABLED){
-            fprintf(stdout, "  SSE     support: %s\n", PHYC_SSE_LEVEL);
+    if (argc == 1 || args_contains(argc, (char**)argv, "--help") || args_contains(argc, (char**)argv, "-h")) {
+		fprintf(stdout, "\nphysher version %d.%d.%s", PHYC_VERSION_MAJOR, PHYC_VERSION_MINOR, PHYC_PATCH_LEVEL);
+		if(strcmp(GIT_HEAD_TAG, "") == 0 && strcmp(GIT_COMMIT_HASH, "") != 0){
+			fprintf(stdout, "-%s built on", GIT_COMMIT_HASH);
+		}
+		// Build from a directory without git
+		else if(strcmp(GIT_COMMIT_HASH, "") == 0){
+			fprintf(stdout, " compiled on");
         }
         else{
-            fprintf(stdout, "  SSE     support: disabled\n" );
+			fprintf(stdout, " released on\n");
         }
-        //fprintf(stdout, "  AVX     support: %s\n", (PHYC_AVX_ENABLED ? "enabled" : "disabled") );
-        fprintf(stdout, "  OpenMP  support: %s\n", (PHYC_OPENMP_ENABLED ? "enabled" : "disabled") );
-        fprintf(stdout, "  PThread support: %s\n", (PHYC_PTHREAD_ENABLED ? "enabled" : "disabled") );
-        fprintf(stdout, "\n\n");
-
-		if(strcmp(GIT_BRANCH, "") != 0 && strcmp(GIT_COMMIT_HASH, "") != 0){
-        	fprintf(stdout, "Git:\nBranch: %s\nCommit: %s\n", GIT_BRANCH, GIT_COMMIT_HASH);
-        	fprintf(stdout, "\n\n");
+		fprintf(stdout, " %s\n", __DATE__);
+		fprintf(stdout, "Compiled with:");
+		bool flag = false;
+		if(PHYC_SSE_ENABLED){
+			fprintf(stdout, " %s", PHYC_SSE_LEVEL);
+			flag = true;
 		}
+		if(PHYC_OPENMP_ENABLED){
+			fprintf(stdout, "%s OpenMP", (flag ? ",": ""));
+			flag = true;
+		}
+		if(PHYC_PTHREAD_ENABLED){
+			fprintf(stdout, "%s PThread", (flag ? ",": ""));
+		}
+		fprintf(stdout, "\n");
+		fprintf(stdout, "Developped by: Mathieu Fourment\n");
+		fprintf(stdout, "Project hosted on: https://github.com/4ment/physher\n");
+
+        // printf("Fourment M and Holmes EC. Novel non-parametric models to estimate evolutionary rates and divergence times from heterochronous sequence data.\n");
+        // printf("BMC Evolutionary Biology 14:163, 2014\n\n");
+
+		fprintf(stdout, "\nusage: physher [--help] [--seed SEED] input-file-name\n");
+		fprintf(stdout, "\npositional arguments:\n");
+  		fprintf(stdout, "  input-file-name     JSON configuration file\n\n");
+		fprintf(stdout, "options:\n");
+  		fprintf(stdout, "  --help              show this help message and exit\n");
+  		fprintf(stdout, "  --seed              SEED  initialize seed\n");
 		return 0;
 	}
 	else if(array_of_string_contains("--dry", argv, argc, true)){
@@ -113,8 +130,7 @@ int main(int argc, const char* argv[]){
         json_prune_underscored(json);
 	}
 
-	long seeed = time(NULL);
-	
+	long seeed = args_get_long(argc, (char**)argv, "--seed", time(NULL));
 	
 	Hashtable* hash2 = new_Hashtable_string(100);
 	hashtable_set_key_ownership( hash2, false );
@@ -123,7 +139,8 @@ int main(int argc, const char* argv[]){
 	json_node* run_node = get_json_node(json, "physher");
 	json_node* init_node = get_json_node(json, "init");
 	
-	if (init_node != NULL) {
+	// seed provided through command line overrides seed specified in json file
+	if (init_node != NULL && !args_contains(argc, (char**)argv, "--seed")) {
 		seeed = get_json_node_value_size_t(init_node, "seed", seeed);
 	}
 	else{

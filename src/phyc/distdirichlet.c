@@ -35,7 +35,18 @@ double DistributionModel_log_flat_dirichlet_with_values(DistributionModel* dm, c
 }
 
 double DistributionModel_dlog_flat_dirichlet(DistributionModel* dm, const Parameter* p){
-	return 0.0;
+	for (int i = 0; i < Parameters_count(dm->x); i++) {
+        if( p == Parameters_at(dm->x, i)){
+            const double* values = dm->simplex->get_values(dm->simplex);
+            double dlogp = 0;
+            for (size_t j = i; j < Parameters_count(dm->x); j++) {
+                dm->simplex->gradient(dm->simplex, i, dm->tempp);
+                dlogp += dm->tempp[j]/values[j];
+            }
+            return dlogp;
+        }
+    }
+    return 0.0;
 }
 
 double DistributionModel_d2log_flat_dirichlet(DistributionModel* dm, const Parameter* p){
@@ -75,10 +86,25 @@ static double DistributionModel_dirichlet_sample_evaluate(DistributionModel* dm)
 	return logP;
 }
 
+// IMPORTANT: The derivative is wrt unconstrained parameter of the simplex
 double DistributionModel_dlog_dirichlet(DistributionModel* dm, const Parameter* p){
+    /*
+    log pdf(X; \alpha) = \sum_i \alpha_i log(x_i) - log B(\alpha)
+    d log pdf(X)/dz_k = \sum_i \alpha_i d log(x_i)/dz_k
+                     &= \sum_i \alpha_i d log(x_i)/dx_i dx_i/dz_k
+                     &= \sum_i \alpha_i/x_i dx_i/dz_k
+    
+    dx_i/dz_k = 0 for i < k
+    */
 	for (int i = 0; i < Parameters_count(dm->x); i++) {
         if( p == Parameters_at(dm->x, i)){
-            return (Parameters_value(dm->parameters[0], i)-1.0)/Parameter_value(p);
+            const double* values = dm->simplex->get_values(dm->simplex);
+            double dlogp = 0;
+            for (size_t j = i; j < Parameters_count(dm->x); j++) {
+                dm->simplex->gradient(dm->simplex, i, dm->tempp);
+                dlogp += (Parameters_value(dm->parameters[0], j)-1.0)/values[j] * dm->tempp[j];
+            }
+            return dlogp;
         }
     }
 	return 0;

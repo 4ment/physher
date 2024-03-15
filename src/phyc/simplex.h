@@ -44,4 +44,6 @@ Model * new_SimplexModel( const char* name, Simplex *simplex );
 
 Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash);
 
+void Simplex_use_stan_transform(Simplex* simplex, bool use_stan);
+
 #endif /* simplex_h */

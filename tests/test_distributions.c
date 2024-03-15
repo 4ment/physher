@@ -6,17 +6,15 @@
 //
 #include <assert.h>
 #include <ctype.h>
+#include <gsl/gsl_deriv.h>
+#include <gsl/gsl_math.h>
+#include <gsl/gsl_randist.h>
 #include <math.h>
 #include <stdlib.h>
 #include <strings.h>
 #include <time.h>
 
 #include "minunit.h"
-
-#include <gsl/gsl_deriv.h>
-#include <gsl/gsl_math.h>
-#include <gsl/gsl_randist.h>
-
 #include "phyc/distbeta.h"
 #include "phyc/distcauchy.h"
 #include "phyc/distdirichlet.h"
@@ -29,6 +27,7 @@
 #include "phyc/parameters.h"
 #include "phyc/random.h"
 #include "phyc/simplex.h"
+#include "phyc/transforms.h"
 
 Parameters** create_1_parameters_dim(double* p, size_t dim) {
     Parameters** ps = malloc(sizeof(Parameters*));
@@ -448,35 +447,40 @@ double gsl_exponential_dlogPdp(const double* xs, size_t xdim, const double* p,
     return res;
 }
 
-void _inverse_transform_stick2(const double* parameters, double* values, int K) {
-    size_t N = K - 1;
+void _inverse_transform_stick_stan2(const double* parameters, double* values,
+                                    size_t N) {
     double stick = 1.0;
-    int k = 0;
-    for (; k < N; k++) {
-        values[k] = stick * parameters[k];
+    for (size_t k = 0; k < N; k++) {
+        double z = inverse_logit(parameters[k] - log(N - k));
+        values[k] = stick * z;
         stick -= values[k];
     }
-    values[k] = stick;
+    values[N] = stick;
+}
+
+void _transform_stick_stan2(const double* values, double* parameters, size_t N) {
+    double sum = 0;
+    for (size_t i = 0; i < N; i++) {
+        double z = values[i] / (1.0 - sum);
+        parameters[i] = logit(z) + log(N - i);
+        sum += values[i];
+    }
 }
 
 double gsl_dirichlet_dlogPdx(const double* xs, size_t xdim, size_t idx, const double* p,
                              double eps) {
     double* x2 = dvector(xdim - 1);
-    double stick = 1;
-    for (int i = 0; i < xdim - 1; i++) {
-        x2[i] = xs[i] / stick;
-        stick -= xs[i];
-    }
+    _transform_stick_stan2(xs, x2, xdim - 1);
     double* xm = clone_dvector(x2, xdim - 1);
     xm[idx] -= eps;
     double* xp = clone_dvector(x2, xdim - 1);
     xp[idx] += eps;
     double* newxs = dvector(xdim);
 
-    _inverse_transform_stick2(xm, newxs, xdim);
+    _inverse_transform_stick_stan2(xm, newxs, xdim - 1);
     double mm = gsl_ran_dirichlet_lnpdf(xdim, p, newxs);
 
-    _inverse_transform_stick2(xp, newxs, xdim);
+    _inverse_transform_stick_stan2(xp, newxs, xdim - 1);
     double pp = gsl_ran_dirichlet_lnpdf(xdim, p, newxs);
 
     double result = (pp - mm) / (2 * eps);
@@ -903,9 +907,12 @@ char* test_dirichlet_distribution() {
               "logP after changing dirichlet not matching");
 
     double eps = 0.00001;
-    double dlogPdx = model->dlogP(model, Parameters_at(simplex->parameters, 1));
-    double dlogPdx2 = gsl_dirichlet_dlogPdx(x, xdim, 1, p, eps);
-    mu_assert(fabs(dlogPdx - dlogPdx2) < 0.0001, "dlogPdx not matching");
+    // derivative wrt unconstrained parameter of the simplex
+    for (size_t i = 0; i < 2; i++) {
+        double dlogPdx = model->dlogP(model, Parameters_at(dm->x, i));
+        double dlogPdx2 = gsl_dirichlet_dlogPdx(x, xdim, i, p, eps);
+        mu_assert(fabs(dlogPdx - dlogPdx2) < 0.0001, "dlogPdx not matching");
+    }
 
     model->free(model);
     free_Parameters(ps[0]);
