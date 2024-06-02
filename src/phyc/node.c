@@ -499,12 +499,3 @@ bool Node_addChild( Node *parent, Node *node){
 void Node_add_listener( Node *node, Model *model ){
 	
 }
-
-void Node_print( Node *node ){
-    printf("Name %s\n", Node_name(node));
-    printf("Left  %s\n", Node_name(Node_left(node)));
-    printf("Right %s\n", Node_name(Node_right(node)));
-    printf("Parent %s\n", Node_name(Node_parent(node)));
-    Parameter_print(node->distance);
-    printf("\n");
-}

@@ -29,25 +29,12 @@ char* test_treelikelihood_time() {
     double expected_logP = -4777.616349713985;
     double logP = model->logP(model);
     mu_assert(fabs(logP - expected_logP) < 1.e-8, "logP not matching");
+    
+    TreeLikelihood_initialize_gradient(model, TREELIKELIHOOD_FLAG_TREE_MODEL|TREELIKELIHOOD_FLAG_BRANCH_MODEL);
+    double* gradient = TreeLikelihood_gradient(model);
 
-    Parameters* ps = new_Parameters(10);
-    for (size_t i = 0; i < Parameters_count(bm->rates); i++) {
-        Parameters_add(ps, Parameters_at(bm->rates, i));
-    }
-    model->prepare_gradient(model, ps);
     double expected_rate_grad = 328017.6732813406;
-    double dlogP = model->dlogP(model, Parameters_at(ps, 0));
-    mu_assert(fabs(dlogP - expected_rate_grad) < 1.e-8, "dlogP clock not matching");
-
-    Parameters* ratios = get_reparams(tree);
-    for (size_t i = 0; i < Parameters_count(ratios); i++) {
-        Parameters_add(ps, Parameters_at(ratios, i));
-    }
-
-    model->prepare_gradient(model, ps);
-    SingleTreeLikelihood_update_all_nodes(tlk);
-    dlogP = model->dlogP(model, Parameters_at(ps, 0));
-    mu_assert(fabs(dlogP - expected_rate_grad) < 1.e-8, "dlogP clock not matching");
+    mu_assert(fabs(gradient[68] - expected_rate_grad) < 1.e-8, "dlogP clock not matching");
 
     double expected_ratio_grad[67] = {
         -0.5936536642214764, 6.441289658869611,   8.92145177998445,
@@ -74,13 +61,12 @@ char* test_treelikelihood_time() {
         40.51912724901265,   30.451660702191045,  2.840830939900187,
         6.802521820384058};
     double expected_root_height_grad = 17.492484957839924;
-    for (size_t i = 0; i < Parameters_count(ratios) - 1; i++) {
-        dlogP = model->dlogP(model, Parameters_at(ratios, i));
-        mu_assert(fabs(dlogP - expected_ratio_grad[i]) < 1.e-8,
+    for (size_t i = 0; i < 67; i++) {
+        mu_assert(fabs(gradient[i] - expected_ratio_grad[i]) < 1.e-8,
                   "dlogP ratios not matching");
     }
-    dlogP = model->dlogP(model, Parameters_at(ratios, Parameters_count(ratios) - 1));
-    mu_assert(fabs(dlogP - expected_root_height_grad) < 1.e-8,
+
+    mu_assert(fabs(gradient[67] - expected_root_height_grad) < 1.e-8,
               "dlogP root not matching");
 
     tlk->include_jacobian = true;
@@ -115,22 +101,19 @@ char* test_treelikelihood_time() {
         7.517186267961684};
     double expected_root_height_jac_grad = 19.936860572419484;
     SingleTreeLikelihood_update_all_nodes(tlk);
+    gradient = TreeLikelihood_gradient(model);
 
-    dlogP = model->dlogP(model, Parameters_at(ps, 0));
-    mu_assert(fabs(dlogP - expected_rate_grad) < 1.e-8,
+    mu_assert(fabs(gradient[68] - expected_rate_grad) < 1.e-8,
               "dlogP clock include_jacobian not matching");
 
-    for (size_t i = 0; i < Parameters_count(ratios) - 1; i++) {
-        dlogP = model->dlogP(model, Parameters_at(ratios, i));
-        mu_assert(fabs(dlogP - expected_ratios_jac_grad[i]) < 1.e-8,
+    for (size_t i = 0; i < 67; i++) {
+        mu_assert(fabs(gradient[i] - expected_ratios_jac_grad[i]) < 1.e-8,
                   "dlogP ratios include_jacobian not matching");
     }
 
-    dlogP = model->dlogP(model, Parameters_at(ratios, Parameters_count(ratios) - 1));
-    mu_assert(fabs(dlogP - expected_root_height_jac_grad) < 1.e-8,
+    mu_assert(fabs(gradient[67] - expected_root_height_jac_grad) < 1.e-8,
               "dlogP root include_jacobian not matching");
 
-    free_Parameters(ps);
     model->free(model);
     free_Hashtable(hash);
     json_free_tree(json);

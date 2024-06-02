@@ -465,13 +465,11 @@ void init_transform_from_heights(Tree* atree){
 		for (int i = 0; i < Tree_node_count(atree); i++) {
 			Node* node = nodes[i];
 			if(Node_isroot(node)){
-				Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
-				Parameter_set_value_quietly(p, Node_height(node));
+				Parameter_set_value_quietly(atree->tt->rootHeight, Node_height(node));
 			}
 			else if(!Node_isleaf(node)){
-				Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
 				double s = atree->tt->inverse_transform(atree->tt, node);
-				Parameter_set_value_quietly(p, s);
+				Parameter_set_value_at_quietly(atree->tt->ratios, s, node->class_id);
 			}
 		}		
 	}
@@ -482,13 +480,11 @@ void init_transform_from_heights(Tree* atree){
 		for (int i = 0; i < Tree_node_count(atree); i++) {
 			Node* node = nodes[i];
 			if(Node_isroot(node)){
-				Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
-				Parameter_set_value_quietly(p, Node_height(node));
+				Parameter_set_value_quietly(atree->tt->rootHeight, Node_height(node));
 			}
 			else if(!Node_isleaf(node)){
-				Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
 				double s = atree->tt->inverse_transform(atree->tt, node);
-				Parameter_set_value_quietly(p, s);
+				Parameter_set_value_at_quietly(atree->tt->ratios, s, node->class_id);
 			}
 		}
 		
@@ -524,13 +520,11 @@ void init_heights_from_distances(Tree* atree){
 			for (int i = 0; i < Tree_node_count(atree); i++) {
 				Node* node = nodes[i];
 				if(Node_isroot(node)){
-					Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
-					Parameter_set_value_quietly(p, Node_height(node));
+					Parameter_set_value_quietly(atree->tt->rootHeight, Node_height(node));
 				}
 				else if(!Node_isleaf(node)){
-					Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
 					double s = atree->tt->inverse_transform(atree->tt, node);
-					Parameter_set_value_quietly(p, s);
+					Parameter_set_value_at_quietly(atree->tt->ratios, s, node->class_id);
 				}
 			}
 		}
@@ -557,17 +551,11 @@ void init_heights_from_distances(Tree* atree){
 			for (int i = 0; i < Tree_node_count(atree); i++) {
 				Node* node = nodes[i];
 				if(Node_isroot(node)){
-					Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
-	//                Constraint_set_lower(p->cnstr, Constraint_lower(node->height->cnstr));
-	//				Constraint_set_flower(p->cnstr, Constraint_lower(node->height->cnstr));
-	//				Constraint_set_upper(p->cnstr, Constraint_upper(node->height->cnstr));
-	//				Constraint_set_fupper(p->cnstr, Constraint_upper(node->height->cnstr));
-					Parameter_set_value_quietly(p, Node_height(node));
+					Parameter_set_value_quietly(atree->tt->rootHeight, Node_height(node));
 				}
 				else if(!Node_isleaf(node)){
-					Parameter* p = Parameters_at(atree->tt->parameters, node->class_id);
 					double s = atree->tt->inverse_transform(atree->tt, node);
-					Parameter_set_value_quietly(p, s);
+					Parameter_set_value_at_quietly(atree->tt->ratios, s, node->class_id);
 				}
 			}
 		}
@@ -880,8 +868,8 @@ void Tree_init_heights ( Tree *atree ) {
 	//if(need_conv)fprintf(stderr, "need conversion\n");
 	for ( int i = 0; i < Tree_node_count(atree); i++) {
 		if( Node_isleaf(nodes[i]) ){
-			nodes[i]->height->value = (need_conv ? youngest - nodes[i]->time : nodes[i]->time );
-			assert(nodes[i]->height->value >=0 );
+			nodes[i]->height->value[0] = (need_conv ? youngest - nodes[i]->time : nodes[i]->time );
+			assert(nodes[i]->height->value[0] >=0 );
 		}
 	}
 	
@@ -1340,22 +1328,16 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			Parameters_set_name2(tree->tt->parameters, "reparam");
 			Hashtable_add(hash, Parameters_name2(tree->tt->parameters), tree->tt->parameters);
 
-			char* id = get_json_node_value_string(ratios_node, "id");
-			Parameters* ratios = new_MultiParameter_from_json(ratios_node, hash);
+			Parameter* ratios = new_Parameter_from_json(ratios_node, hash);
 
-			Parameters_set_name2(tree->tt->ratios, id);
-			Hashtable_add(hash, Parameters_name2(tree->tt->ratios), tree->tt->ratios);
-			for (size_t i = 0; i < Parameters_count(tree->tt->ratios); i++) {
-				Parameters_set_name(tree->tt->ratios, i, Parameters_name(ratios, i));
-				Parameter_set_value(Parameters_at(tree->tt->ratios, i), Parameters_value(ratios, i));
-				Hashtable_add(hash, Parameters_name(tree->tt->ratios, i), Parameters_at(tree->tt->ratios, i));
-			}
-			free_Parameters(ratios);
+			Parameter_set_name(tree->tt->ratios, ratios->name);
+			Parameter_set_values(tree->tt->ratios, ratios->value);
+			Hashtable_add(hash, Parameter_name(tree->tt->ratios), tree->tt->ratios);
+			free_Parameter(ratios);
 
-			char* id_root = get_json_node_value_string(root_height_node, "id");
 			Parameter* root_height = new_Parameter_from_json(root_height_node, hash);
 
-			Parameter_set_name(tree->tt->rootHeight, id_root);
+			Parameter_set_name(tree->tt->rootHeight, root_height->name);
 			Parameter_set_value(tree->tt->rootHeight, Parameter_value(root_height));
 			Hashtable_add(hash, Parameter_name(tree->tt->rootHeight), tree->tt->rootHeight);
 			
@@ -1381,10 +1363,10 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			if(ratios_node != NULL && ratios_node->node_type == MJSON_STRING){
 				char* ratiosID = get_json_node_value_string(node, "ratios");
 				char* rootID = get_json_node_value_string(node, "root_height");
-				Parameters_set_name2(tree->tt->ratios, ratiosID);
+				Parameter_set_name(tree->tt->ratios, ratiosID);
 				Parameter_set_name(tree->tt->rootHeight, rootID);
 				Hashtable_add(hash, Parameter_name(tree->tt->rootHeight), tree->tt->rootHeight);
-				Hashtable_add(hash, Parameters_name2(tree->tt->ratios), tree->tt->ratios);
+				Hashtable_add(hash, Parameter_name(tree->tt->ratios), tree->tt->ratios);
 			}
 		}
 		
@@ -2157,11 +2139,11 @@ void Tree_init_heights_heterochronous( Tree *tree, const double rate, bool conve
 			Parameter_set_estimate(nodes[i]->height, false);
 			
 			if ( convert ) {
-				nodes[i]->height->value = youngest - nodes[i]->height->value;
+				nodes[i]->height->value[0] = youngest - nodes[i]->height->value[0];
 				Parameter_set_bounds(nodes[i]->height, Parameter_value(nodes[i]->height), Parameter_value(nodes[i]->height) );
 			}
             else {
-				nodes[i]->height->value = nodes[i]->height->value - youngest;
+				nodes[i]->height->value[0] = nodes[i]->height->value[0] - youngest;
 				Parameter_set_bounds(nodes[i]->height, Parameter_value(nodes[i]->height), Parameter_value(nodes[i]->height) );                
             }
 		}
@@ -2170,8 +2152,8 @@ void Tree_init_heights_heterochronous( Tree *tree, const double rate, bool conve
 			Node_set_height(nodes[i],((max - distances[i])/rate));
 			
 			double max_children = dmax( Node_height(Node_left(nodes[i])), Node_height(Node_right(nodes[i])));
-			if( nodes[i]->height->value < max_children ){
-				nodes[i]->height->value = max_children + 0.001;
+			if( nodes[i]->height->value[0] < max_children ){
+				nodes[i]->height->value[0] = max_children + 0.001;
 			}
 		}
 
@@ -2374,8 +2356,8 @@ void Tree_init_heights_homochronous( Tree *tree, const double rate ){
 				if ( Node_isancestor( nodes[j], nodes[i]) ) {
 					Parameter_set_value(nodes[j]->height, (Node_height(nodes[i]) * (max-distances[j])/max) );
 					double max_children = dmax( Node_height(Node_left(nodes[j])), Node_height(Node_right(nodes[j])));
-					if( nodes[j]->height->value < max_children ){
-						nodes[j]->height->value = max_children + 0.001;
+					if( nodes[j]->height->value[0] < max_children ){
+						nodes[j]->height->value[0] = max_children + 0.001;
 					}
 					set[j] = true;
 				}
@@ -2671,7 +2653,7 @@ void Tree_check_constraint_heights( Tree *tree ){
 
 void update_constraint_height_neighbors( Node *node ){
 	if( node->parent != NULL){
-		Parameter_set_lower(node->parent->height, dmax(node->parent->left->height->value, Parameter_value( Node_right(Node_parent(node))->height) ) );
+		Parameter_set_lower(node->parent->height, dmax(node->parent->left->height->value[0], Parameter_value( Node_right(Node_parent(node))->height) ) );
 	}
 	if( !Node_isleaf(Node_left(node)) ) Parameter_set_upper( Node_left(node)->height, Parameter_value(node->height) );
 	if( !Node_isleaf(Node_right(node)) ) Parameter_set_upper( Node_right(node)->height, Parameter_value(node->height) );
@@ -2697,7 +2679,7 @@ void Tree_print_parameters( Tree *tree ){
 	Node **nodes = Tree_nodes( tree );
 	for ( int i = 0; i < tree->nNodes; i++ ) {
 		fprintf(stderr, "%d] postidx %d - %s height=%f [%f-%f] %d\n",
-				i,nodes[i]->id, nodes[i]->name, nodes[i]->distance->value,
+				i,nodes[i]->id, nodes[i]->name, nodes[i]->distance->value[0],
 				Parameter_lower(nodes[i]->distance) ,
 				Parameter_upper(nodes[i]->distance),
 				Parameter_estimate(nodes[i]->distance) );

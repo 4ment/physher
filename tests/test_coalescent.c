@@ -72,35 +72,25 @@ char* test_skyride() {
     double logP2 = -11.48749174278204;
     mu_assert(fabs(logP - logP2) < 0.00001, "logP not matching");
 
-    Parameters* reparams = get_reparams(tree);
-    for (int i = 0; i < Parameters_count(reparams); i++) {
-        Parameters_add(ps, Parameters_at(reparams, i));
-    }
-
     Parameters_set_value(ps, 0, log(thetas[0]));
-    model->prepare_gradient(model, ps);
+    Coalescent_initialize_gradient(model, GRADIENT_FLAG_COALESCENT_THETA|GRADIENT_FLAG_TREE_RATIOS);
+    double* gradient = Coalescent_gradient(model);
     double true_gradient[6] = {3., 0.2, 0.5, -10.2, -7.4, -0.5583333};
-    for (int i = 0; i < 3; i++) {
-        double dlogPdp = model->dlogP(model, Parameters_at(ps, i));
-        mu_assert(fabs(dlogPdp - true_gradient[i]) < 0.00001,
+    for (size_t i = 0; i < 6; i++) {
+        mu_assert(fabs(gradient[i] - true_gradient[i]) < 0.00001,
                   "d.logP/d.theta not matching");
     }
-    // for(int i = 3; i < 6; i++){
-    // 	double dlogPdp = model->dlogP(model, Parameters_at(ps, i));
-    // 	printf("%f\n", dlogPdp);
-    // 	mu_assert(fabs(dlogPdp - true_gradient[i]) < 0.00001, "d.logP/d.t not
-    // matching");
-    // }
-    struct gsl_data data = {model, 0};
+
+    // struct gsl_data data = {model, 0};
     // 	for(int i = 0; i < 3; i++){
     // 		data.index = i;
     // 		double dlogPdp2 = gsl_coalescent_dlogPdx(&data, log(thetas[i]), 0.0001);
     // 	}
-    for (int i = 0; i < 3; i++) {
-        data.index = i + 3;
-        double dlogPdp2 =
-            gsl_coalescent_dlogPdx(&data, Parameters_value(reparams, i), 0.0001);
-    }
+    // for (int i = 0; i < 3; i++) {
+    //     data.index = i + 3;
+    //     double dlogPdp2 =
+    //         gsl_coalescent_dlogPdx(&data, Parameters_value(reparams, i), 0.0001);
+    // }
     model->free(model);
     mtree->free(mtree);
     free_Parameters(ps);
@@ -131,30 +121,21 @@ char* test_skygrid() {
     double logP2 = -11.8751856;
     mu_assert(fabs(logP - logP2) < 0.00001, "logP not matching");
 
-    Parameters* reparams = get_reparams(tree);
-    for (int i = 0; i < Parameters_count(reparams); i++) {
-        Parameters_add(ps, Parameters_at(reparams, i));
-    }
-
     Parameters_set_value(ps, 0, log(thetas[0]));
-    model->prepare_gradient(model, ps);
+    Coalescent_initialize_gradient(model, GRADIENT_FLAG_COALESCENT_THETA|GRADIENT_FLAG_TREE_RATIOS);
+    double* gradient = Coalescent_gradient(model);
     double true_gradient[8] = {3.5, 0.75, 0.1250, 1.25, -0.333333, -6.0, -10.0, -0.75};
-    for (int i = 0; i < 5; i++) {
-        double dlogPdp = model->dlogP(model, Parameters_at(ps, i));
-        mu_assert(fabs(dlogPdp - true_gradient[i]) < 0.00001,
+    for (int i = 0; i < 8; i++) {
+        mu_assert(fabs(gradient[i] - true_gradient[i]) < 0.00001,
                   "d.logP/d.theta not matching");
     }
-    // for(int i = 5; i < 8; i++){
-    // 	double dlogPdp = model->dlogP(model, Parameters_at(ps, i));
-    // 	mu_assert(fabs(dlogPdp - true_gradient[i]) < 0.00001, "d.logP/d.t not
-    // matching");
+
+    // struct gsl_data data = {model, 0};
+    // for (int i = 0; i < 3; i++) {
+    //     data.index = i + 5;
+    //     double dlogPdp2 =
+    //         gsl_coalescent_dlogPdx(&data, Parameters_value(reparams, i), 0.0001);
     // }
-    struct gsl_data data = {model, 0};
-    for (int i = 0; i < 3; i++) {
-        data.index = i + 5;
-        double dlogPdp2 =
-            gsl_coalescent_dlogPdx(&data, Parameters_value(reparams, i), 0.0001);
-    }
     model->free(model);
     mtree->free(mtree);
     free_Parameters(ps);
@@ -184,18 +165,19 @@ char* test_constant() {
     mu_assert(fabs(logP - logP2) < 0.00001, "logP not matching after change");
 
     double eps = 0.0001;
-    Parameters* ps = new_Parameters(1);
-    Parameters_add(ps, N);
     Parameter_set_value(N, value);
-    model->prepare_gradient(model, ps);
-    double dlogPdp = model->dlogP(model, N);
+    
+    Coalescent_initialize_gradient(model, GRADIENT_FLAG_COALESCENT_THETA);
+    double* gradient = Coalescent_gradient(model);
+
     struct gsl_data data = {model, 0};
     double dlogPdp2 = gsl_coalescent_dlogPdx(&data, value, eps);
+
+    mu_assert(fabs(gradient[0] - dlogPdp2) < 0.00001, "logP not matching after change");
 
     model->free(model);
     mtree->free(mtree);
     free_Parameter(N);
-    free_Parameters(ps);
     return NULL;
 }
 
@@ -225,10 +207,11 @@ char* test_constant_data() {
     Parameters_set_value(ps, 0, value);
     model->prepare_gradient(model, ps);
     double eps = 0.0001;
-    double dlogPdp = model->dlogP(model, N);
+    Coalescent_initialize_gradient(model, GRADIENT_FLAG_COALESCENT_THETA);
+    double* gradient = Coalescent_gradient(model);
     struct gsl_data data = {model, 0};
     double dlogPdp2 = gsl_coalescent_dlogPdx(&data, value, eps);
-    mu_assert(fabs(dlogPdp - dlogPdp2) < 0.0001, "dlogPdp not matching");
+    mu_assert(fabs(gradient[0] - dlogPdp2) < 0.0001, "dlogPdp not matching");
 
     model->free(model);
     free_Parameter(N);

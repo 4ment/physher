@@ -23,7 +23,7 @@ typedef enum tree_transform_t{
 typedef struct TreeTransform {
     Tree* tree;
     Parameters* parameters;
-    Parameters* ratios;
+    Parameter* ratios;
     Parameter* rootHeight;
     double* lowers;
     size_t tipCount;

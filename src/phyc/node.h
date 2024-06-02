@@ -139,6 +139,4 @@ bool Node_addChild( Node *parent, Node *node);
 
 void Node_add_listener( Node *node, Model *model );
 
-void Node_print( Node *node );
-
 #endif

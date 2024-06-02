@@ -145,7 +145,15 @@ Parameter * new_Parameter( const char *name, const double value, Constraint *con
 	return new_Parameter_with_postfix( name, "", value, constr );
 }
 
+Parameter * new_Parameter2( const char *name, const double *value, size_t dim, Constraint *constr ){
+	return new_Parameter_with_postfix2( name, "", value, dim, constr );
+}
+
 Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, const double value, Constraint *constr ){
+	return new_Parameter_with_postfix2( name, postfix, &value, 1, constr );
+}
+
+Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, const double* value, size_t dim, Constraint *constr ){
 	Parameter *p = (Parameter *)malloc( sizeof(Parameter) );
 	assert(p);
 	size_t name_len    = strlen(name);
@@ -158,14 +166,16 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 		p->name[name_len] = '.';
 		strcpy(p->name+name_len+1, postfix);
 	}
-	p->value = value;
-	p->stored_value = value;
+	p->value = clone_dvector(value, dim);
+	p->stored_value = clone_dvector(value, dim);
+	p->dim = dim;
 	p->cnstr = constr;
 	p->estimate = true;
 	p->id = 0;
 	p->listeners = new_ListenerList(1);
 	p->refCount = 1;
 	p->model = -1;
+	p->grad = NULL;
 	return p;
 }
 
@@ -185,10 +195,16 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 		p->refCount++;
 		return p;
 	}
-	double value = 0;
+	double single_value = 0;
+	double* value = &single_value;
+	size_t dim = 1;
 	json_node* value_node = get_json_node(node, "value");
-	if(value_node != NULL){
-		value = atof((char*)value_node->value);
+	if (value_node->node_type == MJSON_ARRAY) {
+		value = (double*)value_node->value;
+		dim = value_node->child_count;
+	}
+	else {
+		*value = atof((char*)value_node->value);
 	}
 	double lower = -INFINITY;
 	double upper = INFINITY;
@@ -212,7 +228,7 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 		cnstr->fupper = atof((char*)upper_node->value);
 	}
 	json_node* id_node = get_json_node(node, "id");
-	return new_Parameter((char*)id_node->value, value, cnstr);
+	return new_Parameter2((char*)id_node->value, value, dim, cnstr);
 }
 
 Parameters* new_MultiParameter_from_json(json_node* node, Hashtable* hash){
@@ -295,11 +311,14 @@ Parameter * clone_Parameter( Parameter *p ){
 		cnstr = clone_Constraint(p->cnstr);
 	}
 	
-	pnew = new_Parameter( p->name, p->value,  cnstr );//pnew ref_count is reset to 1
+	pnew = new_Parameter2( p->name, p->value, p->dim,  cnstr );//pnew ref_count is reset to 1
 	pnew->estimate = p->estimate;
 	pnew->id = p->id;
 	pnew->model = p->model;
-    pnew->stored_value = p->stored_value;
+	memcpy(pnew->value, p->value, sizeof(double)* p->dim);
+	if(p->grad != NULL){
+		pnew->grad = clone_dvector(p->grad, p->dim);
+	}
 	return pnew;
 }
 
@@ -307,6 +326,10 @@ void free_Parameter( Parameter *p ){
 	if(p == NULL) return;
 	if(p->refCount == 1){
 		free(p->name);
+		free(p->value);
+		if(p->grad != NULL){
+			free(p->grad);
+		}
 		p->listeners->free(p->listeners);
 		if( p->cnstr != NULL ) free_Constraint(p->cnstr);
 		free(p);
@@ -321,7 +344,12 @@ json_node* Parameter_to_json(Parameter* parameter, json_node* parent){
     add_json_node(parent, jnode);
     add_json_node_string(jnode, "id", parameter->name);
     add_json_node_string(jnode, "type", "parameter");
-    add_json_node_double(jnode, "value", parameter->value);
+	if(parameter->dim == 1){
+    	add_json_node_double(jnode, "value", parameter->value[0]);
+	}
+	else{
+		add_json_node_array_double(jnode, "value", parameter->value, parameter->dim);
+	}
     if(!isinf(parameter->cnstr->lower))
         add_json_node_double(jnode, "lower", parameter->cnstr->lower);
     if(!isinf(parameter->cnstr->upper))
@@ -361,14 +389,35 @@ char * Parameter_name( const Parameter *p ){
 	return p->name;
 }
 
+size_t Parameter_size(const Parameter* p){
+	return p->dim;
+}
+
 void Parameter_set_value( Parameter *p, const double value ){
-	p->value = value;
+	Parameter_set_value_at(p, value, 0);
+}
+
+void Parameter_set_values( Parameter *p, const double *values ){
+	memcpy(p->value, values, sizeof(double)*p->dim);
+	p->listeners->fire(p->listeners, NULL, p->id);
+}
+
+void Parameter_set_values_quietly( Parameter *p, const double *values ){
+	memcpy(p->value, values, sizeof(double)*p->dim);
+}
+
+void Parameter_set_value_at( Parameter *p, const double value, size_t index ){
+	p->value[index] = value;
 	p->listeners->fire(p->listeners, NULL, p->id);
 }
 
 
 void Parameter_set_value_quietly( Parameter *p, const double value ){
-	p->value = value;
+	p->value[0] = value;
+}
+
+void Parameter_set_value_at_quietly( Parameter *p, const double value, size_t index ){
+	p->value[index] = value;
 }
 
 void Parameter_fire(Parameter *p){
@@ -376,44 +425,30 @@ void Parameter_fire(Parameter *p){
 }
 
 double Parameter_value( const Parameter *p ){
-	return p->value;
+	return p->value[0];
+}
+
+double Parameter_value_at( const Parameter *p, size_t index ){
+	return p->value[index];
 }
 
 void Parameter_store(Parameter *p){
-	p->stored_value = p->value;
+	memcpy(p->stored_value, p->value, sizeof(double)* p->dim);
 }
 
 void Parameter_restore(Parameter *p){
-	if (p->stored_value != p->value) {
-		p->value = p->stored_value;
+	if (memcmp(p->stored_value, p->value, sizeof(double)* p->dim) != 0) {
+		memcpy(p->value, p->stored_value, sizeof(double)* p->dim);
 		p->listeners->fire_restore(p->listeners, NULL, p->id);
 	}
 }
 
 void Parameter_restore_quietly(Parameter *p){
-	p->value = p->stored_value;
+	memcpy(p->value, p->stored_value, sizeof(double)* p->dim);
 }
 
 bool Parameter_changed(Parameter *p){
-	return p->value != p->stored_value;
-}
-
-void assign_value( Parameter *p, const double value ){
-	if ( p->cnstr == NULL ) 
-		p->value = value;
-	else{
-		if ( value >= p->cnstr->lower &&  value <= p->cnstr->upper ) p->value = value;
-		else if( value < p->cnstr->lower ) p->value = p->cnstr->lower;
-		else if( value > p->cnstr->upper ) p->value = p->cnstr->upper;
-		else {
-			fprintf(stderr, "\n\n");
-			Parameter_print(p);
-			error("parameters.c:assign_value:should not be here\n");
-		}
-	}
-#ifdef ASSIGN_DEBUG
-	Parameter_die(p, value);
-#endif
+	return memcmp(p->stored_value, p->value, sizeof(double)* p->dim) != 0;
 }
 
 Constraint * Parameter_constraint( const Parameter *p ){
@@ -453,24 +488,11 @@ void Parameter_set_bounds( Parameter *p, const double lower, const double upper 
 	}
 }
 
-
-void Parameter_warn( const Parameter *p, const double value ){
-	if ( p->cnstr != NULL && (value < p->cnstr->lower || value > p->cnstr->upper ) ){
-		fprintf(stderr, "Parameter out of bound\n%s\n",__FILE__);
-		Parameter_print(p);
-		fprintf(stderr, "\n");
+void Parameter_allocate_grad(Parameter* p){
+	if(p->grad == NULL){
+		p->grad = dvector(p->dim);
 	}
 }
-
-void Parameter_die( const Parameter *p, const double value ){
-	if ( p->cnstr != NULL && (value < p->cnstr->lower || value > p->cnstr->upper ) ){
-		fprintf(stderr, "Parameter out of bound\n%s\n",__FILE__);
-		Parameter_print(p);
-		fprintf(stderr, "\n");
-		exit(1);
-	}
-}
-
 double check_value( Constraint *cnstr, double value ){
 	if ( cnstr == NULL ) {
 		return value;
@@ -488,13 +510,6 @@ double check_value( Constraint *cnstr, double value ){
 		error("parameters.c:check_value:should not be here\n");
 	}
 	return -1;
-}
-
-
-
-void Parameter_print( const Parameter *p ){
-	if(p->cnstr != NULL)fprintf(stderr, "%s %e [%e - %e] estimate = %d lower_fixed = %d upper_fixed = %d\n",p->name, p->value, p->cnstr->lower, p->cnstr->upper, p->estimate, p->cnstr->lower_fixed, p->cnstr->upper_fixed);
-	else fprintf(stderr, "%s %e estimate = %d\n",p->name, p->value, p->estimate);
 }
 
 #pragma mark -
@@ -649,8 +664,10 @@ void Parameters_set_value_quietly( Parameters *p, const size_t index, const doub
 }
 
 void Parameters_set_values( Parameters *p, const double* values ){
+	size_t offset = 0;
 	for (int i = 0; i < Parameters_count(p); ++i) {
-		p->list[i]->value = values[i];
+		memcpy(p->list[i]->value, values + offset, sizeof(double)*p->list[i]->dim);
+		offset += p->list[i]->dim;
 	}
 	Parameter_fire(p->list[0]);
 }
@@ -737,14 +754,6 @@ Parameters * get_sub_parameters( Parameters *p, const int start, const int end )
 		Parameters_add(sub, p->list[i]);
 	}
 	return sub;
-}
-
-void Parameters_print( Parameters *ps ){
-	fprintf(stderr, "==================================\n");
-	for (int i = 0; i < ps->count; i++) {
-		Parameter_print(ps->list[i]);
-	}
-	fprintf(stderr, "----------------------------------\n");
 }
 
 // The parameters are not cloned

@@ -42,14 +42,14 @@ void print_tree_extended( FILE *pf, const Node *n, char **info ){
 	if( n == NULL ) return;
 	if( n->left != NULL ) fprintf(pf, "(");
 	else{
-		fprintf(pf, "%s[&%s]:%f", n->name, info[n->postorder_idx], n->distance->value);
+		fprintf(pf, "%s[&%s]:%f", n->name, info[n->postorder_idx], n->distance->value[0]);
 		return;
 	}
 	print_tree_extended( pf, n->left, info );
 	fprintf(pf, ",");
 	print_tree_extended( pf, n->right, info );
 	fprintf(pf, ")");
-	if( n->parent != NULL ) fprintf(pf, "[&%s]:%f", info[n->postorder_idx], n->distance->value);
+	if( n->parent != NULL ) fprintf(pf, "[&%s]:%f", info[n->postorder_idx], n->distance->value[0]);
 	//else fprintf(pf, "\n");	
 }
 
@@ -124,20 +124,20 @@ static void _Tree_print_nexus_with_annotation_aux( FILE *pf, Tree *tree, const N
             }
             StringBuffer_chop(buff);
             if(time){
-                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, (n->parent->height->value - n->height->value) );
+                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, (n->parent->height->value[0] - n->height->value[0]) );
             }
             else {
-                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, n->distance->value );
+                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, n->distance->value[0] );
             }
             //fflush(pf);
             free_StringBuffer(buff);
         }
         else {
             if(time){
-                fprintf(pf, "%d:%.20f", ++(*count), (n->parent->height->value - n->height->value) );
+                fprintf(pf, "%d:%.20f", ++(*count), (n->parent->height->value[0] - n->height->value[0]) );
             }
             else{
-                fprintf(pf, "%d:%.20f", ++(*count), n->distance->value );
+                fprintf(pf, "%d:%.20f", ++(*count), n->distance->value[0] );
             }
         }
 		return;
@@ -200,7 +200,7 @@ static void _Tree_print_nexus_aux( FILE *pf, Tree *tree, const Node *n, int *cou
 	if( !Node_isleaf(n) ) fprintf(pf, "(");
 	else {
 		if(Tree_is_time_mode(tree)){
-        	fprintf(pf, "%d:%f", ++(*count), (n->parent->height->value - n->height->value) );
+        	fprintf(pf, "%d:%f", ++(*count), (n->parent->height->value[0] - n->height->value[0]) );
 		}
 		else{
 			fprintf(pf, "%d:%f", ++(*count), Node_distance(n) );
@@ -242,7 +242,7 @@ void Tree_print_newick_subtree( FILE *pf, bool time, const Node *n, bool interna
 			fprintf(pf, "%s:%.8f", n->name, Node_time_elapsed((Node*)n) );
 		}
 		else{
-			fprintf(pf, "%s:%.8f", n->name, n->distance->value);
+			fprintf(pf, "%s:%.8f", n->name, n->distance->value[0]);
 		}
 		return;
 	}
@@ -256,7 +256,7 @@ void Tree_print_newick_subtree( FILE *pf, bool time, const Node *n, bool interna
 			fprintf(pf, ":%.8f", Node_time_elapsed((Node*)n));
 		}
 		else{
-			fprintf(pf, ":%.8f", n->distance->value);
+			fprintf(pf, ":%.8f", n->distance->value[0]);
 		}
 	}
 	else fprintf(pf, ";");

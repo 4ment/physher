@@ -95,13 +95,15 @@ typedef struct _Model Model;
 struct _Parameter{
 	char *name;
 	int id;
-	double value;
-	double stored_value;
+	double *value;
+	double *stored_value;
+	size_t dim;
 	Constraint *cnstr;
 	bool estimate;
 	ListenerList *listeners;
 	int refCount;
 	model_t model; // model it belongs to
+	double* grad;
 };
 
 
@@ -147,6 +149,7 @@ void Constraint_set_flower( Constraint *c, const double flower );
 Parameter * new_Parameter( const char *name, const double value, Constraint *constr );
 
 Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, const double value, Constraint *constr );
+Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, const double* value, size_t dim, Constraint *constr );
 
 Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash);
 
@@ -164,13 +167,20 @@ char * Parameter_name( const Parameter *p );
 
 void Parameter_set_name( Parameter *p, const char *name );
 
+size_t Parameter_size(const Parameter* p);
+
 void Parameter_set_value( Parameter *p, const double value );
+void Parameter_set_values( Parameter *p, const double *values );
+void Parameter_set_value_at( Parameter *p, const double value, size_t index);
 
 void Parameter_set_value_quietly( Parameter *p, const double value );
+void Parameter_set_values_quietly( Parameter *p, const double* value );
+void Parameter_set_value_at_quietly( Parameter *p, const double value, size_t index);
 
 void Parameter_fire(Parameter *p);
 
 double Parameter_value( const Parameter *p );
+double Parameter_value_at( const Parameter *p, size_t index );
 
 void Parameter_store(Parameter *p);
 
@@ -205,12 +215,7 @@ void Parameter_set_lower( Parameter *p, const double value );
 
 void Parameter_set_bounds( Parameter *p, const double lower, const double upper );
 
-
-void Parameter_warn( const Parameter *p, const double value );
-
-void Parameter_die( const Parameter *p, const double value );
-
-void Parameter_print( const Parameter *p );
+void Parameter_allocate_grad(Parameter* p);
 
 #pragma mark -
 #pragma mark Parameters
@@ -299,9 +304,6 @@ void Parameters_restore_value( Parameters *p, const double *store );
 int Parameters_count_optimizable( const Parameters *p, const char postfix[] );
 
 Parameters * pack_parameters(Parameters *ps, Parameter *p);
-
-
-void Parameters_print( Parameters *ps );
 
 void Parameters_swap( Parameter **a, Parameter **b );
 
