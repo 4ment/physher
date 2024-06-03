@@ -459,38 +459,6 @@ void init_leaf_heights_from_times(Tree* atree){
 	}
 }
 
-void init_transform_from_heights(Tree* atree){
-	Node **nodes = Tree_get_nodes(atree, PREORDER);
-	if(atree->homochronous){
-		for (int i = 0; i < Tree_node_count(atree); i++) {
-			Node* node = nodes[i];
-			if(Node_isroot(node)){
-				Parameter_set_value_quietly(atree->tt->rootHeight, Node_height(node));
-			}
-			else if(!Node_isleaf(node)){
-				double s = atree->tt->inverse_transform(atree->tt, node);
-				Parameter_set_value_at_quietly(atree->tt->ratios, s, node->class_id);
-			}
-		}		
-	}
-	else{
-		if(atree->tt->update_lowers != NULL){
-			atree->tt->update_lowers(atree->tt);
-		}
-		for (int i = 0; i < Tree_node_count(atree); i++) {
-			Node* node = nodes[i];
-			if(Node_isroot(node)){
-				Parameter_set_value_quietly(atree->tt->rootHeight, Node_height(node));
-			}
-			else if(!Node_isleaf(node)){
-				double s = atree->tt->inverse_transform(atree->tt, node);
-				Parameter_set_value_at_quietly(atree->tt->ratios, s, node->class_id);
-			}
-		}
-		
-	}
-}
-
 void init_heights_from_distances(Tree* atree){
 	atree->time_mode = true;
 	atree->rooted = true;
@@ -509,25 +477,6 @@ void init_heights_from_distances(Tree* atree){
 			}
 		}
 		Tree_constraint_heights(atree);
-
-		if(atree->tt != NULL){
-			if(atree->tt->update_lowers != NULL){
-				atree->tt->update_lowers(atree->tt);
-			}
-
-			// initialize reparam from height parameters
-			nodes = Tree_get_nodes(atree, PREORDER);
-			for (int i = 0; i < Tree_node_count(atree); i++) {
-				Node* node = nodes[i];
-				if(Node_isroot(node)){
-					Parameter_set_value_quietly(atree->tt->rootHeight, Node_height(node));
-				}
-				else if(!Node_isleaf(node)){
-					double s = atree->tt->inverse_transform(atree->tt, node);
-					Parameter_set_value_at_quietly(atree->tt->ratios, s, node->class_id);
-				}
-			}
-		}
 	}
 	else{
 		Node **nodes = Tree_get_nodes(atree, POSTORDER);
@@ -540,25 +489,6 @@ void init_heights_from_distances(Tree* atree){
 			}
 		}
 		Tree_constraint_heights(atree);
-
-		if(atree->tt != NULL){
-			if(atree->tt->update_lowers != NULL){
-				atree->tt->update_lowers(atree->tt);
-			}
-
-			// initialize reparam from height parameters
-			nodes = Tree_get_nodes(atree, PREORDER);
-			for (int i = 0; i < Tree_node_count(atree); i++) {
-				Node* node = nodes[i];
-				if(Node_isroot(node)){
-					Parameter_set_value_quietly(atree->tt->rootHeight, Node_height(node));
-				}
-				else if(!Node_isleaf(node)){
-					double s = atree->tt->inverse_transform(atree->tt, node);
-					Parameter_set_value_at_quietly(atree->tt->ratios, s, node->class_id);
-				}
-			}
-		}
 	}
 }
 
@@ -1131,6 +1061,10 @@ double _treeModel_logP(Model *self){
 
 // TreeModel listen to the height and distance parameters
 Model * new_TreeModel( const char* name, Tree *tree ){
+	return new_TreeModel2(name, tree, NULL);
+}
+
+Model * new_TreeModel2( const char* name, Tree *tree, Model* modelTransform ){
 	Model *model = new_Model(MODEL_TREE, name, tree);
 	StringBuffer* buffer = new_StringBuffer(10);
 	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
@@ -1143,16 +1077,10 @@ Model * new_TreeModel( const char* name, Tree *tree ){
 		tree->nodes[i]->distance->listeners->add(tree->nodes[i]->distance->listeners, model);
 		tree->nodes[i]->height->listeners->add(tree->nodes[i]->height->listeners, model);
 	}
-//	for (int i = 0; i < Parameters_count(tree->reparam); i++) {
-//		StringBuffer_set_string(buffer, name);
-//		StringBuffer_append_strings(buffer, 2, ".", Parameters_name(tree->reparam, i));
-//		Parameter_set_name(Parameters_at(tree->reparam, i), buffer->c);
-//		Parameters_at(tree->reparam,i)->listeners->add(Parameters_at(tree->reparam, i)->listeners, model);
-//	}
-	if(tree->tt != NULL){
-		Model* mtt = new_TreeTransformModel("TreeTransformModel", tree->tt, model);
-		model->data = mtt;
-		mtt->listeners->add( mtt->listeners, model );
+
+	if(modelTransform != NULL){
+		model->data = modelTransform;
+		modelTransform->listeners->add( modelTransform->listeners, model );
 	}
 	
 	free_StringBuffer(buffer);
@@ -1180,6 +1108,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		"ratios", // reparameterization parameters
 		"reparam", // reparametrization
 		"root_height",
+		"shifts",
 		"time",
 		"transform"
 	};
@@ -1189,8 +1118,10 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	json_node* file_node = get_json_node(node, "file");
 	json_node* init_node = get_json_node(node, "init");
 	json_node* dates_node = get_json_node(node, "dates");
-	char* transform_desc = get_json_node_value_string(node, "transform");
+	json_node* transform_node = get_json_node(node, "transform");
 	bool time_tree = get_json_node_value_bool(node, "time", false);
+
+	Model* mtt = NULL;
 	
 	Model* mtree = NULL;
 	Tree* tree = NULL;
@@ -1219,23 +1150,63 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 		// initialize heights from distances read from newick file
 		if(tree->time_mode){
-			if(transform_desc != NULL){
-				if(strcasecmp(transform_desc, "ratio_naive") == 0){
-					tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO_NAIVE);
-					tree->tt->update_lowers(tree->tt);
-				}
-				else if(strcasecmp(transform_desc, "shift") == 0){
-					tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_SHIFT);
-				}
+			if(transform_node != NULL && transform_node->node_type == MJSON_OBJECT){
+				mtt = new_TreeTransformModel_from_json(transform_node, hash);
 			}
 			else{
-				tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO);
-				tree->tt->update_lowers(tree->tt);
+				json_node* ratios_node = get_json_node(node, "ratios");
+				json_node* shifts_node = get_json_node(node, "shifts");
+				json_node* reparam_node = get_json_node(node, "reparam");
+				if (ratios_node != NULL || shifts_node != NULL || reparam_node != NULL){
+					json_node* transformNode = create_json_node_object(NULL, "transform");
+					add_json_node_string(transformNode, "id", "treetransform");
+					add_json_node_string(transformNode, "type", "treetransform");
+					if(ratios_node != NULL|| reparam_node != NULL){
+						json_node* fakeRatiosNode = NULL;
+						json_node* fakeRootHeightNode = NULL;
+						if(ratios_node != NULL && ratios_node->node_type == MJSON_STRING){
+							char* ratiosName = get_json_node_value_string(node, "ratios");
+							char* rootHeightName = get_json_node_value_string(node, "root_height");
+							fakeRatiosNode = create_json_node_parameter_full(transformNode, ratiosName, 0.5, Tree_tip_count(tree)-2, 0.0, 1.0);
+							fakeRootHeightNode = create_json_node_parameter(transformNode, rootHeightName, 1.0, 0.0, INFINITY);
+						}
+						else{
+							fakeRatiosNode = create_json_node_parameter_full(transformNode, "ratios", 0.5, Tree_tip_count(tree)-2, 0.0, 1.0);
+							fakeRootHeightNode = create_json_node_parameter(transformNode, "root_height", 1.0, 0.0, INFINITY);
+						}
+					}
+					else{
+						if(shifts_node->node_type == MJSON_STRING){
+							char* shiftsName = get_json_node_value_string(node, "shifts");
+							json_node* fakeShiftNode = NULL;
+							if(shiftsName != NULL){
+								fakeShiftNode = create_json_node_parameter_full(transformNode, shiftsName, 1.0, Tree_tip_count(tree)-1, 0.0, INFINITY);
+							}
+							else{
+								fakeShiftNode = create_json_node_parameter_full(transformNode, "shifts", 1.0, Tree_tip_count(tree)-1, 0.0, INFINITY);
+							}
+							add_json_node_size_t(fakeShiftNode, "dimension", Tree_tip_count(tree)-1);
+						}
+					}
+					if(transform_node != NULL){
+						add_json_node_string(transformNode, "transform", (char*)transform_node->value);
+					}
+					
+					mtt = new_TreeTransformModel_from_json(transformNode, hash);
+					json_free_tree(transformNode);
+				}
 			}
+
 			init_heights_from_distances(tree);
 		}
 		char* id = get_json_node_value_string(node, "id");
-		mtree = new_TreeModel(id, tree);
+		mtree = new_TreeModel2(id, tree, mtt);
+
+		if(mtt != NULL){
+			TreeTransformModel_add_tree_model(mtt, mtree);
+			tree->tt = mtt->obj;
+			TreeTransform_initialize_from_heights(tree->tt);
+		}
 	}
 	else if (init_node != NULL) {
 		char* algorithm = get_json_node_value_string(init_node, "algorithm");
@@ -1259,7 +1230,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			tree->time_mode = time_tree;
 			tree->rooted = time_tree;
 		}
-        if(time_tree && tree->tt->update_lowers != NULL)
+        if(mtt == NULL && time_tree && tree->tt->update_lowers != NULL)
 			tree->tt->update_lowers(tree->tt);
         
 		// initialize heights from distances read from newick file
@@ -1268,7 +1239,15 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 		
 		char* id = get_json_node_value_string(node, "id");
-		mtree = new_TreeModel(id, tree);
+		mtree = new_TreeModel2(id, tree, mtt);
+
+		if(mtt != NULL){
+			TreeTransformModel_add_tree_model(mtt, mtree);
+			tree->tt = mtt->obj;
+		}
+		if(tree->tt != NULL){
+			TreeTransform_initialize_from_heights(tree->tt);
+		}
 	}
 	else if (node->node_type != MJSON_STRING) {
 		char* ref = (char*)node->value;
@@ -1319,55 +1298,10 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			}
 		}
 		
-		
-		json_node* ratios_node = get_json_node(node, "ratios");
-		json_node* root_height_node = get_json_node(node, "root_height");
 		p = get_json_node_value_string(node, "reparam");
-
-		if(ratios_node != NULL && ratios_node->node_type == MJSON_OBJECT){
-			Parameters_set_name2(tree->tt->parameters, "reparam");
-			Hashtable_add(hash, Parameters_name2(tree->tt->parameters), tree->tt->parameters);
-
-			Parameter* ratios = new_Parameter_from_json(ratios_node, hash);
-
-			Parameter_set_name(tree->tt->ratios, ratios->name);
-			Parameter_set_values(tree->tt->ratios, ratios->value);
-			Hashtable_add(hash, Parameter_name(tree->tt->ratios), tree->tt->ratios);
-			free_Parameter(ratios);
-
-			Parameter* root_height = new_Parameter_from_json(root_height_node, hash);
-
-			Parameter_set_name(tree->tt->rootHeight, root_height->name);
-			Parameter_set_value(tree->tt->rootHeight, Parameter_value(root_height));
-			Hashtable_add(hash, Parameter_name(tree->tt->rootHeight), tree->tt->rootHeight);
-			
-			free_Parameter(root_height);
-		}
-		
-		
 		if (p != NULL) {
-			StringBuffer* buffer = new_StringBuffer(10);
-			char* id = get_json_node_value_string(node, "id");
-			for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
-				StringBuffer_set_string(buffer, id);
-				StringBuffer_append_strings(buffer, 2, ".", Parameters_name(tree->tt->parameters, i));
-				Parameter_set_name(Parameters_at(tree->tt->parameters, i), buffer->c);
-			}
-			free_StringBuffer(buffer);
-			
 			Parameters_set_name2(tree->tt->parameters, p);
 			Hashtable_add(hash, Parameters_name2(tree->tt->parameters), tree->tt->parameters);
-			for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
-				Hashtable_add(hash, Parameters_name(tree->tt->parameters, i), Parameters_at(tree->tt->parameters, i));
-			}
-			if(ratios_node != NULL && ratios_node->node_type == MJSON_STRING){
-				char* ratiosID = get_json_node_value_string(node, "ratios");
-				char* rootID = get_json_node_value_string(node, "root_height");
-				Parameter_set_name(tree->tt->ratios, ratiosID);
-				Parameter_set_name(tree->tt->rootHeight, rootID);
-				Hashtable_add(hash, Parameter_name(tree->tt->rootHeight), tree->tt->rootHeight);
-				Hashtable_add(hash, Parameter_name(tree->tt->ratios), tree->tt->ratios);
-			}
 		}
 		
 	}
@@ -1400,14 +1334,16 @@ Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* 
 	}
 	// initialize heights from distances read from newick file
 	if(tree->time_mode){
-		tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO);
-		if(tree->tt->update_lowers != NULL){
-			tree->tt->update_lowers(tree->tt);
-		}
 		init_heights_from_distances(tree);
+		TreeTransform* tt = new_HeightTreeTransform(tree, TREE_TRANSFORM_RATIO);
+		tree->tt = tt;
+		Model* mtt = new_TreeTransformModel("treetransform", tt, NULL);
+		mtree = new_TreeModel2("treemodel", tree, mtt);
+		TreeTransform_initialize_from_heights(tree->tt);
 	}
-	mtree = new_TreeModel("treemodel", tree);
-		
+	else{
+		mtree = new_TreeModel("treemodel", tree);
+	}
 	
 	if (!Tree_rooted(mtree->obj) && Node_distance(Tree_root(mtree->obj)->right) != 0) {
 		Tree* tree = mtree->obj;
@@ -2749,7 +2685,7 @@ void TreeModel_set_transform(Model* model, unsigned transform){
 		tree->tt->update_lowers(tree->tt);
 	}
 	
-	init_transform_from_heights(tree);
+	TreeTransform_initialize_from_heights(tree->tt);
 	Model* mtt = new_TreeTransformModel("TreeTransformModel", tree->tt, model);
 	model->data = mtt;
 	mtt->listeners->add( mtt->listeners, model );

@@ -48,13 +48,33 @@ json_node* create_json_node_array(json_node* parent, char* name){
 }
 
 json_node* create_json_node_parameter(json_node* parent, const char* name, double value, double lower, double upper){
+	return create_json_node_parameter_n(parent, name, &value, 1, lower, upper);
+}
+
+json_node* create_json_node_parameter_n(json_node* parent, const char* name, const double* value, size_t dimension, double lower, double upper){
 	json_node* jnode = create_json_node_object(parent, name);
 	add_json_node(parent, jnode);
 	add_json_node_string(jnode, "id", name);
 	add_json_node_string(jnode, "type", "parameter");
-	add_json_node_double(jnode, "value", value);
-	add_json_node_double(jnode, "lower", lower);
-	add_json_node_double(jnode, "upper", upper);
+	if(dimension > 1){
+		add_json_node_size_t(jnode, "dimension", dimension);
+		add_json_node_array_double(jnode, "value", value, dimension);
+	}
+	else{
+		add_json_node_double(jnode, "value", *value);
+	}
+	if(isinf(upper)){
+		add_json_node_string(jnode, "upper", "infinity");
+	}
+	else{
+		add_json_node_double(jnode, "upper", upper);
+	}
+	if(isinf(lower) && lower < 0){
+		add_json_node_string(jnode, "lower", "-infinity");
+	}
+	else{
+		add_json_node_double(jnode, "lower", lower);
+	}
 	return jnode;
 }
 
@@ -64,8 +84,42 @@ json_node* create_json_node_parameters(json_node* parent, const char* name, size
 	add_json_node_string(jnode, "id", name);
 	add_json_node_string(jnode, "type", "parameter");
 	add_json_node_size_t(jnode, "dimension", dimension);
-	add_json_node_double(jnode, "lower", lower);
-	add_json_node_double(jnode, "upper", upper);
+
+	if(isinf(upper)){
+		add_json_node_string(jnode, "upper", "infinity");
+	}
+	else{
+		add_json_node_double(jnode, "upper", upper);
+	}
+	if(isinf(lower) && lower < 0){
+		add_json_node_string(jnode, "lower", "-infinity");
+	}
+	else{
+		add_json_node_double(jnode, "lower", lower);
+	}
+	return jnode;
+}
+
+json_node* create_json_node_parameter_full(json_node* parent, const char* name, double value, size_t dimension, double lower, double upper){
+	json_node* jnode = create_json_node_object(parent, name);
+	add_json_node(parent, jnode);
+	add_json_node_string(jnode, "id", name);
+	add_json_node_string(jnode, "type", "parameter");
+	add_json_node_size_t(jnode, "dimension", dimension);
+	add_json_node_double(jnode, "value", value);
+
+	if(isinf(upper)){
+		add_json_node_string(jnode, "upper", "infinity");
+	}
+	else{
+		add_json_node_double(jnode, "upper", upper);
+	}
+	if(isinf(lower) && lower < 0){
+		add_json_node_string(jnode, "lower", "-infinity");
+	}
+	else{
+		add_json_node_double(jnode, "lower", lower);
+	}
 	return jnode;
 }
 

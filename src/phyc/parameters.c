@@ -181,6 +181,7 @@ Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, 
 
 Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 	char* allowed[] = {
+		"dimension",
 		"flower",
 		"fupper",
 		"lower",
@@ -195,17 +196,34 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 		p->refCount++;
 		return p;
 	}
-	double single_value = 0;
-	double* value = &single_value;
-	size_t dim = 1;
+	
+	size_t dim = get_json_node_value_size_t(node, "dimension", 0);
+	size_t size = 0;
+	double* values = NULL;
 	json_node* value_node = get_json_node(node, "value");
 	if (value_node->node_type == MJSON_ARRAY) {
-		value = (double*)value_node->value;
-		dim = value_node->child_count;
+		size = value_node->child_count;
+		dim = stmax(dim, size);
+		values = dvector(dim);
+		memcpy(values, (double*)value_node->value, sizeof(double)*value_node->child_count);
 	}
 	else {
-		*value = atof((char*)value_node->value);
+		size = 1;
+		dim = stmax(dim, size);
+		values = dvector(dim);
+		*values = atof((char*)value_node->value);
 	}
+	size_t i = size;
+	while(i < dim){
+		for(size_t j = 0; j < size; j++){
+			values[i] = values[j];
+			i++;
+			if(i == dim){
+				break;
+			}
+		}
+	}
+
 	double lower = -INFINITY;
 	double upper = INFINITY;
 	json_node* lower_node = get_json_node(node, "lower");
@@ -227,8 +245,10 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 	if(upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0){
 		cnstr->fupper = atof((char*)upper_node->value);
 	}
-	json_node* id_node = get_json_node(node, "id");
-	return new_Parameter2((char*)id_node->value, value, dim, cnstr);
+	char* id = get_json_node_value_string(node, "id");
+	Parameter* parameter = new_Parameter2(id, values, dim, cnstr);
+	free(values);
+	return parameter;
 }
 
 Parameters* new_MultiParameter_from_json(json_node* node, Hashtable* hash){
@@ -327,6 +347,7 @@ void free_Parameter( Parameter *p ){
 	if(p->refCount == 1){
 		free(p->name);
 		free(p->value);
+		free(p->stored_value);
 		if(p->grad != NULL){
 			free(p->grad);
 		}

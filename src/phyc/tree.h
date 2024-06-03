@@ -39,6 +39,8 @@ typedef struct _Tree Tree;
 
 Model * new_TreeModel( const char* name, Tree *tree );
 
+Model * new_TreeModel2( const char* name, Tree *tree, Model* modelTransform );
+
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash);
 
 Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* dates);

@@ -8,6 +8,9 @@
 
 #include "treetransform.h"
 
+#include "assert.h"
+#include "strings.h"
+
 #include "matrix.h"
 
 
@@ -125,14 +128,16 @@ void _update_ratios_gradient(Tree* tree, const double* lowers, const double* rat
 
 void node_transform_jvp_efficient(TreeTransform *tt, const double *height_gradient, double *gradient){
 	memset(gradient, 0.0, sizeof(double)*(tt->tipCount-1));
-	_update_ratios_gradient(tt->tree, tt->lowers, tt->ratios->value, height_gradient, gradient);
-	gradient[Node_class_id(Tree_root(tt->tree))] = _root_height_gradient(tt->tree, tt->ratios->value, height_gradient);
+    double* ratios = Parameters_at(tt->parameters, 0)->value;
+	_update_ratios_gradient(tt->tree, tt->lowers, ratios, height_gradient, gradient);
+	gradient[Node_class_id(Tree_root(tt->tree))] = _root_height_gradient(tt->tree, ratios, height_gradient);
 }
 
 void _node_transform_log_jacobian_gradient_efficient(struct TreeTransform *tt, double *gradient) {
 	size_t nodeCount = Tree_node_count(tt->tree);
 	double *log_time = dvector(tt->tipCount-1);
 	unsigned root_class_id = Node_class_id(Tree_root(tt->tree));
+    double* ratios = Parameters_at(tt->parameters, 0)->value;
 	
 	Node** nodes = Tree_nodes(tt->tree);
 	for (size_t i = tt->tipCount; i < nodeCount; i++) {
@@ -141,14 +146,14 @@ void _node_transform_log_jacobian_gradient_efficient(struct TreeTransform *tt, d
 	log_time[root_class_id] = 0.0;
 	double* jac_gradient = dvector(tt->tipCount-1);
 	memset(jac_gradient, 0.0, sizeof(double)*(tt->tipCount-1));
-	_update_ratios_gradient(tt->tree, tt->lowers, tt->ratios->value, log_time, jac_gradient);
+	_update_ratios_gradient(tt->tree, tt->lowers, ratios, log_time, jac_gradient);
 	
 	
-	gradient[root_class_id] += _root_height_gradient(tt->tree, tt->ratios->value, log_time);
+	gradient[root_class_id] += _root_height_gradient(tt->tree, ratios, log_time);
 	
 	for (size_t i = tt->tipCount; i < nodeCount-1; i++) {
         size_t node_class_id = Node_class_id(nodes[i]);
-        gradient[node_class_id] += jac_gradient [node_class_id] -1.0 / tt->ratios->value[node_class_id];
+        gradient[node_class_id] += jac_gradient [node_class_id] -1.0 / ratios[node_class_id];
     }
 	free(jac_gradient);
 	free(log_time);
@@ -185,7 +190,8 @@ void tree_transform_collect_lowers(Node *node, TreeTransform *tt, double *lowers
         tree_transform_collect_lowers(node->right, tt, lowers);
         lowers[Node_id(node)] = dmax(lowers[Node_id(Node_left(node))], lowers[Node_id(Node_right(node))]);
         if (Node_isroot(node)) {
-            Parameter_set_lower(tt->rootHeight, lowers[Node_id(node)]);
+            Parameter* rootHeight = Parameters_at(tt->parameters, 1);
+            Parameter_set_lower(rootHeight, lowers[Node_id(node)]);
         }
     } else {
         lowers[Node_id(node)] = Node_height(node);
@@ -193,7 +199,9 @@ void tree_transform_collect_lowers(Node *node, TreeTransform *tt, double *lowers
 }
 
 void _tree_transform_update(TreeTransform *tt) {
-    tree_transform_update_heights(Tree_root(tt->tree), tt->ratios->value, Parameter_value(tt->rootHeight), tt->lowers);
+    double* ratios = Parameters_at(tt->parameters, 0)->value;
+    double rootHeight = Parameters_at(tt->parameters, 1)->value[0];
+    tree_transform_update_heights(Tree_root(tt->tree), ratios, rootHeight, tt->lowers);
 }
 
 void _tree_transform_update_lowers(TreeTransform *tt) {
@@ -260,6 +268,7 @@ void product_of_ratios(Node *node, const double *grad, double *ratios, double pr
 void node_transform_jvp(TreeTransform *tt, const double *height_gradient, double *gradient) {
     size_t nodeCount = Tree_node_count(tt->tree);
     Node **nodes = Tree_get_nodes(tt->tree, POSTORDER);
+    double* ratioValues = Parameters_at(tt->parameters, 0)->value;
     for (size_t i = 0; i < nodeCount; i++) {
         Node *node = nodes[i];
         if (!Node_isleaf(node)) {
@@ -269,7 +278,6 @@ void node_transform_jvp(TreeTransform *tt, const double *height_gradient, double
             }
             unsigned reparamID = Node_class_id(node);
             gradient[reparamID] = height_gradient[node->class_id];
-            double* ratioValues = tt->ratios->value;
             product_of_ratios(node->left, height_gradient, ratioValues, 1, gradient + reparamID);
             product_of_ratios(node->right, height_gradient, ratioValues, 1, gradient + reparamID);
             gradient[reparamID] *= dhi_dri;
@@ -280,6 +288,7 @@ void node_transform_jvp(TreeTransform *tt, const double *height_gradient, double
 void TreeTransform_jvp_with_heights(TreeTransform *tt, const double* heights, const double *height_gradient, double *gradient) {
 	size_t nodeCount = Tree_node_count(tt->tree);
 	Node **nodes = Tree_get_nodes(tt->tree, POSTORDER);
+    double* ratioValues = Parameters_at(tt->parameters, 0)->value;
 	for (size_t i = 0; i < nodeCount; i++) {
 		Node *node = nodes[i];
 		if (!Node_isleaf(node)) {
@@ -289,12 +298,47 @@ void TreeTransform_jvp_with_heights(TreeTransform *tt, const double* heights, co
 			}
 			unsigned reparamID = Node_class_id(node);
 			gradient[reparamID] = height_gradient[node->class_id];
-            double* ratioValues = tt->ratios->value;
 			product_of_ratios(node->left, height_gradient, ratioValues, 1, gradient + reparamID);
 			product_of_ratios(node->right, height_gradient, ratioValues, 1, gradient + reparamID);
 			gradient[reparamID] *= dhi_dri;
 		}
 	}
+}
+
+void TreeTransform_initialize_from_heights(TreeTransform* tt){
+    Tree* atree = tt->tree;
+    assert(atree != NULL);
+    if(tt->parameterization == TREE_TRANSFORM_SHIFT){
+        Node **nodes = Tree_get_nodes(atree, POSTORDER);
+        Parameter* shifts = Parameters_at(tt->parameters, 0);
+        for (int i = 0; i < Tree_node_count(atree); i++) {
+            Node* node = nodes[i];
+            if(!Node_isleaf(node)){
+                double s = tt->inverse_transform(tt, node);
+                Parameter_set_value_at_quietly(shifts, s, node->class_id);
+            }
+        }
+    }
+    else{
+        if(tt->update_lowers != NULL){
+            tt->update_lowers(tt);
+        }
+        Parameter* ratios = Parameters_at(tt->parameters, 0);
+        Parameter* rootHeight = Parameters_at(tt->parameters, 1);
+        Node **nodes = Tree_get_nodes(atree, PREORDER);
+        for (int i = 0; i < Tree_node_count(atree); i++) {
+            Node* node = nodes[i];
+            if(Node_isroot(node)){
+                Parameter_set_value_quietly(rootHeight, Node_height(node));
+            }
+            else if(!Node_isleaf(node)){
+                double s = tt->inverse_transform(tt, node);
+                Parameter_set_value_at_quietly(ratios, s, node->class_id);
+            }
+        }
+	}
+    
+    Parameters_at(tt->parameters, 0)->listeners->fire(Parameters_at(tt->parameters, 0)->listeners, NULL, -1);
 }
 
 TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameterization) {
@@ -303,8 +347,6 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
     tt->tipCount = Tree_tip_count(tree);
 	tt->parameterization = parameterization;
     tt->parameters = new_Parameters(2);
-    tt->ratios = NULL;
-    tt->rootHeight = NULL;
     Parameters_set_name2(tt->parameters, "reparam");
     tt->lowers = dvector(Tree_node_count(tree));
     tt->update = _tree_transform_update;
@@ -339,6 +381,8 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
     StringBuffer *buffer = new_StringBuffer(10);
     int *indices = ivector(tt->tipCount - 1);
     double *ratio_values = dvector(tt->tipCount - 2);
+    Parameter* ratios = NULL;
+    Parameter* rootHeight = NULL;
     size_t count = 0;
     for (int i = 0; i < Tree_node_count(tree); i++) {
         Node *node = nodes[i];
@@ -349,8 +393,8 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
 
         if (Node_isroot(node)) {
             // The constraint is updated during lowers collection
-            tt->rootHeight = new_Parameter(buffer->c, Node_height(node), new_Constraint(0, INFINITY));
-            tt->rootHeight->model = MODEL_TREE_TRANSFORM;
+            rootHeight = new_Parameter(buffer->c, Node_height(node), new_Constraint(0, INFINITY));
+            rootHeight->model = MODEL_TREE_TRANSFORM;
 
         } else {
             ratio_values[count] = Node_height(node) / Node_height(Node_parent(node));
@@ -360,15 +404,67 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
     // we want the reparam parameters to be sorted according to their ids
     // p->id == node->class_id == position in tt->parameters
     dvector_sort_from_ivector(ratio_values, indices, tt->tipCount - 2);
-    tt->ratios = new_Parameter_with_postfix2("ratios", "", ratio_values, tt->tipCount - 2, new_Constraint(0., 1.));
-    tt->ratios->model = MODEL_TREE_TRANSFORM;
-    Parameters_add(tt->parameters, tt->ratios);
-    Parameters_add(tt->parameters, tt->rootHeight);
+    ratios = new_Parameter_with_postfix2("ratios", "", ratio_values, tt->tipCount - 2, new_Constraint(0., 1.));
+    ratios->model = MODEL_TREE_TRANSFORM;
+    Parameters_move(tt->parameters, ratios);
+    Parameters_move(tt->parameters, rootHeight);
     free(ratio_values);
     free(indices);
     free_StringBuffer(buffer);
 
     tree_transform_collect_lowers(Tree_root(tree), tt, tt->lowers);
+    return tt;
+}
+
+void TreeTransform_add_tree(TreeTransform* tt, Tree* tree){
+    tt->tree = tree;
+    tt->tipCount = Tree_tip_count(tree);
+    tt->lowers = dvector(Tree_node_count(tree));
+    if(tt->update_lowers != NULL){
+        tt->update_lowers(tt);
+    }
+}
+
+// lower and upper constraints have to specified in the json file
+TreeTransform *new_HeightTreeTransform2(Parameters* parameters, tree_transform_t parameterization) {
+    TreeTransform *tt = malloc(sizeof(TreeTransform));
+    tt->tree = NULL;// tree;
+    tt->tipCount = 0;//Tree_tip_count(tree);
+	tt->parameterization = parameterization;
+    tt->parameters = parameters;
+    tt->lowers = NULL;//dvector(Tree_node_count(tree));
+    tt->update = _tree_transform_update;
+    tt->update_lowers = _tree_transform_update_lowers;
+    tt->inverse_transform = _height_tree_inverse_transform;
+    tt->log_jacobian = _node_transform_log_jacobian;
+    tt->dlog_jacobian = _node_transform_dlog_jacobian;
+	if(parameterization == TREE_TRANSFORM_RATIO_NAIVE){
+		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient;
+		tt->jvp = node_transform_jvp;
+	}
+	else if(parameterization == TREE_TRANSFORM_RATIO){
+		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_efficient;
+		tt->jvp = node_transform_jvp_efficient;
+	}
+	else if(parameterization == TREE_TRANSFORM_SHIFT){
+        tt->update = _tree_transform_shift_update;
+        tt->update_lowers = NULL;
+        tt->inverse_transform = _height_tree_inverse_shift_transform;
+        tt->log_jacobian = _node_transform_log_jacobian_zero;
+        tt->dlog_jacobian = _node_transform_dlog_jacobian_zero;
+		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_zero;
+		tt->jvp = node_transform_jvp_shift;
+	}
+	else{
+		fprintf(stderr, "Node height reparameterization not recognized\n");
+		exit(2);
+	}
+
+    for(size_t i = 0; i < Parameters_count(parameters); i++){
+        Parameter* p = Parameters_at(parameters, i);
+        p->model = MODEL_TREE_TRANSFORM;
+    }
+
     return tt;
 }
 
@@ -388,8 +484,6 @@ Model *clone_HeightTreeTransform(Model *self, Hashtable *hash) {
     ttnew->tipCount = tt->tipCount;
     ttnew->tree = mtree->obj;
     ttnew->parameters = new_Parameters(2);
-    ttnew->ratios = NULL;
-    ttnew->rootHeight = NULL;
     Parameters_set_name2(ttnew->parameters, Parameters_name2(tt->parameters));
     ttnew->lowers = clone_dvector(tt->lowers, Tree_node_count(ttnew->tree));
     ttnew->update = tt->update;
@@ -400,11 +494,11 @@ Model *clone_HeightTreeTransform(Model *self, Hashtable *hash) {
     ttnew->log_jacobian_gradient = tt->log_jacobian_gradient;
     ttnew->jvp = tt->jvp;
 
-    ttnew->ratios = clone_Parameter(tt->ratios);
-    ttnew->rootHeight = clone_Parameter(tt->rootHeight);
+    Parameter* ratios = clone_Parameter(Parameters_at(tt->parameters, 0));
+    Parameter* rootHeight = clone_Parameter(Parameters_at(tt->parameters, 1));
 
-     Parameters_add(ttnew->parameters, ttnew->ratios);
-     Parameters_add(ttnew->parameters, ttnew->rootHeight);
+     Parameters_move(ttnew->parameters, ratios);
+     Parameters_move(ttnew->parameters, rootHeight);
 
     Model *clone = new_Model(MODEL_TREE_TRANSFORM, self->name, ttnew);
     for (size_t i = 0; i < Parameters_count(ttnew->parameters); i++) {
@@ -416,8 +510,6 @@ Model *clone_HeightTreeTransform(Model *self, Hashtable *hash) {
 
 void free_TreeTransform(TreeTransform *tt) {
     free_Parameters(tt->parameters);
-    free_Parameter(tt->ratios);
-    free_Parameter(tt->rootHeight);
     free(tt->lowers);
     free(tt);
 }
@@ -504,6 +596,76 @@ Model *new_TreeTransformModel(const char *name, TreeTransform *tt, Model *tree) 
 	model->logP = _tree_transform_model_logP;
 	model->dlogP = _tree_transform_model_dlogP;
 
-    model->data = tree;
+    model->data = tree;//never used could also create a leak with circular references
     return model;
+}
+
+void TreeTransformModel_add_tree_model(Model* self, Model* tree){
+    self->data = tree; //never used could also create a leak with circular references
+    TreeTransform_add_tree(self->obj, tree->obj);
+}
+
+Model* new_TreeTransformModel_from_json(json_node* node, Hashtable* hash){
+	char* allowed[] = {
+		"ratios",
+		"root_height",
+		"shifts",
+		"transform"
+	};
+	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+
+    char* id = get_json_node_value_string(node, "id");
+    printf("%s\n",id);
+    char* transform_desc = get_json_node_value_string(node, "transform");
+    json_node* treeRef = get_json_node(node, "tree");
+    TreeTransform *tt = NULL;
+    StringBuffer* buffer = new_StringBuffer(10);
+
+    json_node* ratios_node = get_json_node(node, "ratios");
+    json_node* root_height_node = get_json_node(node, "root_height");
+    json_node* shifts_height_node = get_json_node(node, "shifts");
+
+    if(ratios_node != NULL && root_height_node != NULL){
+        Parameters* parameters = new_Parameters(2);
+        StringBuffer_set_string(buffer, id);
+        StringBuffer_append_string(buffer, ".ratios");
+        Parameters_set_name2(parameters,  buffer->c);
+
+        if(ratios_node->node_type == MJSON_OBJECT){
+            Parameter* ratios = new_Parameter_from_json(ratios_node, hash);
+            Parameters_move(parameters, ratios);
+
+            Parameter* rootHeight = new_Parameter_from_json(root_height_node, hash);
+            Parameters_move(parameters, rootHeight);
+
+            if(transform_desc != NULL && strcasecmp(transform_desc, "ratio_naive") == 0){
+                tt = new_HeightTreeTransform2(parameters, TREE_TRANSFORM_RATIO_NAIVE);
+            }
+            else{
+                tt = new_HeightTreeTransform2(parameters, TREE_TRANSFORM_RATIO);
+            }
+        }
+    }
+    else if(shifts_height_node != NULL){
+        Parameters* parameters = new_Parameters(1);
+        StringBuffer_set_string(buffer, id);
+        StringBuffer_append_strings(buffer, 2, ".shifts");
+        Parameters_set_name2(parameters,  buffer->c);
+
+        if(shifts_height_node->node_type == MJSON_OBJECT){
+            Parameter* shifts = new_Parameter_from_json(shifts_height_node, hash);
+            Parameters_move(parameters, shifts);
+            tt = new_HeightTreeTransform2(parameters, TREE_TRANSFORM_SHIFT);
+        }
+        
+    }
+    
+    Hashtable_add(hash, Parameters_name2(tt->parameters), tt->parameters);
+    for (size_t i = 0; i < Parameters_count(tt->parameters); i++) {
+        Hashtable_add(hash, Parameters_name(tt->parameters, i), Parameters_at(tt->parameters, i));
+    }
+
+    free_StringBuffer(buffer);
+
+    return new_TreeTransformModel(id, tt, NULL);
 }

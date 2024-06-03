@@ -23,8 +23,6 @@ typedef enum tree_transform_t{
 typedef struct TreeTransform {
     Tree* tree;
     Parameters* parameters;
-    Parameter* ratios;
-    Parameter* rootHeight;
     double* lowers;
     size_t tipCount;
 	tree_transform_t parameterization;
@@ -41,8 +39,16 @@ TreeTransform* new_HeightTreeTransform(Tree* tree, tree_transform_t parameteriza
 
 void free_TreeTransform(TreeTransform* tt);
 
-Model* new_TreeTransformModel(const char* name, TreeTransform* coalescent, Model* tree);
+void TreeTransform_initialize_from_heights(TreeTransform* tt);
+
+void TreeTransform_add_tree_model(TreeTransform* tt, Tree* tree);
 
 void TreeTransform_jvp_with_heights(TreeTransform *tt, const double* heights, const double *height_gradient, double *gradient);
+
+void TreeTransformModel_add_tree_model(Model* self, Model* tree);
+
+Model* new_TreeTransformModel(const char* name, TreeTransform* tt, Model* tree);
+
+Model* new_TreeTransformModel_from_json(json_node* node, Hashtable* hash);
 
 #endif /* treetransform_h */
