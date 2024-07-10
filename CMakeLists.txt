@@ -8,7 +8,7 @@ SET( LIBRARY_NAME "PHYC" )
 
 SET( ${LIBRARY_NAME}_MAJOR_VERSION 2 )
 SET( ${LIBRARY_NAME}_MINOR_VERSION 0 )
-SET( ${LIBRARY_NAME}_PATCH_LEVEL 0 )
+SET( ${LIBRARY_NAME}_PATCH_LEVEL 1 )
 
 
 #####################################################################
