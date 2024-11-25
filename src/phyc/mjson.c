@@ -14,6 +14,29 @@
 #include "mstring.h"
 #include "ctype.h"
 
+json_node* clone_json_node(json_node* parent, json_node* node) {
+    json_node* clone = NULL;
+    if (node->node_type == MJSON_OBJECT) {
+        clone = create_json_node_object(parent, node->key);
+    } else if (node->node_type == MJSON_ARRAY) {
+        clone = create_json_node_array(parent, node->key);
+    } else if (node->node_type == MJSON_STRING || node->node_type == MJSON_PRIMITIVE) {
+        clone = create_json_node(parent);
+        clone->key = node->key == NULL ? NULL : String_clone(node->key);
+        clone->value = String_clone(node->value);
+        clone->node_type = node->node_type;
+    }
+
+    if (node->child_count > 0) {
+        clone->children = calloc(node->child_count, sizeof(json_node*));
+        for (size_t i = 0; i < node->child_count; i++) {
+            clone->children[i] = clone_json_node(clone, node->children[i]);
+            clone->child_count++;
+        }
+    }
+    return clone;
+}
+
 json_node* create_json_node(json_node* parent){
 	json_node* node = malloc(sizeof(json_node));
 	node->parent = parent;
@@ -51,9 +74,7 @@ json_node* create_json_node_parameter(json_node* parent, const char* name, doubl
 	return create_json_node_parameter_n(parent, name, &value, 1, lower, upper);
 }
 
-json_node* create_json_node_parameter_n(json_node* parent, const char* name, const double* value, size_t dimension, double lower, double upper){
-	json_node* jnode = create_json_node_object(parent, name);
-	add_json_node(parent, jnode);
+json_node* create_json_node_parameter_n(json_node* jnode, const char* name, const double* value, size_t dimension, double lower, double upper){
 	add_json_node_string(jnode, "id", name);
 	add_json_node_string(jnode, "type", "parameter");
 	if(dimension > 1){
@@ -78,9 +99,7 @@ json_node* create_json_node_parameter_n(json_node* parent, const char* name, con
 	return jnode;
 }
 
-json_node* create_json_node_parameters(json_node* parent, const char* name, size_t dimension, double lower, double upper){
-	json_node* jnode = create_json_node_object(parent, name);
-	add_json_node(parent, jnode);
+json_node* create_json_node_parameters(json_node* jnode, const char* name, size_t dimension, double lower, double upper){
 	add_json_node_string(jnode, "id", name);
 	add_json_node_string(jnode, "type", "parameter");
 	add_json_node_size_t(jnode, "dimension", dimension);
@@ -100,9 +119,7 @@ json_node* create_json_node_parameters(json_node* parent, const char* name, size
 	return jnode;
 }
 
-json_node* create_json_node_parameter_full(json_node* parent, const char* name, double value, size_t dimension, double lower, double upper){
-	json_node* jnode = create_json_node_object(parent, name);
-	add_json_node(parent, jnode);
+json_node* create_json_node_parameter_full(json_node* jnode, const char* name, double value, size_t dimension, double lower, double upper){
 	add_json_node_string(jnode, "id", name);
 	add_json_node_string(jnode, "type", "parameter");
 	add_json_node_size_t(jnode, "dimension", dimension);
@@ -365,6 +382,21 @@ int get_json_node_value_int(json_node* node, const char* key, int defaultv){
 	return defaultv;
 }
 
+void get_json_node_value_array_double(json_node* node, const char* key,
+                                      double* values) {
+    json_node* n = get_json_node(node, key);
+    for (size_t i = 0; i < n->child_count; i++) {
+        values[i] = atof((char*)n->children[i]->value);
+    }
+}
+
+void get_json_node_value_array_int(json_node* node, const char* key, int* values) {
+    json_node* n = get_json_node(node, key);
+    for (size_t i = 0; i < n->child_count; i++) {
+        values[i] = atoi((char*)n->children[i]->value);
+    }
+}
+
 json_node* create_json_tree(const char* json){
 	json_node* current = create_json_node(NULL);
 	json_node* root = current;
@@ -600,6 +632,13 @@ void json_tree_print(json_node* node){
 
 void json_tree_fprint(json_node* node, FILE* file){
     json_tree_print_aux(node, 0, file);
+}
+
+void json_free_node(json_node* node) {
+    free(node->key);
+    if (node->child_count > 0) free(node->children);
+    if (node->value != NULL) free(node->value);
+    free(node);
 }
 
 void json_free_tree(json_node* node){

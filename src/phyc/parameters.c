@@ -28,6 +28,7 @@
 #include "mstring.h"
 #include "utils.h"
 #include "matrix.h"
+#include "transforms.h"
 
 #include "simplex.h"
 
@@ -48,6 +49,38 @@ struct _Parameters{
 	size_t capacity;
 };
 
+void* safe_get_reference_parameter(const char* ref, Hashtable* hash,
+                                   const char* parent) {
+    if (ref == NULL || strlen(ref) < 2 || ref[0] != '&') {
+        if (ref == NULL)
+            fprintf(stderr, "No reference provided for parent '%s'\n", parent);
+        if (strlen(ref) < 2)
+            fprintf(stderr, "Invalid reference (%s) provided for parent '%s'\n", ref,
+                    parent);
+        if (ref[0] != '&')
+            fprintf(stderr, "Reference '%s' should start with a '&' with parent '%s'\n",
+                    ref, parent);
+        exit(2);
+    }
+    void* res = Hashtable_get(hash, ref + 1);
+    if (res == NULL) {
+        fprintf(stderr, "Reference '%s' not found for parent '%s'\n", ref, parent);
+        exit(2);
+    }
+    return res;
+}
+
+bool safe_is_reference(const char* ref, const char* parent) {
+    if (ref == NULL || strlen(ref) < 2) {
+        if (ref == NULL)
+            fprintf(stderr, "No reference provided for parent '%s'\n", parent);
+        if (ref[0] == '&' && strlen(ref) < 2)
+            fprintf(stderr, "Invalid reference (%s) provided for parent '%s'\n", ref,
+                    parent);
+        exit(2);
+    }
+    return ref[0] == '&';
+}
 
 #pragma mark -
 #pragma mark Constraint
@@ -140,6 +173,12 @@ void Constraint_set_flower( Constraint *c, const double flower ){
 #pragma mark -
 #pragma mark Parameter
 
+void _parameter_handle_update(Parameter* self, Model* model, Parameter* parameter,
+                              int index) {
+    Parameter_fire(self, index);
+}
+void _parameter_handle_restore(Parameter* self, Model* model, int index) {}
+
 // Owns the constraint by default
 Parameter * new_Parameter( const char *name, const double value, Constraint *constr ){
 	return new_Parameter_with_postfix( name, "", value, constr );
@@ -166,6 +205,8 @@ Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, 
 		p->name[name_len] = '.';
 		strcpy(p->name+name_len+1, postfix);
 	}
+	p->update = _parameter_handle_update;
+	p->handle_restore = _parameter_handle_restore;
 	p->value = clone_dvector(value, dim);
 	p->stored_value = clone_dvector(value, dim);
 	p->dim = dim;
@@ -175,24 +216,50 @@ Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, 
 	p->listeners = new_ListenerList(1);
 	p->refCount = 1;
 	p->model = -1;
+	p->transform = NULL;
 	p->grad = NULL;
+	Parameter_allocate_grad(p);
 	return p;
 }
 
-Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"dimension",
-		"flower",
-		"fupper",
-		"lower",
-		"upper",
-		"value"
-	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+Parameter * new_Parameter_full( const char *name, double value, size_t dim, Constraint *constr){
+	Parameter *p = (Parameter *)malloc( sizeof(Parameter) );
+	assert(p);
+	p->name = String_clone(name);
+	assert(p->name);
+	p->update = _parameter_handle_update;
+	p->handle_restore = _parameter_handle_restore;
+	p->value = dvector(dim);
+	p->stored_value = dvector(dim);
+	for(size_t i = 0; i < dim; i++){
+		p->value[i] = value;
+		p->stored_value[i] = value;
+	}
+	p->dim = dim;
+	p->cnstr = constr;
+	p->estimate = true;
+	p->id = 0;
+	p->listeners = new_ListenerList(1);
+	p->refCount = 1;
+	p->model = -1;
+	p->transform = NULL;
+	p->grad = NULL;
+	Parameter_allocate_grad(p);
+	return p;
+}
+	return p;
+}
+
+Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash) {
+    char* allowed[] = {"dimension", "flower", "fupper", "lower", "upper",
+                       "value",   // deprecated, use x instead
+                       "values",  // deprecated, use x instead
+                       "x"};
+    json_check_allowed(node, allowed, sizeof(allowed) / sizeof(allowed[0]));
 	
 	if (node->node_type == MJSON_STRING) {
 		char* ref = (char*)node->value;
-		Parameter*p = Hashtable_get(hash, ref+1);
+        Parameter* p = Hashtable_get(hash, ref + 1);
 		p->refCount++;
 		return p;
 	}
@@ -201,52 +268,83 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash){
 	size_t size = 0;
 	double* values = NULL;
 	json_node* value_node = get_json_node(node, "value");
-	if (value_node->node_type == MJSON_ARRAY) {
-		size = value_node->child_count;
-		dim = stmax(dim, size);
-		values = dvector(dim);
-		memcpy(values, (double*)value_node->value, sizeof(double)*value_node->child_count);
+    if (value_node == NULL) {
+		value_node = get_json_node(node, "values");
 	}
-	else {
-		size = 1;
-		dim = stmax(dim, size);
-		values = dvector(dim);
-		*values = atof((char*)value_node->value);
+    if (value_node == NULL) {
+		value_node = get_json_node(node, "x");
 	}
-	size_t i = size;
-	while(i < dim){
-		for(size_t j = 0; j < size; j++){
-			values[i] = values[j];
-			i++;
-			if(i == dim){
-				break;
-			}
-		}
-	}
+	char* type = get_json_node_value_string(node, "type");
+	char* id = get_json_node_value_string(node, "id");
 
 	double lower = -INFINITY;
 	double upper = INFINITY;
 	json_node* lower_node = get_json_node(node, "lower");
-	if(lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0){
+    if (lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0) {
 		lower = atof((char*)lower_node->value);
-		
 	}
 	json_node* upper_node = get_json_node(node, "upper");
-	if(upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0){
+    if (upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0) {
 		upper = atof((char*)upper_node->value);
 	}
 	Constraint* cnstr = new_Constraint(lower, upper);
 	lower_node = get_json_node(node, "flower");
-	if(lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0){
+    if (lower_node != NULL && strcasecmp((char*)lower_node->value, "-infinity") != 0) {
 		cnstr->flower = atof((char*)lower_node->value);
-		
 	}
 	upper_node = get_json_node(node, "fupper");
-	if(upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0){
+    if (upper_node != NULL && strcasecmp((char*)upper_node->value, "infinity") != 0) {
 		cnstr->fupper = atof((char*)upper_node->value);
 	}
-	char* id = get_json_node_value_string(node, "id");
+
+    Transform* transform = NULL;
+
+    if (value_node->node_type == MJSON_OBJECT) {
+        // p should have no constraints (-inf, inf)
+        Parameter* unconstrained = new_Parameter_from_json(value_node, hash);
+        Hashtable_add(hash, Parameter_name(unconstrained), unconstrained);
+
+        if (strcasecmp(type, "simplex") == 0) {
+            transform = new_SimplexTransform_with_parameter(NULL, unconstrained);
+        } else {
+            transform = new_Transform_with_parameter(NULL, lower, upper, unconstrained);
+        }
+
+        dim = transform->dim;
+        values = dvector(dim);
+        transform->get(transform, values);
+    } else {
+        if (value_node->node_type == MJSON_ARRAY) {
+            size = value_node->child_count;
+            dim = stmax(dim, size);
+            values = dvector(dim);
+            for (size_t i = 0; i < size; i++) {
+                values[i] = atof((const char*)value_node->children[i]->value);
+            }
+        } else {
+            size = 1;
+            dim = stmax(dim, size);
+            values = dvector(dim);
+            *values = atof((char*)value_node->value);
+        }
+        size_t i = size;
+        while (i < dim) {
+            for (size_t j = 0; j < size; j++) {
+                values[i] = values[j];
+                i++;
+                if (i == dim) {
+                    break;
+                }
+            }
+        }
+    }
+
 	Parameter* parameter = new_Parameter2(id, values, dim, cnstr);
+    parameter->transform = transform;
+    if (transform != NULL) {
+        Parameters_add(transform->parameter->listeners->parameters, parameter);
+    }
+
 	free(values);
 	return parameter;
 }
@@ -418,54 +516,99 @@ void Parameter_set_value( Parameter *p, const double value ){
 	Parameter_set_value_at(p, value, 0);
 }
 
-void Parameter_set_values( Parameter *p, const double *values ){
-	memcpy(p->value, values, sizeof(double)*p->dim);
-	p->listeners->fire(p->listeners, NULL, p->id);
+void Parameter_set_values(Parameter* p, const double* values) {
+    memcpy(p->value, values, sizeof(double) * p->dim);
+    if (p->transform != NULL) {
+        p->transform->set(p->transform, values);
+    }
+    p->listeners->fire(p->listeners, NULL, p, -1);
 }
 
-void Parameter_set_values_quietly( Parameter *p, const double *values ){
-	memcpy(p->value, values, sizeof(double)*p->dim);
+void Parameter_set_values_quietly(Parameter* p, const double* values) {
+    memcpy(p->value, values, sizeof(double) * p->dim);
+    if (p->transform != NULL) {
+        p->transform->set(p->transform, values);
+    }
 }
 
-void Parameter_set_value_at( Parameter *p, const double value, size_t index ){
+void Parameter_set_value_at(Parameter* p, const double value, size_t index) {
 	p->value[index] = value;
-	p->listeners->fire(p->listeners, NULL, p->id);
+    if (p->transform != NULL) {
+        p->transform->set(p->transform, p->value);
+    }
+    p->listeners->fire(p->listeners, NULL, p, index);
 }
 
-
-void Parameter_set_value_quietly( Parameter *p, const double value ){
+void Parameter_set_value_quietly(Parameter* p, const double value) {
 	p->value[0] = value;
+    if (p->transform != NULL) {
+        p->transform->set(p->transform, p->value);
+    }
 }
 
-void Parameter_set_value_at_quietly( Parameter *p, const double value, size_t index ){
+void Parameter_set_value_at_quietly(Parameter* p, const double value, size_t index) {
 	p->value[index] = value;
+    if (p->transform != NULL) {
+        p->transform->set(p->transform, p->value);
+    }
+void Parameter_zero_grad(Parameter* p) {
+    if (p->grad != NULL) {
+        memset(p->grad, 0, sizeof(double) * p->dim);
+    }
 }
 
-void Parameter_fire(Parameter *p){
-	p->listeners->fire(p->listeners, NULL, p->id);
+void Parameter_fire(Parameter* p, int index) {
+    p->listeners->fire(p->listeners, NULL, p, index);
 }
 
-double Parameter_value( const Parameter *p ){
+double Parameter_value(const Parameter* p) {
+    if (p->transform != NULL) {
+        p->transform->get(p->transform, p->value);
+    }
 	return p->value[0];
 }
 
-double Parameter_value_at( const Parameter *p, size_t index ){
+const double* Parameter_values(const Parameter* p) {
+    if (p->transform != NULL) {
+        p->transform->get(p->transform, p->value);
+    }
+    return p->value;
+}
+
+double Parameter_value_at(const Parameter* p, size_t index) {
+    if (p->transform != NULL) {
+        p->transform->get(p->transform, p->value);
+    }
 	return p->value[index];
 }
 
 void Parameter_store(Parameter *p){
 	memcpy(p->stored_value, p->value, sizeof(double)* p->dim);
-}
-
-void Parameter_restore(Parameter *p){
-	if (memcmp(p->stored_value, p->value, sizeof(double)* p->dim) != 0) {
-		memcpy(p->value, p->stored_value, sizeof(double)* p->dim);
-		p->listeners->fire_restore(p->listeners, NULL, p->id);
+	if(p->transform != NULL){
+void Parameter_store(Parameter* p) {
+    memcpy(p->stored_value, p->value, sizeof(double) * p->dim);
+    if (p->transform != NULL) {
+		Parameter_store(p->transform->parameter);
 	}
 }
 
-void Parameter_restore_quietly(Parameter *p){
-	memcpy(p->value, p->stored_value, sizeof(double)* p->dim);
+void Parameter_restore(Parameter* p) {
+    if (memcmp(p->stored_value, p->value, sizeof(double) * p->dim) != 0) {
+        memcpy(p->value, p->stored_value, sizeof(double) * p->dim);
+		p->listeners->fire_restore(p->listeners, NULL, p->id);
+
+        if (p->transform != NULL) {
+            // already notified above
+            Parameter_restore_quietly(p->transform->parameter);
+        }
+	}
+}
+
+void Parameter_restore_quietly(Parameter* p) {
+    memcpy(p->value, p->stored_value, sizeof(double) * p->dim);
+    if (p->transform != NULL) {
+        Parameter_restore_quietly(p->transform->parameter);
+    }
 }
 
 bool Parameter_changed(Parameter *p){
@@ -509,11 +652,16 @@ void Parameter_set_bounds( Parameter *p, const double lower, const double upper 
 	}
 }
 
-void Parameter_allocate_grad(Parameter* p){
-	if(p->grad == NULL){
+double Parameter_fupper(const Parameter* p) { return Constraint_fupper(p->cnstr); }
+
+double Parameter_flower(const Parameter* p) { return Constraint_flower(p->cnstr); }
+
+void Parameter_allocate_grad(Parameter* p) {
+    if (p->grad == NULL) {
 		p->grad = dvector(p->dim);
 	}
 }
+
 double check_value( Constraint *cnstr, double value ){
 	if ( cnstr == NULL ) {
 		return value;
@@ -610,6 +758,20 @@ void Parameters_add( Parameters *ps, Parameter *p){
 	p->refCount++;
 }
 
+// add itself and all its dependencies
+void Parameters_add_recursively(Parameters* ps, Parameter* p) {
+    if (ps->count == ps->capacity) {
+        ps->list = realloc(ps->list, (ps->capacity + 1) * sizeof(Parameter*));
+		assert(ps->list);
+		ps->capacity++;
+	}
+	ps->list[ps->count++] = p;
+	p->refCount++;
+    if (p->transform != NULL) {
+		Parameters_add_recursively(ps, p->transform->parameter);
+	}
+}
+
 // add and do not increment refCount (move ownership)
 void Parameters_move( Parameters *ps, Parameter *p){
 	if( ps->count == ps->capacity ){
@@ -629,6 +791,18 @@ void Parameters_add_parameters(Parameters *dst, const Parameters *src){
 	}
 	for (int i = 0; i < src->count; i++) {
 		Parameters_add( dst, src->list[i] );
+	}
+}
+
+void Parameters_add_parameters_recursively(Parameters* dst, const Parameters* src) {
+    if (Parameters_count(src) == 0) return;
+    if (dst->count + src->count > dst->capacity) {
+        dst->list = realloc(dst->list, (dst->count + src->count) * sizeof(Parameter*));
+        assert(dst->list);
+        dst->capacity = dst->count + src->count;
+    }
+    for (size_t i = 0; i < src->count; i++) {
+        Parameters_add_recursively(dst, src->list[i]);
 	}
 }
 
@@ -653,6 +827,11 @@ Parameters * pack_parameters(Parameters *ps, Parameter *p){
 	return ps;
 }
 
+void Parameters_add_listener(Parameters *parameters, Model* model){
+	for (size_t i = 0; i < parameters->count; i++) {
+		parameters->list[i]->listeners->add(parameters->list[i]->listeners, model);
+	}
+}
 
 
 void Parameters_set_name( Parameters *p, const size_t index, const char *name ){
@@ -690,18 +869,12 @@ void Parameters_set_values( Parameters *p, const double* values ){
 		memcpy(p->list[i]->value, values + offset, sizeof(double)*p->list[i]->dim);
 		offset += p->list[i]->dim;
 	}
-	Parameter_fire(p->list[0]);
+	Parameter_fire(p->list[0], -1);
 }
 
 void Parameters_set_values_quietly( Parameters *p, const double* values ){
 	for (size_t i = 0; i < Parameters_count(p); ++i) {
 		Parameters_set_value_quietly(p, i, values[i]);
-	}
-}
-
-void Parameters_fire( Parameters *p ){
-	for (int i = 0; i < Parameters_count(p); ++i) {
-		Parameter_fire(p->list[i]);
 	}
 }
 
@@ -813,6 +986,12 @@ Parameters * Parameters_optimizable( Parameters *p, int **map, const char postfi
 	return sub;
 }
 
+void Parameters_restore( Parameters *p ){
+	for (size_t i = 0; i < Parameters_count(p); i++) {
+		Parameter_restore(p->list[i]);
+	}
+}
+
 void Parameters_store_value( const Parameters *p, double *store ){
 	for (int i = 0; i < Parameters_count(p); i++) {
 		store[i] = Parameters_value(p, i);
@@ -914,9 +1093,49 @@ void check_constraints(Parameters* rates, double lower, double upper, double flo
 	}
 }
 
+bool Parameters_contains(const Parameters* parameters, const Parameter* p) {
+    for (size_t i = 0; i < Parameters_count(parameters); i++) {
+        if (Parameters_at(parameters, i) == p) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Parameter* Parameters_depends(const Parameters* parameters, const Parameter* x) {
+    if (x == NULL) return NULL;
+    // check x is in parameters
+    for (size_t i = 0; i < Parameters_count(parameters); i++) {
+        if (x == Parameters_at(parameters, i)) {
+            return x;
+        }
+    }
+    // now check if its transformed parameter is in parameters
+    if (x->transform != NULL) {
+        return Parameters_depends(parameters, x->transform->parameter);
+    }
+
+    return NULL;
+}
+
+void Parameters_zero_grad(Parameters* ps) {
+    for (size_t i = 0; i < ps->count; i++) {
+        Parameter_zero_grad(ps->list[i]);
+    }
+}
+
+size_t Parameters_size(const Parameters* ps) {
+    size_t size = 0;
+    for (size_t i = 0; i < ps->count; i++) {
+        size += Parameter_size(ps->list[i]);
+    }
+    return size;
+}
+
 #pragma mark -
 
-static void dummyUpdate( Model *self, Model *model, int index ){}
+static void _dummy_update(Model* self, Model* model, Parameter* parameter, int index) {}
+static void _dummy_restore_update(Model* self, Model* model, int index) {}
 static double _logP(Model *model){return 0;}
 static double _fulllogP(Model *model){return model->logP(model);}
 static double _dlogP(Model *model, const Parameter* p){return 0;}
@@ -926,12 +1145,12 @@ static void _dummy_prepare_gradient(Model *model, const Parameters* ps){ }
 static void _dummy_reset(Model* m){}
 static void _dummy_restore(Model* m){}
 static void _dummy_store(Model* m){}
-static void _dummy_sample(Model* m, double* samples, double* logP){
+static void _dummy_sample(Model* m) {
 	fprintf(stderr, "Cannot sample from model %s\n", m->name);
 	exit(2);
 }
-static double _dummy_sample_evaluate(Model* m){
-	fprintf(stderr, "Cannot sample and evaluate from model %s\n", m->name);
+static void _dummy_rsample(Model* m) {
+    fprintf(stderr, "Cannot rsample from model %s\n", m->name);
 	exit(2);
 }
 
@@ -954,8 +1173,8 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->dlogP = _dlogP;
 	model->d2logP = _d2logP;
 	model->ddlogP = _ddlogP;
-	model->update  = dummyUpdate;
-	model->handle_restore  = dummyUpdate;
+	model->update = _dummy_update;
+	model->handle_restore = _dummy_restore_update;
 	model->free = free_Model;
 	model->data = NULL;
 	model->listeners = new_ListenerList(1);
@@ -967,12 +1186,15 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->logP = 0;
 	model->lp = 0;
 	model->sample = _dummy_sample;
-	model->sample_evaluate = _dummy_sample_evaluate;
+	model->rsample = _dummy_rsample;
 	model->samplable = false;
 	model->print = NULL;
 	model->prepare_gradient = _dummy_prepare_gradient;
     model->jsonize = _dummy_jsonize;
 	model->epsilon = 0.0;
+	model->get = NULL;
+	model->set = NULL;
+	model->parameters = new_Parameters(1);
 	return model;
 }
 
@@ -980,6 +1202,7 @@ void free_Model( Model *model ){
 	assert(model->ref_count >= 1);
 	if(model->ref_count == 1){
 		free(model->name);
+		free_Parameters(model->parameters);
 		model->listeners->free(model->listeners);
 		free(model);
 	}
@@ -1003,18 +1226,29 @@ model_t check_model(const char* type){
 
 static void _free_ListenerList( ListenerList *listeners ){
 	free(listeners->models);
+	free_Parameters(listeners->parameters);
 	free(listeners);
 }
 
-static void _ListenerList_fire( ListenerList *listeners, Model* model, int index){
-	for ( int i = 0; i < listeners->count; i++ ) {
-		listeners->models[i]->update( listeners->models[i], model, index );
+static void _ListenerList_fire(ListenerList* listeners, Model* model,
+                               Parameter* parameter, int index) {
+	for (int i = 0; i < listeners->count; i++) {
+		listeners->models[i]->update(listeners->models[i], model, parameter, index);
+	}
+
+	for (size_t i = 0; i < Parameters_count(listeners->parameters); i++) {
+		Parameter* p = Parameters_at(listeners->parameters, i);
+		p->update(p, model, parameter, index);
 	}
 }
 
 static void _ListenerList_fire_restore( ListenerList *listeners, Model* model, int index){
-	for ( int i = 0; i < listeners->count; i++ ) {
-		listeners->models[i]->handle_restore( listeners->models[i], model, index );
+    for (int i = 0; i < listeners->count; i++) {
+        listeners->models[i]->handle_restore(listeners->models[i], model, index);
+    }
+    for (size_t i = 0; i < Parameters_count(listeners->parameters); i++) {
+        Parameter* p = Parameters_at(listeners->parameters, i);
+        p->handle_restore(p, model, index);
 	}
 }
 
@@ -1059,6 +1293,7 @@ ListenerList * new_ListenerList( const unsigned capacity ){
 	listeners->count = 0;
 	listeners->models = (Model**)malloc( listeners->capacity * sizeof(Model*));
 	assert(listeners->models);
+    listeners->parameters = new_Parameters(1);
 	listeners->free = _free_ListenerList;
 	listeners->add = _ListenerList_add;
 	listeners->remove = _ListenerList_remove;
@@ -1264,7 +1499,7 @@ void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* para
 				else if (ref[0] == '$') {
 					Model* msimplex = Hashtable_get(hash, ref+1);
 					Simplex* simplex = msimplex->obj;
-					Parameters_add_parameters(parameters, simplex->parameters);
+					Parameters_add(parameters, simplex->parameter);
 				}
 			}
 			// it's a value
@@ -1299,7 +1534,7 @@ void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* para
 		else if (ref[0] == '$') {
 			Model* msimplex = Hashtable_get(hash, ref+1);
 			Simplex* simplex = msimplex->obj;
-			Parameters_add_parameters(parameters, simplex->parameters);
+			Parameters_add(parameters, simplex->parameter);
 		}
 	}
 	else if(node->node_type == MJSON_OBJECT){

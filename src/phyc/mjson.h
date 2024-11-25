@@ -29,6 +29,7 @@ typedef struct json_node {
 	json_node_t node_type;
 }json_node;
 
+json_node* clone_json_node(json_node* parent, json_node* node);
 json_node* create_json_node(json_node* parent);
 json_node* create_json_node_object(json_node* parent, const char* name);
 json_node* create_json_node_array(json_node* parent, char* name);
@@ -54,6 +55,9 @@ bool get_json_node_value_bool(json_node* node, const char* key, bool defaultv);
 double get_json_node_value_double(json_node* node, const char* key, double defaultv);
 int get_json_node_value_int(json_node* node, const char* key, int defaultv);
 size_t get_json_node_value_size_t(json_node* node, const char* key, size_t defaultv);
+void get_json_node_value_array_double(json_node* node, const char* key, double* values);
+void get_json_node_value_array_int(json_node* node, const char* key, int* values);
+
 void json_tree_to_string(json_node* node);
 bool json_prune_ignored(json_node* node);
 bool json_prune_underscored(json_node* node);

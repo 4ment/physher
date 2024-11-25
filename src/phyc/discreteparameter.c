@@ -28,15 +28,15 @@ static DiscreteParameter * _clone_DiscreteParameter( DiscreteParameter *p ){
 	return pnew;
 }
 
-static void _set_value_discrete(DiscreteParameter* p, int index, unsigned value){
-	assert(index < p->length);
-	p->values[index] = value;
-	p->listeners->fire(p->listeners, NULL, index);
+static void _set_value_discrete(DiscreteParameter* p, int index, unsigned value) {
+    assert(index < p->length);
+    p->values[index] = value;
+    p->listeners->fire(p->listeners, NULL, NULL, index);
 }
 
-static void _set_values_discrete(DiscreteParameter* p, const unsigned* values){
-	memcpy(p->values, values, p->length*sizeof(unsigned));
-	p->listeners->fire(p->listeners, NULL, -1);
+static void _set_values_discrete(DiscreteParameter* p, const unsigned* values) {
+    memcpy(p->values, values, p->length * sizeof(unsigned));
+    p->listeners->fire(p->listeners, NULL, NULL, -1);
 }
 
 DiscreteParameter * new_DiscreteParameter_with_postfix_values( const char *postfix, const unsigned* values, size_t dim ){
@@ -76,8 +76,9 @@ DiscreteParameter * new_DiscreteParameter( size_t dim ){
 #pragma mark -
 #pragma mark Model implementation
 
-static void _discrete_parameter_model_handle_change( Model *self, Model *model, int index ){
-	self->listeners->fire( self->listeners, self, index );
+static void _discrete_parameter_model_handle_change(Model* self, Model* model,
+                                                    Parameter* parameter, int index) {
+    self->listeners->fire(self->listeners, self, parameter, index);
 }
 
 static void _discrete_parameter_model_handle_restore( Model *self, Model *model, int index ){

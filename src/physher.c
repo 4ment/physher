@@ -54,6 +54,7 @@
 #include "phyc/sbn.h"
 #include "phyc/checkpoint.h"
 #include "phyc/optimizer.h"
+#include "phyc/sampler.h"
 
 #include "phyc/physhercmd.h"
 
@@ -168,7 +169,7 @@ int main(int argc, const char* argv[]){
 			char* id = get_json_node_value_string(child, "id");
 			
 			model_t model_type = check_model(type_node->value);
-			if (model_type < 0) {
+			if ((int)model_type < 0) {
 				fprintf(stderr, "model type not recognized: %s\n\n", (char*)type_node->value);
 				fprintf(stderr, "Possible models:\n");
 				for (int j = 0; j < sizeof(model_type_strings)/sizeof(model_type_strings[0]); j++) {
@@ -197,6 +198,8 @@ int main(int argc, const char* argv[]){
 			}
 			else if(model_type == MODEL_COALESCENT){
 				models[index] = new_CoalescentModel_from_json(child, hash2);
+			} else if (model_type == MODEL_ALIGNMENT) {
+				models[index] = new_Alignment_from_json(child, hash2);
 			}
 			
 			Hashtable_add(hash2, id, models[index]);
@@ -300,6 +303,12 @@ int main(int argc, const char* argv[]){
 		}
 		else if(strcasecmp(type, "cat") == 0){
 			cat_estimator_from_json(child, hash2);
+		} else if (strcasecmp(type, "sampler") == 0) {
+			Sampler* sampler = new_Sampler_from_json(child, hash2);
+			sampler->initialize(sampler);
+			sampler->sample(sampler);
+			sampler->finalize(sampler);
+			sampler->free(sampler);
 		}
 	}
 	if(models != NULL){

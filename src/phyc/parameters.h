@@ -42,6 +42,7 @@ typedef enum model_t{
 	MODEL_COMPOUND,
 	MODEL_DISCRETE_PARAMETER,
 	MODEL_DISTRIBUTION,
+	MODEL_JACOBIAN_TRANSFORM,
 	MODEL_LAPLACE,
 	MODEL_PARSIMONY,
 	MODEL_SIMPLEX,
@@ -61,6 +62,7 @@ static const char* model_type_strings[] = {
 	"compound",
 	"discreteparameter",
 	"distribution",
+	"jacobiantransform",
 	"laplace",
 	"parsimony",
 	"simplex",
@@ -91,6 +93,40 @@ typedef struct _Listener Listener;
 struct _Model;
 typedef struct _Model Model;
 
+struct _Transform;
+typedef struct _Transform Transform;
+
+struct _Transform {
+    size_t dim;            // dimension of x
+    Parameter *parameter;  // y
+    double lower;
+    double upper;
+    // y = f(x)
+    void (*transform)(const double *, double *, size_t, double, double);
+    // x = f^{-1}(y)
+    void (*inverse_transform)(double *, const double *, size_t, double, double);
+    // dL/dy = dL/dx * dx/dy
+    void (*backward_inverse_transform)(double *, const double *, const double *, size_t,
+                                       double, double);
+    // dx/dy = df^{-1}(y)/dy
+    double (*inverse_transform_log_det_jacobian)(double *, const double *, size_t,
+                                                 double, double);
+    double (*inverse_transform_gradient_log_det_jacobian)(double *, const double *,
+                                                          size_t, double, double);
+    void (*inverse_transform_jacobian)(double *, const double *, size_t, double,
+                                       double);
+    void (*get)(Transform *, double *);
+    void (*set)(Transform *, const double *);
+    void (*backward)(Transform *, const double *);  //  dx/dy
+    void (*jacobian)(Transform *, double *);        //  dx/dy
+    double (*log_det_jacobian)(Transform *);
+    double (*gradient_log_det_jacobian)(Transform *);
+};
+
+Transform *new_Transform_with_parameter(const char *type, double lower, double upper,
+                                        Parameter *parameter);
+
+Transform *new_SimplexTransform_with_parameter(const char *type, Parameter *parameter);
 
 struct _Parameter{
 	char *name;
@@ -104,6 +140,9 @@ struct _Parameter{
 	int refCount;
 	model_t model; // model it belongs to
 	double* grad;
+	Transform *transform;
+	void (*update)(Parameter *, Model *, Parameter *, int);
+	void (*handle_restore)(Parameter *, Model *, int);
 };
 
 
@@ -147,9 +186,11 @@ void Constraint_set_flower( Constraint *c, const double flower );
 #pragma mark Parameter
 
 Parameter * new_Parameter( const char *name, const double value, Constraint *constr );
+Parameter * new_Parameter2( const char *name, const double *value, size_t dim, Constraint *constr );
 
 Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, const double value, Constraint *constr );
 Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, const double* value, size_t dim, Constraint *constr );
+Parameter * new_Parameter_full( const char *name, double value, size_t dim, Constraint *constr);
 
 Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash);
 
@@ -177,10 +218,11 @@ void Parameter_set_value_quietly( Parameter *p, const double value );
 void Parameter_set_values_quietly( Parameter *p, const double* value );
 void Parameter_set_value_at_quietly( Parameter *p, const double value, size_t index);
 
-void Parameter_fire(Parameter *p);
+void Parameter_fire(Parameter *p, int index);
 
-double Parameter_value( const Parameter *p );
-double Parameter_value_at( const Parameter *p, size_t index );
+double Parameter_value(const Parameter *p);
+double Parameter_value_at(const Parameter *p, size_t index);
+const double *Parameter_values(const Parameter *p);
 
 void Parameter_store(Parameter *p);
 
@@ -196,6 +238,8 @@ double check_value( Constraint *cnstr, double value );
 bool Parameters_is_at_boundry( const Parameters *p, const size_t index, double precision );
 
 Constraint * Parameter_constraint( const Parameter *p );
+
+Parameter *Parameters_depends(const Parameters *parameters, const Parameter *x);
 
 bool Parameter_estimate( const Parameter *p );
 
@@ -240,11 +284,17 @@ Parameter * Parameters_at( const Parameters *p, const size_t index );
 
 void Parameters_add(Parameters *ps, Parameter *p);
 
+void Parameters_add_recursively(Parameters *ps, Parameter *p);
+
 void Parameters_move( Parameters *ps, Parameter *p);
 
 void Parameters_add_free_parameters(Parameters *dst, const Parameters *src);
 
 void Parameters_add_parameters(Parameters *dst, const Parameters *src);
+
+void Parameters_add_parameters_recursively(Parameters *dst, const Parameters *src);
+
+void Parameters_add_listener(Parameters *parameters, Model *model);
 
 void Parameters_set_name( Parameters *p, const size_t index, const char *name );
 
@@ -264,11 +314,11 @@ void Parameters_set_values_quietly( Parameters *p, const double* values );
 
 void Parameters_set_all_value( Parameters *p, const double value );
 
-void Parameters_fire( Parameters *p );
-
 double Parameters_value( const Parameters *p, const size_t index );
 
 void Parameters_store(Parameters* ps);
+
+void Parameters_restore(Parameters *p);
 
 bool Parameters_estimate( const Parameters *p, const size_t index );
 
@@ -285,6 +335,10 @@ void Parameters_set_upper( Parameters *p, const size_t index, const double value
 void Parameters_set_lower( Parameters *p, const size_t index, const double value );
 
 void Parameters_set_bounds( Parameters *p, const size_t index, const double lower, const double upper );
+
+double Parameter_fupper(const Parameter *p);
+
+double Parameter_flower(const Parameter *p);
 
 void Parameters_remove( Parameters *params, size_t index );
 
@@ -315,18 +369,25 @@ void check_constraint(Parameter* rate, double lower, double upper, double flower
 
 void check_constraints(Parameters* rates, double lower, double upper, double flower, double fupper);
 
+bool Parameters_contains(const Parameters *parameters, const Parameter *p);
+
+void Parameters_zero_grad(Parameters *parameters);
+
+size_t Parameters_size(const Parameters *ps);
+
 #pragma mark -
 
 struct _ListenerList {
-	Model** models;
+    Model **models;
 	int count;
 	int capacity;
-	void (*free)( ListenerList*);
-	void (*fire)( ListenerList*, Model*, int );
-	void (*fire_restore)( ListenerList*, Model*, int );
-	void (*add)( ListenerList*, Model* );
-	void (*remove)( ListenerList*, Model* );
-	void (*removeAll)( ListenerList*);
+    Parameters *parameters;
+    void (*free)(ListenerList *);
+    void (*fire)(ListenerList *, Model *, Parameter *, int);
+    void (*fire_restore)(ListenerList *, Model *, int);
+    void (*add)(ListenerList *, Model *);
+    void (*remove)(ListenerList *, Model *);
+    void (*removeAll)(ListenerList *);
 };
 
 model_t check_model(const char* type);
@@ -341,18 +402,24 @@ struct _Model {
 	double (*dlogP)( Model *, const Parameter* );
 	double (*d2logP)( Model *, const Parameter* );
 	double (*ddlogP)(Model*, const Parameter*, const Parameter*);
-	void (*gradient)( Model *, const Parameters*, double* );
+	double (*gradient)( Model *, const Parameters*);
 	void (*prepare_gradient)( Model *, const Parameters* );
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
-	void (*update)( Model *, Model *, int );
+	void (*update)( Model *, Model *, Parameter*, int );
 	void (*handle_restore)( Model *, Model *, int );
 	void (*reset)(Model*);
-	void (*sample)(Model*, double*, double* logP);
-	double (*sample_evaluate)(Model*);
+	void (*sample)(Model *);
+	void (*rsample)(Model *);
+
+	// if the model is a transform like a simplex this function retrieve/set the
+	// values
+	void (*get)(Model *, double *);
+	void (*set)(Model *, const double *);
 	
 	ListenerList *listeners;
 	int ref_count;
+    Parameters *parameters;  // parameters of the model, including from submodels
 	
 	void(*store)(Model*);
 	void(*restore)(Model*);
@@ -364,6 +431,10 @@ struct _Model {
 	double epsilon; // for finite differences
 };
 
+void *safe_get_reference_parameter(const char *ref, Hashtable *hash,
+                                   const char *parent);
+
+bool safe_is_reference(const char *ref, const char *parent);
 
 #pragma mark -
 
@@ -392,5 +463,7 @@ void get_parameters_references(json_node* node, Hashtable* hash, Parameters* par
 void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* parameters, const char* tag);
 
 void get_parameters_slice(const char* ref, Parameters* parameters, Hashtable* hash);
+
+void grab_parameters(json_node *node, Hashtable *hash, Parameters *parameters);
 
 #endif
