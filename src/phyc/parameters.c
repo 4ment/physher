@@ -582,9 +582,13 @@ double Parameter_value_at(const Parameter* p, size_t index) {
 	return p->value[index];
 }
 
-void Parameter_store(Parameter *p){
-	memcpy(p->stored_value, p->value, sizeof(double)* p->dim);
-	if(p->transform != NULL){
+void Parameter_set_model(Parameter* p, model_t model) {
+    p->model = model;
+    if (p->transform != NULL) {
+        Parameter_set_model(p->transform->parameter, model);
+    }
+}
+
 void Parameter_store(Parameter* p) {
     memcpy(p->stored_value, p->value, sizeof(double) * p->dim);
     if (p->transform != NULL) {

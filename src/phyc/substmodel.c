@@ -37,45 +37,58 @@
 
 #pragma mark Public function definition
 
-
-static void _substitution_model_handle_change( Model *self, Model *model, int index ){
-	SubstitutionModel* m = (SubstitutionModel*)self->obj;
-	m->need_update = true;
-	m->dQ_need_update = true;
-	self->listeners->fire( self->listeners, self, index );
+static void _substitution_model_handle_change(Model* self, Model* model,
+                                              Parameter* parameter, int index) {
+    SubstitutionModel* m = (SubstitutionModel*)self->obj;
+    m->need_update = true;
+    m->dQ_need_update = true;
+    self->listeners->fire(self->listeners, self, parameter, index);
 }
 
-static void _substitution_model_store(Model* self){
-	Model** models = (Model**)self->data;
-	models[0]->store(models[0]); // simplex freqs
-	if(models[1] != NULL) models[1]->store(models[1]); // simplex rates
-	if(models[2] != NULL) models[2]->store(models[2]); // discrete parameter
-	SubstitutionModel* subst = self->obj;
-	if (Parameters_count(subst->rates) > 0) {
-		Parameters_store(subst->rates);
-	}
+static void _substitution_model_store(Model* self) {
+    if (self->data != NULL) {
+        Model* model = (Model*)self->data;
+        model->store(model);  // discrete parameter
+    }
+    SubstitutionModel* subst = self->obj;
+    if (Parameters_count(subst->rates) > 0) {
+        Parameters_store(subst->rates);
+    }
+    if (subst->rates_simplex != NULL) {
+        Parameter_store(subst->rates_simplex);
+    }
+    if (subst->simplex != NULL) {
+        Parameter_store(subst->simplex);
+    }
 }
 
-static void _substitution_model_restore(Model* self){
-	Model** models = (Model**)self->data;
-	models[0]->restore(models[0]); // simplex freqs
-	if(models[1] != NULL) models[1]->restore(models[1]); // simplex rates
-	if(models[2] != NULL) models[2]->restore(models[2]); // discrete parameter
-	SubstitutionModel* subst = self->obj;
-	if (Parameters_count(subst->rates) > 0) {
-		bool changed = false;
-		Parameter*p = NULL;
-		for (int i = 0; i < Parameters_count(subst->rates); i++) {
-			p = Parameters_at(subst->rates, i);
-			if (Parameter_changed(p)) {
-				changed = true;
-			}
-			Parameter_restore_quietly(p);
-		}
-		if (changed) {
-			p->listeners->fire_restore(p->listeners, NULL, p->id);
-		}
-	}
+static void _substitution_model_restore(Model* self) {
+    if (self->data != NULL) {
+        Model* model = (Model*)self->data;
+        model->restore(model);  // discrete parameter
+    }
+    SubstitutionModel* subst = self->obj;
+    if (Parameters_count(subst->rates) > 0) {
+        bool changed = false;
+        Parameter* p = NULL;
+        for (int i = 0; i < Parameters_count(subst->rates); i++) {
+            p = Parameters_at(subst->rates, i);
+            if (Parameter_changed(p)) {
+                changed = true;
+            }
+            Parameter_restore_quietly(p);
+        }
+        if (changed) {
+            p->listeners->fire_restore(p->listeners, NULL, p->id);
+        }
+    }
+
+    if (subst->rates_simplex != NULL) {
+        Parameter_restore(subst->rates_simplex);
+    }
+    if (subst->simplex != NULL) {
+        Parameter_restore(subst->simplex);
+    }
 }
 
 static void _substitution_model_handle_restore( Model *self, Model *model, int index ){
@@ -92,13 +105,8 @@ static void _substitution_model_free( Model *self ){
 	if(self->ref_count == 1){
 		SubstitutionModel* m = (SubstitutionModel*)self->obj;
 		if(self->data != NULL){
-			Model** models = (Model**)self->data;
-			for (int i = 0; i < 3; i++) {
-				if(models[i] != NULL){
-					models[i]->free(models[i]);
-				}
-			}
-			free(models);
+			Model* model = (Model*)self->data;
+			model->free(model);
 		}
 		
 		free_DataType(m->datatype);
@@ -109,6 +117,8 @@ static void _substitution_model_free( Model *self ){
 		if( m->rates != NULL ) free_Parameters(m->rates);
 		if( m->model != NULL ) m->model->free(m->model);
 		if( m->dQ != NULL ) free(m->dQ);
+		free_Parameter(m->simplex);
+		free_Parameter(m->rates_simplex);
 		free(m);
 		
 		free_Model(self);
@@ -124,62 +134,68 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 	}
 	SubstitutionModel* subst = (SubstitutionModel*)self->obj;
 	
-	Model* msimplex_freq_clone = NULL;
-	Model* msimplex_rates_clone = NULL;
+	// Model* msimplex_freq_clone = NULL;
+	// Model* msimplex_rates_clone = NULL;
 	
 	if(self->data != NULL){
-		Model** msimplex = (Model**)self->data;
-		if(subst->simplex != NULL){
-			if (Hashtable_exists(hash, msimplex[0]->name)) {
-				msimplex_freq_clone = Hashtable_get(hash, msimplex[0]->name);
-				msimplex_freq_clone->ref_count++;
-			}
-			else{
-				msimplex_freq_clone = msimplex[0]->clone(msimplex[0], hash);
-				Hashtable_add(hash, msimplex_freq_clone->name, msimplex_freq_clone);
-			}
-		}
+		// Model** msimplex = (Model**)self->data;
+		// if(subst->simplex != NULL){
+		// 	if (Hashtable_exists(hash, msimplex[0]->name)) {
+		// 		msimplex_freq_clone = Hashtable_get(hash, msimplex[0]->name);
+		// 		msimplex_freq_clone->ref_count++;
+		// 	}
+		// 	else{
+		// 		msimplex_freq_clone = msimplex[0]->clone(msimplex[0], hash);
+		// 		Hashtable_add(hash, msimplex_freq_clone->name, msimplex_freq_clone);
+		// 	}
+		// }
 		
-		if(subst->rates_simplex != NULL){
-			if (Hashtable_exists(hash, msimplex[1]->name)) {
-				msimplex_rates_clone = Hashtable_get(hash, msimplex[1]->name);
-				msimplex_rates_clone->ref_count++;
-			}
-			else{
-				msimplex_rates_clone = msimplex[1]->clone(msimplex[1], hash);
-				Hashtable_add(hash, msimplex_rates_clone->name, msimplex_rates_clone);
-			}
-		}
+		// if(subst->rates_simplex != NULL){
+		// 	if (Hashtable_exists(hash, msimplex[1]->name)) {
+		// 		msimplex_rates_clone = Hashtable_get(hash, msimplex[1]->name);
+		// 		msimplex_rates_clone->ref_count++;
+		// 	}
+		// 	else{
+		// 		msimplex_rates_clone = msimplex[1]->clone(msimplex[1], hash);
+		// 		Hashtable_add(hash, msimplex_rates_clone->name, msimplex_rates_clone);
+		// 	}
+		// }
 		//TODO: discrete parameter
 	}
 	
-	Parameters* ps = NULL;
-	Simplex* rates_simplex = NULL;
-	if(msimplex_rates_clone == NULL && Parameters_count(subst->rates) > 0){
-		ps = new_Parameters(1);
+	Parameter* frequencies = NULL;
+	Parameters* rates = NULL;
+	Parameter* rates_simplex = NULL;
+	if(Parameters_count(subst->rates) > 0){
+		rates = new_Parameters(1);
 		for (int i = 0; i < Parameters_count(subst->rates); i++) {
 			char* name = Parameters_name(subst->rates, i);
 			if (Hashtable_exists(hash, name)) {
-				Parameters_add(ps, Hashtable_get(hash, name));
+				Parameters_add(rates, Hashtable_get(hash, name));
 			}
 			else{
 				Parameter* p = clone_Parameter(Parameters_at(subst->rates, i));
-				Parameters_move(ps, p);
+				Parameters_move(rates, p);
 				Hashtable_add(hash, name, p);
 			}
 		}
 	}
-	SubstitutionModel* mclone = NULL;
-	if(msimplex_freq_clone != NULL){
-		mclone = clone_substitution_model_with(subst, ps, (Simplex*)msimplex_freq_clone->obj);
-	}
-	else{
-		mclone = clone_substitution_model_with(subst, ps, NULL);
+	else if(subst->rates_simplex != NULL){
+		rates_simplex = clone_Parameter(subst->rates_simplex);
 	}
 	
-	if (msimplex_rates_clone != NULL) {
-		mclone->rates_simplex = (Simplex*)msimplex_rates_clone->obj;
+	if(subst->simplex != NULL){
+		frequencies = clone_Parameter(subst->simplex);
 	}
+
+	SubstitutionModel* mclone = NULL;
+	if(frequencies != NULL){
+		mclone = clone_substitution_model_with(subst, rates, frequencies);
+	}
+	else{
+		mclone = clone_substitution_model_with(subst, rates, NULL);
+	}
+
 
 	if (mclone->model != NULL) {
 		//TODO: use discreteparameter
@@ -187,41 +203,42 @@ static Model* _substitution_model_clone(Model* self, Hashtable *hash){
 	}
 	mclone->datatype = subst->datatype;
 	mclone->datatype->ref_count++;
-	Model *clone = new_SubstitutionModel2(self->name, mclone, msimplex_freq_clone, msimplex_rates_clone);
+	Model *clone = new_SubstitutionModel2(self->name, mclone);
 	Hashtable_add(hash, clone->name, clone);
-	if(msimplex_freq_clone != NULL) msimplex_freq_clone->free(msimplex_freq_clone);
-	free_Parameters(ps);
+	free_Parameters(rates);
 	return clone;
 }
 
-Model * new_SubstitutionModel3( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex, Model* discrete_model ){
+Model * new_SubstitutionModel3( const char* name, SubstitutionModel *sm, Model* discrete_model ){
 	Model *model = new_Model(MODEL_SUBSTITUTION, name, sm);
-	Model** models = (Model**)calloc(3, sizeof(Model*));
-	for(size_t i = 0; i < 3; i++){
-		models[i] = NULL;
-	}
-	model->data = models;
-	if(freqs_simplex != NULL){
-		models[0] = freqs_simplex;
-		freqs_simplex->ref_count++;
-		freqs_simplex->listeners->add( freqs_simplex->listeners, model );
+	
+	if(sm->simplex != NULL){
+		sm->simplex->listeners->add( sm->simplex->listeners, model );
+		Parameters_add_recursively(model->parameters, sm->simplex);
+		// // doing this because Parameter does not listen to Model
+		// if(sm->simplex->model_obj != NULL){
+		// 	Model* m = sm->simplex->model_obj;
+		// 	m->listeners->add(m->listeners, model);
+		// 	// Parameters_add_parameters(model->parameters, m->parameters);
+		// }
 	}
 	
-	int i = 0;
 	if ( sm->rates != NULL ) {
-		for ( i = 0; i < Parameters_count(sm->rates); i++ ) {
-			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
-		}
+		Parameters_add_listener(sm->rates, model);
+		Parameters_add_parameters_recursively(model->parameters, sm->rates);
 	}
-	
-	if (rates_simplex != NULL) {
-		models[1] = rates_simplex;
-		rates_simplex->ref_count++;
-		rates_simplex->listeners->add( rates_simplex->listeners, model );
+	else if(sm->rates_simplex != NULL){
+		sm->rates_simplex->listeners->add( sm->rates_simplex->listeners, model );
+		Parameters_add_recursively(model->parameters, sm->rates_simplex);
+		// if(sm->rates_simplex->model_obj != NULL){
+		// 	Model* m = sm->rates_simplex->model_obj;
+		// 	m->listeners->add(m->listeners, model);
+		// 	// Parameters_add_parameters(model->parameters, m->parameters);
+		// }
 	}
 	
 	if (discrete_model != NULL) {
-		models[2] = discrete_model;
+		model->data = discrete_model;
 		discrete_model->ref_count++;
 		discrete_model->listeners->add( discrete_model->listeners, model );
 	}
@@ -237,214 +254,194 @@ Model * new_SubstitutionModel3( const char* name, SubstitutionModel *sm, Model* 
 
 
 // SubstitutionModel2 listen to the rate and freq parameters
-Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex ){
-	return new_SubstitutionModel3(name, sm, freqs_simplex, rates_simplex, NULL);
+Model* new_SubstitutionModel2(const char* name, SubstitutionModel* sm) {
+    return new_SubstitutionModel3(name, sm, NULL);
 }
 
-Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash){
-	char* allowed[] ={
-		"datatype",
-		"frequencies",
-		"init",
-		"model",
-		"normalize",
-		"rates",
-		"structure"
-	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
-	
-	json_node* model_node = get_json_node(node, "model");
-	json_node* freqs_node = get_json_node(node, "frequencies");
-	json_node* rates_node = get_json_node(node, "rates");
-	json_node* datatype_node = get_json_node(node, "datatype");
-	json_node* structure_node = get_json_node(node, "structure");
-	json_node* init_node = get_json_node(node, "init");
-	bool normalize = get_json_node_value_bool(node, "normalize", true);
-	char* id = get_json_node_value_string(node, "id");
-	
-	// DataType
-	DataType* datatype = NULL;
-	
-	if (datatype_node->node_type == MJSON_STRING && ((char*)datatype_node->value)[0] == '&') {
-		char* ref = (char*)datatype_node->value;
-		// check it starts with a &
-		datatype = Hashtable_get(hash, ref+1);
-		datatype->ref_count++;
-	}
-	else{
-		datatype = new_DataType_from_json(datatype_node, hash);
-	}
+Model* new_SubstitutionModel_from_json(json_node* node, Hashtable* hash) {
+    char* allowed[] = {"datatype",  "frequencies", "init",     "model",
+                       "normalize", "rates",       "structure"};
+    json_check_allowed(node, allowed, sizeof(allowed) / sizeof(allowed[0]));
 
-	// Simplex Frequencies
-	Model* mfreqs_simplex = NULL;
-	Simplex* freqs_simplex = NULL;
-	if (freqs_node!= NULL && freqs_node->node_type == MJSON_OBJECT) {
-		mfreqs_simplex = new_SimplexModel_from_json(freqs_node, hash);
-		json_node* id_node = get_json_node(freqs_node, "id");
-		Hashtable_add(hash, (char*)id_node->value, mfreqs_simplex);
-		freqs_simplex =  (Simplex*)mfreqs_simplex->obj;
-		for (int i = 0; i < Parameters_count(freqs_simplex->parameters); i++) {
-			Parameters_at(freqs_simplex->parameters, i)->model = MODEL_SUBSTITUTION;
-		}
-	}
-	else if(freqs_node!= NULL && freqs_node->node_type == MJSON_STRING){
-		char* ref = (char*)freqs_node->value;
-		// check it starts with a &
-		mfreqs_simplex = Hashtable_get(hash, ref+1);
-		mfreqs_simplex->ref_count++;
-		freqs_simplex =  (Simplex*)mfreqs_simplex->obj;
-	}
-	
-	// Rates
-	Parameters* rates = NULL;
-	Model* mrates_simplex = NULL;
-	Simplex* rates_simplex = NULL;
-	
-	// Rates is made of doubles
-	if (rates_node != NULL && rates_node->node_type == MJSON_ARRAY) {
-		rates = new_Parameters_from_json(rates_node, hash);
-	}
-	else if (rates_node != NULL && rates_node->node_type == MJSON_OBJECT) {
-		char* rate_simplex_ref = get_json_node_value_string(rates_node, "type");
-		// Rates is a simplex
-		if (rate_simplex_ref != NULL) {
-			if (rates_node->node_type == MJSON_OBJECT) {
-				mrates_simplex = new_SimplexModel_from_json(rates_node, hash);
-				char* id = get_json_node_value_string(rates_node, "id");
-				Hashtable_add(hash, id, mrates_simplex);
-			}
-			else if(rates_node->node_type == MJSON_STRING){
-				char* ref = (char*)rates_node->value;
-				// check it starts with a &
-				mrates_simplex = Hashtable_get(hash, ref+1);
-				mrates_simplex->ref_count++;
-			}
-			rates_simplex = (Simplex*)mrates_simplex->obj;
-			for (int i = 0; i < Parameters_count(rates_simplex->parameters); i++) {
-				Parameters_at(rates_simplex->parameters, i)->model = MODEL_SUBSTITUTION;
-			}
-		}
-		// Rates is made of parameters
-		else{
-			rates = new_Parameters(rates_node->child_count);
-			for(int i = 0; i < rates_node->child_count; i++){
-				json_node* p_node = rates_node->children[i];
-				Parameter* p = new_Parameter_from_json(p_node, hash);
-				p->model = MODEL_SUBSTITUTION;
-				Parameters_move(rates, p);
-			}
-		}
-	}
-	for (int i = 0; i < Parameters_count(rates); i++) {
-		Hashtable_add(hash, Parameters_name(rates, i), Parameters_at(rates, i));
-	}
-	
-	// Rate assignment
-	char** assignment = NULL;
-	if (Parameters_count(rates) > 0) {
-		assignment = (char**)malloc(sizeof(char*)*rates_node->child_count);
-		for (int i = 0; i < rates_node->child_count; i++) {
-			json_node* child = rates_node->children[i];
-			assignment[i] = child->key;
-		}
-	}
-	
-	// General model
-	//TODO: use rate simplex
-	if (structure_node != NULL) {
-		Model* mdp = new_DiscreteParameterModel_from_json(model_node, hash);
-		check_constraints(rates, 0, INFINITY, 0.001, 1000);
-		SubstitutionModel* m = new_GeneralModel_with_parameters(datatype, mdp->obj, rates, freqs_simplex, -1, normalize);
-		Model* mm = new_SubstitutionModel3(id, m, mfreqs_simplex, mrates_simplex, mdp);
+    json_node* model_node = get_json_node(node, "model");
+    json_node* freqs_node = get_json_node(node, "frequencies");
+    json_node* rates_node = get_json_node(node, "rates");
+    json_node* datatype_node = get_json_node(node, "datatype");
+    json_node* structure_node = get_json_node(node, "structure");
+    json_node* init_node = get_json_node(node, "init");
+    bool normalize = get_json_node_value_bool(node, "normalize", true);
+    char* id = get_json_node_value_string(node, "id");
 
-		free_DataType(datatype);
-		free_Parameters(rates);
-		mdp->free(mdp);
-		if(mfreqs_simplex != NULL) mfreqs_simplex->free(mfreqs_simplex);
-		if(mrates_simplex != NULL) mrates_simplex->free(mrates_simplex);
-		if(assignment != NULL) free(assignment);
-		return mm;
-	}
-	
-	char* model_string = (char*)model_node->value;
-	
-	if (datatype->type == DATA_TYPE_GENERIC) {
-		// datatype->ref_count already incremented
-		SubstitutionModel *m = new_GeneralJC69Model_with_parameters( datatype, freqs_simplex, normalize );
-		Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex, mrates_simplex);
-		if(mfreqs_simplex != NULL) mfreqs_simplex->free(mfreqs_simplex);
-		return mm;
-	}
-	
-	SubstitutionModel* m = SubstitutionModel_factory(model_string, datatype, freqs_simplex, rates_simplex, rates, (const char**)assignment);
-	
-	if(mfreqs_simplex == NULL  && m->simplex != NULL){
-		mfreqs_simplex = new_SimplexModel("anonymousfreqs", m->simplex);
-		for (int i = 0; i < Parameters_count(m->simplex->parameters); i++) {
-			Parameters_at(m->simplex->parameters, i)->model = MODEL_SUBSTITUTION;
-		}
-	}
-	if(init_node != NULL && datatype->type == DATA_TYPE_NUCLEOTIDE && (Parameters_count(m->rates) >= 5 || m->rates_simplex != NULL)){
-		json_node* patterns_node = get_json_node(init_node, "sitepattern");
-		char* patterns_ref = (char*)patterns_node->value;
-		SitePattern* patterns = Hashtable_get(hash, patterns_ref+1);
-		double** mat = SitePattern_rates(patterns);
-		double* v = dvector(6);
-		int index = 0;
-		for (int i = 0; i < 4; i++) {
-			for (int j = i+1; j < 4; j++) {
-				v[index++] = mat[i][j] + mat[j][i];
-			}
-		}
-		if ( m->relativeTo == -1) {
-			double sum = 0;
-			for (int i = 0; i < 6; i++) {
-				sum += v[i];
-			}
-			for (int i = 0; i < 6; i++) {
-				v[i] /= sum;
-			}
-		}
-		else{
-			for (int i = 0; i < 6; i++) {
-				v[i] /= v[m->relativeTo];
-			}
-			int moveCount = 6 - m->relativeTo - 1;
-			if(moveCount > 0){
-				memcpy(v+m->relativeTo, v+m->relativeTo+1, moveCount*sizeof(double));
-			}
-		}
-		if(m->rates_simplex != NULL){
-			m->rates_simplex->set_values(m->rates_simplex, v);
-		}
-		else{
-			m->set_rates(m, v);
-		}
-		for (int i = 0; i < 4; i++) {
-			v[i] = mat[i][i];
-		}
-		m->simplex->set_values(m->simplex, v);
-		free(v);
-		free_dmatrix(mat, datatype->state_count(datatype));
-	}
-	
-	free_DataType(datatype);
-	Model* mm = new_SubstitutionModel2(id, m, mfreqs_simplex, mrates_simplex);
-	free_Parameters(rates);
-	if(mfreqs_simplex != NULL) mfreqs_simplex->free(mfreqs_simplex);
-	if(mrates_simplex != NULL) mrates_simplex->free(mrates_simplex);
-	if(assignment != NULL) free(assignment);
-	return mm;
+    // DataType
+    DataType* datatype = NULL;
+
+    if (datatype_node->node_type == MJSON_STRING &&
+        ((char*)datatype_node->value)[0] == '&') {
+        char* ref = (char*)datatype_node->value;
+        // check it starts with a &
+        datatype = Hashtable_get(hash, ref + 1);
+        datatype->ref_count++;
+    } else {
+        datatype = new_DataType_from_json(datatype_node, hash);
+    }
+
+    // Frequencies
+    Parameter* frequencies = NULL;
+    if (freqs_node != NULL) {
+        if (freqs_node->node_type == MJSON_OBJECT) {
+            char* frequenciesType = get_json_node_value_string(freqs_node, "type");
+            frequencies = new_Parameter_from_json(freqs_node, hash);
+            Hashtable_add(hash, Parameter_name(frequencies), frequencies);
+            Parameter_set_model(frequencies, MODEL_SUBSTITUTION);
+        } else {
+            char* ref = (char*)freqs_node->value;
+            // check it starts with a &
+            frequencies = Hashtable_get(hash, ref + 1);
+            frequencies->refCount++;
+        }
+        Parameter_set_model(frequencies, MODEL_SUBSTITUTION);
+    }
+
+    // Rates
+    Parameters* rates = NULL;
+    Parameter* rateSimplex = NULL;
+
+    // Rates is made of doubles
+    if (rates_node != NULL && rates_node->node_type == MJSON_ARRAY) {
+        rates = new_Parameters_from_json(rates_node, hash);
+    } else if (rates_node != NULL && rates_node->node_type == MJSON_OBJECT) {
+        char* rate_simplex_ref = get_json_node_value_string(rates_node, "type");
+        // Rates is a simplex
+        if (rate_simplex_ref != NULL) {
+            if (rates_node->node_type == MJSON_OBJECT) {
+                rateSimplex = new_Parameter_from_json(rates_node, hash);
+                Hashtable_add(hash, Parameter_name(rateSimplex), rateSimplex);
+            } else if (rates_node->node_type == MJSON_STRING) {
+                char* ref = (char*)rates_node->value;
+                // check it starts with a &
+                rateSimplex = Hashtable_get(hash, ref + 1);
+                rateSimplex->refCount++;
+            }
+            Parameter_set_model(rateSimplex, MODEL_SUBSTITUTION);
+        }
+        // Rates is made of parameters
+        else {
+            rates = new_Parameters(rates_node->child_count);
+            for (int i = 0; i < rates_node->child_count; i++) {
+                json_node* p_node = rates_node->children[i];
+                Parameter* p = new_Parameter_from_json(p_node, hash);
+                Parameter_set_model(p, MODEL_SUBSTITUTION);
+                Parameters_move(rates, p);
+            }
+        }
+    }
+    for (int i = 0; i < Parameters_count(rates); i++) {
+        Hashtable_add(hash, Parameters_name(rates, i), Parameters_at(rates, i));
+    }
+
+    // Rate assignment
+    char** assignment = NULL;
+    if (Parameters_count(rates) > 0) {
+        assignment = (char**)malloc(sizeof(char*) * rates_node->child_count);
+        for (int i = 0; i < rates_node->child_count; i++) {
+            json_node* child = rates_node->children[i];
+            assignment[i] = child->key;
+        }
+    }
+
+    // General model
+    // TODO: use rate simplex
+    if (structure_node != NULL) {
+        Model* mdp = new_DiscreteParameterModel_from_json(model_node, hash);
+        check_constraints(rates, 0, INFINITY, 0.001, 1000);
+        SubstitutionModel* m = new_GeneralModel_with_parameters(
+            datatype, mdp->obj, rates, frequencies, -1, normalize);
+        Model* mm = new_SubstitutionModel3(id, m, mdp);
+
+        free_DataType(datatype);
+        free_Parameters(rates);
+        mdp->free(mdp);
+        if (assignment != NULL) free(assignment);
+        return mm;
+    }
+
+    char* model_string = (char*)model_node->value;
+
+    if (datatype->type == DATA_TYPE_GENERIC) {
+        // datatype->ref_count already incremented
+        SubstitutionModel* m =
+            new_GeneralJC69Model_with_parameters(datatype, frequencies, normalize);
+        // only with rate simplex
+        Model* mm = new_SubstitutionModel2(id, m);
+        free_Parameter(frequencies);
+        return mm;
+    }
+
+    SubstitutionModel* m =
+        SubstitutionModel_factory(model_string, datatype, frequencies, rateSimplex,
+                                  rates, (const char**)assignment);
+
+    if (frequencies == NULL && m->simplex != NULL) {
+        Parameter_set_model(m->simplex, MODEL_SUBSTITUTION);
+    }
+    if (init_node != NULL && datatype->type == DATA_TYPE_NUCLEOTIDE &&
+        (Parameters_count(m->rates) >= 5 || m->rates_simplex != NULL)) {
+        json_node* patterns_node = get_json_node(init_node, "sitepattern");
+        char* patterns_ref = (char*)patterns_node->value;
+        SitePattern* patterns = Hashtable_get(hash, patterns_ref + 1);
+        double** mat = SitePattern_rates(patterns);
+        double* v = dvector(6);
+        int index = 0;
+        for (int i = 0; i < 4; i++) {
+            for (int j = i + 1; j < 4; j++) {
+                v[index++] = mat[i][j] + mat[j][i];
+            }
+        }
+        if (m->relativeTo == -1) {
+            double sum = 0;
+            for (int i = 0; i < 6; i++) {
+                sum += v[i];
+            }
+            for (int i = 0; i < 6; i++) {
+                v[i] /= sum;
+            }
+        } else {
+            for (int i = 0; i < 6; i++) {
+                v[i] /= v[m->relativeTo];
+            }
+            int moveCount = 6 - m->relativeTo - 1;
+            if (moveCount > 0) {
+                memcpy(v + m->relativeTo, v + m->relativeTo + 1,
+                       moveCount * sizeof(double));
+            }
+        }
+        if (m->rates_simplex != NULL) {
+            Parameter_set_values(m->rates_simplex, v);
+        } else {
+            m->set_rates(m, v);
+        }
+        for (int i = 0; i < 4; i++) {
+            v[i] = mat[i][i];
+        }
+        Parameter_set_values(m->simplex, v);
+        free(v);
+        free_dmatrix(mat, datatype->state_count(datatype));
+    }
+
+    free_DataType(datatype);
+    Model* mm = new_SubstitutionModel2(id, m);
+    free_Parameters(rates);
+    if (assignment != NULL) free(assignment);
+    return mm;
 }
 
-double get_frequency( SubstitutionModel *m, int base ){
-	return m->simplex->get_value(m->simplex, base);
+double get_frequency(SubstitutionModel* m, int base) {
+    return Parameter_values(m->simplex)[base];
 }
 
-const double * get_frequencies( SubstitutionModel *m ){
-	return m->simplex->get_values(m->simplex);
+const double* get_frequencies(SubstitutionModel* m) {
+    return Parameter_values(m->simplex);
 }
-
 
 // not normalized
 void build_Q_flat(double* Q, const double* freqs, size_t stateCount){
@@ -497,13 +494,6 @@ static void _set_rates( SubstitutionModel *m, const double *rates ){
 	for ( int i = 0; i < Parameters_count(m->rates); i++) {
 		Parameters_set_value(m->rates,i, rates[i]);
 	}
-	m->need_update = true;
-    m->dQ_need_update = true;
-}
-
-// Set the relative frequency (ie. Parameter)!!
-static void _set_relative_frequency( SubstitutionModel *m, const double freq, const int index ){
-	m->simplex->set_parameter_value(m->simplex, index, freq);
 	m->need_update = true;
     m->dQ_need_update = true;
 }
@@ -862,7 +852,7 @@ static void _d2p_d2t_transpose( SubstitutionModel *m, const double t, double *P 
 #pragma mark -
 
 
-SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, DataType* datatype, Simplex* freqs ){
+SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, DataType* datatype, Parameter* freqs ){
     SubstitutionModel *m = (SubstitutionModel *)malloc( sizeof(SubstitutionModel) );
     assert(m);
     
@@ -890,7 +880,6 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
 	
 	m->set_rates = _set_rates;
 	
-	m->set_relative_frequency = _set_relative_frequency; // relative frequency with dimention nstate-1
     m->set_rate = _set_rate;
     m->update_Q = foo_update;
     
@@ -920,7 +909,7 @@ SubstitutionModel * create_substitution_model( const char *name, const modeltype
     return m;
 }
 
-SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname, Simplex* freqs ){
+SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname, Parameter* freqs ){
 	DataType* datatype = new_NucleotideDataType();
     SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
 	free_DataType(datatype);
@@ -931,7 +920,7 @@ SubstitutionModel * create_nucleotide_model( const char *name, const modeltype m
     return m;
 }
 
-SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code, Simplex* freqs ){
+SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code, Parameter* freqs ){
 	DataType* datatype = new_CodonDataType(gen_code);
     SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
 	free_DataType(datatype);
@@ -943,7 +932,7 @@ SubstitutionModel * create_codon_model( const char *name, const modeltype modeln
     return m;
 }
 
-SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Simplex* freqs ){
+SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Parameter* freqs ){
 	DataType* datatype = new_AminoAcidDataType();
     SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
 	free_DataType(datatype);
@@ -954,9 +943,9 @@ SubstitutionModel * create_aa_model( const char *name, const modeltype modelname
     return m;
 }
 
-SubstitutionModel * create_general_model( const char *name, const modeltype modelname, DataType* datatype, Simplex* freqs){
+SubstitutionModel * create_general_model( const char *name, const modeltype modelname, DataType* datatype, Parameter* freqs){
     SubstitutionModel *m = create_substitution_model(name, modelname, datatype, freqs);
-    m->nstate = freqs->K;
+    m->nstate = Parameter_size(freqs);
     m->Q = dmatrix(m->nstate, m->nstate);
     m->PP = dmatrix(m->nstate, m->nstate);
     m->eigendcmp = new_EigenDecomposition(m->nstate);
@@ -971,18 +960,18 @@ void free_SubstitutionModel( SubstitutionModel *m){
 	if( m->rates != NULL ) free_Parameters(m->rates);
     if( m->model != NULL ) m->model->free(m->model);
     if( m->dQ != NULL ) free(m->dQ);
-	if(m->simplex != NULL) free_Simplex(m->simplex);
-	if(m->rates_simplex != NULL) free_Simplex(m->rates_simplex);
+	free_Parameter(m->simplex);
+	free_Parameter(m->rates_simplex);
 	free_DataType(m->datatype);
 	free(m);
 }
 
 
 SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
-	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->datatype, clone_Simplex(m->simplex));
+	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->datatype, clone_Parameter(m->simplex));
 	clone->nstate = m->nstate;
 	if (m->rates_simplex != NULL) {
-		clone->rates_simplex = clone_Simplex(m->rates_simplex);
+		clone->rates_simplex = clone_Parameter(m->rates_simplex);
 	}
 	if( m->Q != NULL ){
 		clone->eigendcmp = clone_EigenDecomposition(m->eigendcmp);
@@ -1009,7 +998,6 @@ SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
 	
 	clone->update_Q = m->update_Q;
 	clone->set_rates = m->set_rates;
-	clone->set_relative_frequency = m->set_relative_frequency;
 	clone->set_rate = m->set_rate;
 	
 	clone->free = m->free;
@@ -1031,7 +1019,7 @@ SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
 	return clone;
 }
 
-SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Parameters* rates, Simplex* simplex){
+SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Parameters* rates, Parameter* simplex){
 	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->datatype, simplex);
 	clone->nstate = m->nstate;
 	clone->simplex = simplex;
@@ -1066,7 +1054,6 @@ SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Pa
 	
 	clone->update_Q = m->update_Q;
 	clone->set_rates = m->set_rates;
-	clone->set_relative_frequency = m->set_relative_frequency;
 	clone->set_rate = m->set_rate;
 	
 	clone->free = m->free;
@@ -1412,16 +1399,16 @@ int nDNARates( const char *code ){
 	return max+1;
 }
 
-SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataType* datatype, Simplex* freqSimplex, Simplex* rates_simplex, const Parameters* rates, const char** assignment ){
+SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataType* datatype, Parameter* freqSimplex, Parameter* rates_simplex, const Parameters* rates, const char** assignment ){
 	SubstitutionModel *mod = NULL;
 	size_t K = datatype->state_count(datatype);
 	
 	if (datatype->type == DATA_TYPE_NUCLEOTIDE) {
 		check_constraints((Parameters*)rates, 0, INFINITY, 0.001, 100);
 		bool equal_frequencies = false;
+		const double* frequencies = Parameter_values(freqSimplex);
 		for (int i = 0; i < K; i++) {
-			Parameter* p = Parameters_at(freqSimplex->parameters, i);
-			if (Parameter_estimate(p) != false || Parameter_value(p) != 0.25) {
+			if (Parameter_estimate(freqSimplex) != false || frequencies[i] != 0.25) {
 				equal_frequencies = true;
 				break;
 			}

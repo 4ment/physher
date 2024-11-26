@@ -24,7 +24,7 @@ static void nuc_sym_update_Q( SubstitutionModel *m );
 // we can give a string of 5 characters 00111 -> rates are relative to the last rate (gt)
 // we can give a string of 6 characters 0*0111 -> rates are relative to the second rate
 // use GTR if you want a simplex and 6 rates
-SubstitutionModel * new_ReversibleNucleotideModel_with_parameters( const char* model, Simplex* freqs, const Parameters* rates){
+SubstitutionModel * new_ReversibleNucleotideModel_with_parameters( const char* model, Parameter* freqs, const Parameters* rates){
     SubstitutionModel *m = NULL;
     
     m = create_nucleotide_model("nucleotide", REVERSIBLE_DNA, freqs);
@@ -78,7 +78,7 @@ SubstitutionModel * new_ReversibleNucleotideModel_with_parameters( const char* m
 void nuc_sym_update_Q( SubstitutionModel *m ){
 	if(!m->need_update) return;
 	const unsigned* model = m->model->values;
-	const double* freqs = m->simplex->get_values(m->simplex);
+	const double* freqs = Parameter_values(m->simplex);
     double temp;
 	int index = 0;
     for ( int i = 0; i < 4; i++ )  {

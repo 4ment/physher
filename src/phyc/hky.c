@@ -46,59 +46,57 @@ static void _hky_dp_dt_transpose( SubstitutionModel *m, const double t, double *
 static void _hky_d2p_dt2( SubstitutionModel *m, const double t, double *P );
 static void _hky_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P );
 
-static void _hky_dPdp(SubstitutionModel *m, int index, double* mat, double t);
+static void _hky_dPdp(SubstitutionModel *m, Parameter *parameter, int index,
+                      double *mat, double t);
 
-SubstitutionModel * new_HKY(Simplex* freqs){
-	Parameter* kappa = new_Parameter_with_postfix("hky.kappa", "model", 3, new_Constraint(0.0001, 100) );
-	SubstitutionModel* model = new_HKY_with_parameters(freqs, kappa);
-	free_Parameter(kappa);
-	return model;
+SubstitutionModel *new_HKY(Parameter *freqs) {
+    Parameter *kappa = new_Parameter_with_postfix("hky.kappa", "model", 3,
+                                                  new_Constraint(0.0001, 100));
+    SubstitutionModel *model = new_HKY_with_parameters(freqs, kappa);
+    free_Parameter(kappa);
+    return model;
 }
 
-SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa ){
-	
-	Simplex* sfreqs = new_Simplex("hky", 4);
-	sfreqs->set_values(sfreqs, freqs);
-	
-	SubstitutionModel *m = create_nucleotide_model("HKY", HKY, sfreqs);
-	
-	m->update_Q = hky_update_Q;
-	m->p_t = _hky_p_t;
-	m->p_t_transpose = _hky_p_t_transpose;
-	
-	m->dp_dt = _hky_dp_dt;
-	m->dp_dt_transpose = _hky_dp_dt_transpose;
-	
-	m->dPdp = _hky_dPdp;
-	m->dQ = dvector(16);
-	
-	m->rates = new_Parameters( 1 );
-	Parameters_move(m->rates, new_Parameter_with_postfix("hky.kappa", "model", kappa, new_Constraint(0, INFINITY) ) );
-	return m;
+SubstitutionModel *new_HKY_with_values(const double *freqs, const double kappa) {
+    Parameter *frequencies =
+        new_Parameter2("hky.freqs", freqs, 4, new_Constraint(0.0, 1.0));
+
+    SubstitutionModel *m = create_nucleotide_model("HKY", HKY, frequencies);
+
+    m->update_Q = hky_update_Q;
+    m->p_t = _hky_p_t;
+    m->p_t_transpose = _hky_p_t_transpose;
+
+    m->dp_dt = _hky_dp_dt;
+    m->dp_dt_transpose = _hky_dp_dt_transpose;
+
+    m->dPdp = _hky_dPdp;
+    m->dQ = dvector(16);
+
+    m->rates = new_Parameters(1);
+    Parameters_move(m->rates, new_Parameter_with_postfix("hky.kappa", "model", kappa,
+                                                         new_Constraint(0, INFINITY)));
+    return m;
 }
 
-SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, Parameter* kappa ){
-	
-	SubstitutionModel *m = create_nucleotide_model("HKY", HKY, freqs);
-	
-	m->update_Q = hky_update_Q;
-	m->p_t = _hky_p_t;
-	m->p_t_transpose = _hky_p_t_transpose;
-	
-	m->dp_dt = _hky_dp_dt;
-	m->dp_dt_transpose = _hky_dp_dt_transpose;
-	
-	m->dPdp = _hky_dPdp;
-	m->dQ = dvector(16);
-	
-	m->rates = new_Parameters( 1 );
-	Parameters_add(m->rates, kappa);
-	
-	return m;
+SubstitutionModel *new_HKY_with_parameters(Parameter *freqs, Parameter *kappa) {
+    SubstitutionModel *m = create_nucleotide_model("HKY", HKY, freqs);
+
+    m->update_Q = hky_update_Q;
+    m->p_t = _hky_p_t;
+    m->p_t_transpose = _hky_p_t_transpose;
+
+    m->dp_dt = _hky_dp_dt;
+    m->dp_dt_transpose = _hky_dp_dt_transpose;
+
+    m->dPdp = _hky_dPdp;
+    m->dQ = dvector(16);
+
+    m->rates = new_Parameters(1);
+    Parameters_add(m->rates, kappa);
+
+    return m;
 }
-
-
-
 
 void hky_update_Q( SubstitutionModel *model ){
     model->Q[1][3] = model->Q[3][1] = model->Q[0][2] = model->Q[2][0] = Parameters_value(model->rates, 0); // kappa
@@ -120,11 +118,12 @@ void hky_update_Q( SubstitutionModel *model ){
 
 void _hky_update_eigen(SubstitutionModel* m){
 	double kappa = Parameters_value(m->rates, 0);
+	const double* freqs = Parameter_values(m->simplex);
 	
-	double pi_a = m->simplex->get_value(m->simplex, 0);
-	double pi_c = m->simplex->get_value(m->simplex, 1);
-	double pi_g = m->simplex->get_value(m->simplex, 2);
-	double pi_t = m->simplex->get_value(m->simplex, 3);
+	double pi_a = freqs[0];
+	double pi_c = freqs[1];
+	double pi_g = freqs[2];
+	double pi_t = freqs[3];
 	
 	double pi_r = pi_a + pi_g;
 	double pi_y = pi_c + pi_t;
@@ -490,7 +489,7 @@ void _hky_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P ) {
     P[15] = r2 * (freqs[3] * (R/Y) * exp1 + (freqs[1]/Y) * k12 * exp21); //T, U
 }
 
-static void _hky_dQdp(SubstitutionModel *m, size_t index){
+static void _hky_dQdp(SubstitutionModel *m, Parameter* parameter, size_t index){
 	double *dQ = m->dQ;
 	size_t stateCount = m->nstate;
 	memset(dQ, 0.0, sizeof(double)*stateCount*stateCount);
@@ -501,10 +500,22 @@ static void _hky_dQdp(SubstitutionModel *m, size_t index){
 		m->need_update = false;
 	}
 
-	const double* frequencies = m->simplex->get_values(m->simplex);
+	const double* frequencies = Parameter_values(m->simplex);
 	double norm = m->norm;
 	double dnorm = 0;
-	if(index == 0){
+
+    Parameter* freqx = NULL;
+	if(m->simplex == parameter || (m->simplex->transform != NULL && m->simplex->transform->parameter == parameter)){
+		freqx = parameter;
+	}
+    
+    Parameter* kappa = Parameters_at(m->rates, 0);
+    Parameter* kappax = NULL;
+	if(kappa == parameter || (kappa->transform != NULL && kappa->transform->parameter == parameter)){
+		kappax = parameter;
+	}
+
+	if(kappax != NULL){
 		dQ[0]  = -frequencies[2];
 		dQ[2]  =  frequencies[2];
 		dQ[5]  = -frequencies[3];
@@ -513,18 +524,27 @@ static void _hky_dQdp(SubstitutionModel *m, size_t index){
 		dQ[10] = -frequencies[0];
 		dQ[13] =  frequencies[1];
 		dQ[15] = -frequencies[1];
+        if(kappa != kappax){
+            double jac = 0;
+            kappa->transform->jacobian(kappa->transform, &jac);
+            for (size_t i = 0; i < 16; i++) {    
+                dQ[i] *= jac;
+            }
+        }
 		dnorm = normalizing_constant_Q_flat(dQ, frequencies, 4);
 	}
 	else{
-		dQ[2] = dQ[7] = dQ[8] = dQ[13] = Parameters_value(m->rates, 0); // kappa
+		dQ[2] = dQ[7] = dQ[8] = dQ[13] = Parameter_value(kappa); // kappa
 		dQ[1] = dQ[3] = dQ[4] = dQ[6] = dQ[9] = dQ[11] = dQ[12] = dQ[14] = 1.;
 		double dF[4];
-		if(m->grad_wrt_reparam){
-			m->simplex->gradient(m->simplex, index-1, dF);
+		if(freqx != m->simplex){
+			double dF2[12];
+			m->simplex->transform->jacobian(m->simplex->transform, dF2);
+			memcpy(dF, dF2 + index*4, sizeof(double)*4);
 		}
 		else{
 			memset(dF, 0.0, sizeof(double)*4);
-			dF[index-1] = 1.0;
+			dF[index] = 1.0;
 		} 
 		build_Q_flat(dQ, dF, stateCount);
 		
@@ -541,7 +561,7 @@ static void _hky_dQdp(SubstitutionModel *m, size_t index){
 	}
 }
 
-void _hky_dPdp(SubstitutionModel *m, int index, double* mat, double t){
+void _hky_dPdp(SubstitutionModel *m, Parameter* parameter, int index, double* mat, double t){
 	if(m->need_update){
 		hky_update_Q(m);
 		_hky_update_eigen(m);
@@ -549,205 +569,9 @@ void _hky_dPdp(SubstitutionModel *m, int index, double* mat, double t){
 		m->dQ_need_update = true;
 	}
 	if(m->dQ_need_update){
-		_hky_dQdp(m, index);
+		_hky_dQdp(m, parameter, index);
 		m->dQ_need_update = false;
 	}
 	dPdp_with_dQdp(m, m->dQ, mat, t);
 }
 
-static void _hky_dPdp_old(SubstitutionModel *m, int index, double* mat, double t){
-	
-	double *x = m->dQ;
-	
-	const double kappa = Parameters_value(m->rates, 0);
-	
-	const double pi_a = m->simplex->get_value(m->simplex, 0);
-	const double pi_c = m->simplex->get_value(m->simplex, 1);
-	const double pi_g = m->simplex->get_value(m->simplex, 2);
-	const double pi_t = m->simplex->get_value(m->simplex, 3);
-	
-	const double norm = 2. * (pi_a*pi_c + pi_c*pi_g + pi_a*pi_t + pi_g*pi_t + kappa*(pi_c*pi_t + pi_a*pi_g));
-	
-	if(m->need_update){
-//		m->update_Q(m);
-		double pi_r = pi_a + pi_g;
-		double pi_y = pi_c + pi_t;
-		double *v = m->eigendcmp->eval;
-		double **evec = m->eigendcmp->evec;
-		double **invevec = m->eigendcmp->Invevec;
-		
-		double beta = -1.0 / (2.0 * (pi_r*pi_y + kappa * (pi_a*pi_g + pi_c*pi_t)));
-		v[0] = 0;
-		v[1] = beta;
-		v[2] = beta*(1 + pi_y*(kappa - 1));
-		v[3] = beta*(1 + pi_r*(kappa - 1));
-		
-		for(int i = 0; i < 4; i++){
-			memset(invevec[i], 0, sizeof(double)*4);
-			memset(evec[i], 0, sizeof(double)*4);
-		}
-
-		invevec[0][0] = pi_a;
-		invevec[0][1] = pi_c;
-		invevec[0][2] = pi_g;
-		invevec[0][3] = pi_t;
-		
-		invevec[1][0] =  pi_a*pi_y;
-		invevec[1][1] = -pi_c*pi_r;
-		invevec[1][2] =  pi_g*pi_y;
-		invevec[1][3] = -pi_t*pi_r;
-		
-		invevec[2][1] =  1;
-		invevec[2][3] = -1;
-
-		invevec[3][0] =  1;
-		invevec[3][2] = -1;
-
-		evec[0][0] =  1;
-		evec[1][0] =  1;
-		evec[2][0] =  1;
-		evec[3][0] =  1;
-
-		evec[0][1]  =  1./pi_r;
-		evec[1][1]  = -1./pi_y;
-		evec[2][1]  =  1./pi_r;
-		evec[3][1]  = -1./pi_y;
-
-		evec[1][2]  =  pi_t/pi_y;
-		evec[3][2]  = -pi_c/pi_y;
-
-		evec[0][3] =  pi_g/pi_r;
-		evec[2][3] = -pi_a/pi_r;
-		
-		m->need_update = false;
-	}
-	
-	if(m->dQ_need_update){
-		
-		const double phi1 = Parameters_value(m->simplex->parameters, 0);
-		const double phi2 = Parameters_value(m->simplex->parameters, 1);
-		const double phi3 = Parameters_value(m->simplex->parameters, 2);
-		
-		const double norm2 = norm*norm;
-		
-		memset(x, 0, sizeof(double)*16);
-		// kappa
-		if(index == 0){
-			double dnorm = 2.*(pi_c*pi_t + pi_a*pi_g);
-			double ratio = dnorm/norm2;
-			x[0] = -pi_g/norm - (-pi_t - kappa*pi_g - pi_c)*ratio;
-			x[1] = -pi_c*ratio;
-			x[2] = pi_g/norm - (kappa*pi_g)*ratio;
-			x[3] = -pi_t*ratio;
-			
-			x[4] = -pi_a*ratio;
-			x[5] = -pi_t/norm - (-kappa*pi_t - pi_g - pi_a)*ratio;
-			x[6] = -pi_g*ratio;
-			x[7] = pi_t/norm - (kappa*pi_t)*ratio;
-			
-			x[8] = pi_a/norm - (kappa*pi_a)*ratio;
-			x[9] = -pi_c*ratio;
-			x[10] = -pi_a/norm - (-kappa*pi_a - pi_c - pi_t)*ratio;
-			x[11] = -pi_t*ratio;
-			
-			x[12] = -pi_a*ratio;
-			x[13] = pi_c/norm - (kappa*pi_c)*ratio;
-			x[14] = -pi_g*ratio;
-			x[15] = -pi_c/norm - (-kappa*pi_c - pi_g - pi_a)*ratio;
-		}
-		// dQdphi1
-		else if(index == 1){
-			double dnorm = -4*(kappa*phi1 - kappa)*phi2*phi2 - 4*((phi1 - 1)*phi2*phi2 - 2*(phi1 - 1)*phi2 + phi1 - 1)*phi3*phi3 + 4*(kappa*phi1 - kappa)*phi2 + 2*(2*(kappa*phi1 - kappa)*phi2*phi2 - 2*(kappa - 2)*phi1 + (kappa - 4*phi1 + 3)*phi2 + kappa - 3)*phi3 - 4*phi1 + 2;
-			double ratio = dnorm/norm2;
-			x[0] = (-kappa*(phi2 - 1)*phi3 + (phi2 - 1)*phi3 + 1)/norm - ratio*(-pi_t - kappa*pi_g - pi_c);
-			x[1] = (-phi2)/norm - ratio*pi_c;
-			x[2] = (kappa*(phi2 - 1)*phi3)/norm - ratio*kappa*pi_g;
-			x[3] = (-((phi2 - 1)*phi3 - phi2 + 1))/norm - ratio*pi_t;
-			
-			x[4] = 1/norm - ratio*pi_a;
-			x[5] = (((phi2 - 1)*phi3 - phi2 + 1)*kappa - (phi2 - 1)*phi3 - 1)/norm - ratio*(-kappa*pi_t - pi_g - pi_a);
-			x[6] = (phi2 - 1)*phi3/norm - ratio*pi_g;
-			x[7] = (-((phi2 - 1)*phi3 - phi2 + 1)*kappa)/norm - ratio*kappa*pi_t;
-			
-			x[8] = kappa/norm - ratio*kappa*pi_a;
-			x[9] = -phi2/norm - ratio*pi_c;
-			x[10] = ((phi2 - 1)*phi3 - kappa + 1)/norm - ratio*(-kappa*pi_a - pi_c - pi_t);
-			x[11] = (-(phi2 - 1)*phi3 + phi2 - 1)/norm - ratio*pi_t;
-			
-			x[12] = 1/norm - ratio*pi_a;
-			x[13] = -kappa*phi2/norm - ratio*kappa*pi_c;
-			x[14] = (phi2 - 1)*phi3/norm - ratio*pi_g;
-			x[15] = (kappa*phi2 - (phi2 - 1)*phi3 - 1)/norm - ratio*(-kappa*pi_c - pi_g - pi_a);
-		}
-		// dQdphi2
-		else if(index == 2){
-			const double dnorm = 2*kappa*phi1*phi1 + 4*(phi1*phi1 - (phi1*phi1 - 2*phi1 + 1)*phi2 - 2*phi1 + 1)*phi3*phi3 - 4*kappa*phi1 - 4*(kappa*phi1*phi1 - 2*kappa*phi1 + kappa)*phi2 + 2*((kappa + 3)*phi1 - 2*phi1*phi1 + 2*(kappa*phi1*phi1 - 2*kappa*phi1 + kappa)*phi2 - kappa - 1)*phi3 + 2*kappa;
-			double ratio = dnorm/norm2;
-			x[0] = (-kappa*(phi1 - 1)*phi3 + ((phi1 - 1)*phi3 - phi1 + 1) + (phi1 - 1))/norm - ratio*(-pi_t - kappa*pi_g - pi_c);
-			x[1] = -(phi1 - 1)/norm - ratio*pi_c;
-			x[2] = kappa*(phi1 - 1)*phi3/norm - ratio*kappa*pi_g;
-			x[3] = -((phi1 - 1)*phi3 - phi1 + 1)/norm - ratio*pi_t;
-			
-			x[4] = -ratio*pi_a;
-			x[5] = (-(phi1 - 1)*phi3 + ((phi1 - 1)*phi3 - phi1 + 1)*kappa)/norm - ratio*(-kappa*pi_t - pi_g - pi_a);
-			x[6] = (phi1 - 1)*phi3/norm - ratio*pi_g;
-			x[7] = -((phi1 - 1)*phi3 - phi1 + 1)*kappa/norm - ratio*kappa*pi_t;
-			
-			x[8] = -ratio*kappa*pi_a;
-			x[9] = -(phi1 - 1)/norm - ratio*pi_c;
-			x[10] = ((phi1 - 1) + (phi1 - 1)*phi3 - phi1 + 1)/norm - ratio*(-kappa*pi_a - pi_c - pi_t);
-			x[11] = (-(phi1 - 1)*phi3 + phi1 - 1)/norm - ratio*pi_t;
-			
-			x[12] = -ratio*pi_a;
-			x[13] = -kappa*(phi1 - 1)/norm - ratio*kappa*pi_c;
-			x[14] = (phi1 - 1)*phi3/norm - ratio*pi_g;
-			x[15] = (kappa*(phi1 - 1) - (phi1 - 1)*phi3)/norm - ratio*(-kappa*pi_c - pi_g - pi_a);
-			
-		}// dQdphi3
-		else if(index == 3){
-			const double dnorm = -2*(kappa - 2)*phi1*phi1 + 2*(kappa*phi1*phi1 - 2*kappa*phi1 + kappa)*phi2*phi2 + 2*(kappa - 3)*phi1 + 2*((kappa + 3)*phi1 - 2*phi1*phi1 - kappa - 1)*phi2 - 4*((phi1*phi1 - 2*phi1 + 1)*phi2*phi2 + phi1*phi1 - 2*(phi1*phi1 - 2*phi1 + 1)*phi2 - 2*phi1 + 1)*phi3 + 2;
-			const double ratio = dnorm/norm2;
-			x[0] = (-((phi1 - 1)*phi2 - phi1 + 1)*kappa + ((phi1 - 1)*phi2 - phi1 + 1))/norm - ratio*(-pi_t - kappa*pi_g - pi_c);
-			x[1] = - ratio*pi_c;
-			x[2] = ((phi1 - 1)*phi2 - phi1 + 1)*kappa/norm - ratio*kappa*pi_g;
-			x[3] = -((phi1 - 1)*phi2 - phi1 + 1)/norm - ratio*pi_t;
-			
-			x[4] = - ratio*pi_a;
-			x[5] = (-((phi1 - 1)*phi2 - phi1 + 1) + ((phi1 - 1)*phi2 - phi1 + 1)*kappa)/norm - ratio*(-kappa*pi_t - pi_g - pi_a);
-			x[6] = ((phi1 - 1)*phi2 - phi1 + 1)/norm - ratio*pi_g;
-			x[7] = -((phi1 - 1)*phi2 - phi1 + 1)*kappa/norm - ratio*kappa*pi_t;
-			
-			x[8] = - ratio*kappa*pi_a;
-			x[9] = - ratio*pi_c;
-			x[10] = ((phi1 - 1)*phi2 - phi1 + 1)/norm - ratio*(-kappa*pi_a - pi_c - pi_t);
-			x[11] = (-(phi1 - 1)*phi2 + phi1 - 1)/norm - ratio*pi_t;
-			
-			x[12] = - ratio*pi_a;
-			x[13] = - ratio*kappa*pi_c;
-			x[14] = ((phi1 - 1)*phi2 - phi1 + 1)/norm - ratio*pi_g;
-			x[15] = (-(phi1 - 1)*phi2 + phi1 - 1)/norm - ratio*(-kappa*pi_c - pi_g - pi_a);
-		}
-		else{
-			exit(1);
-		}
-		m->dQ_need_update = false;
-	}
-	
-	double *v = m->eigendcmp->eval;
-	double xx[16];
-	Matrix_mult3(mat, (const double**)m->eigendcmp->Invevec, x, 4,4,4,4);
-	Matrix_mult4(xx, mat, (const double**)m->eigendcmp->evec, 4,4,4,4);
-	// up to now the above operations can be recycled across branches
-	for(int i = 0; i < 4; i++){
-		for(int j = 0; j < 4; j++){
-			if(v[i] != v[j]){
-				mat[i*4+j] = xx[i*4+j]*(exp(v[i]*t) - exp(v[j]*t))/(v[i]-v[j]);
-			}
-			else{
-				mat[i*4+j] = xx[i*4+j]*t*exp(v[i]*t);
-			}
-		}
-	}
-	Matrix_mult3(xx, (const double**)m->eigendcmp->evec, mat, 4,4,4,4);
-	Matrix_mult4(mat, xx, (const double**)m->eigendcmp->Invevec, 4,4,4,4);
-}

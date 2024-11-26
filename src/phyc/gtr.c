@@ -17,6 +17,8 @@
 
 #include "gtr.h"
 
+#include <assert.h>
+
 #include "nucsubst.h"
 #include "matrix.h"
 
@@ -46,54 +48,65 @@
  
  ***************/
 
-static void _gtr_dPdp(SubstitutionModel *m, int index, double* mat, double t);
+static void _gtr_dPdp(SubstitutionModel* m, Parameter* parameter, int index,
+                      double* mat, double t);
 
 /*! Initialize a general time reversible matrix.
  *  Return a Q matrix (pi+freq)
  */
 
+SubstitutionModel* new_GTR(Parameter* freqs) {
+    Parameter* ac =
+        new_Parameter_with_postfix("gtr.a", "model", 1, new_Constraint(0.001, 100));
+    Parameter* ag =
+        new_Parameter_with_postfix("gtr.b", "model", 1, new_Constraint(0.001, 100));
+    Parameter* at =
+        new_Parameter_with_postfix("gtr.c", "model", 1, new_Constraint(0.001, 100));
+    Parameter* cg =
+        new_Parameter_with_postfix("gtr.d", "model", 1, new_Constraint(0.001, 100));
+    Parameter* ct =
+        new_Parameter_with_postfix("gtr.e", "model", 1, new_Constraint(0.001, 100));
 
-SubstitutionModel * new_GTR(Simplex* freqs){
-	Parameter* ac = new_Parameter_with_postfix("gtr.a", "model", 1, new_Constraint(0.001, 100) );
-	Parameter* ag = new_Parameter_with_postfix("gtr.b", "model", 1, new_Constraint(0.001, 100) );
-	Parameter* at = new_Parameter_with_postfix("gtr.c", "model", 1, new_Constraint(0.001, 100) );
-	Parameter* cg = new_Parameter_with_postfix("gtr.d", "model", 1, new_Constraint(0.001, 100) );
-	Parameter* ct = new_Parameter_with_postfix("gtr.e", "model", 1, new_Constraint(0.001, 100) );
-	
-	SubstitutionModel* model = new_GTR_with_parameters(freqs, ac, ag, at, cg, ct, NULL);
-	
-	free_Parameter(ac);
-	free_Parameter(ag);
-	free_Parameter(at);
-	free_Parameter(cg);
-	free_Parameter(ct);
-	
-	return model;
-}
+    SubstitutionModel* model = new_GTR_with_parameters(freqs, ac, ag, at, cg, ct, NULL);
 
-SubstitutionModel * new_GTR_with_values( const double *freqs, const double *rates ){
-    check_frequencies( freqs, 4 );
-    
-	Parameter* ac = new_Parameter_with_postfix("gtr.a", "model", 1, new_Constraint(0.001, 100) );
-	Parameter* ag = new_Parameter_with_postfix("gtr.b", "model", 1, new_Constraint(0.001, 100) );
-	Parameter* at = new_Parameter_with_postfix("gtr.c", "model", 1, new_Constraint(0.001, 100) );
-	Parameter* cg = new_Parameter_with_postfix("gtr.d", "model", 1, new_Constraint(0.001, 100) );
-	Parameter* ct = new_Parameter_with_postfix("gtr.e", "model", 1, new_Constraint(0.001, 100) );
-	
-    Simplex* sfreqs = new_Simplex("gtr", 4);
-	sfreqs->set_values(sfreqs, freqs);
-	
-	SubstitutionModel* model = new_GTR_with_parameters(sfreqs, ac, ag, at, cg, ct, NULL);
+    free_Parameter(ac);
+    free_Parameter(ag);
+    free_Parameter(at);
+    free_Parameter(cg);
+    free_Parameter(ct);
 
-	free_Parameter(ac);
-	free_Parameter(ag);
-	free_Parameter(at);
-	free_Parameter(cg);
-	free_Parameter(ct);
     return model;
 }
 
-SubstitutionModel * new_GTR_with_parameters( Simplex* freqs, Parameter* ac, Parameter* ag, Parameter* at, Parameter* cg, Parameter* ct, Parameter* gt){
+SubstitutionModel* new_GTR_with_values(const double* freqs, const double* rates) {
+    check_frequencies(freqs, 4);
+
+    Parameter* ac =
+        new_Parameter_with_postfix("gtr.a", "model", 1, new_Constraint(0.001, 100));
+    Parameter* ag =
+        new_Parameter_with_postfix("gtr.b", "model", 1, new_Constraint(0.001, 100));
+    Parameter* at =
+        new_Parameter_with_postfix("gtr.c", "model", 1, new_Constraint(0.001, 100));
+    Parameter* cg =
+        new_Parameter_with_postfix("gtr.d", "model", 1, new_Constraint(0.001, 100));
+    Parameter* ct =
+        new_Parameter_with_postfix("gtr.e", "model", 1, new_Constraint(0.001, 100));
+
+    Parameter* frequencies =
+        new_Parameter2("gtr.freqs", freqs, 4, new_Constraint(0.0, 1.0));
+
+    SubstitutionModel* model =
+        new_GTR_with_parameters(frequencies, ac, ag, at, cg, ct, NULL);
+
+    free_Parameter(ac);
+    free_Parameter(ag);
+    free_Parameter(at);
+    free_Parameter(cg);
+    free_Parameter(ct);
+    return model;
+}
+
+SubstitutionModel * new_GTR_with_parameters( Parameter* freqs, Parameter* ac, Parameter* ag, Parameter* at, Parameter* cg, Parameter* ct, Parameter* gt){
 	
 	SubstitutionModel *m = create_nucleotide_model("GTR", GTR, freqs);
 	
@@ -146,7 +159,7 @@ SubstitutionModel * new_GTR_with_parameters( Simplex* freqs, Parameter* ac, Para
 	return m;
 }
 
-SubstitutionModel * new_GTR_with_simplexes( Simplex* freqs, Simplex* rates){
+SubstitutionModel * new_GTR_with_simplexes( Parameter* freqs, Parameter* rates){
 	
 	SubstitutionModel *m = create_nucleotide_model("GTR", GTR, freqs);
 	
@@ -185,8 +198,8 @@ void gtr_update_Q( SubstitutionModel *m ){
 void gtr_simplexes_update_Q( SubstitutionModel *m ){
 	if(!m->need_update) return;
 	int index = 0;
-	const double* freqs = m->simplex->get_values(m->simplex);
-	const double* rates = m->rates_simplex->get_values(m->rates_simplex);
+	const double* freqs = Parameter_values(m->simplex);
+	const double* rates = Parameter_values(m->rates_simplex);
 	for ( int i = 0; i < 4; i++ )  {
 		for ( int j = i + 1; j < 4; j++ ) {
 			m->Q[i][j] = rates[index] * freqs[j];
@@ -253,7 +266,7 @@ void gtr_setup_rates_relative(double* Q, Parameters* rates, size_t dim, size_t r
 	}
 }
 
-static void _gtr_dQdp(SubstitutionModel *m, size_t index){
+static void _gtr_dQdp(SubstitutionModel *m, Parameter* parameter, size_t index){
 	double *dQ = m->dQ;
 	size_t stateCount = m->nstate;
 	memset(dQ, 0.0, sizeof(double)*stateCount*stateCount);
@@ -261,13 +274,42 @@ static void _gtr_dQdp(SubstitutionModel *m, size_t index){
 		m->update_Q(m);
 	}
 
-	const double* frequencies = m->simplex->get_values(m->simplex);
+	const double* frequencies = Parameter_values(m->simplex);
 	double norm = m->norm;
 	double dnorm = 0;
-	if(m->rates_simplex != NULL && ((m->grad_wrt_reparam && index < m->rates_simplex->K - 1) || (!m->grad_wrt_reparam && index < m->rates_simplex->K))){
+	size_t K = Parameter_size(m->rates_simplex);
+
+	Parameter* freqx = NULL;
+	Parameter* rateSimplex = NULL;
+	Parameter* rate = NULL;
+	Parameter* ratex = NULL;
+	if(m->simplex == parameter || (m->simplex->transform != NULL && m->simplex->transform->parameter == parameter)){
+		freqx = parameter;
+	}
+	else if(m->rates_simplex == parameter || (m->rates_simplex->transform != NULL && m->rates_simplex->transform->parameter == parameter)){
+		rateSimplex = parameter;
+	}
+	else{
+		for(size_t i = 0; i <Parameters_count(m->rates); i++){
+			Parameter* p = Parameters_at(m->rates, i);
+			if(p == parameter){
+				rate = ratex = parameter;
+				break;
+			}
+			else if(p->transform != NULL && p->transform->parameter == parameter){
+				rate = p;
+				ratex = parameter;
+				break;
+			}
+		}
+	}
+
+	if(rateSimplex != NULL){
 		double dR[6];
-		if(m->grad_wrt_reparam){
-			m->rates_simplex->gradient(m->rates_simplex, index, dR);
+		if(rateSimplex != m->rates_simplex){
+			double dR2[30];
+			m->rates_simplex->transform->jacobian(m->rates_simplex->transform, dR2);
+			memcpy(dR, dR2 + index*6, sizeof(double)*6);
 		}
 		else{
 			memset(dR, 0.0, sizeof(double)*6);
@@ -277,38 +319,34 @@ static void _gtr_dQdp(SubstitutionModel *m, size_t index){
 		build_Q_flat(dQ, frequencies, stateCount);
 		dnorm = normalizing_constant_Q_flat(dQ, frequencies, stateCount);
 	}
-	else if(m->rates_simplex == NULL && index < Parameters_count(m->rates)){
+	else if(ratex != NULL){
 		double dR[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 		dR[index] = 1.0;
+		if(ratex != rate){
+            double jac = 0;
+            rate->transform->jacobian(rate->transform, dR + index);
+        }
 		gtr_setup_rates(dQ, dR, stateCount);
 		build_Q_flat(dQ, frequencies, stateCount);
 		dnorm = normalizing_constant_Q_flat(dQ, frequencies, stateCount);
 	}
 	else{
-		size_t rateCount = -1;
-		if(m->rates_simplex == NULL){
-			rateCount = Parameters_count(m->rates);
-		}
-		else if(m->grad_wrt_reparam){
-			rateCount = m->rates_simplex->K - 1;
-		}
-		else{
-			rateCount = m->rates_simplex->K;
-		}	
 		if(m->rates_simplex != NULL){
-			const double* rates = m->rates_simplex->get_values(m->rates_simplex);
+			const double* rates = Parameter_values(m->rates_simplex);
 			gtr_setup_rates(dQ, rates, stateCount);
 		}
 		else{
 			gtr_setup_rates_relative(dQ, m->rates, stateCount, m->relativeTo);
 		}
 		double dF[4];
-		if(m->grad_wrt_reparam){
-			m->simplex->gradient(m->simplex, index - rateCount, dF);
+		if(freqx != m->simplex){
+			double dF2[12];
+			m->simplex->transform->jacobian(m->simplex->transform, dF2);
+			memcpy(dF, dF2 + index*4, sizeof(double)*4);
 		}
 		else{
 			memset(dF, 0.0, sizeof(double)*4);
-			dF[index - rateCount] = 1.0;
+			dF[index] = 1.0;
 		}
 		build_Q_flat(dQ, dF, stateCount);
 		
@@ -325,13 +363,13 @@ static void _gtr_dQdp(SubstitutionModel *m, size_t index){
 	}
 }
 
-static void _gtr_dPdp(SubstitutionModel *m, int index, double* mat, double t){
+static void _gtr_dPdp(SubstitutionModel *m, Parameter* parameter, int index, double* mat, double t){
 	if(m->need_update){
 		m->update_Q(m);
 		m->dQ_need_update = true;
 	}
 	if(m->dQ_need_update){
-		_gtr_dQdp(m, index);
+		_gtr_dQdp(m, parameter, index);
 		m->dQ_need_update = false;
 	}
 	dPdp_with_dQdp(m, m->dQ, mat, t);

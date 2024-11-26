@@ -24,25 +24,26 @@
 
 static void _gy_update_Q( SubstitutionModel *m );
 
-SubstitutionModel * new_GY94( Simplex* freqs, unsigned gen_code ){
-    SubstitutionModel *m = new_GY94_with_values(freqs,1, 1, gen_code);
+SubstitutionModel *new_GY94(Parameter *freqs, unsigned gen_code) {
+    SubstitutionModel *m = new_GY94_with_values(freqs, 1, 1, gen_code);
     return m;
 }
 
-SubstitutionModel * new_GY94_with_values( Simplex* freqs, const double omega, const double kappa, unsigned gen_code ){
-	
+SubstitutionModel *new_GY94_with_values(Parameter *freqs, const double omega,
+                                        const double kappa, unsigned gen_code) {
     SubstitutionModel *m = create_codon_model("GY94", GY94, gen_code, freqs);
-    
+
     // Functions
     m->update_Q = _gy_update_Q;
-    
-    m->rates = new_Parameters( 2 );
-    Parameters_move(m->rates, new_Parameter_with_postfix("gy.kappa", "model", kappa, new_Constraint(0.001, 100) ) );
-    Parameters_move(m->rates, new_Parameter_with_postfix("gy.omega", "model", omega, new_Constraint(0.001, 100) ) );
-	   
+
+    m->rates = new_Parameters(2);
+    Parameters_move(m->rates, new_Parameter_with_postfix("gy.kappa", "model", kappa,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("gy.omega", "model", omega,
+                                                         new_Constraint(0.001, 100)));
+
     return m;
 }
-
 
 static void _gy_update_Q( SubstitutionModel *m ){
 	if(!m->need_update) return;

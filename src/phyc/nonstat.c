@@ -22,40 +22,55 @@
 
 static void _nuc_unrestricted_nonstat_update_Q( SubstitutionModel *m );
 
-SubstitutionModel * new_NONSTATNucleotideModel(){
-	Simplex* freqs = new_Simplex("nonstat", 4);
-    SubstitutionModel *m = create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA, freqs);
-	
-	m->rates = new_Parameters( 11 );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r1",  "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r2",  "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r3",  "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r4",  "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r5",  "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r6",  "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r7",  "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r8",  "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r9",  "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r10", "model", 1, new_Constraint(0.001, 100) ) );
-	Parameters_move(m->rates, new_Parameter_with_postfix("unres.r11", "model", 1, new_Constraint(0.001, 100) ) );
-	
-	
-	m->update_Q = _nuc_unrestricted_nonstat_update_Q;
+SubstitutionModel *new_NONSTATNucleotideModel() {
+    double value = 0.25;
+    Parameter *freqs =
+        new_Parameter2("nonstat.freqs", &value, 4, new_Constraint(0.0, 1.0));
+    Parameter_set_estimate(freqs, false);
+    SubstitutionModel *m =
+        create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA, freqs);
+
+    m->rates = new_Parameters(11);
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r1", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r2", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r3", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r4", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r5", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r6", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r7", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r8", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r9", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r10", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+    Parameters_move(m->rates, new_Parameter_with_postfix("unres.r11", "model", 1,
+                                                         new_Constraint(0.001, 100)));
+
+    m->update_Q = _nuc_unrestricted_nonstat_update_Q;
     return m;
 }
 
-SubstitutionModel * new_NONSTATNucleotideModel_with_parameters( Simplex* freqs, const Parameters *rates ){
-	SubstitutionModel *m = create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA, freqs);
-	
-	m->rates = new_Parameters( Parameters_count(rates) );
-	for(int i = 0; i < Parameters_count(rates); i++){
-		Parameters_add(m->rates, Parameters_at(rates, i) );
-	}
-	
-	m->update_Q = _nuc_unrestricted_nonstat_update_Q;
-	
-	
-	return m;
+SubstitutionModel *new_NONSTATNucleotideModel_with_parameters(Parameter *freqs,
+                                                              const Parameters *rates) {
+    SubstitutionModel *m =
+        create_nucleotide_model("NONSTAT", NON_STATIONARY_DNA, freqs);
+
+    m->rates = new_Parameters(Parameters_count(rates));
+    for (size_t i = 0; i < Parameters_count(rates); i++) {
+        Parameters_add(m->rates, Parameters_at(rates, i));
+    }
+
+    m->update_Q = _nuc_unrestricted_nonstat_update_Q;
+
+    return m;
 }
 
 void _nuc_unrestricted_nonstat_update_Q( SubstitutionModel *m ){

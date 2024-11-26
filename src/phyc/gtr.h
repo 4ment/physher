@@ -120,18 +120,22 @@
  * @brief A general time-reversible (GTR) substitution model.
  */
 
-struct SubstitutionModel * new_GTR(Simplex* freqs);
+struct SubstitutionModel* new_GTR(Parameter* freqs);
 
-struct SubstitutionModel * new_GTR_with_parameters( Simplex* freqs, Parameter* ac, Parameter* ag, Parameter* at, Parameter* cg, Parameter* ct, Parameter* gt);
+struct SubstitutionModel* new_GTR_with_parameters(Parameter* freqs, Parameter* ac,
+                                                  Parameter* ag, Parameter* at,
+                                                  Parameter* cg, Parameter* ct,
+                                                  Parameter* gt);
 
-struct SubstitutionModel * new_GTR_with_values( const double *freqs, const double *rates );
+struct SubstitutionModel* new_GTR_with_values(const double* freqs, const double* rates);
 
-struct SubstitutionModel * new_GTR_with_simplexes( Simplex* freqs, Simplex* rates);
+struct SubstitutionModel* new_GTR_with_simplexes(Parameter* freqs, Parameter* rates);
 
-void gtr_update_Q( struct SubstitutionModel *m );
+void gtr_update_Q(struct SubstitutionModel* m);
 
-void gtr_simplexes_update_Q( struct SubstitutionModel *m );
+void gtr_simplexes_update_Q(struct SubstitutionModel* m);
 
-void gtr_dQ(struct SubstitutionModel *m, int index, double* mat, double t);
+void gtr_dQ(struct SubstitutionModel* m, Parameter* parameter, int index, double* mat,
+            double t);
 
 #endif /* gtr_h */

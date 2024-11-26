@@ -22,10 +22,10 @@
 
 #include "substmodel.h"
 
-struct SubstitutionModel * new_HKY(Simplex* freqs);
+struct SubstitutionModel* new_HKY(Parameter* freqs);
 
-struct SubstitutionModel * new_HKY_with_values( const double *freqs, const double kappa );
+struct SubstitutionModel* new_HKY_with_values(const double* freqs, const double kappa);
 
-struct SubstitutionModel * new_HKY_with_parameters( Simplex *freqs, Parameter* kappa );
+struct SubstitutionModel* new_HKY_with_parameters(Parameter* freqs, Parameter* kappa);
 
 #endif /* hky_h */

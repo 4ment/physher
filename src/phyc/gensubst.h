@@ -20,11 +20,17 @@
 
 #include <stdio.h>
 
-#include "substmodel.h"
 #include "discreteparameter.h"
+#include "substmodel.h"
 
-struct SubstitutionModel * new_GeneralJC69Model_with_parameters( DataType* datatype, Simplex* freqs_simplex, bool normalize );
+struct SubstitutionModel* new_GeneralJC69Model_with_parameters(DataType* datatype,
+                                                               Parameter* freqs_simplex,
+                                                               bool normalize);
 
-struct SubstitutionModel * new_GeneralModel_with_parameters( DataType* datatype, DiscreteParameter* model, const Parameters* rates, Simplex* freqs, int relativeTo, bool normalize );
+struct SubstitutionModel* new_GeneralModel_with_parameters(
+    DataType* datatype, DiscreteParameter* model, const Parameters* rates,
+    Parameter* freqs, int relativeTo, bool normalize);
+
+void general_dQdp(struct SubstitutionModel* m);
 
 #endif /* gensubst_h */

@@ -35,22 +35,26 @@ static void _lg_update_Q( SubstitutionModel *m ){
 }
 
 SubstitutionModel * new_LG(){
-	Simplex* freqs = new_Simplex("lg", 20);
-	freqs->set_values(freqs, AMINO_ACID_MODEL_LG_FREQUENCIES);
-	SubstitutionModel *m = new_LG_with_parameters(freqs);
-	
+    SubstitutionModel* m = new_LG_with_parameters(NULL);
+
     return m;
 }
 
-SubstitutionModel * new_LG_with_parameters(Simplex* freqs){
-	if(freqs == NULL){
-		freqs = new_Simplex("lg", 0);
-		freqs->set_values(freqs, AMINO_ACID_MODEL_LG_FREQUENCIES);
-	}
-    SubstitutionModel *m = create_aa_model("LG", LG, freqs);
-	m->update_Q = _lg_update_Q;
-	_lg_update_Q(m);
-    update_eigen_system( m );
-    
+SubstitutionModel* new_LG_with_parameters(Parameter* freqs) {
+    Parameter* freqs2 = NULL;
+    if (freqs == NULL) {
+        freqs2 = new_Parameter2("lg.freqs", AMINO_ACID_MODEL_LG_FREQUENCIES, 20,
+                                new_Constraint(0.0, 1.0));
+        Parameter_set_estimate(freqs, false);
+        freqs = freqs2;
+    }
+    SubstitutionModel* m = create_aa_model("LG", LG, freqs);
+    if (freqs2 != NULL) {
+        free_Parameter(freqs2);
+    }
+    m->update_Q = _lg_update_Q;
+    _lg_update_Q(m);
+    update_eigen_system(m);
+
     return m;
 }

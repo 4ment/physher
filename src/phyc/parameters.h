@@ -224,6 +224,8 @@ double Parameter_value(const Parameter *p);
 double Parameter_value_at(const Parameter *p, size_t index);
 const double *Parameter_values(const Parameter *p);
 
+void Parameter_set_model( Parameter *p, model_t model );
+
 void Parameter_store(Parameter *p);
 
 void Parameter_restore(Parameter *p);

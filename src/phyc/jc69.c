@@ -25,13 +25,11 @@ static void jc69_p_t( SubstitutionModel *m, const double t, double *P );
 static void jc69_dp_dt( SubstitutionModel *m, const double t, double *P );
 static void jc69_d2p_dt2( SubstitutionModel *m, const double t, double *P );
 
-SubstitutionModel * new_JC69(Simplex* freqs){
-	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
-		Parameters_set_estimate(freqs->parameters, false, i);
-	}
+SubstitutionModel *new_JC69(Parameter *freqs) {
+    Parameter_set_estimate(freqs, false);
     SubstitutionModel *m = create_nucleotide_model("JC69", JC69, freqs);
-	m->update_Q = _jc69_update_Q;
-    m->p_t   = m->p_t_transpose = jc69_p_t;
+    m->update_Q = _jc69_update_Q;
+    m->p_t = m->p_t_transpose = jc69_p_t;
     m->dp_dt = m->dp_dt_transpose = jc69_dp_dt;
     m->d2p_d2t = m->d2p_d2t_transpose = jc69_d2p_dt2;
     return m;

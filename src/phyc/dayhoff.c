@@ -34,22 +34,24 @@ static void _dayoff_update_Q( SubstitutionModel *m ){
 }
 
 SubstitutionModel * new_DAYHOFF(){
-    Simplex* freqs = new_Simplex("dayoff", 20);
-	freqs->set_values(freqs, AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES);
-    SubstitutionModel *m = new_DAYHOFF_with_parameters(freqs);
-    
-    return m;
+    return new_DAYHOFF_with_parameters(NULL);
 }
 
-SubstitutionModel * new_DAYHOFF_with_parameters( Simplex *freqs ){
-	if(freqs == NULL){
-		freqs = new_Simplex("dayoff", 20);
-		freqs->set_values(freqs, AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES);
-	}
-	SubstitutionModel *m = create_aa_model("DAYHOFF", DAYHOFF, freqs);
-	m->update_Q = _dayoff_update_Q;
-	_dayoff_update_Q(m);
-	update_eigen_system(m);
-	
-	return m;
+SubstitutionModel *new_DAYHOFF_with_parameters(Parameter *freqs) {
+    Parameter *freqs2 = NULL;
+    if (freqs == NULL) {
+        freqs2 = new_Parameter2("dayoff.freqs", AMINO_ACID_MODEL_DAYHOFF_FREQUENCIES,
+                                20, new_Constraint(0.0, 1.0));
+        Parameter_set_estimate(freqs2, false);
+        freqs = freqs2;
+    }
+    SubstitutionModel *m = create_aa_model("DAYHOFF", DAYHOFF, freqs);
+    if (freqs2 != NULL) {
+        free_Parameter(freqs2);
+    }
+    m->update_Q = _dayoff_update_Q;
+    _dayoff_update_Q(m);
+    update_eigen_system(m);
+
+    return m;
 }

@@ -21,7 +21,6 @@
 #include "sequence.h"
 #include "eigen.h"
 #include "parameters.h"
-#include "simplex.h"
 #include "discreteparameter.h"
 
 #include "substmodels.h"
@@ -56,7 +55,7 @@ typedef enum modeltype {
 
 typedef struct SubstitutionModel{
 	//double *_freqs; // hold the real frequencies ex: 0.25 0.25 0.25 0.25
-	Simplex* simplex;
+	Parameter* simplex;
 	unsigned int nstate;
 	char *name;
 	modeltype modeltype;
@@ -71,7 +70,7 @@ typedef struct SubstitutionModel{
 	bool need_update;
 	
 	Parameters *rates;
-	Simplex* rates_simplex;
+	Parameter* rates_simplex;
 
 	int relativeTo;
 	
@@ -95,7 +94,6 @@ typedef struct SubstitutionModel{
 	
 	void (*set_rates)( struct SubstitutionModel *, const double * );
 	
-	void (*set_relative_frequency)( struct SubstitutionModel *, const double, const int );
 	void (*set_rate)( struct SubstitutionModel *, const double, const int );
 	
 	void (*p_t)( struct SubstitutionModel *, const double, double * );
@@ -108,7 +106,7 @@ typedef struct SubstitutionModel{
 	void (*d2p_d2t)( struct SubstitutionModel *, const double, double * );
 	void (*d2p_d2t_transpose)( struct SubstitutionModel *, const double, double * );
     
-    void (*dPdp)(struct SubstitutionModel *m, int index, double* mat, double t);//derivative of P with respect to a parameter
+    void (*dPdp)(struct SubstitutionModel *m, Parameter* parameter, int index, double* mat, double t);//derivative of P with respect to a parameter
     
     struct SubstitutionModel * (*clone)( struct SubstitutionModel * );
     
@@ -116,8 +114,8 @@ typedef struct SubstitutionModel{
 	
 }SubstitutionModel;
 
-Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex );
-Model * new_SubstitutionModel3( const char* name, SubstitutionModel *sm, Model* freqs_simplex, Model* rates_simplex, Model* discrete_model );
+Model * new_SubstitutionModel2( const char* name, SubstitutionModel *sm );
+Model * new_SubstitutionModel3( const char* name, SubstitutionModel *sm, Model* discrete_model );
 
 void generale_update_freqs( SubstitutionModel *model );
 
@@ -136,20 +134,20 @@ double normalize_Q( double **m, const double *freqs, size_t dim );
 
 Model* new_SubstitutionModel_from_json(json_node* node, Hashtable*hash);
 
-SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, DataType* datatype, Simplex* freqs );
+SubstitutionModel * create_substitution_model( const char *name, const modeltype modelname, DataType* datatype, Parameter* freqs );
 
-SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname, Simplex* freqs );
+SubstitutionModel * create_nucleotide_model( const char *name, const modeltype modelname, Parameter* freqs );
 
-SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code, Simplex* freqs );
+SubstitutionModel * create_codon_model( const char *name, const modeltype modelname, unsigned gen_code, Parameter* freqs );
 
-SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Simplex* freqs );
+SubstitutionModel * create_aa_model( const char *name, const modeltype modelname, Parameter* freqs );
 
-SubstitutionModel * create_general_model( const char *name, const modeltype modelname, DataType* datatype, Simplex* freqs );
+SubstitutionModel * create_general_model( const char *name, const modeltype modelname, DataType* datatype, Parameter* freqs );
 
 
 SubstitutionModel * clone_substitution_model(SubstitutionModel *m);
 
-SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Parameters* rates, Simplex* simplex);
+SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Parameters* rates, Parameter* simplex);
 
 void free_SubstitutionModel( SubstitutionModel *m);
 
@@ -172,7 +170,7 @@ void bufferize_rates( StringBuffer *buffer, const SubstitutionModel *m );
 
 void compare_model( const SubstitutionModel *m1, const SubstitutionModel *m2 );
 
-SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataType* datatype, Simplex* freqSimplex, Simplex* rates_simplex, const Parameters* rates, const char** assignment );
+SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataType* datatype, Parameter* freqSimplex, Parameter* rates_simplex, const Parameters* rates, const char** assignment );
 
 
 void print_P( double *p, int nstate );

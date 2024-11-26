@@ -22,6 +22,7 @@
 
 struct SubstitutionModel * new_UnrestrictedNucleotideModel();
 
-struct SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters(Simplex* freqs, const Parameters* rates );
+struct SubstitutionModel* new_UnrestrictedNucleotideModel_with_parameters(
+    Parameter* freqs, const Parameters* rates);
 
 #endif /* unrest_h */

@@ -35,23 +35,22 @@ static void _wag_update_Q( SubstitutionModel *m ){
 	m->need_update = false;
 }
 
-SubstitutionModel * new_WAG(){
-	Simplex* freqs = new_Simplex("wag", 20);
-	freqs->set_values(freqs, AMINO_ACID_MODEL_WAG_FREQUENCIES);
-    SubstitutionModel *m = new_WAG_with_parameters(freqs);
-    
-    return m;
-}
+SubstitutionModel *new_WAG() { return new_WAG_with_parameters(NULL); }
 
-SubstitutionModel * new_WAG_with_parameters( Simplex *freqs ){
-	if(freqs == NULL){
-		freqs = new_Simplex("wag", 20);
-		freqs->set_values(freqs, AMINO_ACID_MODEL_WAG_FREQUENCIES);
-	}
+SubstitutionModel *new_WAG_with_parameters(Parameter *freqs) {
+    Parameter *freqs2 = NULL;
+    if (freqs == NULL) {
+        freqs2 = new_Parameter2("wag.freqs", AMINO_ACID_MODEL_WAG_FREQUENCIES, 20,
+                                new_Constraint(0.0, 1.0));
+        Parameter_set_estimate(freqs2, false);
+    }
     SubstitutionModel *m = create_aa_model("WAG", WAG, freqs);
-	m->update_Q = _wag_update_Q;
-	_wag_update_Q(m);
-    update_eigen_system( m );
-    
+    m->update_Q = _wag_update_Q;
+    _wag_update_Q(m);
+    update_eigen_system(m);
+    if (freqs2 != NULL) {
+        free_Parameter(freqs2);
+    }
+
     return m;
 }

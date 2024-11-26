@@ -61,7 +61,8 @@ static void _p_t_transpose_unrestricted( SubstitutionModel *m, const double t, d
 
 
 SubstitutionModel * new_UnrestrictedNucleotideModel( ){
-	Simplex* freqs = new_Simplex("urev", 4);
+    double value = 0.25;
+	Parameter* freqs = new_Parameter2("urev.freqs", &value, 4, new_Constraint(0.0, 1.0));
 	SubstitutionModel *m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA, freqs);
 	
 	m->rates = new_Parameters( 11 );
@@ -87,7 +88,7 @@ SubstitutionModel * new_UnrestrictedNucleotideModel( ){
 	return m;
 }
 
-SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters(Simplex* freqs, const Parameters* rates ){
+SubstitutionModel * new_UnrestrictedNucleotideModel_with_parameters(Parameter* freqs, const Parameters* rates ){
 	SubstitutionModel *m = create_nucleotide_model("UREV", NON_REVERSIBLE_DNA, freqs);
 	
 	m->rates = new_Parameters(11);
@@ -281,7 +282,7 @@ void _nuc_unrestricted_update_Q( SubstitutionModel *m ){
     make_zero_rows( m->Q, m->nstate);
 	double f[4];
     QtoPi( m->Q, f, m->nstate);
-	m->simplex->set_values(m->simplex, f);
+    Parameter_set_values(m->simplex, f);
     normalize_Q( m->Q, f, m->nstate );
     
     m->need_update = false;

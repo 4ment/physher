@@ -66,21 +66,6 @@
 
 static void k80_update_Q( SubstitutionModel *m );
 
-SubstitutionModel * new_K80(){
-	Simplex* freqs = new_Simplex("k80", 4);
-	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
-		Parameters_set_estimate(freqs->parameters, false, i);
-	}
-    SubstitutionModel *m = create_nucleotide_model("K80", K80, freqs);
-    
-    m->update_Q = k80_update_Q;
-    
-    m->rates = new_Parameters( 1 );
-    Parameters_move(m->rates, new_Parameter_with_postfix("k80.kappa", "model", 3, new_Constraint(0.0001, 100) ) );
-    
-    return m;
-}
-
 SubstitutionModel * new_K80_with_values( const double kappa ){
 	Parameter * k = new_Parameter_with_postfix("k80.kappa", "model", kappa, new_Constraint(0.0001, 100));
 	SubstitutionModel* m = new_K80_with_parameters(k);
@@ -88,19 +73,18 @@ SubstitutionModel * new_K80_with_values( const double kappa ){
 	return m;
 }
 
-SubstitutionModel * new_K80_with_parameters( Parameter* kappa ){
-	Simplex* freqs = new_Simplex("k80", 4);
-	for (int i = 0; i < Parameters_count(freqs->parameters); i++) {
-		Parameters_set_estimate(freqs->parameters, false, i);
-	}
-	SubstitutionModel *m = create_nucleotide_model("K80", K80, freqs);
-	
-	m->update_Q = k80_update_Q;
-	
-	m->rates = new_Parameters( 1 );
-	Parameters_add(m->rates, kappa);
-	
-	return m;
+SubstitutionModel *new_K80_with_parameters(Parameter *kappa) {
+    double value = 0.25;
+    Parameter *freqs = new_Parameter2("k80.freqs", &value, 4, new_Constraint(0.0, 1.0));
+    Parameter_set_estimate(freqs, false);
+    SubstitutionModel *m = create_nucleotide_model("K80", K80, freqs);
+
+    m->update_Q = k80_update_Q;
+
+    m->rates = new_Parameters(1);
+    Parameters_add(m->rates, kappa);
+
+    return m;
 }
 
 void k80_update_Q( SubstitutionModel *m ){

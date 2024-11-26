@@ -78,17 +78,7 @@ BranchModel * new_BranchModel( Tree *tree, branchmodel type );
 
 BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree, DiscreteParameter* dp );
 
-Parameters * BranchModel_save_rates( BranchModel *bm );
-
-void BranchModel_restore_rates( BranchModel *bm, const Parameters *rates );
-
-void BranchModel_rates_to_vector( BranchModel *bm, double *rates );
-
 void BranchModel_vector_to_rates( BranchModel *bm, const double *rates );
-
-void BranchModel_value_to_rates( const double rate, BranchModel *bm );
-
-int BranchModel_n_rate( BranchModel *bm );
 
 #pragma mark -
 #pragma mark NoClock
@@ -100,8 +90,6 @@ BranchModel * new_NoClock( Tree *tree );
 
 BranchModel * new_StrictClock( Tree *tree );
 
-BranchModel * new_StrictClock_with_parameters( Tree *tree, const Parameters *rates );
-
 BranchModel * new_StrictClock_with_parameter( Tree *tree, Parameter *rate );
 
 
@@ -110,7 +98,7 @@ BranchModel * new_StrictClock_with_parameter( Tree *tree, Parameter *rate );
 
 BranchModel * new_LocalClock( Tree *tree, const int nLocalClocks );
 
-BranchModel * new_LocalClock_with_parameters( Tree *tree, const Parameters *rates );
+BranchModel * new_LocalClock_with_parameter( Tree *tree, Parameter *rates );
 
 BranchModel * new_LocalClock_from_tree( Tree *tree );
 
@@ -137,7 +125,8 @@ BranchModel * new_DiscreteClock2( Tree *tree, const int n );
 
 BranchModel * new_DiscreteClock( Tree *tree, const int n );
 
-BranchModel * new_DiscreteClock_with_parameters( Tree *tree, const Parameters *rates, DiscreteParameter *map );
+BranchModel *new_DiscreteClock_with_parameters(Tree *tree, Parameter *rates,
+                                               DiscreteParameter *map);
 
 BranchModel * new_DiscreteClock_from_tree( Tree *tree );
 
