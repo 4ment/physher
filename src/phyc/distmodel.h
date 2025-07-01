@@ -12,7 +12,6 @@
 #include <stdio.h>
 
 #include "parameters.h"
-#include "simplex.h"
 #include "tree.h"
 #include "mjson.h"
 
@@ -35,7 +34,7 @@ typedef enum distribution_parameterization{
 }distribution_parameterization;
 
 typedef enum distribution_t{
-	DISTRIBUTION_BETA,
+	DISTRIBUTION_BETA = 0,
 	DISTRIBUTION_BETA_PRIME,
 	DISTRIBUTION_CAUCHY,
 	DISTRIBUTION_CTMC_SCALE,
@@ -54,22 +53,44 @@ typedef enum distribution_t{
 	DISTRIBUTION_WEIBULL
 }distribution_t;
 
+char* DISTRIBUTION_NAME[] = {
+	"beta",
+	"beta prime",
+	"cauchy",
+	"ctmc scale",
+	"dirichlet",
+	"discrete",
+	"exponential",
+	"gamma",
+	"gmrf",
+    "half normal",
+	"Kumaraswamy",
+	"lognormal",
+	"normal",
+	"multivariate normal",
+	"one on x",
+	"uniform",
+	"Weibull"
+};
+
 struct _DistributionModel{
 	distribution_t type;
-	Parameters** parameters;
-    size_t parameter_count;
+	Parameters* parameters;
 	Parameters* x;
-	Simplex* simplex;
 	Tree* tree;
-	double* tempx; // array to pass to multivariate distributions
+	double* tempx; // array to pass to multivariate distributions and sampling in general
 	double* tempp;
-	double (*logP)(DistributionModel*);
-	double (*logP_with_values)(DistributionModel*, const double*);
+	double (*log_prob)(DistributionModel*);
+	double (*log_prob_grad)(DistributionModel*, const Parameters*);
+	void (*log_prob_hessian_diag)(DistributionModel*, const Parameters*);
+	void (*reparam_backprop)(DistributionModel*);
 	double (*dlogP)(DistributionModel*, const Parameter*);
 	double (*d2logP)(DistributionModel*, const Parameter*);
 	double (*ddlogP)(DistributionModel*, const Parameter*, const Parameter*);
-	void (*sample)(DistributionModel*, double*);
-	double (*sample_evaluate)(DistributionModel*);
+	void (*sample)(DistributionModel*);
+	void (*rsample)(DistributionModel*);
+	double (*entropy)(DistributionModel*);
+	void (*entropy_grad)(DistributionModel*, const Parameters*);
 	void (*free)(DistributionModel*);
 	DistributionModel* (*clone)(DistributionModel*);
 	void* data;
@@ -86,18 +107,19 @@ struct _DistributionModel{
 	double* gradient;
 	size_t gradient_length;
 	bool need_update_gradient;
+	double support[2];
 };
 
 
 DistributionModel* new_UniformTreeDistribution(Tree* tree);
 
-DistributionModel* new_DistributionModel(Parameters** p, size_t dim, Parameters* x);
+DistributionModel* new_DistributionModel(Parameters* p, Parameters* x);
 
-DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm, Parameters** params, const Parameters* x, Simplex* simplex);
+DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm, Parameters* params, Parameters* x);
 
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 
-Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* simplex);
+Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* amodel);
 
 double DistributionModel_dlog_0(DistributionModel* dm, const Parameter* p);
 
@@ -105,8 +127,10 @@ double DistributionModel_d2log_0(DistributionModel* dm, const Parameter* p);
 
 double DistributionModel_ddlog_0(DistributionModel* dm, const Parameter* p1, const Parameter* p2);
 
-Parameters** distmodel_get_parameters(const char* who, json_node* parameters_node, Hashtable* hash, size_t *dim);
+void distmodel_get_parameters(json_node* parameters_node, Hashtable* hash, Parameters* parameters);
 
 Parameters* distmodel_get_x(const char* who, json_node* node, Hashtable* hash);
+
+Parameter* distmodel_parse_parameter(json_node* parameter_node, Hashtable* hash, const char* id, double lower, double upper);
 
 #endif /* distmodel_h */
