@@ -41,6 +41,9 @@ double qlnorm( const double p, const double logmu, const double logsigma ){
 	return exp(qnorm(p, logmu, logsigma));
 }
 
+double rlnorm(const double mu, const double sigma){
+	return exp(rnorm()* sigma + mu);
+}
 double lognorm_mean( const double logmu, const double logsigma ){
 	return exp( logmu + (logsigma*logsigma*0.5) );
 }

@@ -133,4 +133,8 @@ Parameters* distmodel_get_x(const char* who, json_node* node, Hashtable* hash);
 
 Parameter* distmodel_parse_parameter(json_node* parameter_node, Hashtable* hash, const char* id, double lower, double upper);
 
+void distmodel_expand_2parameters(Parameters* x, Parameters* parameters, double** aValues, double** bValues);
+
+void distmodel_expand_parameter(Parameters* x, Parameters* parameters, double** aValues);
+
 #endif /* distmodel_h */

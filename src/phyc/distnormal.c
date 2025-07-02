@@ -76,45 +76,24 @@ double DistributionModel_normal_log_prob(DistributionModel* dm){
     return dm->lp;
 }
 
-static void _expand_parameters(Parameters* x, Parameters* parameters, double** muValues,
-                               double** sigmaValues) {
-    Parameter* mu = Parameters_at(parameters, 0);
-    Parameter* sigma = Parameters_at(parameters, 1);
-    *muValues = Parameter_values(mu);
-    *sigmaValues = Parameter_values(sigma);
-
-    if (Parameter_size(mu) == 1) {
-        size_t dim = 0;
-        for (size_t k = 0; k < Parameters_count(x); k++) {
-            dim += Parameter_size(Parameters_at(x, k));
-        }
-        if (dim > 1) {
-            *muValues = dvector(dim);
-            *sigmaValues = dvector(dim);
-            double muValue = Parameter_value(mu);
-            double sigmaValue = Parameter_value(sigma);
-            for (size_t k = 0; k < dim; k++) {
-                *muValues[k] = muValue;
-                *sigmaValues[k] = sigmaValue;
-            }
-        }
-    }
-}
-
 double DistributionModel_normal_log_prob_gradient(DistributionModel* dm, const Parameters* parameters){
+    size_t dimX = Parameters_count(dm->x);
     Parameter* mu = Parameters_at(dm->parameters, 0);
     Parameter* sigma = Parameters_at(dm->parameters, 1);
     double* muValues = NULL;
     double* sigmaValues = NULL;
 
-    _expand_parameters(dm->x, dm->parameters, &muValues, &sigmaValues);
+    distmodel_expand_2parameters(dm->x, dm->parameters, &muValues, &sigmaValues);
 
     Parameter* mux = Parameters_depends(parameters, mu);
     Parameter* sigmax = Parameters_depends(parameters, sigma);
 
+    // we assume that there is 1 mu and 1 sigma per x_kj
+    // if it is not he case it means it is fixed hyperparameter so no gradient
+    // if there is prior on mu then it is not fixed
     if(mux != NULL){
         size_t index = 0;
-        for(size_t k = 0; k < Parameters_count(dm->x); k++){
+        for(size_t k = 0; k < dimX; k++){
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
@@ -123,8 +102,8 @@ double DistributionModel_normal_log_prob_gradient(DistributionModel* dm, const P
                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
                     sigmaValue = sqrt(1.0/sigmaValue);
                 }
-                dm->tempp[j] = (xValues[j] - muValues[index])/(sigmaValue*sigmaValue);
-                mu->grad[j] += dm->tempp[j];
+                dm->tempp[index] = (xValues[j] - muValues[index])/(sigmaValue*sigmaValue);
+                mu->grad[index] += dm->tempp[index];
                 index++;
             }
         }
@@ -135,7 +114,7 @@ double DistributionModel_normal_log_prob_gradient(DistributionModel* dm, const P
 
     if(sigmax != NULL){
         size_t index = 0;
-        for(size_t k = 0; k < Parameters_count(dm->x); k++){
+        for(size_t k = 0; k < dimX; k++){
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
@@ -145,9 +124,9 @@ double DistributionModel_normal_log_prob_gradient(DistributionModel* dm, const P
                     dm->tempp[j] = 1.0/(2.0*sigmaValue) - pow(xValues[j] - muValues[index], 2.0)/2.0;
                 }
                 else{
-                    dm->tempp[j] =  (muValues[index]*muValues[index] - sigmaValue*sigmaValue - 2.0*muValues[index]*xValues[j] + xValues[j]*xValues[j])/(sigmaValue*sigmaValue*sigmaValue);
+                    dm->tempp[index] =  (muValues[index]*muValues[index] - sigmaValue*sigmaValue - 2.0*muValues[index]*xValues[j] + xValues[j]*xValues[j])/(sigmaValue*sigmaValue*sigmaValue);
                 }
-                sigma->grad[j] += dm->tempp[j];
+                sigma->grad[index] += dm->tempp[index];
                 index++;
             }
         }
@@ -157,7 +136,7 @@ double DistributionModel_normal_log_prob_gradient(DistributionModel* dm, const P
     }
 
     size_t index = 0;
-    for(size_t k = 0; k < Parameters_count(dm->x); k++){
+    for(size_t k = 0; k < dimX; k++){
         Parameter* x = Parameters_at(dm->x, k);
         Parameter* xx = Parameters_depends(parameters, x);
         if (xx != NULL) {
@@ -195,7 +174,7 @@ void DistributionModel_normal_log_prob_hessian_diag(DistributionModel* dm, const
     double* muValues = NULL;
     double* sigmaValues = NULL;
 
-    _expand_parameters(dm->x, dm->parameters, &muValues, &sigmaValues);
+    distmodel_expand_2parameters(dm->x, dm->parameters, &muValues, &sigmaValues);
 
     Parameter* mux = Parameters_depends(parameters, mu);
     Parameter* sigmax = Parameters_depends(parameters, sigma);
@@ -211,8 +190,8 @@ void DistributionModel_normal_log_prob_hessian_diag(DistributionModel* dm, const
                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
                     sigmaValue = sqrt(1.0/sigmaValue);
                 }
-                dm->tempp[j] = -1.0/(sigmaValue*sigmaValue);
-                mu->grad[j] += dm->tempp[j];
+                dm->tempp[index] = -1.0/(sigmaValue*sigmaValue);
+                mu->grad[index] += dm->tempp[index];
                 index++;
             }
         }
@@ -236,9 +215,9 @@ void DistributionModel_normal_log_prob_hessian_diag(DistributionModel* dm, const
                 }
                 else{
                     z = (xValues[j] - muValues[index] )/sigmaValue;
-                    dm->tempp[j] = (1.0-3.0*z*z)/(sigmaValue*sigmaValue);
+                    dm->tempp[index] = (1.0-3.0*z*z)/(sigmaValue*sigmaValue);
                 }
-                sigma->grad[j] += dm->tempp[j];
+                sigma->grad[index] += dm->tempp[index];
                 index++;
             }
         }

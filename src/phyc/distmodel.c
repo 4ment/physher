@@ -42,12 +42,63 @@ double DistributionModel_ddlog_0(DistributionModel* dm, const Parameter* p1, con
 	return 0.0;
 }
 
+
+double DistributionModel_log_prob_error(DistributionModel* dm){
+	fprintf(stderr, "log_prob method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
+	exit(1);
+	return 0.0;
+}
+
+double DistributionModel_log_prob_grad_error(DistributionModel* dm, const Parameters* p){
+	fprintf(stderr, "log_prob_grad method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
+	exit(1);
+	return 0;
+}
+
+void DistributionModel_log_prob_hessian_diag_error(DistributionModel* dm, const Parameters* p){
+	fprintf(stderr, "log_prob_grad method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
+	exit(1);
+}
+
+double DistributionModel_dlog_error(DistributionModel* dm, const Parameter* p){
+	fprintf(stderr, "dlog method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
+	exit(1);
+	return 0.0;
+}
+
+double DistributionModel_d2log_error(DistributionModel* dm, const Parameter* p){
+	fprintf(stderr, "d2log method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
+	exit(1);
+	return 0.0;
+}
+
+double DistributionModel_ddlog_error(DistributionModel* dm, const Parameter* p1, const Parameter* p2){
+	fprintf(stderr, "ddlog method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
+	exit(1);
+	return 0.0;
+}
+
+void DistributionModel_reparam_backprop_error(DistributionModel* dm){
+	fprintf(stderr, "reparam_backprop method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
+	exit(1);
+}
+
 static void _DistributionModel_error_sample(DistributionModel* dm){
 	fprintf(stderr, "sample method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
 	exit(1);
 }
 static void _DistributionModel_error_rsample(DistributionModel* dm){
 	fprintf(stderr, "rsample method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
+	exit(1);
+}
+
+static double _DistributionModel_error_entropy(DistributionModel* dm){
+	fprintf(stderr, "entropy method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
+	exit(1);
+	return 0.0;
+}
+static void _DistributionModel_error_entropy_grad(DistributionModel* dm, const Parameters* parameters){
+	fprintf(stderr, "entropy_grad method not implemented in %s\n", DISTRIBUTION_NAME[dm->type]);
 	exit(1);
 }
 
@@ -177,17 +228,17 @@ DistributionModel* new_DistributionModel(Parameters* p, Parameters* x){
 	    }
     }
 	dm->tree = NULL;
-	dm->log_prob = NULL;
-	dm->log_prob_grad = NULL;
-	dm->log_prob_hessian_diag = NULL;
-	dm->dlogP = NULL;
-	dm->d2logP = NULL;
-	dm->ddlogP = NULL;
+	dm->log_prob = DistributionModel_log_prob_error;
+	dm->log_prob_grad = DistributionModel_log_prob_grad_error;
+	dm->log_prob_hessian_diag = DistributionModel_log_prob_hessian_diag_error;
+	dm->dlogP = DistributionModel_dlog_error;
+	dm->d2logP = DistributionModel_d2log_error;
+	dm->ddlogP = DistributionModel_ddlog_error;
 	dm->sample = _DistributionModel_error_sample;
 	dm->rsample = _DistributionModel_error_sample;
-	dm->entropy = NULL;
-	dm->entropy_grad = NULL;
-	dm->reparam_backprop = NULL;
+	dm->entropy = _DistributionModel_error_entropy;
+	dm->entropy_grad = _DistributionModel_error_entropy_grad;
+	dm->reparam_backprop = DistributionModel_reparam_backprop_error;
 	dm->free = _free_partial_distribution;
 	dm->clone = DistributionMode_clone;
 	dm->data = NULL;
@@ -627,4 +678,47 @@ Parameter* distmodel_parse_parameter(json_node* parameter_node, Hashtable* hash,
 		exit(1);
 	}
 	return parameter;
+}
+
+void distmodel_expand_2parameters(Parameters* x, Parameters* parameters, double** aValues, double** bValues) {
+    Parameter* a = Parameters_at(parameters, 0);
+    Parameter* b = Parameters_at(parameters, 1);
+    *aValues = Parameter_values(a);
+    *bValues = Parameter_values(b);
+
+    if (Parameter_size(a) == 1) {
+        size_t dim = 0;
+        for (size_t k = 0; k < Parameters_count(x); k++) {
+            dim += Parameter_size(Parameters_at(x, k));
+        }
+        if (dim > 1) {
+            *aValues = dvector(dim);
+            *bValues = dvector(dim);
+            double aValue = Parameter_value(a);
+            double bValue = Parameter_value(b);
+            for (size_t k = 0; k < dim; k++) {
+                *aValues[k] = aValue;
+                *bValues[k] = bValue;
+            }
+        }
+    }
+}
+
+void distmodel_expand_parameter(Parameters* x, Parameters* parameters, double** aValues) {
+    Parameter* a = Parameters_at(parameters, 0);
+    *aValues = Parameter_values(a);
+
+    if (Parameter_size(a) == 1) {
+        size_t dim = 0;
+        for (size_t k = 0; k < Parameters_count(x); k++) {
+            dim += Parameter_size(Parameters_at(x, k));
+        }
+        if (dim > 1) {
+            *aValues = dvector(dim);
+            double aValue = Parameter_value(a);
+            for (size_t k = 0; k < dim; k++) {
+                *aValues[k] = aValue;
+            }
+        }
+    }
 }

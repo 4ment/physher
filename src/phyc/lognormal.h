@@ -27,6 +27,8 @@ double plnorm( const double x, const double mu, const double sigma );
 // Inverse cumulative distribution function
 double qlnorm( const double p, const double logmu, const double logsigma );
 
+double rlnorm( const double mu, const double sigma );
+
 double lognorm_mean( const double logmu, const double logsigma );
 
 void lognormal_discretize( const double mu, const double sigma, double *bins, const int count );
