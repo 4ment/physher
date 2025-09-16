@@ -19,7 +19,8 @@
 
 #include "matrix.h"
 
-static void _general_dPdp(SubstitutionModel *m, int index, double* mat, double t);
+static void _general_dPdp(SubstitutionModel* m, Parameter* parameter, int index,
+                          double* mat, double t);
 
 // symmetric matrix
 static void _p_t_integrated_exp( SubstitutionModel *m, const double t, double *P ){
@@ -59,7 +60,7 @@ static void _p_t_integrated_exp( SubstitutionModel *m, const double t, double *P
 
 void _nonreversible_update_Q( SubstitutionModel *m ){
 	if(!m->need_update) return;
-	const double* freqs = m->simplex->get_values(m->simplex);
+	const double* freqs = Parameter_values(m->simplex);
     int index = 0;
 	const unsigned* model = m->model->values;
 	for ( size_t i = 0; i < m->nstate; i++ )  {
@@ -67,9 +68,9 @@ void _nonreversible_update_Q( SubstitutionModel *m ){
             m->Q[i][j] = Parameters_value(m->rates, model[index++]) * freqs[j];
         }
     }
-    for ( size_t i = 1; i < m->nstate; i++ )  {   
-        for (size_t j = 0; j < i; j++ ) {
-			m->Q[i][j] = Parameters_value(m->rates, model[index++]) * freqs[j];
+    for ( size_t i = 0; i < m->nstate; i++ )  {   
+        for (size_t j = i + 1; j < m->nstate; j++ ) {
+			m->Q[j][i] = Parameters_value(m->rates, model[index++]) * freqs[i];
         }
     }
     make_zero_rows( m->Q, m->nstate);
@@ -134,9 +135,9 @@ void _reversible_update_Q( SubstitutionModel *m ){
 	int index = 0;
 	
 	if(m->simplex != NULL){
-		const double* freqs = m->simplex->get_values(m->simplex);
+		const double* freqs = Parameter_values(m->simplex);
 		for ( int i = 0; i < m->nstate; i++ )  {
-			index += i+1;
+			// index += i+1;
 			for ( int j = i + 1; j < m->nstate; j++ ) {
 				if(m->relativeTo != model[index]){
 					temp = Parameters_value(m->rates, model[index]);
@@ -174,7 +175,7 @@ void _reversible_update_Q( SubstitutionModel *m ){
     m->need_update = false;
 }
 
-SubstitutionModel * new_GeneralModel_with_parameters( DataType* datatype, DiscreteParameter* model, const Parameters* rates, Simplex* freqs, int relativeTo, bool normalize ){
+SubstitutionModel * new_GeneralModel_with_parameters( DataType* datatype, DiscreteParameter* model, const Parameters* rates, Parameter* freqs, int relativeTo, bool normalize ){
 	size_t stateCount = datatype->state_count(datatype);
 	bool sym = stateCount*(stateCount-1)/2 == model->length;
     SubstitutionModel *m = NULL;
@@ -200,8 +201,8 @@ SubstitutionModel * new_GeneralModel_with_parameters( DataType* datatype, Discre
 }
 
 
-SubstitutionModel * new_GeneralJC69Model_with_parameters( DataType* datatype, Simplex* freqs_simplex, bool normalize ){
-    SubstitutionModel *m = create_general_model("GENERAL", REVERSIBLE, datatype, freqs_simplex);
+SubstitutionModel * new_GeneralJC69Model_with_parameters( DataType* datatype, Parameter* freqs, bool normalize ){
+    SubstitutionModel *m = create_general_model("GENERAL", REVERSIBLE, datatype, freqs);
 	m->update_Q = _general_jc69_update_Q;
 	m->p_t = m->p_t_transpose = _general_jc69_p_t;
 	m->dp_dt = m->dp_dt_transpose = _general_jc69_dp_dt;
@@ -213,7 +214,7 @@ SubstitutionModel * new_GeneralJC69Model_with_parameters( DataType* datatype, Si
 }
 
 
-static void _general_dQdp(SubstitutionModel *m, size_t index){
+static void _general_dQdp(SubstitutionModel *m, Parameter* parameter, size_t index){
 	double *dQ = m->dQ;
 	size_t stateCount = m->nstate;
 	memset(dQ, 0.0, sizeof(double)*stateCount*stateCount);
@@ -221,21 +222,21 @@ static void _general_dQdp(SubstitutionModel *m, size_t index){
 		m->update_Q(m);
 	}
 
-	const double* frequencies = m->simplex->get_values(m->simplex);
+	const double* frequencies = Parameter_values(m->simplex);
 	double norm = m->norm;
 	double dnorm = 0;
-	if(index < Parameters_count(m->rates)){
+	if(Parameters_contains(m->rates, parameter)){
 		size_t idx = 0;
 		for ( size_t i = 0; i < stateCount; i++ )  {
 			for (size_t j = i + 1; j < m->nstate; j++, idx++ ) {
-				if(m->model->values[idx] == index){
+				if(m->model->values[idx] == parameter->id){
 					m->dQ[i*stateCount+j] = 1.0;
 				}
 			}
 		}
 		for ( int i = 0; i < stateCount; i++ )  {   
 			for (size_t j = i + 1; j < m->nstate; j++, idx++ ) {
-				if(m->model->values[idx] == index){
+				if(m->model->values[idx] == parameter->id){
 					m->dQ[j*stateCount+i] = 1.0;
 				}
 			}
@@ -255,6 +256,64 @@ static void _general_dQdp(SubstitutionModel *m, size_t index){
 		}
 		for ( int i = 0; i < m->nstate; i++ )  {   
 			for (size_t j = i + 1; j < m->nstate; j++ ) {
+				dQ[j*stateCount+i] = Parameters_value(m->rates, m->model->values[idx++]);
+			}
+		}
+		
+		double *dF = dvector(stateCount);
+		memset(dF, 0.0, sizeof(double)*stateCount);
+		dF[index] = 1.0;
+		build_Q_flat(dQ, dF, stateCount);
+		if(m->normalize){
+			for (size_t i = 0; i < stateCount; i++) {
+				dnorm -= dQ[i*stateCount+i]*frequencies[i] + m->Q[i][i]*norm*dF[i];
+			}
+		}
+		free(dF);
+	}
+
+	if(m->normalize){
+		for(size_t i = 0; i < stateCount; i++){
+			for(size_t j = 0; j < stateCount; j++){
+				// (dQ . norm - norm_dQ . Q)/norm^2
+				dQ[i*stateCount + j] = (dQ[i*stateCount + j] - m->Q[i][j]*dnorm)/norm;
+			}
+		}
+	}
+}
+
+static void _general_dQdp_reversible(SubstitutionModel *m, size_t index){
+	double *dQ = m->dQ;
+	size_t stateCount = m->nstate;
+	memset(dQ, 0.0, sizeof(double)*stateCount*stateCount);
+	if(m->need_update){
+		m->update_Q(m);
+	}
+
+	const double* frequencies = Parameter_values(m->simplex);
+	double norm = m->norm;
+	double dnorm = 0;
+	if(index < Parameters_count(m->rates)){
+		size_t idx = 0;
+		for ( size_t i = 0; i < stateCount; i++ )  {
+			for (size_t j = i + 1; j < m->nstate; j++, idx++ ) {
+				if(m->model->values[idx] == index){
+					m->dQ[i*stateCount+j] = 1.0;
+					m->dQ[j*stateCount+i] = 1.0;
+				}
+			}
+		}
+		build_Q_flat(dQ, frequencies, stateCount);
+		if(m->normalize){
+			dnorm = normalizing_constant_Q_flat(dQ, frequencies, stateCount);
+		}
+	}
+	else{
+		size_t idx = 0;
+		size_t rateCount = Parameters_count(m->rates);
+		for ( size_t i = 0; i < m->nstate; i++ )  {
+			for (size_t j = i + 1; j < m->nstate; j++ ) {
+				dQ[i*stateCount+j] = Parameters_value(m->rates, m->model->values[idx++]);
 				dQ[j*stateCount+i] = Parameters_value(m->rates, m->model->values[idx++]);
 			}
 		}
@@ -307,17 +366,99 @@ void dPdp_with_dQdp_general(SubstitutionModel *m, double* dQ, double* dP, double
 	free(temp);
 }
 
-static void _general_dPdp(SubstitutionModel *m, int index, double* mat, double t){
+void dPdp_with_dQdp_general_stabilized(SubstitutionModel *m, double* dQ, double* dP, double t){
+	size_t stateCount = m->nstate;
+	double *v = m->eigendcmp->eval;
+	double* temp = dvector(stateCount*stateCount);
+	for(size_t i = 0; i < stateCount; i++){
+		temp[i] = exp(v[i]*t/2.0);
+	}
+	double* dPPtr = dP;
+	double* dQPtr = m->dQ;
+	for(size_t i = 0; i < stateCount; i++){
+		for(size_t j = 0; j < stateCount; j++){
+			if(v[i] != v[j]){
+				double temp2 = t*(v[i] - v[j])/2;
+				*dPPtr = t*temp[i]* *dQPtr*sinh(temp2)/temp2 *temp[j];
+			}
+			else{
+				*dPPtr = t*temp[i]* *dQPtr *temp[j];
+			}
+			// *dPPtr *= temp[i]*temp[j]*t;
+			dPPtr++;
+			dQPtr++;
+		}
+	}
+	Matrix_mult3(temp, (const double**)m->eigendcmp->evec, dP, stateCount, stateCount, stateCount, stateCount);
+	Matrix_mult4(dP, temp, (const double**)m->eigendcmp->Invevec, stateCount, stateCount, stateCount, stateCount);
+	free(temp);
+}
+
+// Calculate dQ/dr_i for 1,...,rateCount
+// Non-reversible and reversible
+void general_dQdp(SubstitutionModel *m){
 	if(m->need_update){
 		m->update_Q(m);
 		m->dQ_need_update = true;
 	}
 	if(m->dQ_need_update){
-		_general_dQdp(m, index);
+		size_t stateCount = m->nstate;
+		size_t rateCount = Parameters_count(m->rates);
+		const double* frequencies = Parameter_values(m->simplex);
+		double norm = m->norm;
+		
+		memset(m->dQ, 0.0, sizeof(double)*stateCount*stateCount*rateCount);
+		size_t idx = 0;
+		if(m->modeltype == NONREVERSIBLE){
+			for ( size_t i = 0; i < stateCount; i++ )  {
+				for (size_t j = i + 1; j < stateCount; j++, idx++ ) {
+					m->dQ[m->model->values[idx]*stateCount*stateCount + i*stateCount+j] = 1.0;
+				}
+			}
+			for ( size_t i = 0; i < stateCount; i++ )  {
+				for (size_t j = i + 1; j < stateCount; j++, idx++ ) {
+					m->dQ[m->model->values[idx]*stateCount*stateCount + j*stateCount+i] = 1.0;
+				}
+			}
+		}
+		else{
+			for ( size_t i = 0; i < stateCount; i++ )  {
+				for (size_t j = i + 1; j < stateCount; j++, idx++ ) {
+					m->dQ[m->model->values[idx]*stateCount*stateCount + i*stateCount+j] = 1.0;
+					m->dQ[m->model->values[idx]*stateCount*stateCount + j*stateCount+i] = 1.0;
+				}
+			}
+		}
+		double* dQ = m->dQ;
+		for ( size_t k = 0; k < rateCount; k++ )  {
+			build_Q_flat(dQ, frequencies, stateCount);
+			if(m->normalize){
+				double dnorm = normalizing_constant_Q_flat(dQ, frequencies, stateCount);
+				for(size_t i = 0; i < stateCount; i++){
+					for(size_t j = 0; j < stateCount; j++){
+						// (dQ . norm - norm_dQ . Q)/norm^2
+						dQ[i*stateCount + j] = (dQ[i*stateCount + j] - m->Q[i][j]*dnorm)/norm;
+					}
+				}
+			}
+			dQ += stateCount*stateCount;
+		}
+		m->dQ_need_update = false;
+	}
+}
+
+static void _general_dPdp(SubstitutionModel *m, Parameter* parameter, int index, double* mat, double t){
+	if(m->need_update){
+		m->update_Q(m);
+		m->dQ_need_update = true;
+	}
+	if(m->dQ_need_update){
+		_general_dQdp(m, parameter, index);
 		size_t stateCount = m->nstate;
 		Matrix_mult3(mat, (const double**)m->eigendcmp->Invevec, m->dQ, stateCount, stateCount, stateCount, stateCount);
 		Matrix_mult4(m->dQ, mat, (const double**)m->eigendcmp->evec, stateCount, stateCount, stateCount, stateCount);
 		m->dQ_need_update = false;
 	}
 	dPdp_with_dQdp_general(m, m->dQ, mat, t);
+	// dPdp_with_dQdp_general_stabilized(m, m->dQ, mat, t);
 }

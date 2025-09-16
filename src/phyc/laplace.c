@@ -92,8 +92,13 @@ double calculate_laplace_beta(Laplace* laplace){
 	Model* posterior = laplace->model;
 	Model* refdist = laplace->refdist;
 	DistributionModel* dm = NULL;
+	double* alphas = NULL;
+	double* betas = NULL;
+
 	if(refdist != NULL){
 		dm = refdist->obj;
+		alphas = malloc(sizeof(double)*Parameters_count(dm->x));
+		betas = malloc(sizeof(double)*Parameters_count(dm->x));
 	}
 	double logP = posterior->logP(posterior);
 	
@@ -125,10 +130,18 @@ double calculate_laplace_beta(Laplace* laplace){
 		logP -= log(gsl_ran_beta_pdf(map, alpha, beta));
 		
 		if(dm != NULL){
-			Parameters_set_value(dm->parameters[0], i, alpha);
-			Parameters_set_value(dm->parameters[1], i, beta);
+			alphas[i] = alpha;
+			betas[i] = beta;
 		}
 	}
+
+	if(dm != NULL){
+		Parameter_set_values(Parameters_at(dm->parameters, 0), alphas);
+		Parameter_set_values(Parameters_at(dm->parameters, 1), betas);
+	}
+	free(alphas);
+	free(betas);
+
 	return logP;
 }
 
@@ -146,6 +159,8 @@ double calculate_laplace_beta2(Laplace* laplace, DistributionModel* dm){
 	Model* posterior = laplace->model;
 	double logP = 0;//posterior->logP(posterior);
 	Parameters* parameters = dm->x;
+	double* alphas = malloc(sizeof(double)*Parameters_count(dm->x));
+	double* betas = malloc(sizeof(double)*Parameters_count(dm->x));
 	
 	for (int i = 0; i < Parameters_count(parameters); i++) {
 		Parameter* parameter = Parameters_at(parameters, i);
@@ -177,11 +192,17 @@ double calculate_laplace_beta2(Laplace* laplace, DistributionModel* dm){
 		
 		logP -= log(gsl_ran_beta_pdf(map, alpha, beta));
 		
-		Parameters_set_value(dm->parameters[0], i, alpha);
-		Parameters_set_value(dm->parameters[1], i, beta);
+		alphas[i] = alpha;
+		betas[i] = beta;
 //		printf("map: %f dlogP: %f d2logP: %f [%f,%f]\n",map, dlogP, d2logP, alpha, beta);
 	}
 	
+	Parameter_set_values(Parameters_at(dm->parameters, 0), alphas);
+	Parameter_set_values(Parameters_at(dm->parameters, 1), betas);
+	
+	free(alphas);
+	free(betas);
+
 	printf("Beta Laplace: %f\n", logP);
 	return logP;
 }
@@ -192,8 +213,13 @@ double calculate_laplace_gamma(Laplace* laplace){
 	Model* posterior = laplace->model;
 	Model* refdist = laplace->refdist;
 	DistributionModel* dm = NULL;
+	double* alphas = NULL;
+	double* betas = NULL;
+
 	if(refdist != NULL){
 		dm = refdist->obj;
+		alphas = malloc(sizeof(double)*Parameters_count(dm->x));
+		betas = malloc(sizeof(double)*Parameters_count(dm->x));
 	}
 	
 	int N = 10;
@@ -311,14 +337,21 @@ double calculate_laplace_gamma(Laplace* laplace){
 			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_SCALE) {
 				rate = 1.0/rate;
 			}
-			Parameters_set_value(dm->parameters[0], i, shape);
-			Parameters_set_value(dm->parameters[1], i, rate);
+			alphas[i] = shape;
+			betas[i] = rate;
 		}
 	}
 	
+	if(dm != NULL){
+		Parameter_set_values(Parameters_at(dm->parameters, 0), alphas);
+		Parameter_set_values(Parameters_at(dm->parameters, 1), betas);
+	}
+
 	free(x);
 	free(y);
 	free(yy);
+	free(alphas);
+	free(betas);
 	
 	printf("Gamma Laplace: %f\n", logP);
 	return logP;
@@ -329,6 +362,8 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 	// alpha = shape = rate * m + 1
 	Model* posterior = laplace->model;
 	Parameters* parameters = dm->x;
+	double* alphas = malloc(sizeof(double)*Parameters_count(dm->x));
+	double* betas = malloc(sizeof(double)*Parameters_count(dm->x));
 	
 	int N = 10;
 	double* x = calloc(N, sizeof(double));
@@ -447,13 +482,20 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 		}
 		printf("map: %f dlogP: %e d2logP: %f [%f,%f]\n",map, dlogP, d2logP, shape, rate);
 
-		Parameters_set_value(dm->parameters[0], i, shape);
 		if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_SCALE) {
 			rate = 1.0/rate;
 		}
-		Parameters_set_value(dm->parameters[1], i, rate);
+		alphas[i] = shape;
+		betas[i] = rate;
 		logP -= log(gsl_ran_gamma_pdf(map, shape, rate));
 	}
+
+	Parameter_set_values(Parameters_at(dm->parameters, 0), alphas);
+	Parameter_set_values(Parameters_at(dm->parameters, 1), betas);
+	
+	free(alphas);
+	free(betas);
+
 	
 	free(x);
 	free(y);
@@ -529,23 +571,26 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
 	}
 	
     if(refdist != NULL){
-        if(paramCount*paramCount == Parameters_count(dm->parameters[1])){
-            for (int i = 0; i < paramCount; i++) {
-                Parameters_set_value(dm->parameters[0], i, Parameters_value(laplace->parameters, i));
-                for (int j = 0; j < paramCount; j++) {
-                    double sigma = gsl_matrix_get(H, i, j);
-                    Parameters_set_value(dm->parameters[1], i*paramCount+j, sigma);
+		Parameter* mu = Parameters_at(dm->parameters, 0);
+		Parameter* sigma = Parameters_at(dm->parameters, 1);
+		size_t row = 0;
+		for (size_t i = 0; i < paramCount; i++) {
+            dm->tempx[i] = Parameters_value(laplace->parameters, i);
+		}
+        if(paramCount*paramCount == Parameter_size(sigma)){
+            for (size_t i = 0; i < paramCount; i++) {
+                for (size_t j = 0; j < paramCount; j++) {
+                    dm->tempx[row++] = gsl_matrix_get(H, i, j);
                 }
             }
         }
         else{
-            size_t row = 0;
-            for(int i = 0; i < paramCount; i++){
-                for(int j = 0; j <= i; j++){
-                    Parameters_set_value(dm->parameters[1], row, gsl_matrix_get(L, i, j));
-                    row++;
+            for(size_t i = 0; i < paramCount; i++){
+                for(size_t j = 0; j <= i; j++){
+                    dm->tempx[row++] = gsl_matrix_get(L, i, j);
                 }
             }
+			Parameter_set_values(sigma, dm->tempx);
         }
     }
 	printf("Multivariatenormal Laplace: %f logQ: %f %d\n", logP - logQ, logQ, gsl_ran_multivariate_gaussian_log_pdf(mu, mu, L, &logQ, work));
@@ -564,8 +609,13 @@ double calculate_laplace_lognormal(Laplace* laplace){
 	Model* posterior = laplace->model;
     Model* refdist = laplace->refdist;
     DistributionModel* dm = NULL;
+	double* mus = NULL;
+	double* sigmas = NULL;
+
     if(refdist != NULL){
         dm = refdist->obj;
+		mus = malloc(sizeof(double)*Parameters_count(dm->x));
+		sigmas = malloc(sizeof(double)*Parameters_count(dm->x));
     }
     
 	double logP = posterior->logP(posterior);
@@ -685,10 +735,17 @@ double calculate_laplace_lognormal(Laplace* laplace){
 		logP -= log(gsl_ran_lognormal_pdf(map, mu, sigma));
         
         if(dm != NULL){
-            Parameters_set_value(dm->parameters[0], i, mu);
-            Parameters_set_value(dm->parameters[1], i, sigma);
+            mus[i] = mu;
+			sigmas[i] = sigma;
         }
 	}
+
+	if(dm != NULL){
+		Parameter_set_values(Parameters_at(dm->parameters, 0), mus);
+		Parameter_set_values(Parameters_at(dm->parameters, 1), sigmas);
+	}
+	free(mus);
+	free(sigmas);
 	
 	free(x);
 	free(y);
@@ -710,6 +767,8 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 	double* x = calloc(N, sizeof(double));
 	double* y = calloc(N, sizeof(double));
 	double* yy = calloc(N, sizeof(double));
+	double* mus = malloc(sizeof(double)*Parameters_count(dm->x));
+	double* sigmas = malloc(sizeof(double)*Parameters_count(dm->x));
 	
 	for (int i = 0; i < Parameters_count(parameters); i++) {
 		Parameter* parameter = Parameters_at(parameters, i);
@@ -822,10 +881,16 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 		}
 		logP -= log(gsl_ran_lognormal_pdf(map, mu, sigma));
 		
-		Parameters_set_value(dm->parameters[0], i, mu);
-		Parameters_set_value(dm->parameters[1], i, sigma);
+		mus[i] = mu;
+		sigmas[i] = sigma;
 	}
 	
+
+	Parameter_set_values(Parameters_at(dm->parameters, 0), mus);
+	Parameter_set_values(Parameters_at(dm->parameters, 1), sigmas);
+
+	free(mus);
+	free(sigmas);
 	free(x);
 	free(y);
 	free(yy);
@@ -855,9 +920,13 @@ double calculate_laplace_betaprime(Laplace* laplace){
 //	beta = -f''(m) * m * (m + 1) - 1
 	Model* posterior = laplace->model;
     Model* refdist = laplace->refdist;
-    DistributionModel* dm = NULL;
+    DistributionModel* dm = NULL;double* alphas = NULL;
+	double* betas = NULL;
+
     if(refdist != NULL){
         dm = refdist->obj;
+		alphas = malloc(sizeof(double)*Parameters_count(dm->x));
+		betas = malloc(sizeof(double)*Parameters_count(dm->x));
     }
 	double logP = posterior->logP(posterior);
 	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
@@ -908,11 +977,18 @@ double calculate_laplace_betaprime(Laplace* laplace){
 		logP -= dlogbetaprime(map, alpha, beta);
         
         if(dm != NULL){
-            Parameters_set_value(dm->parameters[0], i, alpha);
-            Parameters_set_value(dm->parameters[1], i, beta);
+            alphas[i] = alpha;
+			betas[i] = beta;
         }
 	}
 	
+	if(dm != NULL){
+		Parameter_set_values(Parameters_at(dm->parameters, 0), alphas);
+		Parameter_set_values(Parameters_at(dm->parameters, 1), betas);
+	}
+	free(alphas);
+	free(betas);
+
 	printf("Beta' Laplace: %f\n", logP);
 	return logP;
 }
@@ -921,13 +997,13 @@ double calculate_laplace_gamma_from_mcmc(Laplace* laplace){
     Model* posterior = laplace->model;
     Model* empirical = laplace->empirical;
     DistributionModel* dm = empirical->obj;
-	
+	const double *alphas = Parameter_values(Parameters_at(dm->parameters, 0));
+	const double *betas = Parameter_values(Parameters_at(dm->parameters, 1));
+
 	for (int i = 0; i< Parameters_count(laplace->parameters); i++) {
-		double alpha = Parameters_value(dm->parameters[0], i);
-		double beta = Parameters_value(dm->parameters[1], i);
 //		printf("mean: %f MLE: %f mode: %f diff: %f [%f %f] var: %f skew: %f\n", alpha/beta, Parameters_value(laplace->parameters, i), (alpha-1.0)/beta,
 //			   Parameters_value(laplace->parameters, i)- (alpha-1.0)/beta, alpha, beta, alpha/beta/beta, 2.0/(sqrt(alpha)));
-		double mode = (alpha-1.0)/beta;
+		double mode = (alphas[i]-1.0)/betas[i];
 		if (mode < 0) {
 			mode = 1.e-6;
 		}
@@ -945,13 +1021,13 @@ double calculate_laplace_lognormal_from_mcmc(Laplace* laplace){
 	Model* posterior = laplace->model;
 	Model* empirical = laplace->empirical;
 	DistributionModel* dm = empirical->obj;
+	const double *mus = Parameter_values(Parameters_at(dm->parameters, 0));
+	const double *sigmas = Parameter_values(Parameters_at(dm->parameters, 1));
 	
 	for (int i = 0; i< Parameters_count(laplace->parameters); i++) {
-		double mu = Parameters_value(dm->parameters[0], i);
-		double sigma = Parameters_value(dm->parameters[1], i);
 		//		printf("mean: %f MLE: %f mode: %f diff: %f [%f %f] var: %f skew: %f\n", alpha/beta, Parameters_value(laplace->parameters, i), exp(mu-sigma*sigma),
 		//			   Parameters_value(laplace->parameters, i)- exp(mu-sigma*sigma), mu, sigma, (exp(sigma*sigma)-1.0)*exp(2.0*mu+sigma*sigma), exp(sigma*sigma + 2.0)*sqrt(exp(sigma*sigma) - 1.0));
-		double mode = exp(mu-sigma*sigma);
+		double mode = exp(mus[i]-sigmas[i]*sigmas[i]);
 		Parameters_set_value(laplace->parameters, i, mode);
 	}
 	double logP = posterior->logP(posterior);

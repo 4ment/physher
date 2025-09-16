@@ -4,22 +4,18 @@
 
 #include "phyc/parameters.h"
 #include "phyc/tree.h"
+#include "phyc/treetransform.h"
 
 char* test_tree_serial() {
     double dates[4] = {5.0, 3.0, 0.0, 1.0};
     char* taxa[4] = {"A", "B", "C", "D"};
     Model* model =
-        new_TreeModel_from_newick("(A:2,(B:1.5,(C:2,D:1):2.5):2.5);", taxa, dates);
+        new_TimeTreeModel_from_newick("(A:2,(B:1.5,(C:2,D:1):2.5):2.5);", taxa, dates);
+    TreeModel_set_transform(model, TREE_TRANSFORM_RATIO);
     Tree* tree = model->obj;
     Parameters* ratios = get_reparams(tree);
 
-    Parameters* ps = new_Parameters(10);
-    for (int i = 0; i < Parameters_count(ratios); i++) {
-        Parameters_add(ps, Parameters_at(ratios, i));
-    }
-
     double expected_node_heights[7] = {5.0, 3.0, 0.0, 1.0, 2.0, 4.5, 7.0};
-    Tree_update_heights(tree);
     Node** nodes = Tree_nodes(tree);
     size_t tipCount = Tree_tip_count(tree);
     for (int i = 0; i < Tree_node_count(tree); i++) {
@@ -42,7 +38,6 @@ char* test_tree_serial() {
     }
 
     model->free(model);
-    free_Parameters(ps);
     return NULL;
 }
 

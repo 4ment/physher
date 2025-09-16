@@ -14,7 +14,7 @@
 #include "parameters.h"
 #include "distmodel.h"
 
-DistributionModel* new_BetaDistributionModel_with_parameters(Parameters** parameters, Parameters* x);
+DistributionModel* new_BetaDistributionModel_with_parameters(Parameters* parameters, Parameters* x);
 
 Model* new_BetaDistributionModel_from_json(json_node* node, Hashtable* hash);
 

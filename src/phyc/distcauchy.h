@@ -15,7 +15,7 @@
 #include "mjson.h"
 #include "distmodel.h"
 
-DistributionModel* new_CauchyDistributionModel_with_parameters(Parameters** parameters, Parameters* x);
+DistributionModel* new_CauchyDistributionModel_with_parameters(Parameters* parameters, Parameters* x);
 
 Model* new_CauchyDistributionModel_from_json(json_node* node, Hashtable* hash);
 

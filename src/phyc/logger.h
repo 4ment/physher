@@ -13,7 +13,7 @@
 
 #include "parameters.h"
 
-struct Logger{
+typedef struct Logger{
 	Parameters* parameters;
 	Model** models;
 	size_t model_count;
@@ -24,7 +24,7 @@ struct Logger{
 	bool tree;
 	bool internal; // show internal node name
     char sep; //separator
-};
+}Logger;
 
 struct Dumper{
     Parameters** parameters;

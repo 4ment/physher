@@ -225,12 +225,20 @@ int compare (const void * a, const void * b){
 	return ( *(double*)a - *(double*)b );
 }
 
-opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer){
-	size_t dim = Parameters_count(parameters);
+// use loss to compute gradient
+// opt_result optimize_stochastic_gradient_adam(Model* loss, Parameters* parameters, double eta, bool maximize, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer){
+opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer, Logger* logger){
+	size_t dim = 0;
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* p = Parameters_at(parameters, i);
+		dim += Parameter_size(p);
+	}
+	Model* model = (Model*)data;
 	
 	double beta1 = 0.9;
 	double beta2 = 0.999;
 	double* grads = dvector(dim);
+	double* temp = dvector(dim);
 	double* mean_grad = dvector(dim);
 	double* var_grad = dvector(dim);
 	double eps = 1.e-8;
@@ -248,20 +256,32 @@ opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f,
 	opt_result result = OPT_SUCCESS;
 	size_t max_failures = 10;
 	size_t failure_count = 0;
-	double elbo0 = f(parameters, NULL, data);
-	if(verbose > 0)
-		printf("%zu ELBO: %f\n", stop->iter, elbo0);
+	// printf("%p\n", model);
+	// printf("%p\n", model->logP);
+	// double elbo0 = model->logP(model);// f(parameters, NULL, data);
+	// double elbo0 = f(parameters, NULL, data);
+	// if(verbose > 0)
+	// 	printf("%zu ELBO: %f\n", stop->iter, elbo0);
+	if(logger){
+		printf("0 ");
+		logger->log(logger);
+	}
 	
 	while(stop->iter++ < stop->iter_max){
-		grad_f(parameters, grads, data);
+		// grad_f(parameters, grads, data);
+		Parameters_zero_grad(parameters);
+		model->gradient(model, parameters);
 		double eta_scaled = eta / sqrt(stop->iter);
 		double beta1p = pow(beta1, stop->iter);
 		double beta2p = pow(beta2, stop->iter);
 
-		int i = 0;
-		for (; i < dim; i++) {
-			if(isnan(grads[i])){
-				break;
+		size_t i = 0;
+		for(i = 0; i < Parameters_count(parameters); i++){
+			Parameter* p = Parameters_at(parameters, i);
+			for(size_t j = 0; j < Parameter_size(p); j++){
+				if(isnan(p->grad[j])){
+					break;
+				}
 			}
 		}
 		if(i == dim){
@@ -273,28 +293,40 @@ opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f,
 			continue;
 		}
 
-		for (int i = 0; i < dim; i++) {
-			if (Parameters_estimate(parameters, i)) {
-				double grad = grads[i];
-				mean_grad[i] = beta1*mean_grad[i] + (1.0 - beta1)*grad;
-				var_grad[i] = beta2*var_grad[i] + (1.0 - beta2)*grad*grad;
-				double hat_mean_grad = mean_grad[i]/(1.0 - beta1p);
-				double hat_var_grad = var_grad[i]/(1.0 - beta2p);
-				double v = Parameters_value(parameters, i);
-				if (Parameters_constraint(parameters, i) != NULL && Parameters_lower(parameters, i) == 0) {
-					v = exp(log(v) + eta_scaled * hat_mean_grad/(sqrt(hat_var_grad) + eps));
+		i = 0;
+		for(size_t k = 0; k < Parameters_count(parameters); k++){
+			Parameter* p = Parameters_at(parameters, k);
+			if (Parameter_estimate(p)) {
+				const double* v = Parameter_values(p);
+				for (size_t j = 0; j < Parameter_size(p); j++) {
+					double grad = maximize ? -p->grad[j] : p->grad[j];
+					mean_grad[i] = beta1*mean_grad[i] + (1.0 - beta1)*grad;
+					var_grad[i] = beta2*var_grad[i] + (1.0 - beta2)*grad*grad;
+					double hat_mean_grad = mean_grad[i]/(1.0 - beta1p);
+					double hat_var_grad = var_grad[i]/(1.0 - beta2p);
+
+					if (Constraint_lower(p->cnstr) == 0.0) {
+						temp[j] = exp(log(v[j]) - eta_scaled * hat_mean_grad/(sqrt(hat_var_grad) + eps));
+					}
+					else{
+						temp[j] = v[j] - eta_scaled * hat_mean_grad/(sqrt(hat_var_grad) + eps);
+					}
+					i++;
 				}
-				else{
-					v += eta_scaled * hat_mean_grad/(sqrt(hat_var_grad) + eps);
-				}
-				Parameters_set_value(parameters, i, v);
+				Parameter_set_values(p, temp);
 			}
 		}
-		
+
 		if (stop->iter % eval_elbo == 0) {
 			elbo_prev = elbo;
-			elbo = f(parameters, NULL, data);
-			if(verbose > 0)  printf("%zu ELBO: %f (%f)\n", stop->iter, elbo, elbo_prev);
+			// elbo = f(parameters, NULL, data);
+			elbo = model->logP(model);
+			// if(verbose > 0)  printf("%zu ELBO: %f (%f)\n", stop->iter, elbo, elbo_prev);
+			if(logger){
+				printf("%zu ", stop->iter);
+				logger->log(logger);
+			}
+
 			if (isnan(elbo) || isinf(elbo)) {
 				result = OPT_FAIL;
 				*fmin = elbo;
@@ -325,6 +357,7 @@ opt_result optimize_stochastic_gradient_adam(Parameters* parameters, opt_func f,
 			}
 		}
 	}
+	free(temp);
 	free(grads);
 	free(var_grad);
 	free(mean_grad);

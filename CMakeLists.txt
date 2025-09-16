@@ -292,6 +292,9 @@ IF(DISABLE_GSL)
 ELSE()
 	file(GLOB SRC_FILES src/phyc/*.c)
 	file(GLOB HEADER_FILES src/phyc/*.h)
+
+	list(REMOVE_ITEM HEADER_FILES ${PROJECT_SOURCE_DIR}/src/phyc/vb.h ${PROJECT_SOURCE_DIR}/src/phyc/opvb.h)
+	list(REMOVE_ITEM SRC_FILES ${PROJECT_SOURCE_DIR}/src/phyc/vb.c ${PROJECT_SOURCE_DIR}/src/phyc/opvb.c)
 ENDIF(DISABLE_GSL)
 
 include_directories("${PROJECT_SOURCE_DIR}/contrib")
@@ -348,7 +351,11 @@ IF(NOT DISABLE_GSL)
 	target_link_libraries(phyc GSL::gsl GSL::gslcblas)
 ENDIF()
 
-IF(NOT LIBRARY_ONLY AND NOT DISABLE_GSL)
+IF(NOT NO_LIBRARY)
+	add_executable(physher src/physher.c ${SRC_FILES})
+	target_link_libraries(physher GSL::gsl GSL::gslcblas)
+	install(TARGETS physher RUNTIME DESTINATION bin)
+ELSEIF(NOT LIBRARY_ONLY AND NOT DISABLE_GSL)
 	add_executable(physher src/physher.c)
 	target_link_libraries(physher phyc)
 

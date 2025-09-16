@@ -50,6 +50,7 @@ typedef struct Node{
 	int class_id;
 	
 	char *info;
+	double bl;// temporary value for branch length when parsing nexus
     Hashtable *annotation;
 	bool poly;
 } Node;

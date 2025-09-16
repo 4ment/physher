@@ -48,7 +48,7 @@ Model* new_TimeTreeModel_from_newick(const char* newick, char** taxa, const doub
 
 void TreeModel_set_transform(Model* model, unsigned transform);
 
-Tree * new_Tree( const char *nexus, bool containBL );
+Tree * new_Tree( const char *nexus, Parameter* branchLengths, bool containBL );
 
 Tree * new_Tree2( Node *root );
 
@@ -103,6 +103,8 @@ void Tree_set_topology_changed( Tree *tree );
 bool Tree_topology_changed( const Tree *tree );
 
 void Tree_update_topology( Tree *tree );
+
+const double* Tree_branch_lengths(Tree* tree);
 
 void rename_tree( Tree *tree, treeorder order );
 
@@ -216,6 +218,7 @@ bool Tree_is_time_mode(Tree* tree);
 
 Parameters* get_reparams(Tree* tree);
 
+void Tree_node_transform_gradient(Tree* tree, const double* height_gradient);
 void Tree_node_transform_jvp(Tree* tree, const double* input, double* output);
 void Tree_node_transform_jvp_with_heights(Tree* tree, const double* heights, const double* input, double* output);
 void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient);
@@ -228,6 +231,10 @@ double Tree_node_time_elapsed(Tree* tree, Node* node);
 double* Tree_lowers(Tree* tree);
 
 void init_heights_from_distances(Tree* atree);
+void init_heights_from_bls(Tree* atree);
+void Tree_init_branch_lengths(Tree* tree);
 
+void Tree_backward(Tree* tree, Parameters* parameters, const double* ingrad);
+void Tree_height_backward(Tree* tree, Parameters* parameters, const double* ingrad);
 #endif
 

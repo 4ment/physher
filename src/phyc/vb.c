@@ -144,7 +144,9 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
     var->initialized = false;
     var->initialize = NULL;
     var->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
-    
+
+    var->parameters_dimension = 0;
+
     if(simplices_node != NULL){
         if (simplices_node->node_type == MJSON_ARRAY) {
             var->simplices = malloc(simplices_node->child_count*sizeof(Model*));
@@ -194,6 +196,11 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
 		Parameters_add_parameters(var->parameters, parameters);
 		free_Parameters(parameters);
 	}
+
+    for(size_t i = 0; i < Parameters_count(var->parameters); i++){
+        Parameter* p = Parameters_at(var->parameters, i);
+        var->parameters_dimension += Parameter_size(p);
+    }
     
     var->var_parameters = malloc(parameters_node->child_count*sizeof(Parameters*));
     var->var_parameters_count = parameters_node->child_count;
@@ -216,16 +223,16 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
     }
     
     if (dist_string == NULL || strcasecmp(dist_string, "normal") == 0) {
-        var->etas = new_Vector(Parameters_count(var->parameters));
-        Vector_resize(var->etas, Parameters_count(var->parameters));
+        var->etas = new_Vector(var->parameters_dimension);
+        // Vector_resize(var->etas, Parameters_count(var->parameters));
         size_t mu_length = Parameters_count(var->var_parameters[0]);
         size_t sigma_length = Parameters_count(var->var_parameters[1]);
         if (var->var_parameters_count != 2 || mu_length != sigma_length) {
             fprintf(stderr, "Meanfield normal should have 2 parameter vectors of same length: mu (length: %zu) and sigma (length: %zu)\n", mu_length, sigma_length);
             exit(2);
         }
-        if (Parameters_count(var->var_parameters[0]) != Parameters_count(var->parameters)) {
-            fprintf(stderr, "The length of mu and sigma (%zu) in meanfield model should be equal to the length of input parameters x (%zu)\n", mu_length, Parameters_count(var->parameters));
+        if (Parameters_count(var->var_parameters[0]) != var->parameters_dimension) {
+            fprintf(stderr, "The length of mu and sigma (%zu) in meanfield model should be equal to the length of input parameters x (%zu)\n", mu_length, var->parameters_dimension);
             exit(2);
         }
         // check order: mu should be first, then sigma
@@ -257,8 +264,8 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
         }
     }
     else if (strcasecmp(dist_string, "multivariatenormal") == 0) {
-        var->etas = new_Vector(Parameters_count(var->parameters)*2); // etas and zetas
-        Vector_resize(var->etas, Parameters_count(var->parameters)*2);
+        var->etas = new_Vector(var->parameters_dimension*2); // etas and zetas
+        // Vector_resize(var->etas, Parameters_count(var->parameters)*2);
         size_t mu_length = Parameters_count(var->var_parameters[0]);
         size_t sigma_length = Parameters_count(var->var_parameters[1]);
         if (var->var_parameters_count != 2 || sigma_length != (mu_length*(mu_length-1))/2+mu_length) {
@@ -272,7 +279,7 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
             var->var_parameters[1] = temp;
         }
     
-        if (Parameters_count(var->var_parameters[0]) != Parameters_count(var->parameters)) {
+        if (Parameters_count(var->var_parameters[0]) != var->parameters_dimension) {
             fprintf(stderr, "The length of mu (%zu) in fullrank model should be equal to the length of input parameters x (%zu)\n", mu_length, Parameters_count(var->parameters));
             exit(2);
         }
@@ -298,16 +305,16 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
         }
     }
 	else if (strcasecmp(dist_string, "gamma") == 0) {
-			var->etas = new_Vector(Parameters_count(var->parameters));
-			Vector_resize(var->etas, Parameters_count(var->parameters));
+			var->etas = new_Vector(var->parameters_dimension);
+			// Vector_resize(var->etas, Parameters_count(var->parameters));
 			size_t shape_length = Parameters_count(var->var_parameters[0]);
 			size_t rate_length = Parameters_count(var->var_parameters[1]);
 			if (var->var_parameters_count != 2 || shape_length != rate_length) {
 				fprintf(stderr, "Meanfield gamma should have 2 parameter vectors of same length: shape (length: %zu) and rate (length: %zu)\n", shape_length, rate_length);
 				exit(2);
 			}
-			if (Parameters_count(var->var_parameters[0]) != Parameters_count(var->parameters)) {
-				fprintf(stderr, "The length of shape and rate (%zu) in meanfield model should be equal to the length of input parameters x (%zu)\n", shape_length, Parameters_count(var->parameters));
+			if (Parameters_count(var->var_parameters[0]) != var->parameters_dimension) {
+				fprintf(stderr, "The length of shape and rate (%zu) in meanfield model should be equal to the length of input parameters x (%zu)\n", shape_length, var->parameters_dimension);
 				exit(2);
 			}
 			// check order: shape should be first, then rate
@@ -337,16 +344,16 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
 			}
 		}
 	else if (strcasecmp(dist_string, "weibull") == 0) {
-		var->etas = new_Vector(Parameters_count(var->parameters));
-		Vector_resize(var->etas, Parameters_count(var->parameters));
+		var->etas = new_Vector(var->parameters_dimension);
+		// Vector_resize(var->etas, Parameters_count(var->parameters));
 		size_t scale_length = Parameters_count(var->var_parameters[0]);
 		size_t shape_length = Parameters_count(var->var_parameters[1]);
 		if (var->var_parameters_count != 2 || scale_length != shape_length) {
 			fprintf(stderr, "Meanfield weibull should have 2 parameter vectors of same length: scale (length: %zu) and shape (length: %zu)\n", scale_length, shape_length);
 			exit(2);
 		}
-		if (Parameters_count(var->var_parameters[0]) != Parameters_count(var->parameters)) {
-			fprintf(stderr, "The length of scale and shape (%zu) in meanfield model should be equal to the length of input parameters x (%zu)\n", scale_length, Parameters_count(var->parameters));
+		if (Parameters_count(var->var_parameters[0]) != var->parameters_dimension) {
+			fprintf(stderr, "The length of scale and shape (%zu) in meanfield model should be equal to the length of input parameters x (%zu)\n", scale_length, var->parameters_dimension);
 			exit(2);
 		}
 		// check order: scale should be first, then shape
@@ -1027,10 +1034,28 @@ void _variational_model_reset(Model* self){
 
 void _variational_model_sample(Model* self, double* samples, double* logP){
 	variational_t* var = (variational_t*)self->obj;
-	var->sample(var, samples);
+    if(samples != NULL){
+	    var->sample(var, samples);
+    }
+    else{
+        for(size_t j = 0; j < var->block_count; j++){
+            variational_block_t* block = var->blocks[j];
+            block->sample1(block, NULL);
+        }
+    }
 	if(logP != NULL){
 		*logP = var->logP(var, samples);
 	}
+}
+
+
+double _variational_model_sample_evaluate(Model* self){
+    variational_t* var = (variational_t*)self->obj;
+    for(size_t j = 0; j < var->block_count; j++){
+        variational_block_t* block = var->blocks[j];
+        block->sample1(block, NULL);
+    }
+	return NAN;
 }
 
 static void _variational_print(Model* self, FILE* file){
@@ -1091,9 +1116,10 @@ Model* new_VariationalModel(const char* name, variational_t* var){
 	model->clone = _variational_model_clone;
 	model->logP = _variational_model_logP;
 	model->gradient = _variational_model_gradient;
-	model->reset = _variational_model_reset;
+	// model->reset = _variational_model_reset;
 	model->print = _variational_print;
 	model->sample = _variational_model_sample;
+	model->sample_evaluate = _variational_model_sample_evaluate;
 	model->samplable = true;
     model->jsonize = _variational_jsonize;
 	

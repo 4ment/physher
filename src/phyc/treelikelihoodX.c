@@ -40,9 +40,59 @@
 #pragma mark -
 #pragma mark Lower Likelihood
 
+void partials_undefined_t_and_undefined( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 ){
+    double sum1, sum2;
+    
+    int v = 0;
+    int i,j,k;
+    
+    const int nstate   = tlk->m->nstate;
+    const int catCount = tlk->cat_count;
+    const int patternCount = tlk->pattern_count;
+    
+
+    int x,w,z;
+    double *pPartials = partials3;
+    
+    for ( int l = 0; l < catCount; l++ ) {
+        x = l * tlk->matrix_size;
+
+        for ( k = 0; k < patternCount; k++ ) {
+            w = x;
+
+            for ( i = 0; i < nstate; i++ ) {
+                
+                sum1 = sum2 = 0.;
+                z = v;
+                for ( j = 0; j < nstate; j++) {
+					// matrices1 is transposed
+                    sum1 += matrices1[x + j*nstate+i] * partials1[z];
+					// sum1 += matrices1[w] * partials1[z];
+                    sum2 += matrices2[w] * partials2[z];
+                    z++;
+                    w++;
+                }
+                
+                *pPartials++ = sum1 * sum2;
+            }
+            v += nstate;
+        }
+    }
+}
+
 void update_partials_general( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
 	
-	if(partialsIndex2 < 0){
+	// if(partialsIndex1 >= Tree_node_count(tlk->tree)){
+	if(partialsIndex1 < 0){
+		partialsIndex1 = -partialsIndex1;
+		partials_undefined_t_and_undefined(tlk,
+											   tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+											   tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+											   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
+	}
+	else if(partialsIndex2 < 0){
 		if(  tlk->partials[0][partialsIndex1] != NULL ){
 			partials_undefined(tlk,
 								 tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
@@ -1257,6 +1307,60 @@ void partials_undefined_and_undefined_even_SSE( const SingleTreeLikelihood *tlk,
     }
     
 }
+
+// void partials_undefined_t_and_undefined_even_SSE( const SingleTreeLikelihood *tlk, const double *partials1, const double *matrices1, const double *partials2, const double *matrices2, double *partials3 ){
+    
+//     int v = 0;
+//     int w;
+//     int i,j,k,l;
+    
+//     const int nstate   = tlk->m->nstate;
+//     const int catCount = tlk->cat_count;
+//     const int patternCount = tlk->pattern_count;
+    
+//     __m128d /**p1*/,*p2/*,*m1*/,*m2,sum1,sum2;
+//     double temp[2] __attribute__ ((aligned (16)));
+    
+//     double *pPartials = partials3;
+    
+//     for ( l = 0; l < catCount; l++ ) {
+        
+//         for ( k = 0; k < patternCount; k++ ) {
+            
+// 			w = l * tlk->matrix_size;
+//             // w = tlk->sm->get_site_category(tlk->sm, k)*tlk->matrix_size + l*tlk->matrix_size;
+            
+//             // m1 = (__m128d*)&matrices1[w];
+//             m2 = (__m128d*)&matrices2[w];
+            
+//             for ( i = 0; i < nstate; i++ ) {
+                
+//                 // p1 = (__m128d*)&partials1[v];
+//                 p2 = (__m128d*)&partials2[v];
+                
+//                 sum1 = _mm_mul_pd(*m1, *p1);
+//                 sum2 = _mm_mul_pd(*m2, *p2);
+                
+//                 m1++; m2++;
+//                 p1++; p2++;
+                
+//                 for ( j = 2; j < nstate; j+=2) {
+//                     sum1 = _mm_add_pd(sum1,_mm_mul_pd(*m1, *p1));
+//                     sum2 = _mm_add_pd(sum2,_mm_mul_pd(*m2, *p2));
+                    
+//                     m1++; m2++;
+//                     p1++; p2++;
+//                 }
+//                 _mm_store_pd(temp, sum1);
+//                 *pPartials = temp[0]+temp[1];
+//                 _mm_store_pd(temp, sum2);
+//                 *pPartials++ *= temp[0]+temp[1];
+//             }
+//             v += nstate;
+//         }
+//     }
+    
+// }
 
 void update_partials_general_even_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
 	

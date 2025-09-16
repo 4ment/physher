@@ -32,7 +32,7 @@ void printall(Tree* tree){
 
 // root is the root node => its parent must be NULL
 void _reroot(Node* root, Node* node){
-	Node newroot = {0, NULL, NULL, node->parent, node, 0,0.0,0,0,NULL, NULL, 0, NULL, NULL, false};
+	Node newroot = {0, NULL, NULL, node->parent, node, 0,0.0,0,0,NULL, NULL, 0, NULL, BL_DEFAULT, NULL, false};
 	
 	double branchLength = Node_distance(node->parent); // save branch length
 	double midpoint = Node_distance(node)/2;
@@ -157,15 +157,15 @@ Node* SPR_move( Tree *tree, Node *prune, Node *graft ){
 		// this is an NNI involving the root
 		else if((parent1 == right && parent2 == left) || (parent1 == left && parent2 == right)){
 			Node_swap_parents(prune, graft);
-			Parameter_fire(prune->distance);
-			Parameter_fire(graft->distance);
+			Parameter_fire(prune->distance, Node_id(prune));
+			Parameter_fire(graft->distance, Node_id(graft));
 			tripod = left;
 		}
 		// NNI involving the right node
 		else if(Node_parent(parent2) == right && parent1 == right){
 			Node_swap_parents(prune, graft);
-			Parameter_fire(prune->distance);
-			Parameter_fire(graft->distance);
+			Parameter_fire(prune->distance, Node_id(prune));
+			Parameter_fire(graft->distance, Node_id(graft));
 			tripod = Node_sibling(prune);
 		}
 		// prune is a child of the right node
@@ -304,8 +304,8 @@ Node* SPR_move( Tree *tree, Node *prune, Node *graft ){
 void NNI_move( Tree *tree, Node *node1, Node *node2 ){
     
     Node_swap_parents(node1,node2);
-	Parameter_fire(node1->distance);
-	Parameter_fire(node2->distance);
+	Parameter_fire(node1->distance, Node_id(node1));
+	Parameter_fire(node2->distance, Node_id(node2));
 	Tree_set_topology_changed(tree);
 }
 

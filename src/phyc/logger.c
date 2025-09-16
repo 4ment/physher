@@ -49,7 +49,12 @@ void _log(struct Logger* logger){
 	}
 	
 	for (int i = 0; i < Parameters_count(logger->parameters); i++) {
-		fprintf(logger->file, "%s: %f\n", Parameters_name(logger->parameters, i), Parameters_value(logger->parameters, i));
+		Parameter* parameter = Parameters_at(logger->parameters, i);
+		fprintf(logger->file, "%s:", Parameter_name(parameter));
+		for (size_t j = 0; j < Parameter_size(parameter); j++) {
+			fprintf(logger->file, " %f", Parameter_value_at(parameter, j));
+		}
+		fprintf(logger->file, "\n");
 	}
 	fprintf(logger->file, "\n");
 }

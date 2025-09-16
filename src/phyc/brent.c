@@ -25,27 +25,32 @@
 
 #define ZEPS 1.0e-10
 
+opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void *data, OptStopCriterion *stop, double *fminp );
 
 /*
  * 
  */
 
 opt_result serial_brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriterion *stop, double *fmin ){
-	Parameters* temp = new_Parameters(1);
 	//for(int j = 0; j < stop->iter_min; j++)
 	for(int i = 0; i < Parameters_count(ps); i++){
-		Parameters_add(temp, Parameters_at(ps, i));
+		Parameter* parameter = Parameters_at(ps, i);
 		stop->iter = 0;
 		stop->f_eval_current = 0;
-		opt_result status = brent_optimize(temp, f, data, stop, fmin);
-		Parameters_pop(temp);
+		for(size_t j = 0; j < Parameter_size(parameter); j++){
+			opt_result status = brent_optimize2(parameter, j, f, data, stop, fmin);
+		}
 	}
-	free_Parameters(temp);
 	return OPT_SUCCESS;
 }
 
 //opt_result brent_optimize( Parameters *ps, opt_func f, void *data, const int maxeval, const double tol, double *fmin ){
 opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriterion *stop, double *fminp ){
+	Parameter* parameter = Parameters_at(ps, 0);
+	return brent_optimize2(parameter, 0, f, data, stop, fminp);
+}
+
+opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void *data, OptStopCriterion *stop, double *fminp ){
 
 	double a,b,etemp,fu,fv,fw,fx,p,q,r,tol1,tol2,u,v,w,x,xm;
 	double e = 0.0;
@@ -54,42 +59,53 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 	double tol = stop->tolx;
     //int *numFun = &stop.f_eval_current;
     size_t *iter = &stop->iter;
+	double lbound = Parameter_lower(parameter);
+	double ubound = Parameter_upper(parameter);
+	double xmin = ( Parameter_flower(parameter) < Parameter_fupper(parameter) ? Parameter_flower(parameter) : Parameter_fupper(parameter));
+	double xmax = ( Parameter_flower(parameter) > Parameter_fupper(parameter) ? Parameter_flower(parameter) : Parameter_fupper(parameter));
+	x = Parameter_value_at(parameter, index);
 
-	double xmin = ( Parameters_flower(ps,0) < Parameters_fupper(ps,0) ? Parameters_flower(ps,0) : Parameters_fupper(ps,0));
-	double xmax = ( Parameters_flower(ps,0) > Parameters_fupper(ps,0) ? Parameters_flower(ps,0) : Parameters_fupper(ps,0));
-	x = Parameters_value(ps,0);
-	
-	a = fmax(xmin, x/2.0);
-	b = fmin(xmax, x*2.0);
+	if(x == 0.0){
+		a = x - 10;
+		b = x + 10;
+	}
+	else{
+		a = fmax(xmin, x - fabs(x)/2.0);
+		b = fmin(xmax, x + fabs(x)*2.0);
+	}
 	x = a + (b - a)/2.0;
 	
-	Parameters_set_value(ps, 0, a);
-	double fa = f(ps, NULL, data);
-    Parameters_set_value(ps, 0, b);
-	double fb = f(ps, NULL, data);
-    Parameters_set_value(ps, 0, x );
-	fx = f(ps, NULL, data);
+	Parameter_set_value_at(parameter, a, index);
+	double fa = f(NULL, NULL, data);
+    Parameter_set_value_at(parameter, b, index);
+	double fb = f(NULL, NULL, data);
+    Parameter_set_value_at(parameter, x, index);
+	fx = f(NULL, NULL, data);
 
 	while(fa < fx && a > xmin) {
+		x = a;
+		fx = fa;
         a = (a+xmin)/2.0;
 		if (a < 2.0*xmin){
             a = xmin;
 		}
-        Parameters_set_value(ps, 0, a );
-        fa = f(ps, NULL, data);
+        Parameter_set_value_at(parameter, a, index);
+        fa = f(NULL, NULL, data);
 	}
 
 	while(fb < fx && b < xmax) {
+		x = b;
+		fx = fb;
         b = (b+xmax)/2.0;
         if (b > xmax * 0.95)
             b = xmax;
-        Parameters_set_value(ps, 0, b );
-        fb = f(ps, NULL, data);
+        Parameter_set_value_at(parameter, b, index);
+        fb = f(NULL, NULL, data);
 	}
-    Parameters_set_value(ps, 0, x );
+    Parameter_set_value_at(parameter, x, index);
 
-	x = w = v = Parameters_value(ps,0);
-	fw = fv = fx = f(ps, NULL, data);
+	x = w = v = x;
+	fw = fv = fx;
 
     stop->f_eval_current = 1;
 	
@@ -101,7 +117,7 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 		tol2 = 2.0*(tol1 = tol*fabs(x) + ZEPS);
 		
 		if ( fabs(x - xm) <= (tol2 - 0.5*(b-a)) ) {
-			Parameters_set_value(ps, 0, x );
+			Parameter_set_value_at(parameter, x, index );
 
 			*fminp = fx;
             //printf("%s xmin %e (%f)\n\n", Parameters_name(ps, 0), x, fx);
@@ -139,8 +155,8 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 		
 		u  = (fabs(d) >= tol1 ? x+d : x+SIGN(tol1,d));
 		//This is the one function evaluation per iteration.
-		Parameters_set_value(ps, 0, u );
-		fu = f(ps, NULL, data);
+		Parameter_set_value_at(parameter, u, index );
+		fu = f(NULL, NULL, data);
         stop->f_eval_current++;
 		
 		if (fu <= fx) {
@@ -166,8 +182,8 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 		}
         (*iter)++;
 	}
-	fprintf(stderr,"Too many iterations in brent_one_d:%s\n",Parameters_name(ps,0));
-	Parameters_set_value(ps, 0, x );
+	fprintf(stderr,"Too many iterations in brent_one_d: %s index: %zu x: %f fx old %f -> new %f\n",Parameter_name(parameter), index, x, *fminp, fx);
+	Parameter_set_value_at(parameter, x, index);
 	*fminp = fx;
 	return OPT_MAXITER;
 }

@@ -22,6 +22,7 @@
 #include "mstring.h"
 #include "distmodel.h"
 #include "sitepattern.h"
+#include "simplex.h"
 
 #define SITEMODEL_ALPHA_MIN 0.001
 #define SITEMODEL_ALPHA_MAX 100
@@ -65,20 +66,20 @@ typedef struct SiteModel{
 	
 	// categories
 	Parameters *rates;
-	Simplex* proportions;
+	Parameter* proportions;
     Parameter *mu;
 	
 	// for finite difference approx of gamma site model gradient
 	double epsilon;
 } SiteModel;
 
-Model * new_SiteModel2( const char* name, SiteModel *sm, Model* proportions );
+Model * new_SiteModel2( const char* name, SiteModel *sm );
 
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash);
 
 #pragma mark -
 
-SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad);
+SiteModel * new_SiteModel_with_parameters( const Parameters *params, Parameter* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad);
 
 void free_SiteModel( SiteModel *sm );
 
@@ -86,7 +87,7 @@ SiteModel * clone_SiteModel( const SiteModel *sm );
 
 SiteModel * clone_SiteModel_with( const SiteModel *sm );
 
-SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Simplex* props, const Parameters* params, Parameter* mu );
+SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* props, const Parameters* params, Parameter* mu );
 
 void SiteModel_set_mu(SiteModel *sm, Parameter* mu);
 

@@ -16,6 +16,8 @@
 #include "treelikelihood.h"
 #include "distmodelfactory.h"
 #include "demographicmodels.h"
+#include "jacobiantransform.h"
+#include "matrix.h"
 
 
 double _compoundModel_logP(CompoundModel* cm){
@@ -47,6 +49,23 @@ double _compoundModel_full_logP(CompoundModel* cm){
 	else{
 		for(int i = 0; i < cm->count; i++){
 			logP += cm->models[i]->full_logP(cm->models[i]);
+		}
+	}
+	return logP;
+}
+
+double _compoundModel_gradient(CompoundModel* cm, Parameters* parameters){
+	double logP = 0;
+	if (cm->weights != NULL) {
+		Simplex* s = cm->weights->obj;
+		logP = -DBL_MAX;
+		for(int i = 0; i < cm->count; i++){
+			logP = logaddexp(logP, log(s->get_value(s, i)) + cm->models[i]->full_logP(cm->models[i]));
+		}
+	}
+	else{
+		for(int i = 0; i < cm->count; i++){
+			logP += cm->models[i]->gradient(cm->models[i], parameters);
 		}
 	}
 	return logP;
@@ -276,6 +295,38 @@ double _compoundModel_full_logP2(Model *self){
 	return self->lp;
 }
 
+double _compoundModel_gradient2(Model* self, const Parameters* ps){
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	//FIXME: does not work with weights
+	double logP = 0;
+	// size_t parameterCount = Parameters_count(ps);
+	// size_t size = 0;
+	// for(size_t i = 0; i < parameterCount; i++){
+	// 	size += Parameter_size(Parameters_at(ps, i));
+	// }
+	// double* grads = dvector(size);
+	// size_t index = 0;
+	for (size_t i = 0; i < cm->count; i++) {
+		logP += cm->models[i]->gradient(cm->models[i], ps);
+		// index = 0;
+		// for(size_t j = 0; j < parameterCount; j++){
+		// 	Parameter* p = Parameters_at(ps, j);
+		// 	for(size_t k = 0; k < Parameter_size(p); k++){
+		// 		grads[index++] += p->grad[k];
+		// 	}
+		// }
+	}
+
+	// index = 0;
+	// for(size_t j = 0; j < parameterCount; j++){
+	// 	Parameter* p = Parameters_at(ps, j);
+	// 	memcpy(p->grad, grads+index, sizeof(double)* Parameter_size(p));
+	// 	index += Parameter_size(p);
+	// }
+	// free(grads);
+	return logP;
+}
+
 void _compoundModel_prepare_gradient(Model* self, const Parameters* ps){
 	CompoundModel* cm = (CompoundModel*)self->obj;
 	for (size_t i = 0; i < cm->count; i++) {
@@ -298,40 +349,34 @@ double _compoundModel_ddlogP2(Model *self, const Parameter* p1, const Parameter*
 	return cm->ddlogP(cm, p1, p2);
 }
 
-void _compound_model_sample(Model *self, double* samples, double* logP){
-	if (samples != NULL) {
-		fprintf(stderr, "_compound_model_sample not implemented\n");
-		exit(1);
-	}
+void _compound_model_sample(Model *self){
 	CompoundModel* cm = (CompoundModel*)self->obj;
-	if(logP != NULL){
-		*logP = 0;
-	}
 	for (size_t i = 0; i < cm->count; i++) {
-		if(logP != NULL){
-			double model_logP = 0;
-			cm->models[i]->sample(cm->models[i], NULL, &model_logP);
-			*logP += model_logP;
-		}
-		else{
-			cm->models[i]->sample(cm->models[i], NULL, NULL);
-		}
+		cm->models[i]->sample(cm->models[i]);
 	}
 }
 
-double _compound_model_sample_evaluate(Model *self){
-	self->lp = 0;
+void _compound_model_rsample(Model *self){
 	CompoundModel* cm = (CompoundModel*)self->obj;
-	for (int i = 0; i < cm->count; i++) {
-		self->lp += cm->models[i]->sample_evaluate(cm->models[i]);
+	for (size_t i = 0; i < cm->count; i++) {
+		cm->models[i]->rsample(cm->models[i]);
 	}
-	return self->lp;
 }
+
+// double _compound_model_sample_evaluate(Model *self){
+// 	self->lp = 0;
+// 	CompoundModel* cm = (CompoundModel*)self->obj;
+// 	for (int i = 0; i < cm->count; i++) {
+// 		self->lp += cm->models[i]->sample_evaluate(cm->models[i]);
+// 	}
+// 	return self->lp;
+// }
 
 Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	Model *model = new_Model(MODEL_COMPOUND, name, cm);
 	model->logP = _compoundModel_logP2;
 	model->full_logP = _compoundModel_full_logP2;
+	model->gradient = _compoundModel_gradient2;
 	model->dlogP = _compoundModel_dlogP2;
 	model->d2logP = _compoundModel_d2logP2;
 	model->ddlogP = _compoundModel_ddlogP2;
@@ -354,7 +399,8 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 //		cm->weights->listeners->add( cm->weights->listeners, model );
 //	}
 	model->sample = _compound_model_sample;
-	model->sample_evaluate = _compound_model_sample_evaluate;
+	model->rsample = _compound_model_rsample;
+	// model->sample_evaluate = _compound_model_sample_evaluate;
 	return model;
 }
 
@@ -455,6 +501,24 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			}
 			cm->add(cm, coalescent);
 			coalescent->free(coalescent);
+		}
+		else if(model_type == MODEL_JACOBIAN_TRANSFORM){
+			Model* jac = NULL;
+			if (child->node_type == MJSON_OBJECT) {
+				jac = new_JacobianTransformModel_from_json(child, hash);
+				char* id = get_json_node_value_string(child, "id");
+				Hashtable_add(hash, id, jac);
+			}
+			else if(child->node_type == MJSON_STRING){
+				char* ref = (char*)child->value;
+				jac = Hashtable_get(hash, ref+1);
+				jac->ref_count++;
+			}
+			else{
+				exit(10);
+			}
+			cm->add(cm, jac);
+			jac->free(jac);
 		}
 		else{
 			printf("json CompoundModel unknown: (%s)\n", type);

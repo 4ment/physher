@@ -36,6 +36,7 @@
 #include "treelikelihood.h"
 
 #include "vb.h"
+#include "logger.h"
 
 static double _logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -63,12 +64,29 @@ double model_negative_logP( Parameters *params, double *grad, void *data ){
 
 static void _gradient( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
-	model->gradient(model, params, grad);
+	for(size_t i = 0; i < Parameters_count(params); i++){
+		Parameter_zero_grad(Parameters_at(params, i));
+	}
+	model->gradient(model, params);
+}
+
+static void _negative_gradient( Parameters *params, double *grad, void *data ){
+	Model* model = (Model*)data;
+	for(size_t i = 0; i < Parameters_count(params); i++){
+		Parameter_zero_grad(Parameters_at(params, i));
+	}
+	model->gradient(model, params);
+	for(size_t i = 0; i < Parameters_count(params); i++){
+		Parameter* p = Parameters_at(params, i);
+		for(size_t j = 0; j < Parameter_size(p); j++){
+			p->grad[j] = -p->grad[j];
+		}
+	}
 }
 
 static void _reset(void* data){
 	Model* model = (Model*)data;
-	model->reset(model);
+	// model->reset(model);
 }
 
 static bool dummy_update_data( void *data, Parameters *p){return false;}
@@ -101,6 +119,8 @@ struct _Optimizer{
 	size_t eta_count;
     bool ascent;
 	size_t threads;
+	bool maximize;
+	Logger* logger;
 };
 
 opt_result topology_optimize(TopologyOptimizer* topopt, double *fmin){
@@ -109,18 +129,18 @@ opt_result topology_optimize(TopologyOptimizer* topopt, double *fmin){
 }
 
 opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptStopCriterion *stop, double *fmin ){
-	Parameters* temp = new_Parameters(1);
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)mtlk->obj;
 	Tree* tree = tlk->tree;
 	Node** nodes = Tree_get_nodes(tree, POSTORDER);
 	tlk->node_upper = NULL;
 	tlk->use_upper = true;
 	tlk->update_upper = true;
-	if(Node_distance(Tree_root(tree)->right) != 0){
-		double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
-		Node_set_distance(Tree_root(tree)->right, 0);
-		Node_set_distance(Tree_root(tree)->left, tot);
-	}
+
+	// if(Node_distance(Tree_root(tree)->right) != 0){
+	// 	double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
+	// 	Node_set_distance(Tree_root(tree)->right, 0);
+	// 	Node_set_distance(Tree_root(tree)->left, tot);
+	// }
 	// initialize lower and upper
 	SingleTreeLikelihood_update_uppers(tlk);
 	//for(int j = 0; j < stop->iter_min; j++)
@@ -129,7 +149,6 @@ opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptS
 		if(Node_isroot(node) || (Node_isroot(Node_parent(node)) && Node_right(Node_parent(node)) == node)) continue;
 		if(tlk->node_upper == NULL) tlk->node_upper = node;
 
-		Parameters_add(temp, node->distance);
 		stop->iter = 0;
 		stop->f_eval_current = 0;
 		stop->count = 0;
@@ -139,14 +158,15 @@ opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptS
 #ifdef UPPER_PARTIALS
 		printf("brent\n");
 #endif
-		opt_result status = brent_optimize(temp, f, data, stop, fmin);
-		Parameters_pop(temp);
+		// printf("%s %f %f %f\n", node->distance->name, node->distance->value[node->id], Constraint_lower(node->distance->cnstr), Constraint_upper(node->distance->cnstr));
+		opt_result status = brent_optimize2(node->distance, node->id, f, data, stop, fmin);
+		// printf(" %d %f %f\n",  node->id, node->distance->value[node->id], *fmin);
 #ifdef UPPER_PARTIALS
 		printf("%f %s\n", -*fmin, nodes[i]->name);
 #endif
 		//tlk->node_upper = nodes[i];
 	}
-	free_Parameters(temp);
+    
 	tlk->use_upper = false;
 	return OPT_SUCCESS;
 }
@@ -254,6 +274,7 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 
 	opt->checkpoint_file = NULL;
 	opt->checkpoint_frequency = 0;
+	opt->logger = NULL;
 	return opt;
 }
 
@@ -362,6 +383,9 @@ void free_Optimizer( Optimizer *opt ){
 	}
 	if(opt->checkpoint_file != NULL){
 		free(opt->checkpoint_file);
+	}
+	if(opt->logger != NULL){
+		free_Logger(opt->logger);
 	}
 	free(opt);
 }
@@ -627,7 +651,7 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 			if(eta_adapt_result == OPT_SUCCESS){
 				if(opt->verbosity > 0) printf("Stochastic gradient ascent using eta: %f\n", eta);
 				if (opt->algorithm == OPT_SG_ADAM) {
-					result = optimize_stochastic_gradient_adam(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin, &checkpointer);
+					result = optimize_stochastic_gradient_adam(opt->maximize, opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin, &checkpointer, opt->logger);
 				}
 				else{
 					result = optimize_stochastic_gradient(opt->parameters, opt->f, opt->grad_f, eta, opt->data, &opt->stop, opt->verbosity, fmin, &checkpointer);
@@ -749,7 +773,9 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		"eta",
 		"frequency_check",
 		"list",
+		"logger",
 		"max",
+		"maximize",
 		"min",
 		"model",
 		"parameters",
@@ -766,6 +792,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	
 	size_t max = get_json_node_value_size_t(node, "max", 1000);
 	size_t min = get_json_node_value_size_t(node, "min", 1);
+	bool maximize = get_json_node_value_bool(node, "maximize", true);
 	double precision = get_json_node_value_double(node, "precision", 0.001);
 	Parameters* parameters = new_Parameters(1);
 	Optimizer* opt = NULL;
@@ -784,6 +811,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		opt_set_max_iteration(opt, max);
 		opt_set_min_iteration(opt, min);
 		opt_set_tolfx(opt, precision);
+		opt->maximize = maximize;
 	}
 	// Conjugate gradient
 	else if (strcasecmp(algorithm_string, "cg") == 0) {
@@ -803,7 +831,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		}
 		else{
 			get_parameters_references(node, hash, parameters);
-			if (Parameters_count(parameters) == 1) {
+			if (Parameters_count(parameters) == 1 && Parameter_size(Parameters_at(parameters, 0)) == 1){
 				opt = new_Optimizer(OPT_BRENT);
 			}
 			else{
@@ -860,7 +888,8 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		if(strcasecmp(algorithm_string, "sg") == 0){
 			get_parameters_references(node, hash, parameters);
 			opt_set_parameters(opt, parameters);
-			opt_set_objective_function(opt, _logP);
+			opt_set_objective_function(opt, model_negative_logP);
+			opt->maximize = maximize;
 		}
 		opt->reset = _reset;
     }
@@ -877,6 +906,10 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	}
 	opt->checkpoint_frequency = get_json_node_value_int(node, "checkpoint_frequency", 1000);
 	
+	json_node* loggerNode = get_json_node(node, "logger");
+	if(loggerNode != NULL){
+		opt->logger = new_logger_from_json(loggerNode, hash);
+	}
 	free_Parameters(parameters);
 	return opt;
 }

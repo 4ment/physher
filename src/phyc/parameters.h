@@ -26,6 +26,7 @@
 
 #include "mjson.h"
 #include "hashtable.h"
+// #include "transforms.h"
 
 #define PARAMETER_TINY 1.0e-25
 #define PARAMETER_ZERO 0.
@@ -37,6 +38,7 @@
 
 typedef enum model_t{
 	MODEL_ALIGNMENT=0,
+	MODEL_BOUNDMODEL,
 	MODEL_BRANCHMODEL,
 	MODEL_COALESCENT,
 	MODEL_COMPOUND,
@@ -44,6 +46,7 @@ typedef enum model_t{
 	MODEL_DISTRIBUTION,
 	MODEL_JACOBIAN_TRANSFORM,
 	MODEL_LAPLACE,
+	MODEL_PARAMETERS,
 	MODEL_PARSIMONY,
 	MODEL_SIMPLEX,
 	MODEL_SITEMODEL,
@@ -57,6 +60,7 @@ typedef enum model_t{
 
 static const char* model_type_strings[] = {
 	"alignment",
+	"bound",
 	"branchmodel",
 	"coalescent",
 	"compound",
@@ -64,6 +68,7 @@ static const char* model_type_strings[] = {
 	"distribution",
 	"jacobiantransform",
 	"laplace",
+	"parameters",
 	"parsimony",
 	"simplex",
 	"sitemodel",
@@ -128,6 +133,8 @@ Transform *new_Transform_with_parameter(const char *type, double lower, double u
 
 Transform *new_SimplexTransform_with_parameter(const char *type, Parameter *parameter);
 
+void free_Transform(Transform* transform);
+
 struct _Parameter{
 	char *name;
 	int id;
@@ -140,6 +147,7 @@ struct _Parameter{
 	int refCount;
 	model_t model; // model it belongs to
 	double* grad;
+	// Model* model_obj;
 	Transform *transform;
 	void (*update)(Parameter *, Model *, Parameter *, int);
 	void (*handle_restore)(Parameter *, Model *, int);
@@ -186,6 +194,7 @@ void Constraint_set_flower( Constraint *c, const double flower );
 #pragma mark Parameter
 
 Parameter * new_Parameter( const char *name, const double value, Constraint *constr );
+
 Parameter * new_Parameter2( const char *name, const double *value, size_t dim, Constraint *constr );
 
 Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, const double value, Constraint *constr );
@@ -213,6 +222,11 @@ size_t Parameter_size(const Parameter* p);
 void Parameter_set_value( Parameter *p, const double value );
 void Parameter_set_values( Parameter *p, const double *values );
 void Parameter_set_value_at( Parameter *p, const double value, size_t index);
+
+
+void Parameter_grad_mul_inverse_transform(Parameter* p);
+void Parameter_grad_add_log_det_inverse_transform(Parameter* p);
+void Parameter_zero_grad(Parameter*p);
 
 void Parameter_set_value_quietly( Parameter *p, const double value );
 void Parameter_set_values_quietly( Parameter *p, const double* value );
@@ -381,13 +395,15 @@ size_t Parameters_size(const Parameters *ps);
 
 struct _ListenerList {
     Model **models;
-	int count;
-	int capacity;
+    int count;
+    int capacity;
+    bool enabled;
     Parameters *parameters;
     void (*free)(ListenerList *);
     void (*fire)(ListenerList *, Model *, Parameter *, int);
     void (*fire_restore)(ListenerList *, Model *, int);
     void (*add)(ListenerList *, Model *);
+	void (*add_parameter)(ListenerList *, Parameter *);
     void (*remove)(ListenerList *, Model *);
     void (*removeAll)(ListenerList *);
 };
@@ -418,12 +434,12 @@ struct _Model {
 	// values
 	void (*get)(Model *, double *);
 	void (*set)(Model *, const double *);
-	
-	ListenerList *listeners;
+
+    ListenerList *listeners;
 	int ref_count;
     Parameters *parameters;  // parameters of the model, including from submodels
-	
-	void(*store)(Model*);
+
+    void(*store)(Model*);
 	void(*restore)(Model*);
 	double lp;
 	double storedLogP;
@@ -440,11 +456,15 @@ bool safe_is_reference(const char *ref, const char *parent);
 
 #pragma mark -
 
+Parameter * new_ParameterModel( const char *name, const double* value, size_t dim, Constraint *constr, Model* model);
+
 Model * new_Model( model_t type, const char *name, void *obj );
 
 void free_Model( Model *model );
 
 double Model_first_derivative( Model *model, Parameter* parameter, double eps );
+
+void Model_first_derivatives( Model *model, Parameter* parameter, double eps, double* grad );
 
 double Model_second_derivative( Model *model, Parameter* parameter, double* first, double eps );
 

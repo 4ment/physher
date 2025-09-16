@@ -18,13 +18,16 @@
 
 void _update_gsl_parameters(DistributionModel* dm){
     gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
-    size_t dim = Parameters_count(dm->x);
+    Parameter* mu = Parameters_at(dm->parameters, 0);
+    Parameter* cov = Parameters_at(dm->parameters, 1);
+    Parameter* x = Parameters_at(dm->x, 0);
+    size_t dim = Parameter_size(x);
     size_t row = 0;
     for (int i = 0; i < dim; i++) {
-        gsl_vector_set(wrapper->x, i,  Parameters_value(dm->x, i));
-        gsl_vector_set(wrapper->mu, i, Parameters_value(dm->parameters[0], i));
+        gsl_vector_set(wrapper->x, i,  Parameter_value_at(x, i));
+        gsl_vector_set(wrapper->mu, i, Parameter_value_at(mu, i));
         for (int j = 0; j <= i; j++) {
-            gsl_matrix_set(wrapper->L, i, j, Parameters_value(dm->parameters[1], row));
+            gsl_matrix_set(wrapper->L, i, j, Parameter_value_at(cov, row));
             row++;
         }
     }
@@ -33,46 +36,27 @@ void _update_gsl_parameters(DistributionModel* dm){
 
 static double _multivariate_normal_logP(DistributionModel* dm){
     if(!dm->need_update) return dm->lp;
-    
+    Parameter* x = Parameters_at(dm->x, 0);
+    size_t dim = Parameter_size(x);
     _update_gsl_parameters(dm);
     
     gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
     
     double logJocobian = 0;
+    const double* values = Parameter_values(x);
     if(wrapper->transform){
-        for (int j = 0; j < Parameters_count(dm->x); j++) {
-            double y = log(Parameters_value(dm->x, j));
-            logJocobian -= log(Parameters_value(dm->x, j));
-            gsl_vector_set(wrapper->x, j,  y);
-        }
-    }
-    double logP;
-    gsl_ran_multivariate_gaussian_log_pdf (wrapper->x,  wrapper->mu, wrapper->L, &logP, wrapper->work);
-
-    return logP + logJocobian;
-}
-
-static double _multivariate_normal_logP_with_values(DistributionModel* dm, const double* values){
-    if(!dm->need_update) return dm->lp;
-    
-    _update_gsl_parameters(dm);
-    
-    gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
-    
-    double logJocobian = 0;
-    if(wrapper->transform){
-        for (int j = 0; j < Parameters_count(dm->x); j++) {
+        for (size_t j = 0; j < dim; j++) {
             double y = log(values[j]);
             logJocobian -= y;
             gsl_vector_set(wrapper->x, j,  y);
         }
     }
     double logP;
+    dm->lp = logP + logJocobian;
     gsl_ran_multivariate_gaussian_log_pdf (wrapper->x,  wrapper->mu, wrapper->L, &logP, wrapper->work);
-
-    return logP + logJocobian;
+    dm->need_update = false;
+    return dm->lp;
 }
-
 
 static double _DistributionModel_dlog_mvn(DistributionModel* dm, const Parameter* p){
     fprintf(stderr, "%s is not implemented (line %d of file %s)\n", __func__, __LINE__, __FILE__);
@@ -93,72 +77,57 @@ static double _DistributionModel_ddlog_mvn(DistributionModel* dm, const Paramete
 }
 
 // if dst is NULL we assign directly the sampled values to dm->x
-static void _sample_multivariate_normal(DistributionModel* dm, double* dst){
+static void _sample_multivariate_normal(DistributionModel* dm){
     _update_gsl_parameters(dm);
     gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
     gsl_ran_multivariate_gaussian(wrapper->rng, wrapper->mu, wrapper->L, wrapper->x);
     
+    Parameter* x = Parameters_at(dm->x, 0);
+    size_t dim = Parameter_size(x);
+
     if(wrapper->transform){
-        if(dst == NULL){
-            for (int j = 0; j < Parameters_count(dm->x); j++) {
-                Parameters_set_value(dm->x, j, exp(gsl_vector_get(wrapper->x, j)));
-            }
-        }
-        else{
-            for (int j = 0; j < Parameters_count(dm->x); j++) {
-                dst[j] = exp(gsl_vector_get(wrapper->x, j));
-            }
+        for (size_t i = 0; i < dim; i++) {
+            dm->tempx[i] = exp(gsl_vector_get(wrapper->x, i));
         }
     }
     else{
-        if(dst == NULL){
-            for (int j = 0; j < Parameters_count(dm->x); j++) {
-                Parameters_set_value(dm->x, j, gsl_vector_get(wrapper->x, j));
-            }
-        }
-        else{
-            for (int j = 0; j < Parameters_count(dm->x); j++) {
-                dst[j] = gsl_vector_get(wrapper->x, j);
-            }
+        for (size_t i = 0; i < dim; i++) {
+            dm->tempx[i] = gsl_vector_get(wrapper->x, i);
         }
     }
+    Parameter_set_values(x, dm->tempx);
 }
 
-static double _multivariate_normal_sample_evaluate(DistributionModel* dm){
-    _update_gsl_parameters(dm);
-    gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
-    gsl_ran_multivariate_gaussian(wrapper->rng, wrapper->mu, wrapper->L, wrapper->x);
+// static double _multivariate_normal_sample_evaluate(DistributionModel* dm){
+//     _update_gsl_parameters(dm);
+//     gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
+//     gsl_ran_multivariate_gaussian(wrapper->rng, wrapper->mu, wrapper->L, wrapper->x);
     
-    double logJocobian = 0;
-    if(wrapper->transform){
-        for (int j = 0; j < Parameters_count(dm->x); j++) {
-            double y = exp(gsl_vector_get(wrapper->x, j));
-            logJocobian -= gsl_vector_get(wrapper->x, j);
-            Parameters_set_value(dm->x, j, y);
-        }
-    }
-    else{
-        for (int j = 0; j < Parameters_count(dm->x); j++) {
-            Parameters_set_value(dm->x, j, gsl_vector_get(wrapper->x, j));
-        }
-    }
-    double logP;
-    gsl_ran_multivariate_gaussian_log_pdf (wrapper->x,  wrapper->mu, wrapper->L, &logP, wrapper->work);
+//     double logJocobian = 0;
+//     if(wrapper->transform){
+//         for (int j = 0; j < Parameters_count(dm->x); j++) {
+//             double y = exp(gsl_vector_get(wrapper->x, j));
+//             logJocobian -= gsl_vector_get(wrapper->x, j);
+//             Parameters_set_value(dm->x, j, y);
+//         }
+//     }
+//     else{
+//         for (int j = 0; j < Parameters_count(dm->x); j++) {
+//             Parameters_set_value(dm->x, j, gsl_vector_get(wrapper->x, j));
+//         }
+//     }
+//     double logP;
+//     gsl_ran_multivariate_gaussian_log_pdf (wrapper->x,  wrapper->mu, wrapper->L, &logP, wrapper->work);
 
-    return logP + logJocobian;
-}
+//     return logP + logJocobian;
+// }
 
 static void _free_dist_gsl_multivariate_normal(DistributionModel*dm){
-    if(dm->x != NULL) free_Parameters(dm->x);
-    if(dm->parameters != NULL){
-        for(size_t i = 0; i < dm->parameter_count; i++){
-            free_Parameters(dm->parameters[i]);
-        }
-        free(dm->parameters);
-    }
+    free_Parameters(dm->x);
+    free_Parameters(dm->parameters);
     if(dm->tempx != NULL) free(dm->tempx);
     if(dm->tempp != NULL) free(dm->tempp);
-    if(dm->simplex != NULL) free_Simplex(dm->simplex);
+    // if(dm->simplex != NULL) free_Simplex(dm->simplex);
     gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
     gsl_vector_free(wrapper->mu);
     gsl_vector_free(wrapper->x);
@@ -168,20 +137,20 @@ static void _free_dist_gsl_multivariate_normal(DistributionModel*dm){
     free(dm);
 }
 
-DistributionModel* new_MultivariateNormalDistributionModel_with_parameters(Parameters** parameters, Parameters* x){
-    DistributionModel* dm = new_DistributionModel(parameters, 2, x);
+DistributionModel* new_MultivariateNormalDistributionModel_with_parameters(Parameters* parameters, Parameters* x){
+    DistributionModel* dm = new_DistributionModel(parameters, x);
     dm->type = DISTRIBUTION_NORMAL_MULTIVARIATE;
     dm->free = _free_dist_gsl_multivariate_normal;
     dm->logP = _multivariate_normal_logP;
-    dm->logP_with_values = _multivariate_normal_logP_with_values;
+    // dm->logP_with_values = _multivariate_normal_logP_with_values;
     dm->dlogP = _DistributionModel_dlog_mvn;
     dm->d2logP = _DistributionModel_d2log_mvn;
     dm->ddlogP = _DistributionModel_ddlog_mvn;
     dm->sample = _sample_multivariate_normal;
-    dm->sample_evaluate = _multivariate_normal_sample_evaluate;
+    // dm->sample_evaluate = _multivariate_normal_sample_evaluate;
     dm->need_update = true;
     
-    size_t dim = Parameters_count(x);
+    size_t dim = Parameter_size(Parameters_at(x, 0));
     gsl_multivariate_normal_wrapper_t* wrapper = (gsl_multivariate_normal_wrapper_t*)malloc(sizeof(gsl_multivariate_normal_wrapper_t));
     wrapper->mu = gsl_vector_calloc(dim);
     wrapper->L = gsl_matrix_calloc(dim, dim);
@@ -204,7 +173,8 @@ static Model* _dist_model_clone_mvn( Model *self, Hashtable* hash ){
     DistributionModel* clonedm = clone->obj;
     DistributionModel* dm = self->obj;
     gsl_multivariate_normal_wrapper_t* wrapper = dm->data;
-    size_t dim = Parameters_count(dm->x);
+    Parameter* x = Parameters_at(dm->x, 0);
+    size_t dim = Parameter_size(x);
     gsl_multivariate_normal_wrapper_t* clonewrapper = (gsl_multivariate_normal_wrapper_t*)malloc(sizeof(gsl_multivariate_normal_wrapper_t));
     clonewrapper->mu = gsl_vector_calloc(dim);
     clonewrapper->L = gsl_matrix_calloc(dim, dim);
@@ -223,53 +193,64 @@ Model* new_MultivariateNormalDistributionModel_from_json(json_node* node, Hashta
     char* id = get_json_node_value_string(node, "id");
     
     json_node* x_node = get_json_node(node, "x");
-    Parameters* x = distmodel_get_x(id, x_node, hash);
+    Parameters* x = new_Parameters(1);
+    Parameters_add(x, new_Parameter_from_json(x_node, hash));
     
     char* file = get_json_node_value_string(node, "file");
-    Parameters** parameters = NULL;
-    size_t parameters_dim = 2;
+    Parameters* parameters = new_Parameters(2);
+    size_t paramCount = Parameter_size(Parameters_at(x, 0));;
+    Parameter* mu = NULL;
+    Parameter* sigma = NULL;
 
     // empirical
     if (file != NULL) {
         size_t burnin = get_json_node_value_size_t(node, "burnin", 0);
         Vector** samples = read_log_for_parameters_t(file, burnin, x);
-        size_t paramCount = Parameters_count(x);
-        parameters = malloc(sizeof(Parameters*)*2);
-        parameters[0] = new_Parameters(paramCount);
-        parameters[1] = new_Parameters(paramCount*paramCount);
-        double* mu = dvector(paramCount);
-        double* sigma = dvector(paramCount*paramCount);
+
+        double* muValues = dvector(paramCount);
+        double* sigmaValues = dvector(paramCount*paramCount);
         int n = Vector_length(samples[0]);
         
-        for (int i = 0; i < paramCount; i++) {
+        for (size_t i = 0; i < paramCount; i++) {
             double* vv = Vector_mutable_data(samples[i]);
             for (int j = 0; j < n; j++) {
                 vv[j] = log(vv[j]);
             }
-            mu[i] = mean(vv, n);
-            Parameters_move(parameters[0], new_Parameter("mu", mu[i], new_Constraint(-INFINITY, INFINITY)));
+            muValues[i] = mean(vv, n);
         }
         
         // Calculate covariance matrix
         for (int i = 0; i < paramCount; i++) {
             const double* pp = Vector_data(samples[i]);
-            sigma[i*paramCount+i] = variance(pp, n, mu[i]);
+            sigmaValues[i*paramCount+i] = variance(pp, n, muValues[i]);
             for (int j = i+1; j < paramCount; j++) {
                 const double* pp2 = Vector_data(samples[j]);
-                sigma[i*paramCount+j] = sigma[j*paramCount+i] = covariance(pp, pp2, mu[i], mu[j], n);
+                sigmaValues[i*paramCount+j] = sigmaValues[j*paramCount+i] = covariance(pp, pp2, muValues[i], muValues[j], n);
             }
             free_Vector(samples[i]);
         }
+        mu = new_Parameter2("mu", muValues, paramCount, new_Constraint(-INFINITY, INFINITY));
+        sigma = new_Parameter2("sigma", sigmaValues, paramCount*paramCount, new_Constraint(0, INFINITY));
+
+        free(muValues);
+        free(sigmaValues);
         free(samples);
     }
     else if(get_json_node(node, "parameters") == NULL){
-        parameters = malloc(sizeof(Parameters*)*2);
-        parameters[0] = new_Parameters(Parameters_count(x));
-        parameters[1] = new_Parameters(Parameters_count(x));
-        for (int i = 0; i < Parameters_count(x); i++) {
-            Parameters_move(parameters[0], new_Parameter("mu", 0, new_Constraint(-INFINITY, INFINITY)));
-            Parameters_move(parameters[1], new_Parameter("sigma", 1, new_Constraint(0, INFINITY)));
+        double* muValues = malloc(sizeof(double)*paramCount);
+        double* sigmaValues = malloc(sizeof(double)*paramCount*paramCount);
+        for (size_t i = 0; i < paramCount; i++) {
+            muValues[i] = 0;
+            for (size_t j = 0; j < paramCount; j++) {
+                sigmaValues[i*paramCount+j] = 1;
+            }
         }
+
+        mu = new_Parameter2("mu", muValues, paramCount, new_Constraint(-INFINITY, INFINITY));
+        sigma = new_Parameter2("sigma", sigmaValues, paramCount*paramCount, new_Constraint(0, INFINITY));
+
+        free(muValues);
+        free(sigmaValues);
     }
     else{
         json_node* parameters_node = get_json_node(node, "parameters");
@@ -281,40 +262,40 @@ Model* new_MultivariateNormalDistributionModel_from_json(json_node* node, Hashta
                 exit(13);
             }
         }
-        parameters = distmodel_get_parameters(id, parameters_node, hash, &parameters_dim);
         
-        if (strcasecmp(parameters_node->children[0]->key, "mu") != 0) {
-            Parameters* temp = parameters[0];
-            parameters[0] = parameters[1];
-            parameters[1] = temp;
-        }
-        if (strcasecmp(parameters_node->children[0]->key, "L") == 0 || strcasecmp(parameters_node->children[1]->key, "L") == 0) {
-            size_t p_count = Parameters_count(parameters[0]);
-            if(Parameters_count(parameters[1]) != p_count*(p_count-1)/2 + p_count){
-                fprintf(stderr, "MultivariateNormal distribution - Dimension of cholesky decomposition (dim: %zu) does not match mu (dim: %zu). Expected: %zu\n", Parameters_count(parameters[1]), Parameters_count(parameters[0]), p_count*(p_count-1)/2 + p_count);
+        json_node* mu_node = get_json_node(parameters_node, "mu");
+        json_node* sigma_node = get_json_node(parameters_node, "sigma");
+        json_node* L_node = get_json_node(parameters_node, "L");
+        mu = new_Parameter_from_json(mu_node, hash);
+        if(sigma_node != NULL){
+            sigma = new_Parameter_from_json(sigma_node, hash);
+            size_t p_count = Parameter_size(mu);
+            if(Parameter_size(sigma) != p_count*p_count){
+                fprintf(stderr, "MultivariateNormal distribution - Dimension of covariance matrix (dim: %zu) does not match mu (dim: %zu). Expected: %zu\n", Parameter_size(sigma), p_count, p_count*p_count);
             }
         }
-        if (strcasecmp(parameters_node->children[0]->key, "sigma") == 0 || strcasecmp(parameters_node->children[1]->key, "sigma") == 0) {
-            size_t p_count = Parameters_count(parameters[0]);
-            if(Parameters_count(parameters[1]) != p_count*p_count){
-                fprintf(stderr, "MultivariateNormal distribution - Dimension of covariance matrix (dim: %zu) does not match mu (dim: %zu). Expected: %zu\n", Parameters_count(parameters[1]), Parameters_count(parameters[0]), p_count*p_count);
+        else {
+            sigma = new_Parameter_from_json(L_node, hash);
+            size_t p_count = Parameter_size(mu);
+            if(Parameter_size(sigma) != p_count*(p_count-1)/2 + p_count){
+                fprintf(stderr, "MultivariateNormal distribution - Dimension of cholesky decomposition (dim: %zu) does not match mu (dim: %zu). Expected: %zu\n", Parameter_size(sigma), p_count, p_count*(p_count-1)/2 + p_count);
             }
         }
     }
+
+    Parameters_add(parameters, mu);
+    Parameters_add(parameters, sigma);
     
     DistributionModel* dm = new_MultivariateNormalDistributionModel_with_parameters(parameters, x);
-    
     
     Model* model = new_DistributionModel2(id, dm);
     
     model->samplable = true;
     model->clone = _dist_model_clone_mvn;
     dm->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
-    
-    free_Parameters(parameters[0]);
-    free_Parameters(parameters[1]);
-    free(parameters);
-//    free_Parameters(x);
+
+    free_Parameters(x);
+    free_Parameters(parameters);
     
     return model;
 }

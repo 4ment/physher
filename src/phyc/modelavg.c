@@ -245,7 +245,7 @@ Tree * Model_average_from_log( const char *filename, double pp, char ***orderedN
 					pch++;
 				}
 				
-				Tree *t = new_Tree(buffer->c, false);
+				Tree *t = new_Tree(buffer->c, NULL, false);
 				
 				int nNodes = Tree_node_count(t);
 				int nParams = Tree_node_count(t)+Tree_node_count(t)+3;// rates, heights, meanRate*3

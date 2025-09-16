@@ -190,3 +190,64 @@ Vector** read_log_for_names_t( const char *filename, size_t burnin, char** param
 	return vec;
 }
 
+Vector** read_log_for_parameter_t( const char *filename, size_t burnin, Parameter* parameter ){
+	size_t paramCount = Parameter_size(parameter);
+	
+	char *ptr = NULL;
+	double *temp = NULL;
+	int l;
+	Vector** vec = malloc(sizeof(Vector*)*paramCount);
+	for(int i = 0; i < paramCount; i++){
+		vec[i] = new_Vector(1000);
+	}
+	size_t sample = 0;
+	
+	StringBuffer* buffer = new_StringBuffer(1000);
+	FileReader *reader = new_FileReader(filename, 1000);
+	reader->read_line(reader);
+	ptr = reader->line;
+	l = 0;
+	char** header = String_split_char(ptr, '\t', &l);
+	bool* in = bvector(l);
+	
+	for (int j = 0; j < paramCount; j++) {
+		StringBuffer_set_string(buffer, Parameter_name(parameter));
+		StringBuffer_append_format(buffer, ".%d", j);
+		for (int i = 0; i < l; i++) {
+			if(strcmp(buffer->c, header[i]) == 0){
+				in[i] = true;
+				break;
+			}
+		}
+	}
+	for (int i = 0; i < l; i++) {
+		free(header[i]);
+	}
+	free(header);
+	free_StringBuffer(buffer);
+	
+	while ( reader->read_line(reader) ) {
+		StringBuffer_trim(reader->buffer);
+		
+		if ( reader->buffer->length == 0){
+			continue;
+		}
+		if ( sample >= burnin){
+			ptr = reader->line;
+			l = 0;
+			temp = String_split_char_double( ptr, '\t', &l );
+			int index = 0;
+			for (int i = 0; i < l; i++) {
+				if(in[i]){
+					Vector_push(vec[index], temp[i]);
+					index++;
+				}
+			}
+			free(temp);
+		}
+		sample++;
+	}
+	free_FileReader(reader);
+	free(in);
+	return vec;
+}

@@ -26,9 +26,14 @@ static double _jacobian_model_gradient(Model* self, const Parameters* parameters
 }
 
 static void _jacobian_model_free(Model* self) {
-    Parameters* parameters = self->obj;
-    // free_Parameters(parameters);
-    free_Model(self);
+    if(self->ref_count == 1){
+        Parameters* parameters = self->obj;
+        free_Parameters(parameters);
+        free_Model(self);
+	}
+	else{
+		self->ref_count--;
+	}
 }
 
 Model* new_JacobianTransformModel(const char* id, Parameters* parameters) {

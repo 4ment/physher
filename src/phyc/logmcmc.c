@@ -62,7 +62,17 @@ static void _log_write_header(Log* logger){
 			}
 		}
 		for (int i = 0; i < Parameters_count(logger->x); i++) {
-			fprintf(logger->file, "\t%s", Parameters_name(logger->x, i));
+			Parameter* parameter = Parameters_at(logger->x, i);
+			if(Parameter_size(parameter) == 1){
+				fprintf(logger->file, "\t%s", Parameters_name(logger->x, i));
+			}
+			else{
+				for(size_t j = 0; j < Parameter_size(parameter); j++){
+					StringBuffer_empty(buffer);
+					StringBuffer_append_format(buffer, "%s.%zu", Parameter_name(parameter), j);
+					fprintf(logger->file, "\t%s", buffer->c);
+				}
+			}
 		}
 	}
 	free_StringBuffer(buffer);
@@ -102,14 +112,18 @@ void log_log(Log* logger, size_t iter){
 			}
 		}
 		else{
-			if (logger->force) {
+			// if (logger->force) {
 				fprintf(logger->file, "\t%e", model->logP(model));
-			}
-			else fprintf(logger->file, "\t%e", model->lp);
+			// }
+			// else fprintf(logger->file, "\t%e", model->lp);
 		}
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
-		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));
+		Parameter* parameter = Parameters_at(logger->x, i);
+		const double* values = Parameter_values(parameter);
+		for(size_t j = 0; j < Parameter_size(parameter); j++){
+			fprintf(logger->file, "\t%e", values[j]);
+		}
 	}
 	
 	if (logger->filename == NULL) {

@@ -19,9 +19,16 @@ extern "C" {
 }
 
 enum class GradientFlags {
-    TREE_RATIO = GRADIENT_FLAG_TREE_RATIOS,
-    TREE_HEIGHT = GRADIENT_FLAG_TREE_HEIGHTS,
-    COALESCENT_THETA = GRADIENT_FLAG_COALESCENT_THETA
+    TREE_MODEL_BRANCH_LENGTHS = GRADIENT_FLAG_BRANCH_LENGTHS,
+    TREE_MODEL_RATIO = GRADIENT_FLAG_TREE_RATIOS,
+    TREE_MODEL_HEIGHT = GRADIENT_FLAG_TREE_HEIGHTS,
+    BRANCH_MODEL_RATE = GRADIENT_FLAG_CLOCK_RATE,
+    COALESCENT_MODEL_THETA = GRADIENT_FLAG_COALESCENT_THETA,
+    SITE_MODEL_MU = GRADIENT_FLAG_SITE_MU,
+    SITE_MODEL_PARAMETER = GRADIENT_FLAG_SITE_PARAMETER,
+    SITE_MODEL_PINV = GRADIENT_FLAG_SITE_PINV,
+    SUBSTITUTION_MODEL_FREQUENCIES = GRADIENT_FLAG_SUBSTITUTION_FREQUENCIES,
+    SUBSTITUTION_MODEL_RATES = GRADIENT_FLAG_SUBSTITUTION_RATES
 };
 
 enum class TreeLikelihoodGradientFlags {
@@ -98,9 +105,9 @@ class CallableModelInterface : public ModelInterface {
    public:
     double LogLikelihood() { return model_->logP(model_); }
 
-    virtual void Gradient(double *gradient) = 0;
+    virtual void Gradient(double *gradient, std::vector<GradientFlags> flags) = 0;
 
-    size_t gradientLength_;
+    static int ConvertFlags(std::vector<GradientFlags> flags);
 };
 
 class TreeModelInterface : public ModelInterface {
@@ -374,10 +381,7 @@ class TreeLikelihoodInterface : public CallableModelInterface {
                             bool use_ambiguities = false, bool use_tip_states = false,
                             bool include_jacobian = false);
 
-    void RequestGradient(std::vector<TreeLikelihoodGradientFlags> flags =
-                             std::vector<TreeLikelihoodGradientFlags>());
-
-    void Gradient(double *gradient) override;
+    void Gradient(double *gradient, std::vector<GradientFlags> flags) override;
 
     void SetParameters(const double *parameters) override{};
 
@@ -398,10 +402,7 @@ class CTMCScaleModelInterface : public CallableModelInterface {
     CTMCScaleModelInterface(const std::vector<double> rates,
                             TreeModelInterface *treeModel);
 
-    void RequestGradient(
-        std::vector<GradientFlags> flags = std::vector<GradientFlags>());
-
-    void Gradient(double *gradient) override;
+    void Gradient(double *gradient, std::vector<GradientFlags> flags) override;
 
     void SetParameters(const double *parameters) override;
 
@@ -420,10 +421,7 @@ class CoalescentModelInterface : public CallableModelInterface {
         : treeModel_(treeModel) {}
 
    public:
-    void RequestGradient(
-        std::vector<GradientFlags> flags = std::vector<GradientFlags>());
-
-    void Gradient(double *gradient) override;
+    void Gradient(double *gradient, std::vector<GradientFlags> flags) override;
 
     void SetParameters(const double *parameters) override;
 

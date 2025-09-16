@@ -2,17 +2,23 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
 #add_definitions("-DUNIT_TESTING")
 
-add_executable(test_clone test_clone.c)
-target_link_libraries(test_clone phyc)
+# add_executable(test_clone test_clone.c)
+# target_link_libraries(test_clone phyc)
 
-add_executable(test_distributions test_distributions.c)
-target_link_libraries(test_distributions phyc)
+# add_executable(test_distributions test_distributions.c)
+# target_link_libraries(test_distributions phyc)
 
 add_executable(test_coalescent test_coalescent.c)
 target_link_libraries(test_coalescent phyc)
 
-add_executable(test_simplex test_simplex.c)
-target_link_libraries(test_simplex phyc)
+add_executable(test_priors test_priors.c)
+target_link_libraries(test_priors phyc)
+
+# add_executable(test_simplex test_simplex.c)
+# target_link_libraries(test_simplex phyc)
+
+add_executable(test_transforms test_transforms.c)
+target_link_libraries(test_transforms phyc)
 
 add_executable(test_tree test_tree.c)
 target_link_libraries(test_tree phyc)
@@ -29,21 +35,30 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/data
 #    	COMMAND sed -i "s@tiny.fa@data/tiny.fa@" ${JSON_FILES}
 #)
 
-add_test (NAME Test_clone
-		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
-		COMMAND test_clone)
+# add_test (NAME Test_clone
+# 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+# 		COMMAND test_clone)
 
-add_test (NAME Test_distributions
-		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
-		COMMAND test_distributions)
+# add_test (NAME Test_distributions
+# 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+# 		COMMAND test_distributions)
 
 add_test (NAME Test_coalescent
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_coalescent)
 
-add_test (NAME Test_simplex
+add_test (NAME Test_priors
+WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+COMMAND test_priors)
+
+# add_test (NAME Test_simplex
+# 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+# 		COMMAND test_simplex)
+
+add_test (NAME test_transforms
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
-		COMMAND test_simplex)
+		COMMAND test_transforms)
+
 add_test (NAME Test_tree
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_tree)

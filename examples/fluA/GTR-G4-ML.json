@@ -25,6 +25,19 @@
             "type": "parameter",
             "value": 0.1,
             "lower":0
+          },
+          "_proportions":{
+            "id": "proportions",
+            "type": "parameter",
+            "value": {
+              "id": "proportions.reparm",
+              "type": "Simplex",
+              "parameter": {
+                "id": "p0",
+                "type": "parameter",
+                "value": 0.0
+              }
+            }
           }
         }
       },
@@ -41,14 +54,16 @@
               0.25,
               0.25,
               0.25
-            ]
+            ],
+            "parameter": "freqs2"
           },
           "rates":{
             "id":"rates",
             "type":"Simplex",
-            "dimension": 6
+            "dimension": 6,
+            "parameter": "rates2"
           },
-          "init":{
+          "_init":{
             "sitepattern":"&patterns"
           }
         },
@@ -61,12 +76,19 @@
     },
     "physher":[
       {
+        "id":"log",
+        "type":"logger",
+        "parameters":[
+          "&alpha", "&rates", "&freqs", "&rates2", "&freqs2"
+        ]
+      },
+      {
         "id":"mlopt",
         "type":"optimizer",
         "algorithm":"meta",
         "precision":0.00001,
         "max":10000,
-        "min":1,
+        "min":100,
         "model":"&treelikelihood",
         "list":[
           {
@@ -81,14 +103,14 @@
             "type":"optimizer",
             "algorithm":"serial",
             "model":"&treelikelihood",
-            "parameters":"$rates"
+            "parameters":"&rates2"
           },
           {
             "id":"optfreqs",
             "type":"optimizer",
             "algorithm":"serial",
             "model":"&treelikelihood",
-            "parameters":"$freqs"
+            "parameters":"&freqs2"
           },
           {
             "id":"optsite",
@@ -102,21 +124,13 @@
       {
         "id":"log",
         "type":"logger",
-        "models":"&treelikelihood"
-      },
-      {
-        "id":"log",
-        "type":"logger",
-        "models":[
-          "$rates",
-          "$freqs"
-        ]
+        "models":["&treelikelihood", "&tree"]
       },
       {
         "id":"log",
         "type":"logger",
         "parameters":[
-          "&alpha"
+          "&alpha", "&rates", "&freqs", "&rates2", "&freqs2"
         ]
       },
       {

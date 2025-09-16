@@ -71,12 +71,13 @@ Node * new_Node( Node *parent, const char *nodename, const int counter ){
 		n->name = String_clone(nodename);
 	}
 	
-	n->distance = new_Parameter_with_postfix(n->name, POSTFIX_DISTANCE, BL_DEFAULT, new_Constraint(0, INFINITY));
-	Constraint_set_flower(n->distance->cnstr, BL_MIN);
-	Constraint_set_fupper(n->distance->cnstr, BL_MAX);
+	// n->distance = new_Parameter_with_postfix(n->name, POSTFIX_DISTANCE, BL_DEFAULT, new_Constraint(0, INFINITY));
+	// Constraint_set_flower(n->distance->cnstr, BL_MIN);
+	// Constraint_set_fupper(n->distance->cnstr, BL_MAX);
+	n->distance = NULL;
 	n->height   = new_Parameter_with_postfix(n->name, POSTFIX_HEIGHT, 0, new_Constraint(0,INFINITY));
 	n->height->model = MODEL_TREE;
-	n->distance->model = MODEL_TREE;
+	// n->distance->model = MODEL_TREE;
 	return n;
 }
 
@@ -117,7 +118,8 @@ Node * clone_Node( const Node *node){
 	n->class_id = node->class_id;
 	
 	n->height   = ( node->height == NULL ? NULL : clone_Parameter( node->height));
-	n->distance = ( node->distance == NULL ? NULL : clone_Parameter( node->distance));
+	// n->distance = ( node->distance == NULL ? NULL : clone_Parameter( node->distance));
+	n->distance = NULL;
 	
 	n->info = NULL;
 	if( node->info != NULL ) n->info = String_clone(node->info);
@@ -152,12 +154,14 @@ double Node_time_elapsed( Node *node ){
 }
 
 void Node_set_distance( Node *node, const double value ){
-    Parameter_set_value(node->distance, value);
+    Parameter_set_value_at(node->distance, value, node->id);
 }
 
-
+// should never be called on the root node
 double Node_distance( const Node *node ){
-    return Parameter_value(node->distance);
+	Node* parent = node->parent;
+	if(Node_isroot(parent) && parent->right == node) return 0;
+    return Parameter_value_at(node->distance, node->id);
 }
 
 void Node_set_parent( Node *node, Node *parent ){

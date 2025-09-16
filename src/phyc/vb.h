@@ -25,6 +25,7 @@ typedef struct variational_block_t{
     size_t simplex_count;
     size_t simplex_parameter_count;
     Parameters* parameters; // parameters of the posterior
+    size_t parameters_dimension;
     Parameters** var_parameters; // parameters of variational distribution
     size_t var_parameters_count; // length of array var_parameters
     void (*sample1)(struct variational_block_t*, double* jacobian); // sample from q and set values in p

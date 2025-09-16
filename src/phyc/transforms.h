@@ -11,6 +11,30 @@
 
 #include <stdio.h>
 
+// #include "parameters.h"
+
+// struct _Transform;
+// typedef struct _Transform Transform;
+
+
+// struct _Transform{
+//     size_t dim; // dimension of x
+// 	Parameter* parameter; // y
+//     double lower;
+//     double upper;
+//     // y = f(x)
+// 	void (*transform)(const double*, double*, size_t, double, double);
+//     // x = f^{-1}(y)
+// 	void (*inverse_transform)(double*, const double*, size_t, double, double);
+//     // dx/dy = df^{-1}(y)/dy
+//     double (*inverse_transform_log_det_jacobian)(double*, const double*, size_t, double, double);
+//     void (*get)(Transform*, double*);
+//     void (*set)(Transform*, const double*);
+//     double (*log_det_jacobian)(Transform*);
+// };
+
+// Transform* new_Transform_with_parameter(const char* type, double lower, double upper, Parameter* parameter);
+
 
 double softplus(double x);
 

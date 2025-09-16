@@ -32,12 +32,6 @@
 #define CHOOSE2(n) 0.5*n*(n-1)
 #pragma mark Coalescent
 
-static void _constant_calculate_gradient( Coalescent* coal );
-static void _skyride_calculate_gradient( Coalescent* coal );
-static void _skyride_calculate_gradient_real( Coalescent* coal );
-static void _skygrid_calculate_gradient( Coalescent* coal );
-static void _skygrid_calculate_gradient_real( Coalescent* coal );
-static void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal );
 
 Coalescent * create_Coalescent(demography type, size_t size);
 
@@ -103,11 +97,6 @@ static double _coalescent_model_full_logP(Model *self){
 	return self->lp;
 }
 
-static double _coalescent_model_dlogP(Model *self, const Parameter* p){
-	Coalescent* mc = (Coalescent*)self->obj;
-	return mc->dlogP(mc, p);
-}
-
 // Set flags for gradient calculation
 void _coalescent_model_prepare_gradient(Model* self, const Parameters* ps){
 	Coalescent* coal = (Coalescent*)self->obj;
@@ -134,94 +123,49 @@ void _coalescent_model_prepare_gradient(Model* self, const Parameters* ps){
 			gradient_length += Tree_tip_count(coal->tree) - 1;
 		}
 	}
-	if(coal->gradient == NULL){
-		coal->gradient = calloc(gradient_length, sizeof(double));
+	if(coal->grad == NULL){
+		coal->grad = calloc(gradient_length, sizeof(double));
 		coal->gradient_length = gradient_length;
 	}
 	else if (coal->gradient_length < gradient_length) {
-		coal->gradient = realloc(coal->gradient, sizeof(double)* gradient_length);
+		coal->grad = realloc(coal->grad, sizeof(double)* gradient_length);
 		coal->gradient_length = gradient_length;
 	}
 }
 
-// by default we get the derivative wrt reparameterized node height
-size_t Coalescent_initialize_gradient(Model *self, int flags){
+// only calculate the gradient wrt ratios/root height, not node heights
+void Coalescent_gradient(Model *self, int flags, double* gradient){
 	Coalescent* coal = (Coalescent*)self->obj;
-	coal->prepared_gradient = flags;
-	size_t gradient_length = 0;
-	
-	int prepare_tree_height = coal->prepared_gradient & GRADIENT_FLAG_TREE_HEIGHTS;
-	int prepare_tree_ratio = coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS;
-	int prepare_theta = coal->prepared_gradient & GRADIENT_FLAG_COALESCENT_THETA;
-	
-	if(flags == 0){
-		prepare_tree_ratio = true;
-		prepare_tree_height = false;
-		prepare_theta = true;
-		coal->prepared_gradient = GRADIENT_FLAG_TREE_RATIOS | GRADIENT_FLAG_COALESCENT_THETA;
-	}
-	if(prepare_tree_ratio || prepare_tree_height){
-		gradient_length += Tree_tip_count(coal->tree) - 1;
-	}
-	if (prepare_theta) {
-		gradient_length += Parameters_count(coal->p);
-		
-	}
+	int prepare_tree_height = flags & GRADIENT_FLAG_TREE_HEIGHTS;
+	int prepare_tree_ratio = flags & GRADIENT_FLAG_TREE_RATIOS;
+	int prepare_theta = flags & GRADIENT_FLAG_COALESCENT_THETA;
 
-	if(coal->gradient == NULL){
-		coal->gradient = calloc(gradient_length, sizeof(double));
-		coal->gradient_length = gradient_length;
+	Parameters* parameters = new_Parameters(Parameters_count(coal->p));
+	if(prepare_theta){
+		Parameters_add_parameters(parameters, coal->p);
 	}
-	else if (coal->gradient_length < gradient_length) {
-		coal->gradient = realloc(coal->gradient, sizeof(double)* gradient_length);
-		coal->gradient_length = gradient_length;
+	if(prepare_tree_ratio){
+		Parameters_add_parameters(parameters, get_reparams(coal->tree));
 	}
-	return gradient_length;
+	
+	Parameters_zero_grad(parameters);
+	self->gradient(self, parameters);
+
+	size_t offset = 0;
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* p = Parameters_at(parameters, i);
+		memcpy(gradient + offset, p->grad, sizeof(double)*Parameter_size(p));
+		offset += Parameter_size(p);
+	}
+	free_Parameters(parameters);
 }
 
-double* Coalescent_gradient(Model *self){
+static double _coalescent_model_gradient(Model *self, const Parameters* parameters){
 	Coalescent* coal = (Coalescent*)self->obj;
-	
-//	if(coal->gradient_length == 0) return 0.0;
-	if ( coal->need_update_intervals){
-		coal->update_intervals(coal);
-	}
-	// coal->need_update is set to false if we call logP first
-	if (coal->need_update_gradient) {
-		coal->need_update_gradient = false;
-		if(coal->type == COALESCENT_CONSTANT){
-			_constant_calculate_gradient(coal);
-		}
-		else if(coal->type == COALESCENT_SKYRIDE){
-			if(coal->parameterization == COALESCENT_THETA_LOG){
-				_skyride_calculate_gradient(coal);
-			}
-			else if(coal->parameterization == COALESCENT_THETA){
-				_skyride_calculate_gradient_real(coal);
-			}
-		}
-		else if(coal->type == COALESCENT_SKYGRID){
-			if(coal->parameterization == COALESCENT_THETA_LOG){
-				_skygrid_calculate_gradient(coal);
-			}
-			else if(coal->parameterization == COALESCENT_THETA){
-				_skygrid_calculate_gradient_real(coal);
-			}
-		}
-		else if(coal->type == COALESCENT_PIECEWISE_LINEAR_GRID){
-			if(coal->parameterization == COALESCENT_THETA){
-				_coalescent_piecewise_linear_grid_gradient_time(coal);
-			}
-			else{
-				fprintf(stderr, "COALESCENT_THETA_LOG is not implemented for COALESCENT_PIECEWISE_LINEAR_GRID\n");
-				exit(1);
-			}
-		}
-	}
-	return coal->gradient;
+	return coal->gradient(coal, parameters);
 }
 
-double _coalescent_model_dlogP_prepared(Model *self, const Parameter* p){
+/*double _coalescent_model_dlogP_prepared(Model *self, const Parameter* p){
 	Coalescent* coal = (Coalescent*)self->obj;
 	
 	if(coal->gradient_length == 0) return 0.0;
@@ -234,19 +178,19 @@ double _coalescent_model_dlogP_prepared(Model *self, const Parameter* p){
 	
 	if (prepare_theta) {
 		if (p->model == MODEL_COALESCENT) {
-			return coal->gradient[p->id];
+			return coal->grad[p->id];
 		}
 		offset += Parameters_count(coal->p);
 	}
 	
 	if(prepare_tree_height && p->model == MODEL_TREE){
-		return coal->gradient[offset + Tree_node(coal->tree, p->id)->class_id];
+		return coal->grad[offset + Tree_node(coal->tree, p->id)->class_id];
 	}
 	else if(prepare_tree_ratio && p->model == MODEL_TREE_TRANSFORM){
-		return coal->gradient[offset + p->id];
+		return coal->grad[offset + p->id];
 	}
 	return 0;
-}
+}*/
 
 static double _coalescent_model_d2logP(Model *self, const Parameter* p){
 	Coalescent* mc = (Coalescent*)self->obj;
@@ -276,7 +220,7 @@ static void _coalescent_model_free( Model *self ){
 		free(mc->stored_times);
 		free(mc->stored_iscoalescent);
 		if(mc->grid != NULL) free(mc->grid);
-		if(mc->gradient != NULL) free(mc->gradient);
+		if(mc->grad != NULL) free(mc->grad);
 		free(mc);
 		// tree or simplex
 		if(self->data != NULL){
@@ -379,9 +323,9 @@ static Model* _coalescent_model_clone( Model *self, Hashtable* hash ){
 		clone->grid = clone_dvector(coalescent->grid, coalescent->gridCount-1); // not 0 at grid[0]
 	}
 	clone->groups = groupclone;
-    clone->gradient = NULL;
-	if (coalescent->gradient != NULL) {
-		clone->gradient = clone_dvector(coalescent->gradient, size);
+    clone->grad = NULL;
+	if (coalescent->grad != NULL) {
+		clone->grad = clone_dvector(coalescent->grad, size);
 	}
 	Model* mclone = new_CoalescentModel2(self->name, clone, mtreeclone, mgroupclone);
 	if(mtreeclone!=NULL) mtreeclone->free(mtreeclone);
@@ -391,17 +335,11 @@ static Model* _coalescent_model_clone( Model *self, Hashtable* hash ){
 }
 
 //MARK: TODO
-static void _coalescent_model_sample(Model* model, double* samples, double* logP){
+static void _coalescent_model_sample(Model* model){
 	error("todo _coalescent_model_sample\n");
 }
 
-//MARK: TODO
-static double _coalescent_model_sample_evaluate(Model* model){
-	error("todo _coalescent_model_sample_evaluate\n");
-	return 0;
-}
-
-static void _coalescent_model_handle_change( Model *self, Model *model, int index ){
+static void _coalescent_model_handle_change( Model *self, Model *model, Parameter* parameter, int index ){
 	Coalescent *c = (Coalescent*)self->obj;
 	// theta has changed
 	if(model == NULL){
@@ -421,7 +359,7 @@ static void _coalescent_model_handle_change( Model *self, Model *model, int inde
 		fprintf(stderr, "_coalescent_model_handle_change %d %s\n", model->type, model->name);
 		exit(1);
 	}
-	self->listeners->fire( self->listeners, self, index );
+	self->listeners->fire( self->listeners, self, parameter, index );
 }
 
 static void _coalescent_model_handle_restore( Model *self, Model *model, int index ){
@@ -437,12 +375,14 @@ Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tre
 	Model* model = new_Model(MODEL_COALESCENT, name, coalescent);
 	for ( int i = 0; i < Parameters_count(coalescent->p); i++ ) {
 		Parameters_at(coalescent->p, i)->listeners->add( Parameters_at(coalescent->p, i)->listeners, model );
+		Parameter_set_model(Parameters_at(coalescent->p, i), MODEL_COALESCENT);
 	}
 	if(tree != NULL)tree->listeners->add( tree->listeners, model );
 	
 	model->logP = _coalescent_model_logP;
 	model->full_logP = _coalescent_model_full_logP;
-	model->dlogP = _coalescent_model_dlogP_prepared;
+	model->gradient = _coalescent_model_gradient;
+	model->dlogP = NULL;//_coalescent_model_dlogP_prepared;
 	model->d2logP = _coalescent_model_d2logP;
 	model->ddlogP = _coalescent_model_ddlogP;
 	model->free = _coalescent_model_free;
@@ -450,7 +390,6 @@ Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tre
 	model->store = _coalescent_model_store;
 	model->restore = _coalescent_model_restore;
 	model->sample = _coalescent_model_sample;
-	model->sample_evaluate = _coalescent_model_sample_evaluate;
 	
 	model->update = _coalescent_model_handle_change;
 	model->handle_restore = _coalescent_model_handle_restore;
@@ -484,7 +423,6 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		"data",
 		"groups",
 		"model",
-		"parameterization",
 		"parameters",
 		"tree"
 	};
@@ -495,21 +433,9 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 	
 	json_node* data_node = get_json_node(node, "data");
 	json_node* tree_node = get_json_node(node, "tree");
-	char* parameterization_str = get_json_node_value_string(node, "parameterization");
 	Model* mtree = NULL;
 	Tree* tree = NULL;
 	Model* mdp = NULL;
-	
-	// only for skyride and skygrid
-	parameterization_t parameterization = COALESCENT_THETA_LOG;
-	if(parameterization_str != NULL){
-		if(strcasecmp(parameterization_str, "real")){
-			parameterization = COALESCENT_THETA;
-		}
-		else if(strcasecmp(parameterization_str, "delta")){
-			parameterization = COALESCENT_THETA_DELTA;
-		}
-	}
 		
 	double* times = NULL;
 	bool* coalescent = NULL;
@@ -588,15 +514,15 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 
 		if(strcasecmp(model, "skygrid") == 0){
 			if(tree != NULL)
-				c = new_GridCoalescent(tree, ps, gridCount, cutoff, parameterization);
+				c = new_GridCoalescent(tree, Parameters_at(ps, 0), gridCount, cutoff);
 			else
-				c = new_GridCoalescent_with_data(ps, times, coalescent, intervalCount, gridCount, cutoff, parameterization);
+				c = new_GridCoalescent_with_data(Parameters_at(ps, 0), times, coalescent, intervalCount, gridCount, cutoff);
 		}
 		else if(strcasecmp(model, "piecewise-linear") == 0){
 			if(tree != NULL)
-				c = new_PiecewiseLinearGridCoalescent(tree, ps, gridCount, cutoff, parameterization);
+				c = new_PiecewiseLinearGridCoalescent(tree, Parameters_at(ps, 0), gridCount, cutoff);
 			else
-				c = new_PiecewiseLinearGridCoalescent_with_data(ps, times, coalescent, intervalCount, gridCount, cutoff, parameterization);
+				c = new_PiecewiseLinearGridCoalescent_with_data(Parameters_at(ps, 0), times, coalescent, intervalCount, gridCount, cutoff);
 		}
 	}
 	else if(strcasecmp(model, "skyline") == 0){
@@ -614,18 +540,18 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		}
 		DiscreteParameter* dp = mdp->obj;
 		if(tree != NULL)
-			c = new_SkylineCoalescent(tree, ps, dp);
+			c = new_SkylineCoalescent(tree, Parameters_at(ps, 0), dp);
 		else
-			c = new_SkylineCoalescent_with_data(ps, times, coalescent, intervalCount, dp);
+			c = new_SkylineCoalescent_with_data(Parameters_at(ps, 0), times, coalescent, intervalCount, dp);
 	}
 	else if(strcasecmp(model, "classical") == 0){
-		c = new_ClassicalSkylineCoalescent_with_parameters(tree, ps);
+		c = new_ClassicalSkylineCoalescent_with_parameters(tree, Parameters_at(ps, 0));
 	}
 	else if(strcasecmp(model, "skyride") == 0){
 		if(tree != NULL)
-			c = new_SkyrideCoalescent(tree, ps, parameterization);
+			c = new_SkyrideCoalescent(tree, Parameters_at(ps, 0));
 		else
-			c = new_SkyrideCoalescent_with_data(ps, times, coalescent, intervalCount, parameterization);
+			c = new_SkyrideCoalescent_with_data(Parameters_at(ps, 0), times, coalescent, intervalCount);
 	}
 	else{
 		fprintf(stderr, "Coalescent model unknown %s\n", model);
@@ -673,7 +599,7 @@ void free_Coalescent( Coalescent *coalescent ){
 	free(coalescent->stored_iscoalescent);
 	if(coalescent->grid != NULL) free(coalescent->grid);
 	if(coalescent->groups != NULL) coalescent->groups->free(coalescent->groups);
-	if(coalescent->gradient != NULL) free(coalescent->gradient);
+	if(coalescent->grad != NULL) free(coalescent->grad);
 	free(coalescent);
 }
 
@@ -791,17 +717,19 @@ static void _premultiply_proportions(Node* node, double* descendant, Parameters*
     }
 }
 
+// accumulate the gradient in height_gradient
 void height_gradient_from_interval_gradient(Coalescent* coal, const double* interval_gradient, double* height_gradient){
 	Node** nodes = Tree_nodes(coal->tree);
-	size_t i = 1;
-	for( ; i < coal->n - 1; i++){
+	size_t rootID = Node_class_id(Tree_root(coal->tree));
+	for(size_t i = 0; i < coal->n; i++){
 		if(coal->iscoalescent[i]){
 			size_t node_class_id = Node_class_id(nodes[coal->nodes[i]->index]);
 			height_gradient[node_class_id] += interval_gradient[i];
-			height_gradient[node_class_id] -= interval_gradient[i+1];
+			if (rootID != node_class_id)
+				height_gradient[node_class_id] -= interval_gradient[i+1];{
+			}
 		}
 	}
-	height_gradient[Node_class_id(Tree_root(coal->tree))] += interval_gradient[i];
 }
 
 #pragma mark -
@@ -831,16 +759,19 @@ double _constant_calculate( Coalescent* coal ){
 	return coal->logP;
 }
 
-void _constant_calculate_gradient( Coalescent* coal ){
-	size_t offset = 0;
+double _constant_gradient_data(Coalescent* coal, const Parameters* parameters ){
 	double* chooses = dvector(coal->n);
 	for( int i = 0; i< coal->n; i++  ){
 		chooses [i] = CHOOSE2(coal->lineages[i]);
 	}
-	double theta = Parameters_value(coal->p, 0);
+	Parameter* thetaParameter = Parameters_at(coal->p, 0);
+	double theta = Parameter_value(thetaParameter);
 	double theta_inv = 1.0/theta;
 
-    if(coal->prepared_gradient & GRADIENT_FLAG_COALESCENT_THETA){
+	// thetax is the unconstrained parameter if it exists otherwise it is the same as theta if it is in parameters
+	Parameter *thetax = Parameters_depends(parameters, thetaParameter);
+
+    if(thetax != NULL){
         double theta2 = theta*theta;
 		double dlogP = 0;
         for( int i = 0; i< coal->n; i++  ){
@@ -849,30 +780,87 @@ void _constant_calculate_gradient( Coalescent* coal ){
 				dlogP -= theta_inv;
 			}
         }
-		coal->gradient[0] = dlogP;
-		offset++;
+		thetaParameter->grad[0] += dlogP;
+		if(thetaParameter != thetax){
+			thetaParameter->transform->backward(thetaParameter->transform, &dlogP);
+		}
     }
+
+	free(chooses);
+	return 0;
+}
+
+double _constant_gradient(Coalescent* coal, const Parameters* parameters ){
+	if ( coal->need_update_intervals){
+		coal->update_intervals(coal);
+	}
 	
-	if(coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS
-	   || coal->prepared_gradient & GRADIENT_FLAG_TREE_HEIGHTS){
-		double* interval_gradient = dvector(coal->n);
+	Node** nodes = Tree_nodes(coal->tree);
+	double* chooses = dvector(coal->n);
+	for( int i = 0; i< coal->n; i++  ){
+		chooses [i] = CHOOSE2(coal->lineages[i]);
+	}
+	Parameter* thetaParameter = Parameters_at(coal->p, 0);
+	double theta = Parameter_value(thetaParameter);
+	double theta_inv = 1.0/theta;
+
+	// thetax is the unconstrained parameter if it exists otherwise it is the same as theta if it is in parameters
+	Parameter *thetax = Parameters_depends(parameters, thetaParameter);
+	Parameters* reparam = get_reparams(coal->tree);
+
+    if(thetax != NULL){
+        double theta2 = theta*theta;
+		double dlogP = 0;
+        for( int i = 0; i< coal->n; i++  ){
+            dlogP += chooses[i] * coal->times[i] /theta2;
+			if (coal->iscoalescent[i]) {
+				dlogP -= theta_inv;
+			}
+        }
+		thetaParameter->grad[0] += dlogP;
+		if(thetaParameter != thetax){
+			thetaParameter->transform->backward(thetaParameter->transform, &dlogP);
+		}
+    }
+
+	Parameters* treeModelParameters = new_Parameters(1);
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* parameter = Parameters_at(parameters, i);
+		// ratios and root_height transformed
+		if(parameter->model == MODEL_TREE_TRANSFORM){
+			for(size_t j = 0; j < Parameters_count(reparam); j++){
+				Parameter* xx = Parameters_depends(parameters, Parameters_at(reparam, j));
+				if(xx != NULL) {
+					Parameters_add(treeModelParameters, xx);
+				}
+			}
+		}
+		// heights
+		else if(parameter->model == MODEL_TREE){
+			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
+			if(xx != NULL){
+				Parameters_add(treeModelParameters, xx);
+			}
+		}
+	}
+
+	if(Parameters_count(treeModelParameters) > 0){
+		double* interval_gradient = dvector(coal->n);		
 		for(size_t i = 0; i < coal->n; i++){
 			interval_gradient[i] = -chooses[i]*theta_inv;
 		}
-		// derivatives wrt to reparameterization
-		if(get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
-			double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
-			height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
-			Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
-			free(height_gradient);
-		}
-		// derivatives wrt to node heights
-		else{
-			height_gradient_from_interval_gradient(coal, interval_gradient, coal->gradient+offset);
-		}
+		
+		double* heightGradient = dvector(Tree_tip_count(coal->tree)-1);
+		// gradient wrt to node heights from the interval gradient
+		height_gradient_from_interval_gradient(coal, interval_gradient, heightGradient);
+		
+		Tree_height_backward(coal->tree, treeModelParameters, heightGradient);
+		free(heightGradient);
 		free(interval_gradient);
 	}
 	free(chooses);
+	free_Parameters(treeModelParameters);
+	return 0;
 }
 
 double _constant_calculate_dlogP( Coalescent* coal, const Parameter* p ){
@@ -987,8 +975,7 @@ Coalescent * create_GridCoalescent(demography type, size_t size, size_t grid_cou
 	coal->grid = NULL;
 	coal->gridCount = 0;
 	coal->groups = NULL;
-    coal->gradient = NULL;
-	coal->parameterization = COALESCENT_THETA;
+    coal->grad = NULL;
 	
 	return coal;
 }
@@ -1001,8 +988,9 @@ Coalescent * new_ConstantCoalescent_with_parameter( Parameter* theta, int size )
 	Coalescent *coal = create_Coalescent(COALESCENT_CONSTANT, size);
 	coal->p = new_Parameters(1);
 	Parameters_add(coal->p, theta);
-	theta->model = MODEL_COALESCENT;
+	Parameter_set_model(theta, MODEL_COALESCENT);
 	coal->calculate = _constant_calculate;
+	coal->gradient = _constant_gradient;
 	coal->dlogP = _constant_calculate_dlogP;
 	coal->d2logP = _constant_calculate_d2logP;
 	coal->ddlogP = _constant_calculate_ddlogP;
@@ -1025,6 +1013,7 @@ Coalescent * new_ConstantCoalescent_with_data( Parameter* theta, double* times, 
 	memcpy(coal->iscoalescent, coalescent, sizeof(bool)*size);
 	coalescentToLineage(coal);
 	coal->need_update_intervals = false;
+	coal->gradient = _constant_gradient_data;
 	return coal;
 }
 
@@ -1198,9 +1187,11 @@ Coalescent * new_ExponentialCoalescent_with_parameters( Parameters* parameters, 
 	Parameters_add(coal->p, Parameters_at(parameters, 0));
 	Parameters_add(coal->p, Parameters_at(parameters, 1));
 	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
+		Parameter_set_model(Parameters_at(parameters, i), MODEL_COALESCENT);
 		Parameters_at(parameters, i)->id = i;
 	}
+	//TODO: implement gradient
+	coal->gradient = NULL;
 	coal->calculate = _coalescent_exponential_calculate;
 	coal->dlogP = _coalescent_exponential_dlogP;
 	coal->d2logP = _coalescent_exponential_d2logP;
@@ -1235,6 +1226,7 @@ double _coalescent_classical_skyline_calculate( Coalescent* coal ){
 		_update_intervals(coal);
 	}
 	if ( coal->need_update ) {
+		Parameter* theta = Parameters_at(coal->p, 0);
 		coal->logP = 0;
 		double popSize = -1;
 		int index = 0;
@@ -1242,7 +1234,7 @@ double _coalescent_classical_skyline_calculate( Coalescent* coal ){
 			// t==0 for consecutive samling events
 			if(coal->times[i] != 0.0){
 				popSize = CHOOSE2(coal->lineages[i])/coal->times[i];
-				Parameters_set_value(coal->p, index++, popSize);
+				Parameter_set_value_at(theta, popSize, index++);
 				coal->logP -= coal->times[i]*coal->times[i];
 			}
 			
@@ -1256,14 +1248,11 @@ double _coalescent_classical_skyline_calculate( Coalescent* coal ){
 	return coal->logP;
 }
 
-Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Parameters* parameters){
+Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Parameter* parameters){
 	Coalescent *coal = create_Coalescent(COALESCENT_SKYLINE_CLASSIC, Tree_node_count(tree));
-	coal->p = new_Parameters(Parameters_count(parameters));
-	Parameters_add_parameters(coal->p, parameters);
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
-		Parameters_at(parameters, i)->id = i;
-	}
+	coal->p = new_Parameters(1);
+	Parameters_add(coal->p, parameters);
+	Parameter_set_model(parameters, MODEL_COALESCENT);
 	coal->tree = tree;
 	coal->calculate = _coalescent_classical_skyline_calculate;
 	coal->dlogP = NULL;
@@ -1278,56 +1267,33 @@ Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Paramet
 #pragma mark -
 #pragma mark skyride
 
-double _coalescent_skyride_calculate_real_space( Coalescent* coal ){
+double _skyride_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
 		_update_intervals(coal);
 	}
 	if ( coal->need_update ) {
 		coal->logP = 0;
-		double popSize = INFINITY;
-		double logPopSize = 0;
-		int index = 0;
-		for( int i = 0; i< coal->n; i++  ){
+		size_t currentGridIndex = 0;
+		Parameter* thetaParameter = Parameters_at(coal->p, 0);
+		const double* theta = Parameter_values(thetaParameter);
+		size_t thetaCount = Parameter_size(thetaParameter);
+		double popSize = theta[0];
+		double logPopSize = log(popSize);
+
+		for( size_t i = 0; i< coal->n; i++  ){
 			// t==0 for consecutive samling events
 			if(coal->times[i] != 0.0){
-				popSize = Parameters_value(coal->p, index);
+				popSize = theta[currentGridIndex];
 				logPopSize = log(popSize);
 				coal->logP -= coal->times[i]*CHOOSE2(coal->lineages[i])/popSize;
 			}
 			
 			if( coal->iscoalescent[i] ){
 				coal->logP -= logPopSize;
-				index++;
+				currentGridIndex++;
 			}
 		}
 		
-		coal->need_update = false;
-	}
-	return coal->logP;
-}
-
-double _coalescent_skyride_calculate( Coalescent* coal ){
-	if ( coal->need_update_intervals ) {
-		_update_intervals(coal);
-	}
-	if ( coal->need_update ) {
-		coal->logP = 0;
-		double logPopSize;
-		double popSize;
-		int index = 0;
-		for( int i = 0; i< coal->n; i++  ){
-			// t==0 for consecutive samling events
-			if(coal->times[i] != 0.0){
-				logPopSize = Parameters_value(coal->p, index);
-				popSize = exp(logPopSize);
-				if( coal->iscoalescent[i] ){
-					coal->logP -= logPopSize;
-					index++;
-				}
-				coal->logP -= coal->times[i]*CHOOSE2(coal->lineages[i])/popSize;
-			}
-			
-		}
 		coal->need_update = false;
 	}
 	return coal->logP;
@@ -1372,58 +1338,95 @@ double _coalescent_skyride_calculate_deltas( Coalescent* coal ){
     return coal->logP;
 }
 
-void _skyride_calculate_gradient_real( Coalescent* coal ){
-	size_t offset = 0;
+double _skyride_gradient( Coalescent* coal, const Parameters* parameters ){
+	if ( coal->need_update_intervals){
+		coal->update_intervals(coal);
+	}
+
+	Node** nodes = Tree_nodes(coal->tree);
+
+	Parameter* thetaParameter = Parameters_at(coal->p, 0);
+	const double* theta = Parameter_values(thetaParameter);
+	size_t thetaSize = Parameter_size(thetaParameter);
 	double* chooses = dvector(coal->n);
-	double invPop = 1.0/Parameters_value(coal->p, 0);
+	double invPop = 1.0/theta[0];
 	size_t index = 0;
-	size_t i = 1;
-	for( ; i < coal->n - 1; i++){
+	for(size_t i = 1; i < coal->n - 1; i++){
 		chooses[i] = CHOOSE2(coal->lineages[i])*invPop;
 		if (coal->iscoalescent[i]) {
-			invPop = 1.0/Parameters_value(coal->p, ++index);
+			invPop = 1.0/theta[++index];
 		}
 	}
-	chooses [i] = CHOOSE2(coal->lineages[i])*invPop;
+	chooses [coal->n - 1] = CHOOSE2(coal->lineages[coal->n - 1])*invPop;
+	// printf(" %s %p\n", thetaParameter->name, thetaParameter);
+	// for(int i = 0; i < Parameters_count(parameters); i++){
+	// 	printf("%s %p\n", Parameters_at(parameters, i)->name, Parameters_at(parameters, i));
+	// }
+	Parameter *thetax = Parameters_depends(parameters, thetaParameter);
+	Parameters* reparam = get_reparams(coal->tree);
 
-	if(coal->prepared_gradient & GRADIENT_FLAG_COALESCENT_THETA){
-		memset(coal->gradient, 0, Parameters_count(coal->p)*sizeof(double));
+	if(thetax != NULL){
 		size_t i = 1;
 		index = 0;
-		double invPop = 1.0/Parameters_value(coal->p, 0);
+		double invPop = 1.0/theta[0];
+		double* gradTheta = dvector(thetaSize);
 		for( ; i < coal->n - 1; i++){
-			coal->gradient[index] += coal->times[i]*chooses[i]*invPop;
+			gradTheta[index] += coal->times[i]*chooses[i]*invPop;
 			if (coal->iscoalescent[i]) {
-				coal->gradient[index] -= invPop;
-				invPop = 1.0/Parameters_value(coal->p, ++index);
+				gradTheta[index] -= invPop;
+				invPop = 1.0/theta[++index];
 			}
 		}
-		coal->gradient[index] += invPop*(coal->times[i]*chooses[i] - 1.0);
-		offset += Parameters_count(coal->p);
+		gradTheta[index] += invPop*(coal->times[i]*chooses[i] - 1.0);
+
+		for(size_t i = 0; i < thetaSize; i++){
+			thetaParameter->grad[i] += gradTheta[i];
+			// printf("%f\n", thetaParameter->grad[i]);
+		}
+		if(thetaParameter != thetax){
+			thetaParameter->transform->backward(thetaParameter->transform, gradTheta);
+		}
+		free(gradTheta);
 	}
 
-	if(coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS
-	   || coal->prepared_gradient & GRADIENT_FLAG_TREE_HEIGHTS){
-		double* interval_gradient = dvector(coal->n);
+	Parameters* treeModelParameters = new_Parameters(1);
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* parameter = Parameters_at(parameters, i);
+		// ratios and root_height transformed
+		if(parameter->model == MODEL_TREE_TRANSFORM){
+			for(size_t j = 0; j < Parameters_count(reparam); j++){
+				Parameter* xx = Parameters_depends(parameters, Parameters_at(reparam, j));
+				if(xx != NULL) {
+					Parameters_add(treeModelParameters, xx);
+				}
+			}
+		}
+		// heights
+		else if(parameter->model == MODEL_TREE){
+			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
+			if(xx != NULL){
+				Parameters_add(treeModelParameters, xx);
+			}
+		}
+	}
+
+	if(Parameters_count(treeModelParameters) > 0){
+		double* intervalGradient = dvector(coal->n);
 		
 		for(size_t i = 1; i < coal->n; i++){
-			interval_gradient[i] = -chooses[i];
+			intervalGradient[i] = -chooses[i];
 		}
-		// derivatives wrt to reparameterization
-		if(get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
-			double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
-			height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
-			Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
-			free(height_gradient);
-		}
-		// derivatives wrt to node heights
-		else{
-			height_gradient_from_interval_gradient(coal, interval_gradient, coal->gradient+offset);
-		}
-		free(interval_gradient);
+		double* heightGradient = dvector(Tree_tip_count(coal->tree)-1);
+		// gradient wrt to node heights from the interval gradient
+		height_gradient_from_interval_gradient(coal, intervalGradient, heightGradient);
+		
+		Tree_height_backward(coal->tree, treeModelParameters, heightGradient);
+		free(heightGradient);
+		free(intervalGradient);
 		
 	}
 	free(chooses);
+	return 0;
 }
 
 void _skyride_calculate_gradient( Coalescent* coal ){
@@ -1441,16 +1444,16 @@ void _skyride_calculate_gradient( Coalescent* coal ){
 	chooses [i] = CHOOSE2(coal->lineages[i])*exp(-Parameters_value(coal->p, index));
 
     if(coal->prepared_gradient & GRADIENT_FLAG_COALESCENT_THETA){
-		memset(coal->gradient, 0, Parameters_count(coal->p)*sizeof(double));
+		memset(coal->grad, 0, Parameters_count(coal->p)*sizeof(double));
 		size_t i = 1;
 		index = 0;
         for( ; i < coal->n - 1; i++){
-			coal->gradient[index] += coal->times[i]*chooses[i];
+			coal->grad[index] += coal->times[i]*chooses[i];
 			if (coal->iscoalescent[i]) {
-				coal->gradient[index++] -= 1.0;
+				coal->grad[index++] -= 1.0;
 			}
         }
-		coal->gradient[index] += coal->times[i]*chooses[i] - 1.0;
+		coal->grad[index] += coal->times[i]*chooses[i] - 1.0;
 		offset += Parameters_count(coal->p);
     }
 	// -log(theta) - k/theta t
@@ -1465,12 +1468,12 @@ void _skyride_calculate_gradient( Coalescent* coal ){
 		if(get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
 			double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
 			height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
-			Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
+			Tree_node_transform_jvp(coal->tree, height_gradient, coal->grad+offset);
 			free(height_gradient);
 		}
 		// derivatives wrt to node heights
 		else{
-			height_gradient_from_interval_gradient(coal, interval_gradient, coal->gradient+offset);
+			height_gradient_from_interval_gradient(coal, interval_gradient, coal->grad+offset);
 		}
 		free(interval_gradient);
 		
@@ -1607,41 +1610,22 @@ if(p1 == p2) return _skyride_calculate_d2logP(coal, p1);
 	return 0;
 }
 
-Coalescent * create_SkyrideCoalescent_with_parameters(Parameters* parameters, int size, parameterization_t parameterization){
+Coalescent * create_SkyrideCoalescent_with_parameters(Parameter* parameters, int size){
 	Coalescent *coal = create_Coalescent(COALESCENT_SKYRIDE, size);
-	coal->p = new_Parameters(Parameters_count(parameters));
-	Parameters_add_parameters(coal->p, parameters);
-	
-	coal->parameterization = parameterization;
-	if(parameterization == COALESCENT_THETA_LOG){
-		coal->calculate = _coalescent_skyride_calculate;
-	}
-	else if(parameterization == COALESCENT_THETA){
-		coal->calculate = _coalescent_skyride_calculate_real_space;
-	}
-	else if(parameterization == COALESCENT_THETA_DELTA){
-		coal->calculate = _coalescent_skyride_calculate_deltas;
-	}
-	
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
-		Parameters_at(parameters, i)->id = i;
-	}
-	//TODO: size is never equal to param count
-    if (Parameters_count(parameters) != size) {
-//        coal->calculate = _coalescent_skyride_calculate_deltas;
-    }
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
-	}
+	coal->p = new_Parameters(1);
+	Parameters_add(coal->p, parameters);
+	Parameter_set_model(parameters, MODEL_COALESCENT);
+
+	coal->calculate = _skyride_calculate;
+	coal->gradient = _skyride_gradient;
 	coal->dlogP = _skyride_calculate_dlogP;
 	coal->d2logP = _skyride_calculate_d2logP;
 	coal->ddlogP = _coalescent_skyride_ddlogP;
 	return coal;
 }
 
-Coalescent * new_SkyrideCoalescent( Tree *tree, Parameters* parameters, parameterization_t parameterization){
-	Coalescent *coal =create_SkyrideCoalescent_with_parameters(parameters, Tree_node_count(tree), parameterization);
+Coalescent * new_SkyrideCoalescent( Tree *tree, Parameter* parameters){
+	Coalescent *coal =create_SkyrideCoalescent_with_parameters(parameters, Tree_node_count(tree));
 	coal->tree = tree;
 	coal->nodes = malloc(Tree_node_count(tree)*sizeof(double_int_pair_t*));
 	for (int i = 0; i < Tree_node_count(tree); i++) {
@@ -1650,8 +1634,8 @@ Coalescent * new_SkyrideCoalescent( Tree *tree, Parameters* parameters, paramete
 	return coal;
 }
 
-Coalescent * new_SkyrideCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, parameterization_t parameterization){
-	Coalescent *coal = create_SkyrideCoalescent_with_parameters(parameters, size, parameterization);
+Coalescent * new_SkyrideCoalescent_with_data(Parameter* parameters, double* times, bool* coalescent, int size){
+	Coalescent *coal = create_SkyrideCoalescent_with_parameters(parameters, size);
 	memcpy(coal->times, times, sizeof(double)*size);
 	memcpy(coal->iscoalescent, coalescent, sizeof(bool)*size);
 	coalescentToLineage(coal);
@@ -1662,7 +1646,7 @@ Coalescent * new_SkyrideCoalescent_with_data(Parameters* parameters, double* tim
 #pragma mark -
 #pragma mark skygrid
 
-double _coalescent_grid_calculate( Coalescent* coal ){
+double _skygrid_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
 		coal->update_intervals(coal);
 	}
@@ -1670,7 +1654,10 @@ double _coalescent_grid_calculate( Coalescent* coal ){
 	if ( coal->need_update ) {
 		coal->logP = 0;
 		size_t currentGridIndex = 0;
-		double popSize = Parameters_value(coal->p, 0);
+		Parameter* thetaParameter = Parameters_at(coal->p, 0);
+		const double* theta = Parameter_values(thetaParameter);
+		size_t thetaCount = Parameter_size(thetaParameter);
+		double popSize = theta[0];
 		double logPopSize = log(popSize);
 		double lchoose2;
 		
@@ -1681,39 +1668,9 @@ double _coalescent_grid_calculate( Coalescent* coal ){
 				if( coal->iscoalescent[i] && coal->nodes[i]->index >= 0 ){
 					coal->logP -= logPopSize;
 				}
-				else if (coal->nodes[i]->index < 0 && currentGridIndex < Parameters_count(coal->p) - 1) {
-					popSize = Parameters_value(coal->p, ++currentGridIndex);
+				else if (coal->nodes[i]->index < 0 && currentGridIndex < thetaCount - 1) {
+					popSize = theta[++currentGridIndex];
 					logPopSize = log(popSize);
-				}
-			}
-		}
-		coal->need_update = false;
-	}
-	return coal->logP;
-}
-
-double _coalescent_grid_calculate_log_space( Coalescent* coal ){
-	if ( coal->need_update_intervals ) {
-		coal->update_intervals(coal);
-	}
-	
-	if ( coal->need_update ) {
-		coal->logP = 0;
-		size_t currentGridIndex = 0;
-		double logPopSize = Parameters_value(coal->p, 0);
-		double popSize = exp(logPopSize);
-		double lchoose2;
-		
-		for(size_t i = 0; i < coal->n; i++){
-			if(coal->times[i] != 0.0){
-				lchoose2 = CHOOSE2(coal->lineages[i]);
-				coal->logP -= coal->times[i]*lchoose2/popSize;
-				if( coal->iscoalescent[i] && coal->nodes[i]->index >= 0 ){
-					coal->logP -= logPopSize;
-				}
-				else if (coal->nodes[i]->index < 0 &&currentGridIndex < Parameters_count(coal->p) - 1) {
-					logPopSize = Parameters_value(coal->p, ++currentGridIndex);
-					popSize = exp(logPopSize);
 				}
 			}
 		}
@@ -1777,108 +1734,92 @@ double _coalescent_grid_calculate_dlogP_space( Coalescent* coal, const Parameter
 	return dlogP;
 }
 
-void _skygrid_calculate_gradient( Coalescent* coal ){
-	size_t offset = 0;
-	double* chooses = dvector(coal->n);
-	double mexpPop = exp(-Parameters_value(coal->p, 0));
-	size_t index = 0;
-	for(size_t i = 0; i < coal->n; i++){
-		chooses [i] = CHOOSE2(coal->lineages[i])*mexpPop;
-		if ( coal->nodes[i]->index < 0 && index < Parameters_count(coal->p)-1) {
-			mexpPop = exp(-Parameters_value(coal->p, ++index));
-		}
+static double _skygrid_gradient( Coalescent* coal, const Parameters* parameters ){
+	if ( coal->need_update_intervals){
+		coal->update_intervals(coal);
 	}
 
-    if(coal->prepared_gradient & GRADIENT_FLAG_COALESCENT_THETA){
-		memset(coal->gradient, 0, Parameters_count(coal->p)*sizeof(double));
-		size_t index = 0;
-		for(size_t i = 0; i < coal->n; i++){
-			coal->gradient[index] += coal->times[i]*chooses[i];
-			if (coal->iscoalescent[i] && coal->nodes[i]->index >= 0) {
-				coal->gradient[index] -= 1.0;
-			}
-			else if (coal->nodes[i]->index < 0) {
-				index++;
-			}
-		}
-		offset += Parameters_count(coal->p);
-    }
-	
-	if(coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS
-	   || coal->prepared_gradient & GRADIENT_FLAG_TREE_HEIGHTS){
-		double* interval_gradient = dvector(coal->n);
-		for(size_t i = 1; i < coal->n; i++){
-			interval_gradient[i] = -chooses[i];
-		}
-
-		// derivatives wrt to reparameterization
-		if(get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
-			double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
-			height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
-			Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
-			free(height_gradient);
-		}
-		else{
-			height_gradient_from_interval_gradient(coal, interval_gradient, coal->gradient+offset);
-		}
-		free(interval_gradient);
-	}
-	free(chooses);
-}
-
-void _skygrid_calculate_gradient_real( Coalescent* coal ){
-	size_t offset = 0;
+	Node** nodes = Tree_nodes(coal->tree);
+	Parameter* thetaParameter = Parameters_at(coal->p, 0);
+	const double* theta = Parameter_values(thetaParameter);
+	size_t thetaSize = Parameter_size(thetaParameter);
 	double* chooses = dvector(coal->n);
-	double invPop = 1.0/Parameters_value(coal->p, 0);
+	double invPop = 1.0/theta[0];
 	size_t index = 0;
 	for(size_t i = 0; i < coal->n; i++){
 		chooses [i] = CHOOSE2(coal->lineages[i])*invPop;
-		if ( coal->nodes[i]->index < 0 && index < Parameters_count(coal->p)-1) {
-			invPop = 1.0/Parameters_value(coal->p, ++index);
+		if ( coal->nodes[i]->index < 0 && index < thetaSize - 1) {
+			invPop = 1.0/theta[++index];
 		}
 	}
 
-	if(coal->prepared_gradient & GRADIENT_FLAG_COALESCENT_THETA){
-		memset(coal->gradient, 0, Parameters_count(coal->p)*sizeof(double));
+	Parameter *thetax = Parameters_depends(parameters, thetaParameter);
+	Parameters* reparam = get_reparams(coal->tree);
+
+    if(thetax != NULL){
 		size_t index = 0;
 		size_t i = 0;
-		double invPop = 1.0/Parameters_value(coal->p, 0);
+		double invPop = 1.0/theta[0];
+		double* gradTheta = dvector(thetaSize);
 		for(; i < coal->n; i++){
-			coal->gradient[index] += coal->times[i]*chooses[i]*invPop;
+			gradTheta[index] += coal->times[i]*chooses[i]*invPop;
 			if (coal->iscoalescent[i] && coal->nodes[i]->index >= 0) {
-				coal->gradient[index] -= invPop;
+				gradTheta[index] -= invPop;
 			}
 			else if (coal->nodes[i]->index < 0) {
-				invPop = 1.0/Parameters_value(coal->p, ++index);
+				invPop = 1.0/theta[++index];
 			}
 		}
+		for(size_t i = 0; i < thetaSize; i++){
+			thetaParameter->grad[i] += gradTheta[i];
+		}
+		if(thetaParameter != thetax){
+			thetaParameter->transform->backward(thetaParameter->transform, gradTheta);
+		}
+		free(gradTheta);
 		// the last grid is empty (i.e. cutoff older than the root)
 //		if(chooses[i] != 0.0){
-//			coal->gradient[index] += invPop*(coal->times[i]*chooses[i] - 1.0);
+//			coal->grad[index] += invPop*(coal->times[i]*chooses[i] - 1.0);
 //		}
-		offset += Parameters_count(coal->p);
 	}
-	
-	if(coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS
-	   || coal->prepared_gradient & GRADIENT_FLAG_TREE_HEIGHTS){
+	Parameters* treeModelParameters = new_Parameters(1);
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* parameter = Parameters_at(parameters, i);
+		// ratios and root_height transformed
+		if(parameter->model == MODEL_TREE_TRANSFORM){
+			for(size_t j = 0; j < Parameters_count(reparam); j++){
+				Parameter* xx = Parameters_depends(parameters, Parameters_at(reparam, j));
+				if(xx != NULL) {
+					Parameters_add(treeModelParameters, xx);
+				}
+			}
+		}
+		// heights
+		else if(parameter->model == MODEL_TREE){
+			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
+			if(xx != NULL){
+				Parameters_add(treeModelParameters, xx);
+			}
+		}
+	}
+
+	if(Parameters_count(treeModelParameters) > 0){
 		double* interval_gradient = dvector(coal->n);
 		for(size_t i = 1; i < coal->n; i++){
 			interval_gradient[i] = -chooses[i];
 		}
-		// derivatives wrt to reparameterization
-		if(get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
-			double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
-			height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
-			Tree_node_transform_jvp(coal->tree, height_gradient, coal->gradient+offset);
-			free(height_gradient);
-		}
-		// derivatives wrt to node heights
-		else{
-			height_gradient_from_interval_gradient(coal, interval_gradient, coal->gradient+offset);
-		}
+
+		double* heightGradient = dvector(Tree_tip_count(coal->tree)-1);
+		// gradient wrt to node heights from the interval gradient
+		height_gradient_from_interval_gradient(coal, interval_gradient, heightGradient);
+		
+		Tree_height_backward(coal->tree, treeModelParameters, heightGradient);
+		free(heightGradient);
 		free(interval_gradient);
 	}
 	free(chooses);
+	free_Parameters(treeModelParameters);
+	return 0;
 }
 
 double _coalescent_grid_calculate_dlogP( Coalescent* coal, const Parameter* p ){
@@ -1937,24 +1878,17 @@ double _coalescent_grid_calculate_dlogP( Coalescent* coal, const Parameter* p ){
 	return dlogP;
 }
 
-Coalescent * create_GridCoalescent_with_parameters(Parameters* parameters, int size, int grid, double cutoff, parameterization_t parameterization){
+Coalescent * create_GridCoalescent_with_parameters(Parameter* parameters, int size, int grid, double cutoff){
 	Coalescent *coal = create_GridCoalescent(COALESCENT_SKYGRID, size, grid - 1);
 	assert(coal);
 	coal->grid = dvector(grid-1); // not 0 at grid[0]
 	coal->gridCount = grid-1; // number of lines-1
-	coal->p = new_Parameters(Parameters_count(parameters));
-	Parameters_add_parameters(coal->p, parameters);
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
-		Parameters_at(parameters, i)->id = i;
-	}
-	coal->parameterization = parameterization;
-	if(parameterization == COALESCENT_THETA_LOG){
-		coal->calculate = _coalescent_grid_calculate_log_space;
-	}
-	else if(parameterization == COALESCENT_THETA){
-		coal->calculate = _coalescent_grid_calculate;
-	}
+	coal->p = new_Parameters(1);
+	Parameters_add(coal->p, parameters);
+	Parameter_set_model(parameters, MODEL_COALESCENT);
+
+	coal->calculate = _skygrid_calculate;
+	coal->gradient = _skygrid_gradient;
 	coal->dlogP = _coalescent_grid_calculate_dlogP_space;
 	coal->d2logP = NULL;
 	coal->ddlogP = NULL;
@@ -1965,8 +1899,8 @@ Coalescent * create_GridCoalescent_with_parameters(Parameters* parameters, int s
 }
 
 
-Coalescent * new_GridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff, parameterization_t parameterization ){
-	Coalescent *coal = create_GridCoalescent_with_parameters(parameters, Tree_node_count(tree), grid, cutoff, parameterization);
+Coalescent * new_GridCoalescent( Tree *tree, Parameter* parameters, int grid, double cutoff){
+	Coalescent *coal = create_GridCoalescent_with_parameters(parameters, Tree_node_count(tree), grid, cutoff);
 	coal->tree = tree;
 	coal->nodes = malloc(coal->n*sizeof(double_int_pair_t*));
 	for (int i = 0; i < coal->n; i++) {
@@ -1975,8 +1909,8 @@ Coalescent * new_GridCoalescent( Tree *tree, Parameters* parameters, int grid, d
 	return coal;
 }
 
-Coalescent * new_GridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff, parameterization_t parameterization){
-	Coalescent *coal = create_GridCoalescent_with_parameters(parameters, size, grid, cutoff, parameterization);
+Coalescent * new_GridCoalescent_with_data(Parameter* parameters, double* times, bool* coalescent, int size, int grid, double cutoff){
+	Coalescent *coal = create_GridCoalescent_with_parameters(parameters, size, grid, cutoff);
 	memcpy(coal->times, times, sizeof(double)*size);
 	memcpy(coal->iscoalescent, coalescent, sizeof(bool)*size);
 	coalescentToLineage(coal);
@@ -1995,8 +1929,11 @@ double _coalescent_piecewise_linear_grid_calculate( Coalescent* coal ){
 	if ( coal->need_update ) {
 		coal->logP = 0;
 		size_t currentGridIndex = 0;
-		double popSizeGridStart = Parameters_value(coal->p, 0);
-		double popSizeGridEnd = Parameters_value(coal->p, 1);
+		Parameter* thetaParameter = Parameters_at(coal->p, 0);
+		const double* theta = Parameter_values(thetaParameter);
+		size_t thetaCount = Parameter_size(thetaParameter);
+		double popSizeGridStart = theta[0];
+		double popSizeGridEnd = theta[1];
 		double timeGridStart = 0;
 		double timeGridEnd = coal->grid[0];
 		double lchoose2;
@@ -2042,7 +1979,7 @@ double _coalescent_piecewise_linear_grid_calculate( Coalescent* coal ){
 						timeGridStart = timeGridEnd;
 						timeGridEnd = coal->grid[currentGridIndex];
 						popSizeGridStart = popSizeGridEnd;
-						popSizeGridEnd = Parameters_value(coal->p, currentGridIndex+1);
+						popSizeGridEnd = theta[currentGridIndex+1];
 					}
 				}
 			}
@@ -2052,52 +1989,101 @@ double _coalescent_piecewise_linear_grid_calculate( Coalescent* coal ){
 	return coal->logP;
 }
 
-void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal ){
+double _coalescent_piecewise_linear_grid_gradient( Coalescent* coal, const Parameters* parameters ){
 	if ( coal->need_update_intervals ) {
 		coal->update_intervals(coal);
 	}
 	double eps = 1.e-6;
-	size_t offset = 0;
+	// size_t offset = 0;
 	bool useFiniteDifferences = false;
-	bool compute_grad_theta = coal->prepared_gradient & GRADIENT_FLAG_COALESCENT_THETA;
-	bool compute_grad_time = coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS || coal->prepared_gradient & GRADIENT_FLAG_TREE_HEIGHTS;
+
+	Node** nodes = Tree_nodes(coal->tree);
+	Parameter* thetaParameter = Parameters_at(coal->p, 0);
+	const double* theta = Parameter_values(thetaParameter);
+	size_t thetaSize = Parameter_size(thetaParameter);
+	Parameter *thetax = Parameters_depends(parameters, thetaParameter);
+	Parameters* reparam = get_reparams(coal->tree);
+	bool compute_grad_theta = thetax != NULL;
 
 	if(compute_grad_theta){
-		memset(coal->gradient, 0, Parameters_count(coal->p)*sizeof(double));
+		// memset(coal->grad, 0, Parameters_count(coal->p)*sizeof(double));
 		if(useFiniteDifferences){
-			for(size_t i = 0; i < Parameters_count(coal->p); i++){
-				double value = Parameters_value(coal->p, i);
-				Parameters_set_value(coal->p, i, value+eps);
+			double* gradTheta = dvector(thetaSize);
+			for(size_t i = 0; i < Parameter_size(thetaParameter); i++){
+				double value = Parameter_value_at(thetaParameter, i);
+				Parameter_set_value_at(thetaParameter, value+eps, i);
 				double p = coal->calculate(coal);
-				Parameters_set_value(coal->p, i, value-eps);
+				Parameter_set_value_at(thetaParameter, value-eps, i);
 				double m = coal->calculate(coal);
-				coal->gradient[i] = (p-m)/(2.*eps);
-				Parameters_set_value(coal->p, i, value);
+				// coal->grad[i] = (p-m)/(2.*eps);
+				Parameter_set_value_at(thetaParameter, value, i);
 			}
+			for(size_t i = 0; i < thetaSize; i++){
+				thetaParameter->grad[i] += gradTheta[i];
+			}
+			if(thetaParameter != thetax){
+				thetaParameter->transform->backward(thetaParameter->transform, gradTheta);
+			}
+			free(gradTheta);
 			compute_grad_theta = false;
 		}
 
-		offset += Parameters_count(coal->p);
+		// offset += Parameters_count(coal->p);
 	}
 
+	Parameters* treeModelParameters = new_Parameters(1);
+	bool gradReparameterization = true;
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* parameter = Parameters_at(parameters, i);
+		// ratios and root_height transformed
+		if(parameter->model == MODEL_TREE_TRANSFORM){
+			for(size_t j = 0; j < Parameters_count(reparam); j++){
+				Parameter* xx = Parameters_depends(parameters, Parameters_at(reparam, j));
+				if(xx != NULL) {
+					Parameters_add(treeModelParameters, xx);
+				}
+			}
+		}
+		// heights
+		else if(parameter->model == MODEL_TREE){
+			gradReparameterization = false;
+			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
+			if(xx != NULL){
+				Parameters_add(treeModelParameters, xx);
+			}
+		}
+	}
+
+	bool compute_grad_time = Parameters_count(treeModelParameters) > 0;
+
 	if(compute_grad_time){
-		memset(coal->gradient+offset, 0.0, sizeof(double)*(Tree_tip_count(coal->tree)-1));
+		double* heightGradient = dvector(Tree_tip_count(coal->tree)-1);
+		// memset(coal->grad+offset, 0.0, sizeof(double)*(Tree_tip_count(coal->tree)-1));
 		// derivatives wrt to reparameterization
-		if(useFiniteDifferences && get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
+		if(useFiniteDifferences && gradReparameterization){
 			Parameters* reparams = get_reparams(coal->tree);
-			for(size_t i = 0; i < Parameters_count(reparams); i++){
-				double value = Parameters_value(reparams, i);
-				Parameters_set_value(reparams, i, value+eps);
-				double p = coal->calculate(coal);
-				Parameters_set_value(reparams, i, value-eps);
-				double m = coal->calculate(coal);
-				coal->gradient[i+offset] = (p-m)/(2.*eps);
-				Parameters_set_value(reparams, i, value);
+			size_t k = 0;
+			for(size_t i = 0; i < Parameters_count(treeModelParameters); i++){
+				Parameter* paramx = Parameters_at(treeModelParameters, i);
+				Parameter* param = Parameters_at(reparam, i);
+				const double* values = Parameter_values(paramx);
+				for(size_t j = 0; j < Parameter_size(paramx); j++){
+					double value = Parameter_value_at(paramx, i);
+					Parameter_set_value_at(paramx, values[j]+eps, j);
+					double p = coal->calculate(coal);
+					Parameter_set_value_at(paramx, values[j]-eps, j);
+					double m = coal->calculate(coal);
+					// coal->grad[i+offset] = (p-m)/(2.*eps);
+					heightGradient[k++] = (p-m)/(2.*eps);
+					Parameter_set_value_at(paramx, values[j], j);
+				}
+				if(paramx != param){
+					param->transform->backward(param->transform, heightGradient);
+				}
 			}
 			compute_grad_time = false;
 		}
 		else if(useFiniteDifferences){
-			Node** nodes = Tree_nodes(coal->tree);
 			for(size_t i = 0; i < Tree_node_count(coal->tree); i++){
 				if(!Node_isleaf(nodes[i])){
 					double value = Node_height(nodes[i]);
@@ -2105,26 +2091,34 @@ void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal ){
 					double p = coal->calculate(coal);
 					Node_set_height(nodes[i], value-eps);
 					double m = coal->calculate(coal);
-					coal->gradient[Node_class_id(nodes[i]) + offset] = (p-m)/(2.*eps);
+					// coal->grad[Node_class_id(nodes[i]) + offset] = (p-m)/(2.*eps);
+					heightGradient[nodes[i]->class_id] = (p-m)/(2.*eps);
 					Node_set_height(nodes[i], value);
 				}
 			}
+			Tree_height_backward(coal->tree, treeModelParameters, heightGradient);
 			compute_grad_time = false;
 		}
+		free(heightGradient);
 	}
 
 	if ( compute_grad_time || compute_grad_theta ) {
 		double* heightGradient = NULL;
+		double* thetaGradient = NULL;
 
 		if(compute_grad_time){
 			heightGradient = dvector(Tree_tip_count(coal->tree)-1);
 			memset(heightGradient, 0.0, sizeof(double)*(Tree_tip_count(coal->tree)-1));
 		}
+		if(compute_grad_theta){
+			thetaGradient = dvector(thetaSize);
+			memset(thetaGradient, 0.0, sizeof(double)*thetaSize);
+		}
 
 		coal->logP = 0;
 		size_t currentGridIndex = 0;
-		double popSizeGridStart = Parameters_value(coal->p, currentGridIndex);
-		double popSizeGridEnd = Parameters_value(coal->p, currentGridIndex + 1);
+		double popSizeGridStart = theta[currentGridIndex];
+		double popSizeGridEnd = theta[currentGridIndex + 1];
 		double timeGridStart = 0.0;
 		double timeGridEnd = coal->grid[0];
 		double lchoose2;
@@ -2148,7 +2142,7 @@ void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal ){
 						if( coal->iscoalescent[i]){
 							coal->logP -= logPopSize;
 							if(compute_grad_theta){
-								coal->gradient[currentGridIndex] -= 1.0/popSize;
+								thetaGradient[currentGridIndex] -= 1.0/popSize;
 							}
 						}
 					}
@@ -2166,8 +2160,8 @@ void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal ){
 
 							if(compute_grad_theta){
 								double c = (t - timeGridStart)/deltaGrid;
-								coal->gradient[currentGridIndex] -= (1.0 - c)/popSize;
-								coal->gradient[currentGridIndex + 1] -=  c/popSize;
+								thetaGradient[currentGridIndex] -= (1.0 - c)/popSize;
+								thetaGradient[currentGridIndex + 1] -=  c/popSize;
 							}
 						}
 					}
@@ -2221,8 +2215,8 @@ void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal ){
 							gradStart = (dPopSize_dStart/popSize - dpopSizeCurrent_dStart/popSizeCurrent)/(popSize - popSizeCurrent) - (dPopSize_dStart - dpopSizeCurrent_dStart)*(logPopSize - logPopSizeCurrent)/pow(popSize - popSizeCurrent, 2.0);
 							gradEnd = (dPopSize_dEnd/popSize - dpopSizeCurrent_dEnd/popSizeCurrent)/(popSize - popSizeCurrent) - (dPopSize_dEnd - dpopSizeCurrent_dEnd)*(logPopSize - logPopSizeCurrent)/pow(popSize - popSizeCurrent, 2.0);
 						}
-						coal->gradient[currentGridIndex] += -lchoose2*coal->times[i]*gradStart;
-						coal->gradient[currentGridIndex+1] += -lchoose2*coal->times[i]*gradEnd;
+						thetaGradient[currentGridIndex] += -lchoose2*coal->times[i]*gradStart;
+						thetaGradient[currentGridIndex+1] += -lchoose2*coal->times[i]*gradEnd;
 					}
 
 					if(compute_grad_time){
@@ -2249,7 +2243,7 @@ void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal ){
 					coal->logP -= lchoose2 * coal->times[i] / popSize;
 					
 					if(compute_grad_theta){
-						coal->gradient[currentGridIndex] += lchoose2 * coal->times[i] / (popSize*popSize);
+						thetaGradient[currentGridIndex] += lchoose2 * coal->times[i] / (popSize*popSize);
 					}
 
 					if(compute_grad_time){
@@ -2272,7 +2266,7 @@ void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal ){
 						timeGridStart = timeGridEnd;
 						timeGridEnd = coal->grid[currentGridIndex];
 						popSizeGridStart = popSizeGridEnd;
-						popSizeGridEnd = Parameters_value(coal->p, currentGridIndex + 1);
+						popSizeGridEnd = theta[currentGridIndex + 1];
 					}
 				}
 			}
@@ -2280,40 +2274,37 @@ void _coalescent_piecewise_linear_grid_gradient_time( Coalescent* coal ){
 		coal->need_update = false;
 
 		if(compute_grad_time){
-			if(get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
-				Tree_node_transform_jvp(coal->tree, heightGradient, coal->gradient+offset);
-			}
-			else{
-				memcpy(coal->gradient+offset, heightGradient, sizeof(double)*(Tree_tip_count(coal->tree)-1));
-			}
+			Tree_height_backward(coal->tree, treeModelParameters, heightGradient);
 			free(heightGradient);
+		}
+		if(compute_grad_theta){
+			for(size_t i = 0; i < thetaSize; i++){
+				thetaParameter->grad[i] += thetaGradient[i];
+			}
+			if(thetaParameter != thetax){
+				thetaParameter->transform->backward(thetaParameter->transform, thetaGradient);
+			}
+			free(thetaGradient);
 		}
 	}
 	else{
 		coal->logP = coal->calculate(coal);
 	}
+	return coal->logP;
 }
 
-Coalescent * create_PiecewiseLinearGridCoalescent_with_parameters(Parameters* parameters, int size, int grid, double cutoff, parameterization_t parameterization){
+Coalescent * create_PiecewiseLinearGridCoalescent_with_parameters(Parameter* parameters, int size, int grid, double cutoff){
 	Coalescent *coal = create_GridCoalescent(COALESCENT_PIECEWISE_LINEAR_GRID, size, grid - 1);
 	assert(coal);
 	coal->grid = dvector(grid-1); // not 0 at grid[0]
 	coal->gridCount = grid-1; // number of lines-1
-	assert(coal->gridCount+1 == Parameters_count(parameters));
-	coal->p = new_Parameters(Parameters_count(parameters));
-	Parameters_add_parameters(coal->p, parameters);
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
-		Parameters_at(parameters, i)->id = i;
-	}
-	coal->parameterization = parameterization;
-	if(parameterization == COALESCENT_THETA){
-		coal->calculate = _coalescent_piecewise_linear_grid_calculate;
-	}
-	else{
-		fprintf(stderr, "Piecewise linear ony supports theta in real space\n");
-		exit(1);
-	}
+	// assert(coal->gridCount+1 == Parameters_count(parameters));
+	coal->p = new_Parameters(1);
+	Parameters_add(coal->p, parameters);
+	Parameter_set_model(parameters, MODEL_COALESCENT);
+
+	coal->calculate = _coalescent_piecewise_linear_grid_calculate;
+	coal->gradient = _coalescent_piecewise_linear_grid_gradient;
 	coal->dlogP = NULL;
 	coal->d2logP = NULL;
 	coal->ddlogP = NULL;
@@ -2324,8 +2315,8 @@ Coalescent * create_PiecewiseLinearGridCoalescent_with_parameters(Parameters* pa
 }
 
 
-Coalescent * new_PiecewiseLinearGridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff, parameterization_t parameterization ){
-	Coalescent *coal = create_PiecewiseLinearGridCoalescent_with_parameters(parameters, Tree_node_count(tree), grid, cutoff, parameterization);
+Coalescent * new_PiecewiseLinearGridCoalescent( Tree *tree, Parameter *parameters, int grid, double cutoff){
+	Coalescent *coal = create_PiecewiseLinearGridCoalescent_with_parameters(parameters, Tree_node_count(tree), grid, cutoff);
 	coal->tree = tree;
 	coal->nodes = malloc(coal->n*sizeof(double_int_pair_t*));
 	for (int i = 0; i < coal->n; i++) {
@@ -2334,8 +2325,8 @@ Coalescent * new_PiecewiseLinearGridCoalescent( Tree *tree, Parameters* paramete
 	return coal;
 }
 
-Coalescent * new_PiecewiseLinearGridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff, parameterization_t parameterization){
-	Coalescent *coal = create_PiecewiseLinearGridCoalescent_with_parameters(parameters, size, grid, cutoff, parameterization);
+Coalescent * new_PiecewiseLinearGridCoalescent_with_data(Parameter* parameters, double* times, bool* coalescent, int size, int grid, double cutoff){
+	Coalescent *coal = create_PiecewiseLinearGridCoalescent_with_parameters(parameters, size, grid, cutoff);
 	memcpy(coal->times, times, sizeof(double)*size);
 	memcpy(coal->iscoalescent, coalescent, sizeof(bool)*size);
 	coalescentToLineage(coal);
@@ -2383,15 +2374,13 @@ double _coalescent_skyline_calculate( Coalescent* coal ){
 	return coal->logP;
 }
 
-Coalescent * new_SkylineCoalescent_with_parameters( Parameters* parameters, int size, DiscreteParameter* groups ){
+Coalescent * new_SkylineCoalescent_with_parameters( Parameter* parameters, int size, DiscreteParameter* groups ){
 	Coalescent *coal = create_Coalescent(COALESCENT_SKYLINE, size);
 	coal->groups = groups;
-	coal->p = new_Parameters(Parameters_count(parameters));
-	Parameters_add_parameters(coal->p, parameters);
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameters_at(parameters, i)->model = MODEL_COALESCENT;
-		Parameters_at(parameters, i)->id = i;
-	}
+	coal->p = new_Parameters(1);
+	Parameters_add(coal->p, parameters);
+	Parameter_set_model(parameters, MODEL_COALESCENT);
+
 	coal->calculate = _coalescent_skyline_calculate;
 	coal->dlogP = _coalescent_exponential_dlogP;
 	coal->d2logP = _coalescent_exponential_d2logP;
@@ -2399,7 +2388,7 @@ Coalescent * new_SkylineCoalescent_with_parameters( Parameters* parameters, int 
 	return coal;
 }
 
-Coalescent * new_SkylineCoalescent( Tree *tree, Parameters* parameters, DiscreteParameter* groups ){
+Coalescent * new_SkylineCoalescent( Tree *tree, Parameter* parameters, DiscreteParameter* groups ){
 	Coalescent *coal = new_SkylineCoalescent_with_parameters(parameters, Tree_node_count(tree), groups);
 	coal->tree = tree;
 	coal->nodes = malloc(Tree_node_count(tree)*sizeof(double_int_pair_t*));
@@ -2409,7 +2398,7 @@ Coalescent * new_SkylineCoalescent( Tree *tree, Parameters* parameters, Discrete
 	return coal;
 }
 
-Coalescent * new_SkylineCoalescent_with_data( Parameters* parameters, double* times, bool* coalescent, int size, DiscreteParameter* groups ){
+Coalescent * new_SkylineCoalescent_with_data( Parameter *parameters, double* times, bool* coalescent, int size, DiscreteParameter* groups ){
 	Coalescent *coal = new_SkylineCoalescent_with_parameters(parameters, size, groups);
 	memcpy(coal->times, times, sizeof(double)*size);
 	memcpy(coal->iscoalescent, coalescent, sizeof(bool)*size);

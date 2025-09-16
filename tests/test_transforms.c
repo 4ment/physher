@@ -36,7 +36,8 @@ char* test_exp() {
     Parameter* positive =
         new_Parameter2("positive", initValues, 3, new_Constraint(0.0, INFINITY));
     positive->transform = transform;
-    Parameters_add(transform->parameter->listeners->parameters, positive);
+    // Parameters_add(transform->parameter->listeners->parameters, positive);
+    transform->parameter->listeners->add_parameter(transform->parameter->listeners, positive);
     const double* values2 = Parameter_values(positive);
     for (size_t i = 0; i < Parameter_size(positive); i++) {
         mu_assert(fabs(values2[i] - exp(unConstrainedValues[i])) < 1.e-7,
@@ -97,7 +98,8 @@ char* test_sigmoid() {
     Parameter* constrained =
         new_Parameter2("constrained", unConstrainedValues, 2, new_Constraint(0.0, 1.0));
     constrained->transform = transform;
-    Parameters_add(transform->parameter->listeners->parameters, constrained);
+    // Parameters_add(transform->parameter->listeners->parameters, constrained);
+    transform->parameter->listeners->add_parameter(transform->parameter->listeners, constrained);
     const double* values2 = Parameter_values(constrained);
     for (size_t i = 0; i < Parameter_size(constrained); i++) {
         mu_assert(fabs(values2[i] - constrainedValues[i]) < 1.e-7,
@@ -160,7 +162,8 @@ char* test_simplex() {
     Parameter* simplex =
         new_Parameter2("simplex", initValues, 4, new_Constraint(0.0, 1.0));
     simplex->transform = transform;
-    Parameters_add(transform->parameter->listeners->parameters, simplex);
+    // Parameters_add(transform->parameter->listeners->parameters, simplex);
+    transform->parameter->listeners->add_parameter(transform->parameter->listeners, simplex);
     const double* values2 = Parameter_values(simplex);
     for (size_t i = 0; i < Parameter_size(simplex); i++) {
         mu_assert(fabs(values2[i] - values[i]) < 1.e-7,

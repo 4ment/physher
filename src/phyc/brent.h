@@ -25,4 +25,6 @@ opt_result serial_brent_optimize( Parameters *ps, opt_func f, void *data, OptSto
 
 opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriterion *stop, double *fmin );
 
+opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void *data, OptStopCriterion *stop, double *fminp );
+
 #endif

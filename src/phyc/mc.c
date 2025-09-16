@@ -13,13 +13,10 @@ double _naive_monte_carlo_calculate(MC* mc){
 	Model* prior = mc->prior;
 	Model* likelihood = mc->likelihood;
 	double sum = -DBL_MAX;
-	double* values = malloc(sizeof(double)*Parameters_count(mc->parameters));
 	for (size_t i = 0; i < samples; i++) {
-		prior->sample(prior, values, NULL);
-		Parameters_restore_value(mc->parameters, values);
+		prior->sample(prior);
 		sum = logaddexp(sum, likelihood->logP(likelihood));
 	}
-	free(values);
 	double logP = sum - log(samples);
 	printf("Monte Carlo: %f\n", logP);
 	return logP;

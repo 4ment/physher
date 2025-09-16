@@ -88,7 +88,7 @@ void TimeTreeModelInterface::SetParameters(const double *parameters) {
             Node_set_height_quietly(nodes[i], parameters[nodes[i]->class_id]);
         }
     }
-    model_->listeners->fire(model_->listeners, model_, -1);
+    model_->listeners->fire(model_->listeners, model_, nullptr, -1);
 }
 
 void TimeTreeModelInterface::GetParameters(double *parameters) {
@@ -117,7 +117,7 @@ ReparameterizedTimeTreeModelInterface::ReparameterizedTimeTreeModelInterface(
 void ReparameterizedTimeTreeModelInterface::SetParameters(const double *parameters) {
     TreeTransform *tt = reinterpret_cast<TreeTransform *>(transformModel_->obj);
     Parameters_set_values_quietly(tt->parameters, parameters);
-    transformModel_->listeners->fire(transformModel_->listeners, transformModel_, -1);
+    transformModel_->listeners->fire(transformModel_->listeners, transformModel_, nullptr, -1);
 }
 
 void ReparameterizedTimeTreeModelInterface::GetParameters(double *parameters) {
@@ -174,7 +174,6 @@ void BranchModelInterface::SetRates(const double *rates) {
 StrictClockModelInterface::StrictClockModelInterface(double rate,
                                                      TreeModelInterface *treeModel) {
     Parameter *p = new_Parameter("clock.rate", rate, new_Constraint(0, INFINITY));
-    p->model = MODEL_BRANCHMODEL;
     branchModel_ = new_StrictClock_with_parameter(treeModel->GetTree(), p);
     free_Parameter(p);
     model_ = new_BranchModel2("", branchModel_, treeModel->GetModel(), nullptr);
@@ -188,62 +187,47 @@ void StrictClockModelInterface::SetRate(double rate) {
 SimpleClockModelInterface::SimpleClockModelInterface(const std::vector<double> &rates,
                                                      TreeModelInterface *treeModel) {
     size_t nodeCount = treeModel->GetNodeCount();
-    Parameters *ps = new_Parameters(nodeCount - 1);
     DiscreteParameter *map = new_DiscreteParameter(nodeCount);
-    StringBuffer *buffer = new_StringBuffer(10);
+    Parameter* rates_parameter = new_Parameter2("clock_rates", rates.data(), rates.size(), new_Constraint(0, INFINITY));
     Tree *tree = treeModel->GetTree();
-    for (int i = 0; i < nodeCount; i++) {
+    for (size_t i = 0; i < nodeCount; i++) {
         Node *node = Tree_node(tree, i);
         if (!Node_isroot(node)) {
             size_t index = Node_isleaf(node)
                                ? node->class_id
                                : node->class_id + treeModel->GetTipCount();
             map->values[Node_id(node)] = index;
-            StringBuffer_set_string(buffer, "clock_rates");
-            StringBuffer_append_format(buffer, ".%d", index);
-            Parameter *p =
-                new_Parameter(buffer->c, rates[index], new_Constraint(0, INFINITY));
-            p->id = Node_id(node);
-            p->model = MODEL_BRANCHMODEL;
-            Parameters_move(ps, p);
         }
     }
     parameterCount_ = nodeCount - 1;
-    free_StringBuffer(buffer);
-    branchModel_ = new_DiscreteClock_with_parameters(treeModel->GetTree(), ps, map);
-    free_Parameters(ps);
+    branchModel_ = new_DiscreteClock_with_parameters(treeModel->GetTree(), rates_parameter, map);
     model_ =
         new_BranchModel2("simple_clock", branchModel_, treeModel->GetModel(), nullptr);
 }
 
 JC69Interface::JC69Interface() {
-    Simplex *frequencies_simplex = new_Simplex("jc69_frequency_simplex", 4);
-    Model *frequencies_model =
-        new_SimplexModel("jc69_frequencies", frequencies_simplex);
+    double values[4] = {0.25, 0.25, 0.25, 0.25};
+    Parameter* frequencies = new_Parameter2("jc69_frequencies", values, 4, new_Constraint(0, 1));
     dataType_ = new NucleotideDataTypeInterface();
-    substModel_ = new_JC69(frequencies_simplex);
+    substModel_ = new_JC69(frequencies);
     free_DataType(substModel_->datatype);
     substModel_->datatype = dataType_->dataType_;
     substModel_->datatype->ref_count++;
-    model_ = new_SubstitutionModel2("jc69", substModel_, frequencies_model, nullptr);
-    frequencies_model->free(frequencies_model);
+    model_ = new_SubstitutionModel2("jc69", substModel_);
     parameterCount_ = 0;
 }
 
 HKYInterface::HKYInterface(double kappa, const std::vector<double> &frequencies) {
     Parameter *kappa_parameter =
         new_Parameter("hky_kappa", kappa, new_Constraint(0, INFINITY));
-    Simplex *frequencies_simplex = new_Simplex_with_values(
-        "hky_frequency_simplex", frequencies.data(), frequencies.size());
-    Model *frequencies_model = new_SimplexModel("hky_frequencies", frequencies_simplex);
+    Parameter* frequencies_parameter = new_Parameter2("hky_frequencies", frequencies.data(), 4, new_Constraint(0, 1));
     dataType_ = new NucleotideDataTypeInterface();
-    substModel_ = new_HKY_with_parameters(frequencies_simplex, kappa_parameter);
+    substModel_ = new_HKY_with_parameters(frequencies_parameter, kappa_parameter);
     free_DataType(substModel_->datatype);
     substModel_->datatype = dataType_->dataType_;
     substModel_->datatype->ref_count++;
-    model_ = new_SubstitutionModel2("hky", substModel_, frequencies_model, nullptr);
+    model_ = new_SubstitutionModel2("hky", substModel_);
     free_Parameter(kappa_parameter);
-    frequencies_model->free(frequencies_model);
     parameterCount_ = 5;
 }
 
@@ -252,23 +236,21 @@ void HKYInterface::SetKappa(double kappa) {
 }
 
 void HKYInterface::SetFrequencies(const double *frequencies) {
-    substModel_->simplex->set_values(substModel_->simplex, frequencies);
+    Parameter_set_values(substModel_->simplex, frequencies);
 }
 
 void HKYInterface::SetParameters(const double *parameters) {
-    SetKappa(parameters[1]);
-    substModel_->simplex->set_values(substModel_->simplex, parameters + 1);
+    SetKappa(parameters[0]);
+    Parameter_set_values(substModel_->simplex, parameters + 1);
 }
 
 GTRInterface::GTRInterface(const std::vector<double> &rates,
                            const std::vector<double> &frequencies) {
     Parameters *rates_parameters = nullptr;
-    Model *rates_model = nullptr;
+    Parameter *rates_simplex = nullptr;
     // simplex
     if (rates.size() == 6) {
-        Simplex *rates_simplex =
-            new_Simplex_with_values("gtr_rate_simplex", rates.data(), rates.size());
-        rates_model = new_SimplexModel("gtr_rates", rates_simplex);
+        rates_simplex = new_Parameter2("gtr_rate", rates.data(), 6, new_Constraint(0, 1));
         parameterCount_ = 10;
     } else {
         rates_parameters = new_Parameters(5);
@@ -279,43 +261,36 @@ GTRInterface::GTRInterface(const std::vector<double> &rates,
         }
         parameterCount_ = 9;
     }
-    Simplex *frequencies_simplex = new_Simplex_with_values(
-        "gtr_frequency_simplex", frequencies.data(), frequencies.size());
-    Model *frequencies_model = new_SimplexModel("gtr_frequencies", frequencies_simplex);
+    Parameter* frequencies_parameter = new_Parameter2("gtr_frequencies", frequencies.data(), 4, new_Constraint(0, 1));
 
     dataType_ = new NucleotideDataTypeInterface();
     const char *assigments[5] = {"AC", "AG", "AT", "CG", "CT"};
-    Simplex *rates_simplex = rates_model == nullptr
-                                 ? nullptr
-                                 : reinterpret_cast<Simplex *>(rates_model->obj);
+
     substModel_ =
         SubstitutionModel_factory("gtr", dataType_->dataType_,
-                                  reinterpret_cast<Simplex *>(frequencies_model->obj),
+                                  frequencies_parameter,
                                   rates_simplex, rates_parameters, assigments);
     free_DataType(substModel_->datatype);
     substModel_->datatype = dataType_->dataType_;
     substModel_->datatype->ref_count++;
-    model_ = new_SubstitutionModel2("gtr", substModel_, frequencies_model, rates_model);
+    model_ = new_SubstitutionModel2("gtr", substModel_);
     free_Parameters(rates_parameters);
-    frequencies_model->free(frequencies_model);
-    if (rates_model != nullptr) {
-        rates_model->free(rates_model);
-    }
 }
 
 void GTRInterface::SetRates(const double *rates) {
     if (substModel_->rates == nullptr) {
-        substModel_->rates_simplex->set_values(substModel_->rates_simplex, rates);
+        Parameter_set_values(substModel_->rates_simplex, rates);
     } else {
         Parameters_set_values(substModel_->rates, rates);
     }
 }
 void GTRInterface::SetFrequencies(const double *frequencies) {
-    substModel_->simplex->set_values(substModel_->simplex, frequencies);
+    Parameter_set_values(substModel_->simplex, frequencies);
 }
 void GTRInterface::SetParameters(const double *parameters) {
-    Parameters_set_values(substModel_->rates, parameters);
-    substModel_->simplex->set_values(substModel_->simplex, parameters + 3);
+    SetRates(parameters);
+    size_t offset = (substModel_->rates == nullptr ? 6 : 5);
+    SetFrequencies(parameters + offset);
 }
 
 GeneralSubstitutionModelInterface::GeneralSubstitutionModelInterface(
@@ -329,10 +304,7 @@ GeneralSubstitutionModelInterface::GeneralSubstitutionModelInterface(
     }
 
     parameterCount_ = rates.size();
-    Simplex *frequencies_simplex = new_Simplex_with_values(
-        "subst_frequency_simplex", frequencies.data(), frequencies.size());
-    Model *frequencies_model =
-        new_SimplexModel("subst_frequencies", frequencies_simplex);
+    Parameter* frequencies_parameter = new_Parameter2("general_frequencies", frequencies.data(), frequencies.size(), new_Constraint(0, 1));
 
     DiscreteParameter *dp =
         new_DiscreteParameter_with_values(structure.data(), structure.size());
@@ -340,30 +312,24 @@ GeneralSubstitutionModelInterface::GeneralSubstitutionModelInterface(
 
     substModel_ = new_GeneralModel_with_parameters(
         dataType->dataType_, reinterpret_cast<DiscreteParameter *>(mdp->obj),
-        rate_parameters, frequencies_simplex, -1, normalize);
-    model_ = new_SubstitutionModel3("substmodel", substModel_, frequencies_model,
-                                    nullptr, mdp);
+        rate_parameters, frequencies_parameter, -1, normalize);
+    model_ = new_SubstitutionModel3("substmodel", substModel_, mdp);
 
     free_Parameters(rate_parameters);
-    frequencies_model->free(frequencies_model);
     dataType_ = dataType;
 }
 
 void GeneralSubstitutionModelInterface::SetRates(const double *rates) {
-    if (substModel_->rates == nullptr) {
-        substModel_->rates_simplex->set_values(substModel_->rates_simplex, rates);
-    } else {
         Parameters_set_values(substModel_->rates, rates);
-    }
 }
 
 void GeneralSubstitutionModelInterface::SetFrequencies(const double *frequencies) {
-    substModel_->simplex->set_values(substModel_->simplex, frequencies);
+    Parameter_set_values(substModel_->simplex, frequencies);
 }
 
 void GeneralSubstitutionModelInterface::SetParameters(const double *parameters) {
     Parameters_set_values(substModel_->rates, parameters);
-    substModel_->simplex->set_values(substModel_->simplex, parameters + 3);
+    Parameter_set_values(substModel_->simplex, parameters + Parameters_count(substModel_->rates));
 }
 
 void SiteModelInterface::SetMu(double mu) { Parameter_set_value(siteModel_->mu, mu); }
@@ -376,7 +342,7 @@ ConstantSiteModelInterface::ConstantSiteModelInterface(std::optional<double> mu)
         SiteModel_set_mu(siteModel_, mu_param);
         free_Parameter(mu_param);
     }
-    model_ = new_SiteModel2("sitemodel", siteModel_, nullptr);
+    model_ = new_SiteModel2("sitemodel", siteModel_);
     parameterCount_ = (mu.has_value() ? 1 : 0);
 }
 
@@ -400,13 +366,10 @@ void ConstantSiteModelInterface::GetProportions(double *proportions) {
 
 InvariantSiteModelInterface::InvariantSiteModelInterface(double proportionInvariant,
                                                          std::optional<double> mu) {
-    Simplex *propInvSimplex = new_Simplex("pinv", 2);
-    Model *propInvModel = new_SimplexModel("pinv.model", propInvSimplex);
-    Parameters_at(propInvSimplex->parameters, 0)->model = MODEL_SITEMODEL;
-    Parameters_set_value(propInvSimplex->parameters, 0, proportionInvariant);
+    Parameter* prop_parameter = new_Parameter("general_frequencies", proportionInvariant, new_Constraint(0, 1));
 
     siteModel_ =
-        new_SiteModel_with_parameters(nullptr, propInvSimplex, 1, DISTRIBUTION_DISCRETE,
+        new_SiteModel_with_parameters(nullptr, prop_parameter, 1, DISTRIBUTION_DISCRETE,
                                       true, QUADRATURE_QUANTILE_MEDIAN);
     if (mu.has_value()) {
         Parameter *mu_param = new_Parameter("mu", *mu, new_Constraint(0, INFINITY));
@@ -414,18 +377,18 @@ InvariantSiteModelInterface::InvariantSiteModelInterface(double proportionInvari
         free_Parameter(mu_param);
     }
 
-    model_ = new_SiteModel2("sitemodel", siteModel_, propInvModel);
+    model_ = new_SiteModel2("sitemodel", siteModel_);
     parameterCount_ = 1 + siteModel_->mu != nullptr;
 }
 
 void InvariantSiteModelInterface::SetProportionInvariant(double value) {
-    Parameters_set_value(siteModel_->proportions->parameters, 0, value);
+    Parameter_set_value(siteModel_->proportions, value);
 }
 
 void InvariantSiteModelInterface::SetParameters(const double *parameters) {
     size_t shift = 0;
     if (siteModel_->proportions != nullptr) {
-        Parameters_set_value(siteModel_->proportions->parameters, 0, parameters[shift]);
+        Parameter_set_value(siteModel_->proportions, *parameters);
         shift++;
     }
 
@@ -437,7 +400,7 @@ void InvariantSiteModelInterface::SetParameters(const double *parameters) {
 void InvariantSiteModelInterface::GetParameters(double *parameters) {
     size_t shift = 0;
     if (siteModel_->proportions != nullptr) {
-        parameters[shift] = Parameters_value(siteModel_->proportions->parameters, 0);
+        parameters[0] = Parameter_value(siteModel_->proportions);
         shift++;
     }
     if (siteModel_->mu != nullptr) {
@@ -464,13 +427,10 @@ DiscretizedSiteModelInterface::DiscretizedSiteModelInterface(
     Parameters *params = new_Parameters(1);
     Parameters_move(params, shape_parameter);
 
-    Simplex *propInvSimplex = nullptr;
-    Model *propInvModel = nullptr;
+    Parameter *propInvSimplex = nullptr;
     if (proportionInvariant.has_value()) {
-        propInvSimplex = new_Simplex("pinv", 2);
-        propInvModel = new_SimplexModel("pinv.model", propInvSimplex);
-        Parameters_at(propInvSimplex->parameters, 0)->model = MODEL_SITEMODEL;
-        Parameters_set_value(propInvSimplex->parameters, 0, *proportionInvariant);
+        double values[2] = {proportionInvariant.value(), 1.0 - proportionInvariant.value()};
+        propInvSimplex = new_Parameter2("proportionInvariant", values, 2, new_Constraint(0, 1));
     }
 
     siteModel_ = new_SiteModel_with_parameters(
@@ -483,12 +443,11 @@ DiscretizedSiteModelInterface::DiscretizedSiteModelInterface(
     }
     siteModel_->epsilon = 1.e-6;
 
-    model_ = new_SiteModel2("sitemodel", siteModel_, propInvModel);
+    model_ = new_SiteModel2("sitemodel", siteModel_);
     free_Parameters(params);
     parameterCount_ = Parameters_count(siteModel_->rates) + siteModel_->mu != nullptr;
-    if (propInvModel != nullptr) {
-        propInvModel->free(propInvModel);
-        parameterCount_ += propInvSimplex->K - 1;
+    if (propInvSimplex != nullptr) {
+        parameterCount_++;
     }
     categoryCount_ = siteModel_->cat_count;
 }
@@ -498,7 +457,8 @@ void DiscretizedSiteModelInterface::SetParameter(double parameter) {
 }
 
 void DiscretizedSiteModelInterface::SetProportionInvariant(double value) {
-    Parameters_set_value(siteModel_->proportions->parameters, 0, value);
+    double values[2] = {value, 1.0 - value};
+    Parameter_set_values(siteModel_->proportions, values);
 }
 
 void DiscretizedSiteModelInterface::SetParameters(const double *parameters) {
@@ -508,7 +468,8 @@ void DiscretizedSiteModelInterface::SetParameters(const double *parameters) {
         shift++;
     }
     if (siteModel_->proportions != nullptr) {
-        Parameters_set_value(siteModel_->proportions->parameters, 0, parameters[shift]);
+        double values[2] = {parameters[shift], 1.0 - parameters[shift]};
+        Parameter_set_values(siteModel_->proportions, values);
         shift++;
     }
 
@@ -525,7 +486,7 @@ void DiscretizedSiteModelInterface::GetParameters(double *parameters) {
         shift++;
     }
     if (siteModel_->proportions != nullptr) {
-        parameters[shift] = Parameters_value(siteModel_->proportions->parameters, 0);
+        parameters[shift] = Parameter_value(siteModel_->proportions);
         shift++;
     }
     if (siteModel_->mu != nullptr) {
@@ -588,7 +549,6 @@ TreeLikelihoodInterface::TreeLikelihoodInterface(
                                      siteModel_->GetModel(), mbm);
 
     tlk->include_jacobian = include_jacobian;
-    RequestGradient();
 }
 
 TreeLikelihoodInterface::TreeLikelihoodInterface(
@@ -625,43 +585,49 @@ TreeLikelihoodInterface::TreeLikelihoodInterface(
                                      siteModel_->GetModel(), mbm);
 
     tlk->include_jacobian = include_jacobian;
-    RequestGradient();
 }
 
-void TreeLikelihoodInterface::RequestGradient(
-    std::vector<TreeLikelihoodGradientFlags> flags) {
-    int flags_int = 0;
-    for (auto flag : flags) {
-        flags_int |=
-            static_cast<std::underlying_type<TreeLikelihoodGradientFlags>::type>(flag);
-    }
-    gradientLength_ = TreeLikelihood_initialize_gradient(model_, flags_int);
-    if (branchModel_ == nullptr) {
-        gradientLength_ -= 2;
-    }
-}
-
-void TreeLikelihoodInterface::Gradient(double *gradient) {
-    double *gradient_physher = TreeLikelihood_gradient(model_);
-    size_t i = 0;
-    size_t j = 0;
-    size_t gradientLength = gradientLength_;
-    if (branchModel_ == nullptr) {
-        gradientLength += 2;
-        for (; i < treeModel_->GetNodeCount() - 2; i++) {
-            gradient[treeModel_->nodeMap_[i]] = gradient_physher[i];
+void TreeLikelihoodInterface::Gradient(double *gradient, std::vector<GradientFlags> flags) {
+    int treelikelihoodFlags = 0;
+    for(auto flag : flags) {
+        switch(flag){
+            case GradientFlags::BRANCH_MODEL_RATE:
+                treelikelihoodFlags |= TREELIKELIHOOD_FLAG_BRANCH_MODEL;
+                break;
+            case GradientFlags::SITE_MODEL_MU:
+            case GradientFlags::SITE_MODEL_PARAMETER:
+            case GradientFlags::SITE_MODEL_PINV:
+                treelikelihoodFlags |= TREELIKELIHOOD_FLAG_SITE_MODEL;
+                break;
+            case GradientFlags::SUBSTITUTION_MODEL_FREQUENCIES:
+                treelikelihoodFlags |= TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_FREQUENCIES;
+                break;
+            case GradientFlags::SUBSTITUTION_MODEL_RATES:
+                treelikelihoodFlags |= TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_RATES;
+                break;
+            case GradientFlags::TREE_MODEL_BRANCH_LENGTHS:
+            case GradientFlags::TREE_MODEL_HEIGHT:
+            case GradientFlags::TREE_MODEL_RATIO:
+                treelikelihoodFlags |= TREELIKELIHOOD_FLAG_TREE_MODEL;
+                break;
+            default:
+                std::cerr << "TreeLikelihoodInterface: unknown gradient flag " << static_cast<std::underlying_type<GradientFlags>::type>(flag) << std::endl;
         }
-        i += 2;
-        j = treeModel_->GetNodeCount() - 2;
     }
-    for (; i < gradientLength; i++, j++) {
-        gradient[j] = gradient_physher[i];
-    }
+    TreeLikelihood_gradient(model_, treelikelihoodFlags, gradient);
 }
 
 void TreeLikelihoodInterface::EnableSSE(bool flag) {
     SingleTreeLikelihood *tlk = reinterpret_cast<SingleTreeLikelihood *>(model_->obj);
     SingleTreeLikelihood_enable_SSE(tlk, flag);
+}
+
+int CallableModelInterface::ConvertFlags(std::vector<GradientFlags> flags){
+    int flagInts = 0;
+    for (auto flag : flags) {
+        flagInts |= static_cast<std::underlying_type<GradientFlags>::type>(flag);
+    }
+    return flagInts;
 }
 
 CTMCScaleModelInterface::CTMCScaleModelInterface(const std::vector<double> rates,
@@ -675,22 +641,12 @@ CTMCScaleModelInterface::CTMCScaleModelInterface(const std::vector<double> rates
     ctmcScale_ = new_CTMCScale_with_parameters(
         rates_param, reinterpret_cast<Tree *>(treeModel_->GetManagedObject()));
     model_ = new_CTMCScaleModel("ctmcscale", ctmcScale_, treeModel_->GetModel());
-    RequestGradient();
     parameterCount_ = 0;
 }
 
-void CTMCScaleModelInterface::RequestGradient(std::vector<GradientFlags> flags) {
-    int flags_int = 0;
-    for (auto flag : flags) {
-        flags_int |= static_cast<std::underlying_type<GradientFlags>::type>(flag);
-    }
-    gradientLength_ = DistributionModel_initialize_gradient(model_, flags_int);
-}
-
-void CTMCScaleModelInterface::Gradient(double *gradient) {
-    Tree_update_heights(reinterpret_cast<Tree *>(treeModel_->GetManagedObject()));
-    double *gradient_physher = DistributionModel_gradient(model_);
-    memcpy(gradient, gradient_physher, sizeof(double) * gradientLength_);
+void CTMCScaleModelInterface::Gradient(double *gradient, std::vector<GradientFlags> flags) {
+    int flagInts = this->ConvertFlags(flags);
+    CTMCModel_gradient(model_, flagInts, gradient);
 }
 
 void CTMCScaleModelInterface::SetParameters(const double *parameters) {
@@ -701,17 +657,9 @@ void CTMCScaleModelInterface::GetParameters(double *parameters) {
     Parameters_store_value(ctmcScale_->x, parameters);
 }
 
-void CoalescentModelInterface::RequestGradient(std::vector<GradientFlags> flags) {
-    int flags_int = 0;
-    for (auto flag : flags) {
-        flags_int |= static_cast<std::underlying_type<GradientFlags>::type>(flag);
-    }
-    gradientLength_ = Coalescent_initialize_gradient(model_, flags_int);
-}
-
-void CoalescentModelInterface::Gradient(double *gradient) {
-    double *gradient_physher = Coalescent_gradient(model_);
-    memcpy(gradient, gradient_physher, sizeof(double) * gradientLength_);
+void CoalescentModelInterface::Gradient(double *gradient, std::vector<GradientFlags> flags) {
+   int flagInts = this->ConvertFlags(flags);
+    Coalescent_gradient(model_, flagInts, gradient);
 }
 
 void CoalescentModelInterface::SetParameters(const double *parameters) {
@@ -731,60 +679,47 @@ ConstantCoalescentModelInterface::ConstantCoalescentModelInterface(
     free_Parameter(theta_param);
     model_ =
         new_CoalescentModel2("constant", coalescent_, treeModel->GetModel(), nullptr);
-    RequestGradient();
     parameterCount_ = 1;
 }
 
 PiecewiseConstantCoalescentInterface::PiecewiseConstantCoalescentInterface(
     const std::vector<double> &thetas, TimeTreeModelInterface *treeModel)
     : CoalescentModelInterface(treeModel) {
-    Parameters *thetas_param = new_Parameters(thetas.size());
-    for (const auto &theta : thetas) {
-        Parameters_move(thetas_param, new_Parameter("slyride.theta", theta,
-                                                    new_Constraint(0, INFINITY)));
-    }
+    Parameter *thetas_param = new_Parameter2("skyride.theta", thetas.data(), thetas.size(),
+                                                    new_Constraint(0, INFINITY));
     coalescent_ =
         new_SkyrideCoalescent(reinterpret_cast<Tree *>(treeModel->GetManagedObject()),
-                              thetas_param, COALESCENT_THETA);
-    free_Parameters(thetas_param);
+                              thetas_param);
+    // free_Parameters(thetas_param);
     model_ =
         new_CoalescentModel2("slyride", coalescent_, treeModel->GetModel(), nullptr);
-    RequestGradient();
     parameterCount_ = thetas.size();
 }
 
 PiecewiseConstantCoalescentGridInterface::PiecewiseConstantCoalescentGridInterface(
     const std::vector<double> &thetas, TimeTreeModelInterface *treeModel, double cutoff)
     : CoalescentModelInterface(treeModel) {
-    Parameters *thetas_param = new_Parameters(thetas.size());
-    for (const auto &theta : thetas) {
-        Parameters_move(thetas_param, new_Parameter("skygrid.theta", theta,
-                                                    new_Constraint(0, INFINITY)));
-    }
+        Parameter *thetas_param = new_Parameter2("skygrid.theta", thetas.data(), thetas.size(),
+                                                    new_Constraint(0, INFINITY));
     coalescent_ =
         new_GridCoalescent(reinterpret_cast<Tree *>(treeModel->GetManagedObject()),
-                           thetas_param, thetas.size(), cutoff, COALESCENT_THETA);
-    free_Parameters(thetas_param);
+                           thetas_param, thetas.size(), cutoff);
+    // free_Parameters(thetas_param);
     model_ =
         new_CoalescentModel2("skygrid", coalescent_, treeModel->GetModel(), nullptr);
-    RequestGradient();
     parameterCount_ = thetas.size();
 }
 
 PiecewiseLinearCoalescentGridInterface::PiecewiseLinearCoalescentGridInterface(
     const std::vector<double> &thetas, TimeTreeModelInterface *treeModel, double cutoff)
     : CoalescentModelInterface(treeModel) {
-    Parameters *thetas_param = new_Parameters(thetas.size());
-    for (const auto &theta : thetas) {
-        Parameters_move(thetas_param, new_Parameter("piecewise-linear.theta", theta,
-                                                    new_Constraint(0, INFINITY)));
-    }
+        Parameter *thetas_param = new_Parameter2("piecewise-linear.theta", thetas.data(), thetas.size(),
+                                                    new_Constraint(0, INFINITY));
     coalescent_ = new_PiecewiseLinearGridCoalescent(
         reinterpret_cast<Tree *>(treeModel->GetManagedObject()), thetas_param,
-        thetas.size(), cutoff, COALESCENT_THETA);
-    free_Parameters(thetas_param);
+        thetas.size(), cutoff);
+    // free_Parameters(thetas_param);
     model_ = new_CoalescentModel2("piecewise-linear", coalescent_,
                                   treeModel->GetModel(), nullptr);
-    RequestGradient();
     parameterCount_ = thetas.size();
 }

@@ -34,13 +34,6 @@ typedef enum demography{
 	COALESCENT_SKYLINE_CLASSIC,
 	COALESCENT_SKYRIDE
 }demography;
-
-typedef enum parameterization_t{
-	COALESCENT_THETA=0,
-	COALESCENT_THETA_LOG,
-	COALESCENT_THETA_DELTA,
-}parameterization_t;
-
 typedef struct Coalescent{
     Tree *tree;
 	demography type;
@@ -56,6 +49,7 @@ typedef struct Coalescent{
 	bool *stored_iscoalescent;
 	int n;
 	double (*calculate)( struct Coalescent* );
+	double (*gradient)( struct Coalescent*, const Parameters* );
 	double (*dlogP)( struct Coalescent*, const Parameter* );
 	double (*d2logP)( struct Coalescent*, const Parameter* );
 	double (*ddlogP)( struct Coalescent*, const Parameter*, const Parameter* );
@@ -68,10 +62,8 @@ typedef struct Coalescent{
 	DiscreteParameter* groups;
 	
 	int prepared_gradient;
-	double* gradient;
+	double* grad;
 	size_t gradient_length;
-	
-	parameterization_t parameterization;
 }Coalescent;
 
 
@@ -93,22 +85,20 @@ Coalescent * new_ConstantCoalescent_with_data( Parameter* theta, double* times, 
 Coalescent * new_ExponentialCoalescent( Tree *tree, Parameters* parameters );
 Coalescent * new_ExponentialCoalescent_with_data( Parameters* parameters, double* times, bool* coalescent, int size );
 
-Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Parameters* parameters);
+Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Parameter* parameters);
 
-Coalescent * new_SkylineCoalescent( Tree *tree, Parameters* parameters, DiscreteParameter* groups);
-Coalescent * new_SkylineCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, DiscreteParameter* groups);
+Coalescent * new_SkylineCoalescent( Tree *tree, Parameter* parameters, DiscreteParameter* groups);
+Coalescent * new_SkylineCoalescent_with_data(Parameter* parameters, double* times, bool* coalescent, int size, DiscreteParameter* groups);
 
-Coalescent * new_SkyrideCoalescent( Tree *tree, Parameters* parameters, parameterization_t parameterization);
-Coalescent * new_SkyrideCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, parameterization_t parameterization);
+Coalescent * new_SkyrideCoalescent( Tree *tree, Parameter* parameters);
+Coalescent * new_SkyrideCoalescent_with_data(Parameter* parameters, double* times, bool* coalescent, int size );
 
-Coalescent * new_GridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff, parameterization_t parameterization );
-Coalescent * new_GridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff, parameterization_t parameterization);
+Coalescent * new_GridCoalescent( Tree *tree, Parameter* parameters, int grid, double cutoff );
+Coalescent * new_GridCoalescent_with_data(Parameter* parameters, double* times, bool* coalescent, int size, int grid, double cutoff);
 
-Coalescent * new_PiecewiseLinearGridCoalescent( Tree *tree, Parameters* parameters, int grid, double cutoff, parameterization_t parameterization );
-Coalescent * new_PiecewiseLinearGridCoalescent_with_data(Parameters* parameters, double* times, bool* coalescent, int size, int grid, double cutoff, parameterization_t parameterization);
+Coalescent * new_PiecewiseLinearGridCoalescent( Tree *tree, Parameter* parameters, int grid, double cutoff );
+Coalescent * new_PiecewiseLinearGridCoalescent_with_data(Parameter* parameters, double* times, bool* coalescent, int size, int grid, double cutoff );
 
-size_t Coalescent_initialize_gradient(Model *self, int flags);
-
-double* Coalescent_gradient(Model *self);
+void Coalescent_gradient(Model *self, int flags, double* gradient);
 
 #endif

@@ -15,7 +15,7 @@
 #include "mjson.h"
 #include "distmodel.h"
 
-DistributionModel* new_GammaDistributionModel_with_parameters(Parameters** parameters, Parameters* x, distribution_parameterization parameterization);
+DistributionModel* new_GammaDistributionModel_with_parameters(Parameters* parameters, Parameters* x, distribution_parameterization parameterization);
 
 Model* new_GammaDistributionModel_from_json(json_node* node, Hashtable* hash);
 

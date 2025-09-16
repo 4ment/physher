@@ -15,7 +15,7 @@
 #include "mjson.h"
 #include "distmodel.h"
 
-DistributionModel* new_DirichletDistributionModel_with_parameters(Parameters** parameters, Simplex* simplex);
+DistributionModel* new_DirichletDistributionModel_with_parameters(Parameters* parameters, Parameters* x);
 
 Model* new_DirichletDistributionModel_from_json(json_node* node, Hashtable* hash);
 

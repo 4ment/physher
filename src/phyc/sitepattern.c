@@ -246,6 +246,7 @@ SitePattern * new_SitePattern2( const Sequences *aln, int start, int length, int
 	}
 	free_Hashtable(hash);
 	sp->ref_count = 1;
+	sp->alignment = NULL;
 	
 	return sp;
 }
@@ -314,6 +315,7 @@ SitePattern * new_SitePattern3( const Sequences *aln, int start, int length, int
 	}
 	free_Hashtable(hash);
 	sp->ref_count = 1;
+	sp->alignment = NULL;
 	
 	return sp;
 }
@@ -348,6 +350,7 @@ SitePattern * new_AttributePattern( DataType* datatype, const char** taxa, const
 		sp->names[i] = String_clone( taxa[i] );
 	}
 	sp->ref_count = 1;
+	sp->alignment = NULL;
 	
 	return sp;
 }
@@ -374,6 +377,9 @@ void free_SitePattern( SitePattern *sp ){
 			free(sp->names);
 		}
 		free_DataType(sp->datatype);
+		if(sp->alignment != NULL){
+			sp->alignment->free(sp->alignment);
+		}
 		free(sp);
 	}
 	else{
@@ -535,6 +541,7 @@ SitePattern* SitePattern_merge( const SitePattern* sitePattern1, const SitePatte
 	}
 	
 	sp->ref_count = 1;
+	sp->alignment = NULL;
 	
 	return sp;
 }
@@ -588,6 +595,7 @@ SitePattern ** SitePattern_split( const SitePattern *sitePattern, const int coun
 		sps[i]->indexes = ivector(sitePattern->nsites);
 		p += sps[i]->count;
 		sps[i]->ref_count = 1;
+		sps[i]->alignment = NULL;
 	}
 	
 	return sps;
@@ -950,7 +958,9 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		// sitepattern does not keep a reference of the alignment so no ref_count++
 		Model* sequenceModel = NULL;
 		if(alignment_node->node_type == MJSON_STRING){
-			sequenceModel = Hashtable_get(hash, (char*)alignment_node->value);
+			char* ref = (char*)alignment_node->value;
+			sequenceModel = Hashtable_get(hash, ref+1);
+			sequenceModel->ref_count++;
 		}
 		else{
 			sequenceModel = new_Alignment_from_json(alignment_node, hash);
@@ -984,8 +994,9 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 		else{
 			patterns = new_SitePattern(sequences);
 		}
-		free_Sequences(sequences);
-		
+		// free_Sequences(sequences);
+		patterns->alignment = sequenceModel;
+
 		json_node* seq_node = get_json_node(alignment_node, "sequences");
 		if(seq_node != NULL){
 			size_t j = 0;

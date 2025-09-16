@@ -56,10 +56,11 @@ static double *_get_proportions_discrete( SiteModel *sm );
 
 static double icdf_weibull_1(double p, double k);
 
-static void _site_model_handle_change( Model *self, Model *model, int index ){
+static void _site_model_handle_change( Model *self, Model *model, Parameter* parameter, int index ){
 	SiteModel *sm = (SiteModel*)self->obj;
+	// printf("_site_model_handle_change\n");
 	sm->need_update = true;// one of the sitemodel parameters
-	self->listeners->fire( self->listeners, self, index );
+	self->listeners->fire( self->listeners, self, parameter, index );
 }
 
 static void _site_model_store(Model* self){
@@ -116,6 +117,7 @@ static void _site_model_free( Model *self ){
 		}
 		
 		if(sm->rates != NULL) free_Parameters(sm->rates);
+		free_Parameter(sm->proportions);
 		//TODO: deal with this
 		if(sm->mu!=NULL)free_Parameter(sm->mu);
 		if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
@@ -134,7 +136,8 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 	}
 	Model* mprop = (Model*)self->data;
 	Model* mpropclone = NULL;
-    Simplex* propclone = NULL;
+    Parameter* propclone = NULL;
+	Simplex* simplexPropclone = NULL;
 	
     if(mprop != NULL){
         if (Hashtable_exists(hash, mprop->name)) {
@@ -176,7 +179,7 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 	SiteModel* smclone = clone_SiteModel_with_parameters(sm, propclone, ps, mu);
 	free_Parameters(ps);
 	free_Parameter(mu);
-	Model* clone = new_SiteModel2(self->name, smclone, mpropclone);
+	Model* clone = new_SiteModel2(self->name, smclone);
 	Hashtable_add(hash, clone->name, clone);
 	if(mpropclone != NULL)mpropclone->free(mpropclone);
 	clone->print = self->print;
@@ -184,20 +187,26 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 }
 
 // SubstitutionModel2 listen to the rate and freq parameters
-Model * new_SiteModel2( const char* name, SiteModel *sm, Model* proportions ){
+Model * new_SiteModel2( const char* name, SiteModel *sm ){
 	Model *model = new_Model(MODEL_SITEMODEL, name, sm);
 	if ( sm->rates != NULL ) {
-		for ( int i = 0; i < Parameters_count(sm->rates); i++ ) {
-			Parameters_at(sm->rates, i)->listeners->add( Parameters_at(sm->rates, i)->listeners, model );
-		}
+		Parameters_add_listener(sm->rates, model);
+		Parameters_add_parameters_recursively(model->parameters, sm->rates);
 	}
 	if ( sm->mu != NULL ) {
 		sm->mu->listeners->add( sm->mu->listeners, model );
+		Parameters_add_recursively(model->parameters, sm->mu);
 	}
-	if (proportions != NULL) {
-		model->data = proportions;
-		proportions->ref_count++;
-		proportions->listeners->add( proportions->listeners, model );
+	if (sm->proportions != NULL) {
+		// model->data = proportions;
+		// proportions->ref_count++;
+		// sm->proportions->listeners->add( sm->proportions->listeners, model );
+
+		// Model* m = sm->proportions->model_obj;
+		// m->listeners->add(m->listeners, model);
+		// Parameters_add_parameters_recursively(model->parameters, m->parameters);
+		sm->proportions->listeners->add(sm->proportions->listeners, model);
+		Parameters_add(model->parameters, sm->proportions);
 	}
 	
 	model->update = _site_model_handle_change;
@@ -225,8 +234,8 @@ static void _SiteModel_print(Model* model, FILE* out){
 		fprintf(out, "sum %f\n", sum);
 	}
 	else if(sm->proportions != NULL){
-		fprintf(out, "proportion rate %lu\n", sm->proportions->K);
-		for (int i = 0; i < sm->proportions->K; i++){
+		fprintf(out, "proportion rate %lu\n", Parameter_size(sm->proportions));
+		for (int i = 0; i < Parameter_size(sm->proportions); i++){
 			fprintf(out, "%f %f\n",sm->cat_proportions[i], sm->cat_rates[i]);
 		}
 	}
@@ -309,7 +318,7 @@ double _gamma_shape_derivative( SiteModel *sm, const double* ingrad ){
 
 double _gamma_inv_derivative( SiteModel *sm, const double* ingrad ){
 	double* proportions = sm->get_proportions(sm);
-	assert(proportions[0] == Parameters_value(sm->proportions->parameters, 0));
+	// assert(proportions[0] == Parameters_value(sm->proportions->parameters, 0));
 	
 	// with Gamma
 	if(Parameters_count(sm->rates) > 0){
@@ -343,7 +352,7 @@ double _gamma_inv_derivative( SiteModel *sm, const double* ingrad ){
 
 double _gamma_derivative( SiteModel *sm, const double* ingrad, Parameter* p ){
 	// pinv
-	if(sm->proportions != NULL && Parameters_at(sm->proportions->parameters, 0) == p){
+	if(sm->proportions != NULL &&  Parameters_at(sm->rates, 0) != p){
 		return _gamma_inv_derivative(sm, ingrad);
 	}
 	else{
@@ -391,7 +400,7 @@ double _weibull_shape_derivative( SiteModel *sm, const double* ingrad ){
 
 double _weibull_inv_derivative( SiteModel *sm, const double* ingrad ){
 	double* proportions = sm->get_proportions(sm);
-	assert(proportions[0] == Parameters_value(sm->proportions->parameters, 0));
+	// assert(proportions[0] == Parameters_value(sm->proportions->parameters, 0));
 	
 	// with Weibull
 	if(Parameters_count(sm->rates) > 0){
@@ -417,7 +426,7 @@ double _weibull_inv_derivative( SiteModel *sm, const double* ingrad ){
 
 double _weibull_derivative( SiteModel *sm, const double* ingrad, Parameter* p ){
 	// pinv
-	if(sm->proportions != NULL && Parameters_at(sm->proportions->parameters, 0) == p){
+	if(sm->proportions != NULL &&  Parameters_at(sm->rates, 0) != p){
 		return _weibull_inv_derivative(sm, ingrad);
 	}
 	else{
@@ -448,7 +457,7 @@ bool _update_nothing(SiteModel *sm){
 
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
-SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad){
+SiteModel * new_SiteModel_with_parameters( const Parameters *params, Parameter* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad){
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
 	sm->site_category = NULL;
@@ -465,6 +474,9 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* pr
 	sm->cat_rates       = NULL;
 	sm->cat_proportions = NULL;
 	sm->proportions = proportions;
+	if(proportions != NULL){
+		Parameter_set_model(proportions, MODEL_SITEMODEL);
+	}
 
 	sm->epsilon = 1.e-6;
     
@@ -478,7 +490,7 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* pr
 		}
 	}
 	for(size_t i = 0; i < Parameters_count(params); i++){
-		Parameters_at(sm->rates, i)->model = MODEL_SITEMODEL;
+		Parameter_set_model(Parameters_at(sm->rates, i), MODEL_SITEMODEL);
 	}
 	sm->mu    = NULL;
     
@@ -515,7 +527,7 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Simplex* pr
     
 	// Discrete gamma or prop of invariant or both
 	if (distribution == DISTRIBUTION_WEIBULL ||
-		(distribution == DISTRIBUTION_DISCRETE && Parameters_count(sm->proportions->parameters) == 1)) {
+		(distribution == DISTRIBUTION_DISCRETE && Parameter_size(sm->proportions) == 2)) {
 		sm->gradient = _weibull_gradient;
 		sm->derivative = _weibull_derivative;
 	}
@@ -613,8 +625,9 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 				quantiles[i+cat] = gsl_cdf_beta_Pinv((double)i/(sm->cat_count-cat), shape_alpha, shape_beta);
 			}
 			
-			propVariable = sm->proportions->get_value(sm->proportions, 1);
-			sm->cat_proportions[0] = sm->proportions->get_value(sm->proportions, 0);
+			const double* proportions = Parameter_values(sm->proportions);
+			propVariable = proportions[1];
+			sm->cat_proportions[0] = proportions[0];
 			for (int i = 0; i < sm->cat_count-1-cat; i++) {
 				// calculate cat proportions
 				sm->cat_proportions[i+cat] = (quantiles[i + 1 + cat] - quantiles[i+cat])*propVariable;
@@ -630,19 +643,19 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 #else
 	if(sm->quadrature == QUADRATURE_DISCRETE){
 #endif
-		const double* values = sm->proportions->get_values(sm->proportions);
+		const double* values = Parameter_values(sm->proportions);
 		double sum = 0;
 		for (int i = 0; i < sm->cat_count-cat; i++) {
 			quantiles[i+cat] = sum + values[i+cat]/2.0; // pick midpoint
 			sum += values[i];
 		}
-		memcpy(sm->cat_proportions, values, sizeof(double)*sm->proportions->K);
+		memcpy(sm->cat_proportions, values, sizeof(double)*Parameter_size(sm->proportions));
 	}
 	// if the dimension of the simplex is then only pinv is estimated
 	// and the remaining categories split 1.0-pinv equally
 	// That's the traditional +G+I or +I
-	else if (sm->proportions != NULL && sm->proportions->K == 2) {
-		const double* values = sm->proportions->get_values(sm->proportions);
+	else if (sm->proportions != NULL && Parameter_size(sm->proportions) == 2) {
+		const double* values = Parameter_values(sm->proportions);
 		// +I
 		if(sm->distribution == DISTRIBUTION_DISCRETE){
 			memcpy(sm->cat_proportions, values, sizeof(double)*2);
@@ -739,13 +752,13 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 			}
 		}
 		// QUADRATURE_DISCRETE
-		else if ( (sm->proportions != NULL && sm->proportions->K == sm->cat_count)){
+		else if ( (sm->proportions != NULL && Parameter_size(sm->proportions) == sm->cat_count)){
 			for (int i = 0; i < nCat; i++) {
 				mean += sm->cat_rates[i + cat]*sm->cat_proportions[i + cat];
 			}
 		}
 		// +G or +G+I
-		else if(sm->proportions == NULL || (sm->proportions != NULL && sm->proportions->K != sm->cat_count)){
+		else if(sm->proportions == NULL || (sm->proportions != NULL && Parameter_size(sm->proportions) != sm->cat_count)){
 			for (int i = 0; i < sm->cat_count - cat; i++) {
 				mean += sm->cat_rates[i + cat];
 			}
@@ -820,7 +833,7 @@ int _get_site_category_CAT(SiteModel* sm, const int pattern){
 
 void SiteModel_set_mu(SiteModel *sm, Parameter* mu){
 	sm->mu = mu;
-	sm->mu->model = MODEL_SITEMODEL;
+	Parameter_set_model(sm->mu, MODEL_SITEMODEL);
 	mu->refCount++;
 }
 
@@ -851,9 +864,9 @@ double *_get_proportions_discrete( SiteModel *sm ){
 void _calculate_rates_discrete( SiteModel *sm ) {
 	int j = 0;
 	int cat = (sm->invariant ? 1 : 0);
-	int cat_count = sm->proportions->K;
+	int cat_count = Parameter_size(sm->proportions);
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
-	const double* cat_proportions = sm->proportions->get_values(sm->proportions);
+	const double* cat_proportions = Parameter_values(sm->proportions);
 	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
 	
 	if(Parameters_count(sm->rates) == 0){
@@ -994,7 +1007,7 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm ){
 	return newsm;
 }
 
-SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Simplex* props, const Parameters* params, Parameter* mu ){
+SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* props, const Parameters* params, Parameter* mu ){
 	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(newsm);
 	newsm->proportions = props;
@@ -1049,6 +1062,7 @@ void free_SiteModel( SiteModel *sm ){
 	if ( sm->rates != NULL ) free_Parameters(sm->rates);
 	if ( sm->mu != NULL ) free_Parameter(sm->mu);
 	if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
+	free_Parameter(sm->proportions);
 	free(sm->cat_rates);
 	free(sm);
 }
@@ -1066,6 +1080,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	};
 	//json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
+	char* id = get_json_node_value_string(node, "id");
 	json_node* distribution_node = get_json_node(node, "distribution");
 	json_node* mu_node = get_json_node(node, "mu");
 	char* sp_ref = get_json_node_value_string(node, "sitepattern");
@@ -1074,8 +1089,10 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	size_t cat = 1;
 	
 	Parameters* rates = new_Parameters(1);
-	Simplex* props_simplex = NULL;
-	Model* mprops_simplex = NULL;
+	Parameter* proportions = NULL;
+	size_t dimProportion = 0;
+	// Simplex* props_simplex = NULL;
+	// Model* mprops_simplex = NULL;
 	
 	distribution_t distribution = DISTRIBUTION_UNIFORM;
 	quadrature_t quad = QUADRATURE_QUANTILE_MEDIAN;
@@ -1111,12 +1128,28 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		json_node* discretization_node = get_json_node(distribution_node, "quadrature");
 		
 		if (proportions_node != NULL) {
-			mprops_simplex = new_SimplexModel_from_json(proportions_node, hash);
-			Hashtable_add(hash, mprops_simplex->name, mprops_simplex);
-			props_simplex = (Simplex*)mprops_simplex->obj;
-			for (int i = 0; i < Parameters_count(props_simplex->parameters); i++) {
-				Parameters_at(props_simplex->parameters, i)->model = MODEL_SITEMODEL;
+			if (proportions_node->node_type == MJSON_STRING) {
+				char* ref = (char*)proportions_node->value;
+				proportions = safe_get_reference_parameter(ref, hash, id);
+				proportions->refCount++;
 			}
+			else{
+				// proportions = new_SimplexParameter_from_json(proportions_node, hash);
+				proportions = new_Parameter_from_json(proportions_node, hash);
+				Hashtable_add(hash, Parameter_name(proportions), proportions);
+			}
+			Parameter_set_model(proportions, MODEL_SITEMODEL);
+			dimProportion = Parameter_size(proportions);
+			// Simplex* props_simplex = (Simplex*)proportions->model_obj->obj;
+			// props_simplex->parameter->model = MODEL_SITEMODEL;
+			// dimProportion = props_simplex->K;
+
+			// mprops_simplex = new_SimplexModel_from_json(proportions_node, hash);
+			// Hashtable_add(hash, mprops_simplex->name, mprops_simplex);
+			// props_simplex = (Simplex*)mprops_simplex->obj;
+			// for (int i = 0; i < Parameters_count(props_simplex->parameters); i++) {
+			// 	Parameters_at(props_simplex->parameters, i)->model = MODEL_SITEMODEL;
+			// }
 		}
 		
 		if(discretization_node != NULL && distribution != DISTRIBUTION_DISCRETE){
@@ -1130,19 +1163,19 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			}
 			else if(strcasecmp("median", method) == 0){
 				quad = QUADRATURE_QUANTILE_MEDIAN;
-				if (props_simplex != NULL && cat > props_simplex->K) {
+				if (dimProportion != 0 && cat > dimProportion) {
 					invariant = true;
 				}
 			}
 			else if(strcasecmp("mean", method) == 0){
 				quad = QUADRATURE_QUANTILE_MEAN;
-				if (props_simplex != NULL && cat > props_simplex->K) {
+				if (dimProportion != 0 && cat > dimProportion) {
 					invariant = true;
 				}
 			}
 			else if(strcasecmp("discrete", method) == 0){
 				quad = QUADRATURE_DISCRETE;
-				if (cat < props_simplex->K) {
+				if (cat < dimProportion) {
 					invariant = true;
 				}
 			}
@@ -1156,8 +1189,8 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				else{
 					fprintf(stderr, "Could not recognize quadrature type. It should be beta or kumaraswamy");
 				}
-				if (props_simplex != NULL) {
-					if(props_simplex->K != 2){
+				if (dimProportion > 0) {
+					if(dimProportion != 2){
 						fprintf(stderr, "QUADRATURE_BETA: simplex should be of dimension 2 or no simplex at all\n");
 						exit(2);
 					}
@@ -1170,7 +1203,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			}
 		}
 		// Weibull with I
-		else if (discretization_node == NULL && props_simplex != NULL && props_simplex->K == 2) {
+		else if (discretization_node == NULL && dimProportion == 2) {
 			invariant = true;
 		}
 		
@@ -1190,7 +1223,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 					Parameters_set_name2(rates, id_ps);
 				}
 			}
-			if (parameters_node == NULL || Parameters_count(rates) == props_simplex->K) {
+			if (parameters_node == NULL || Parameters_count(rates) == dimProportion) {
 				invariant = true;
 				// simple +I model
 				if (parameters_node == NULL || Parameters_count(rates) == 0){
@@ -1204,9 +1237,15 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		
 		for (int i = 0; i < Parameters_count(rates); i++) {
 			Parameter* p = Parameters_at(rates, i);
-			p->model = MODEL_SITEMODEL;
+			Parameter_set_model(p, MODEL_SITEMODEL);
 			Hashtable_add(hash, Parameters_name(rates, i), p);
 		}
+	}
+
+	if(distribution == DISTRIBUTION_GAMMA || distribution == DISTRIBUTION_WEIBULL){
+		Parameter* p = Parameters_at(rates, 0);
+		Constraint_set_flower(p->cnstr, SITEMODEL_ALPHA_MIN);
+		Constraint_set_fupper(p->cnstr, SITEMODEL_ALPHA_MAX);
 	}
 	
 	SiteModel* sm = NULL;
@@ -1224,26 +1263,26 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		sm = new_CATSiteModel_with_parameters(rates, cat, sp);
 	}
 	else {
-		sm = new_SiteModel_with_parameters(rates, props_simplex, cat, distribution, invariant, quad);
+		sm = new_SiteModel_with_parameters(rates, proportions, cat, distribution, invariant, quad);
 	}
 	
 	
 	if (sm->rates != NULL && Parameters_name2(sm->rates) != NULL) {
 		Hashtable_add(hash, Parameters_name2(sm->rates), sm->rates);
 	}
-	char* id_string = get_json_node_value_string(node, "id");
 	
 	if (mu_node != NULL) {
 		sm->mu = new_Parameter_from_json(mu_node, hash);
 		sm->mu->model = MODEL_SITEMODEL;
+		Parameter_set_model(sm->mu, MODEL_SITEMODEL);
 		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
 	}
 	sm->epsilon = get_json_node_value_double(node, "epsilon", 1.e-6);
 	
-	Model* msm = new_SiteModel2(id_string, sm, mprops_simplex);
+	Model* msm = new_SiteModel2(id, sm);
 	
-	if(mprops_simplex != NULL) mprops_simplex->free(mprops_simplex);
+	// if(mprops_simplex != NULL) mprops_simplex->free(mprops_simplex);
 	msm->print = _SiteModel_print;
 	free_Parameters(rates);
 	return msm;

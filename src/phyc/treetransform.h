@@ -31,9 +31,12 @@ typedef struct TreeTransform {
     void (*update_lowers)(struct TreeTransform*);
 	double (*log_jacobian)(struct TreeTransform*);
     void (*jvp)(struct TreeTransform*, const double*, double*);
+    void (*jvp2)(struct TreeTransform*, const double*);
     double (*dlog_jacobian)(struct TreeTransform*, Node*);
     void (*log_jacobian_gradient)(struct TreeTransform*, double*);
 } TreeTransform;
+
+void TreeTransform_backward(TreeTransform* obj, Parameters* parameters, const double* ingrad);
 
 TreeTransform* new_HeightTreeTransform(Tree* tree, tree_transform_t parameterization);
 

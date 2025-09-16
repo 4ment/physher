@@ -20,6 +20,6 @@ Model* new_CTMCScaleModel(const char* name, DistributionModel* dm, Model* tree);
 size_t DistributionModel_initialize_gradient(Model *self, int flags);
 static void _calculate_height_gradient(Tree* tree, double rate, double shape, double totalTreeTime, double* gradient);
 
-double* DistributionModel_gradient(Model *self);
+void CTMCModel_gradient(Model *self, int flags, double* gradient);
 
 #endif /* ctmcscale_h */

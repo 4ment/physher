@@ -19,4 +19,6 @@ Vector** read_log_for_parameters_t( const char *filename, size_t burnin, Paramet
 
 Vector** read_log_for_names_t( const char *filename, size_t burnin, char** params, size_t paramCount );
 
+Vector** read_log_for_parameter_t( const char *filename, size_t burnin, Parameter* parameter );
+
 #endif /* parametersio_h */

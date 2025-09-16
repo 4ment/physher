@@ -717,6 +717,7 @@ void free_Alignment( Model *model ){
 	if(model->ref_count == 1){
         Sequences* sequences = model->obj;
         free_Sequences(sequences);
+        free_Parameters(model->parameters);
 		free(model->name);
 		model->listeners->free(model->listeners);
 		free(model);

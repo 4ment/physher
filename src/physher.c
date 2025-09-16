@@ -34,7 +34,7 @@
 #include "phyc/distmodelfactory.h"
 #include "phyc/mjson.h"
 #include "phyc/logger.h"
-#include "phyc/vb.h"
+#include "phyc/boundfactory.h"
 #include "phyc/mcmc.h"
 #include "phyc/mmcmc.h"
 #include "phyc/hessian.h"
@@ -69,7 +69,7 @@ int main(int argc, const char* argv[]){
 	beginning_of_time = start_time;
 	
 	json_node* json = NULL;
-	
+
     if (argc == 1 || args_contains(argc, (char**)argv, "--help") || args_contains(argc, (char**)argv, "-h")) {
 		fprintf(stdout, "\nphysher version %d.%d.%s", PHYC_VERSION_MAJOR, PHYC_VERSION_MINOR, PHYC_PATCH_LEVEL);
 		if(strcmp(GIT_HEAD_TAG, "") == 0 && strcmp(GIT_COMMIT_HASH, "") != 0){
@@ -78,10 +78,10 @@ int main(int argc, const char* argv[]){
 		// Build from a directory without git
 		else if(strcmp(GIT_COMMIT_HASH, "") == 0){
 			fprintf(stdout, " compiled on");
-        }
-        else{
+		}
+		else{
 			fprintf(stdout, " released on\n");
-        }
+		}
 		fprintf(stdout, " %s\n", __DATE__);
 		fprintf(stdout, "Compiled with:");
 		bool flag = false;
@@ -181,8 +181,8 @@ int main(int argc, const char* argv[]){
 			if (model_type == MODEL_COMPOUND) {
 				models[index] = new_CompoundModel_from_json(child, hash2);
 			}
-			else if(model_type == MODEL_VARIATIONAL){
-				models[index] = new_Variational_from_json(child, hash2);
+			else if(model_type == MODEL_BOUNDMODEL){
+				models[index] = new_BoundModel_from_json(child, hash2);
 			}
 			else if(model_type == MODEL_DISTRIBUTION){
 				models[index] = new_DistributionModel_from_json(child, hash2);
@@ -201,7 +201,7 @@ int main(int argc, const char* argv[]){
 			} else if (model_type == MODEL_ALIGNMENT) {
 				models[index] = new_Alignment_from_json(child, hash2);
 			}
-			
+
 			Hashtable_add(hash2, id, models[index]);
 			index++;
 		}
@@ -310,7 +310,7 @@ int main(int argc, const char* argv[]){
 			sampler->finalize(sampler);
 			sampler->free(sampler);
 		}
-	}
+    }
 	if(models != NULL){
 		for (int i = 0; i < model_count; i++) {
 			models[i]->free(models[i]);

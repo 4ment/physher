@@ -832,7 +832,7 @@ double _score_fitch_4_sse(Parsimony *parsimony){
 #pragma mark -
 #pragma mark ParsimonyModel
 
-void _parsimony_model_handle_change( Model *self, Model *model, int index ){
+void _parsimony_model_handle_change( Model *self, Model *model, Parameter* parameter, int index ){
 	Parsimony *parsimony = (Parsimony*)self->obj;
 	if ( model->type == MODEL_TREE ) {
 		parsimony->update_nodes[index] = true;

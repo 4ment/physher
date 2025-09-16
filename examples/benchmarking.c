@@ -13,6 +13,7 @@
 #include "phyc/treeio.h"
 #include "phyc/treelikelihood.h"
 #include "phyc/treetransform.h"
+#include "phyc/matrix.h"
 
 double mseconds(struct timespec start, struct timespec end) {
     return (end.tv_sec - start.tv_sec) * 1000. +
@@ -34,8 +35,8 @@ char* json_jc69_strict =
 		\"datatype\":\"nucleotide\", \
 		\"frequencies\":{ \
 			\"id\":\"freqs\", \
-			\"type\":\"Simplex\", \
-			\"values\":[0.25,0.25,0.25,0.25] \
+			\"type\":\"parameter\", \
+			\"x\":[0.25,0.25,0.25,0.25] \
 		} \
 	}, \
 	\"sitemodel\":{ \
@@ -50,7 +51,10 @@ char* json_jc69_strict =
 		\"model\": \"strict\", \
 		\"tree\": \"&tree\", \
 		\"rate\": { \
-			\"id\":\"rate\", \"type\":\"parameter\", \"value\":0.001, \"lower\":0 \
+			\"id\": \"rate\", \
+            \"type\": \"parameter\", \
+            \"x\": {\"id\": \"rate2\", \"type\": \"parameter\", \"x\":-6.907755278982137}, \
+            \"lower\":0 \
 		} \
 	} \
 }";
@@ -69,8 +73,8 @@ char* json_jc69_unrooted =
 		\"datatype\":\"nucleotide\", \
 		\"frequencies\":{ \
 			\"id\":\"freqs\", \
-			\"type\":\"Simplex\", \
-			\"values\":[0.25,0.25,0.25,0.25] \
+			\"type\":\"parameter\", \
+			\"x\":[0.25,0.25,0.25,0.25] \
 		} \
 	}, \
 	\"sitemodel\":{ \
@@ -92,17 +96,30 @@ char* json_gtr_unrooted =
 		\"type\":\"substitutionmodel\", \
 		\"model\":\"gtr\", \
 		\"datatype\":\"nucleotide\", \
+		\"_rates\":{ \
+			\"ac\":{\"id\":\"ac\", \"type\":\"parameter\", \"x\":{\"id\":\"ac2\", \"type\": \"parameter\", \"x\":0}, \"lower\":0, \"upper\":\"infinity\"}, \
+			\"ag\":{\"id\":\"ag\", \"type\":\"parameter\", \"x\":{\"id\":\"ag2\", \"type\": \"parameter\", \"x\":0}, \"lower\":0, \"upper\":\"infinity\"}, \
+			\"at\":{\"id\":\"at\", \"type\":\"parameter\", \"x\":{\"id\":\"at2\", \"type\": \"parameter\", \"x\":0}, \"lower\":0, \"upper\":\"infinity\"}, \
+			\"cg\":{\"id\":\"cg\", \"type\":\"parameter\", \"x\":{\"id\":\"cg2\", \"type\": \"parameter\", \"x\":0}, \"lower\":0, \"upper\":\"infinity\"}, \
+			\"ct\":{\"id\":\"ct\", \"type\":\"parameter\", \"x\":{\"id\":\"ct2\", \"type\": \"parameter\", \"x\":0}, \"lower\":0, \"upper\":\"infinity\"} \
+		}, \
 		\"rates\":{ \
-			\"ac\":{\"id\":\"ac\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"}, \
-			\"ag\":{\"id\":\"ag\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"}, \
-			\"at\":{\"id\":\"at\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"}, \
-			\"cg\":{\"id\":\"cg\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"}, \
-			\"ct\":{\"id\":\"ct\", \"type\":\"parameter\", \"value\":1, \"lower\":0, \"upper\":\"infinity\"} \
+			\"id\":\"rates\", \
+			\"type\":\"Simplex\", \
+			\"x\":{ \
+                \"id\":\"rates2\", \
+                \"type\": \"parameter\", \
+                \"x\": [0.0, 0.0, 0.0, 0.0, 0.0] \
+            } \
 		}, \
 		\"frequencies\":{ \
 			\"id\":\"freqs\", \
 			\"type\":\"Simplex\", \
-			\"values\":[0.25,0.25,0.25,0.25] \
+			\"x\":{ \
+                \"id\":\"freqs2\", \
+                \"type\": \"parameter\", \
+                \"x\": [0.0, 0.0, 0.0] \
+            } \
 		} \
 	}, \
 	\"sitemodel\":{ \
@@ -119,14 +136,14 @@ void test_height_transform_jacobian(size_t iter, const char* newick,
                                     int reparameterization, FILE* csv, bool debug) {
     struct timespec start, end;
 
-    Tree* tree = new_Tree(newick, true);
-    Tree_set_transform(tree, reparameterization);
+    Tree* tree = new_Tree(newick, NULL, true);
     parse_dates(tree);
     init_leaf_heights_from_times(tree);
 
-    init_heights_from_distances(tree);
+    init_heights_from_bls(tree);
 
     Model* mtree = new_TreeModel("letree", tree);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_RATIO);
     Model* mtt = mtree->data;
     TreeTransform* tt = mtt->obj;
     Parameters* reparams = get_reparams(tree);
@@ -148,7 +165,6 @@ void test_height_transform_jacobian(size_t iter, const char* newick,
         printf("logP %f\n", logP);
     }
 
-    double dlogP;
     double* gradient = malloc((Tree_tip_count(tree) - 1) * sizeof(double));
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -163,9 +179,10 @@ void test_height_transform_jacobian(size_t iter, const char* newick,
                 mseconds(start, end) / 1000.);
 
     if (debug) {
-        for (int j = 0; j < Parameters_count(reparams); j++) {
-            logP = mtt->dlogP(mtt, Parameters_at(reparams, j));
-            printf("dlogP %f\n", dlogP);
+        memset(gradient, 0, (Tree_tip_count(tree) - 1) * sizeof(double));
+        tt->log_jacobian_gradient(tt, gradient);
+        for (int j = 0; j < Tree_tip_count(tree) - 1; j++) {
+            printf("dlogP %f\n", gradient[j]);
         }
     }
     free(gradient);
@@ -180,14 +197,15 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
                            FILE* csv, bool debug) {
     struct timespec start, end;
 
-    Tree* tree = new_Tree(newick, true);
-    Tree_set_transform(tree, reparameterization);
+    Tree* tree = new_Tree(newick, NULL, true);
     parse_dates(tree);
     init_leaf_heights_from_times(tree);
 
-    init_heights_from_distances(tree);
+    // init_heights_from_distances(tree);
+    init_heights_from_bls(tree);
 
     Model* mtree = new_TreeModel("letree", tree);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_RATIO);
     Model* mtt = mtree->data;
     TreeTransform* tt = mtt->obj;
     Parameters* reparams = get_reparams(tree);
@@ -231,12 +249,13 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
 void test_constant(size_t iter, const char* newick, FILE* csv, bool debug) {
     struct timespec start, end;
 
-    Tree* tree = new_Tree(newick, true);
+    Tree* tree = new_Tree(newick, NULL, true);
     parse_dates(tree);
 
     init_leaf_heights_from_times(tree);
 
-    init_heights_from_distances(tree);
+    // init_heights_from_distances(tree);
+    init_heights_from_bls(tree);
 
     Model* mtree = new_TreeModel("letree", tree);
 
@@ -262,13 +281,14 @@ void test_constant(size_t iter, const char* newick, FILE* csv, bool debug) {
         printf("logP %f\n", logP);
     }
 
-    size_t gradient_size = Coalescent_initialize_gradient(
-        model, GRADIENT_FLAG_COALESCENT_THETA | GRADIENT_FLAG_TREE_HEIGHTS);
+    Parameters* parameters = new_Parameters(Parameters_count(coal->p));
+	Parameters_add_parameters(parameters, coal->p);
+	Parameters_add_parameters(parameters, get_reparams(coal->tree));
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         coal->need_update_intervals = true;
-        Coalescent_gradient(model);
+        model->gradient(model, parameters);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
@@ -277,6 +297,7 @@ void test_constant(size_t iter, const char* newick, FILE* csv, bool debug) {
 
     model->free(model);
     mtree->free(mtree);
+    free_Parameters(parameters);
     free_Parameter(N);
 }
 
@@ -286,7 +307,7 @@ void test_skyglide(size_t iter, const char* newick, FILE* csv, bool debug,
                    int intervals, double cutoff) {
     struct timespec start, end;
 
-    Tree* tree = new_Tree(newick, true);
+    Tree* tree = new_Tree(newick, NULL, true);
     parse_dates(tree);
 
     init_leaf_heights_from_times(tree);
@@ -295,16 +316,17 @@ void test_skyglide(size_t iter, const char* newick, FILE* csv, bool debug,
 
     Model* mtree = new_TreeModel("letree", tree);
 
-    double value = 1.0;
-    Parameters* popSizes = new_Parameters(intervals);
+    double value = 5.0;
+    double* values = dvector(intervals);
     for (size_t i = 0; i < intervals; i++) {
-        Parameter* N = new_Parameter("theta", i + 5.0, new_Constraint(0, INFINITY));
-        Parameters_move(popSizes, N);
-        value++;
+        values[i] = value + i;
     }
+    Parameter* popSizes = new_Parameter2("theta", values, intervals, new_Constraint(0, INFINITY));
+    free(values);
+
     Coalescent* coal = new_PiecewiseLinearGridCoalescent(tree, popSizes, intervals,
-                                                         cutoff, COALESCENT_THETA);
-    free_Parameters(popSizes);
+                                                         cutoff);
+    free_Parameter(popSizes);
 
     Model* model = new_CoalescentModel("", coal, mtree);
 
@@ -324,13 +346,22 @@ void test_skyglide(size_t iter, const char* newick, FILE* csv, bool debug,
         printf("logP %f\n", logP);
     }
 
-    size_t gradient_size = Coalescent_initialize_gradient(
-        model, GRADIENT_FLAG_COALESCENT_THETA | GRADIENT_FLAG_TREE_HEIGHTS);
+    // size_t gradient_size = Coalescent_initialize_gradient(
+    //     model, GRADIENT_FLAG_COALESCENT_THETA | GRADIENT_FLAG_TREE_HEIGHTS);
+    Parameters* parameters = new_Parameters(10);
+    Parameters_add_parameters(parameters, coal->p);
+    for(size_t i = 0; i < Tree_node_count(tree); i++){
+        Node* node = Tree_node(tree, i);
+        if(!Node_isleaf(node)){
+            Parameters_add(parameters, node->height);
+        }
+    }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         coal->need_update_intervals = true;
-        Coalescent_gradient(model);
+        model->gradient(model, parameters);
+        // Coalescent_gradient(model);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu skyglide evaluations: %f ms\n", iter, mseconds(start, end));
@@ -361,14 +392,14 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
     free_Sequences(sequences);
     Hashtable_add(hash2, "patterns", patterns);
 
-    Tree* tree = new_Tree(newick, true);
-    Tree_set_transform(tree, reparameterization);
+    Tree* tree = new_Tree(newick, NULL, true);
     parse_dates(tree);
     init_leaf_heights_from_times(tree);
 
     init_heights_from_distances(tree);
 
     Model* mtree = new_TreeModel("tree", tree);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_RATIO);
     Hashtable_add(hash2, "tree", mtree);
 
     Model* mlike = new_TreeLikelihoodModel_from_json(json, hash2);
@@ -380,7 +411,7 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
-        mtt->update(mtt, NULL,
+        mtt->update(mtt, NULL, NULL,
                     0);  // force recalculation of node heights from ratios
         logP = mlike->logP(mlike);
     }
@@ -393,26 +424,24 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
 
     Parameters* ps = new_Parameters(1);
     Parameters* reparams = get_reparams(tree);
-    for (int i = 0; i < Parameters_count(reparams); i++) {
-        Parameters_add(ps, Parameters_at(reparams, i));
-    }
-    mlike->prepare_gradient(mlike, ps);
-    double dlogP;
+    Parameters_add_parameters(ps, reparams);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
-        mtt->update(mtt, NULL, 0);
-        for (int j = 0; j < Parameters_count(ps); j++) {
-            dlogP = mlike->dlogP(mlike, Parameters_at(ps, j));
-        }
+        mtt->update(mtt, NULL, NULL, 0);
+        mlike->gradient(mlike, ps);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
 
     if (debug) {
+        Parameters_zero_grad(ps);
+        mlike->gradient(mlike, ps);
         for (int j = 0; j < Parameters_count(ps); j++) {
-            dlogP = mtt->dlogP(mtt, Parameters_at(ps, j));
-            printf("dlogP %f\n", dlogP);
+            Parameter* p = Parameters_at(ps, j);
+            for (size_t k = 0; k < Parameter_size(p); k++) {
+                printf("dlogP %s %f\n", p->name, p->grad[k]);
+            }
         }
     }
 
@@ -444,15 +473,14 @@ void test_tree_likelihood_unrooted(size_t iter, const char* json_model,
     free_Sequences(sequences);
     Hashtable_add(hash2, "patterns", patterns);
 
-    Tree* tree = new_Tree(newick, false);
+    Tree* tree = new_Tree(newick, NULL, false);
+    Tree_init_branch_lengths(tree);
     Tree_scale_distance(tree, scaler);
     Node* root = Tree_root(tree);
-    for (int i = 0; i < Tree_node_count(tree); i++) {
-        Node* node = Tree_node(tree, i);
-        if (node != root) {
-            if (Parameter_value(node->distance) < 1.e-6) {
-                Parameter_set_value(node->distance, 1.e-6);
-            }
+    Parameter* distances = root->distance;
+    for (size_t i = 0; i < Parameter_size(distances); i++) {
+        if (Parameter_value_at(distances, i) < 1.e-6) {
+            Parameter_set_value_at(distances, 1.e-6, i);
         }
     }
 
@@ -483,23 +511,19 @@ void test_tree_likelihood_unrooted(size_t iter, const char* json_model,
     }
 
     Parameters* ps = new_Parameters(1);
-    for (int i = 0; i < Tree_node_count(tree); i++) {
-        Node* node = Tree_node(tree, i);
-        if (node != root && root->right != node) {
-            Parameters_add(ps, node->distance);
-        }
-    }
+    Parameters_add(ps, root->distance);
     if (tlk->m->modeltype == GTR) {
-        Parameters_add_parameters(ps, tlk->m->rates);
-        Parameters_add_parameters(ps, tlk->m->simplex->parameters);
+        Parameters_add(ps, tlk->m->rates_simplex->transform->parameter);
+        Parameters_add(ps, tlk->m->simplex->transform->parameter);
     }
-    mlike->prepare_gradient(mlike, ps);
+    // mlike->prepare_gradient(mlike, ps);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         SingleTreeLikelihood_update_all_nodes(tlk);
         tlk->m->need_update = true;
-        TreeLikelihood_gradient(mlike);
+        mlike->gradient(mlike, ps);
+        // TreeLikelihood_gradient(mlike);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
@@ -509,10 +533,13 @@ void test_tree_likelihood_unrooted(size_t iter, const char* json_model,
                 mseconds(start, end) / 1000.);
 
     if (debug) {
-        double dlogP;
+        Parameters_zero_grad(ps);
+        mlike->gradient(mlike, ps);
         for (int j = 0; j < Parameters_count(ps); j++) {
-            dlogP = mlike->dlogP(mlike, Parameters_at(ps, j));
-            printf("dlogP %f\n", dlogP);
+            Parameter* p = Parameters_at(ps, j);
+            for (size_t k = 0; k < Parameter_size(p); k++) {
+                printf("dlogP %s %f\n", p->name, p->grad[k]);
+            }
         }
     }
 

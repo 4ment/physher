@@ -17,7 +17,7 @@
 #include "tree.h"
 #include "matrix.h"
 #include "treesearch.h"
-#include "opvb.h"
+// #include "opvb.h"
 #include "ophmc.h"
 #include "discreteoperator.h"
 #include "demographicmodels.h"
@@ -416,10 +416,10 @@ void operator_discrete_exchange_optimize(Operator* op, double alpha){
 Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	
 	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
-	if (strcasecmp(algorithm_string, "vb") == 0) {
+	/*if (strcasecmp(algorithm_string, "vb") == 0) {
 		return new_VariationalOperator_from_json(node, hash);
 	}
-	else if (strcasecmp(algorithm_string, "hmc") == 0) {
+	else*/ if (strcasecmp(algorithm_string, "hmc") == 0) {
 		return new_HMCOperator_from_json(node, hash);
 	}
 	

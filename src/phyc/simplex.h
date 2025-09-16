@@ -20,9 +20,9 @@ typedef struct _Simplex Simplex;
 
 struct _Simplex{
 	size_t K;
-	//Parameters* cparameters; // K parameters
-	Parameters* parameters; // K-1 parameters
+	Parameter* parameter; // K-1 parameters
 	double* values; // K double
+	double* stored_values; // K double
 	const double* (*get_values)(Simplex*);
 	double (*get_value)(Simplex*, int);
 	void (*set_values)(Simplex*, const double*);
@@ -34,6 +34,8 @@ struct _Simplex{
 
 Simplex* new_Simplex_with_values(const char* name, const double *x, size_t K);
 
+Simplex* new_Simplex_with_parameter(const char* name, Parameter* parameter);
+
 Simplex* new_Simplex(const char* name, size_t K);
 
 void free_Simplex(Simplex* simplex);
@@ -43,6 +45,8 @@ Simplex* clone_Simplex(const Simplex* simplex);
 Model * new_SimplexModel( const char* name, Simplex *simplex );
 
 Model* new_SimplexModel_from_json(json_node*node, Hashtable*hash);
+
+Parameter* new_SimplexParameter_from_json(json_node*node, Hashtable*hash);
 
 void Simplex_use_stan_transform(Simplex* simplex, bool use_stan);
 

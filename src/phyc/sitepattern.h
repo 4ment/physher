@@ -79,6 +79,7 @@ typedef struct SitePattern{
     DataType *datatype;
 	void (*get_partials)(const struct SitePattern*, size_t, double*);
 	int ref_count;
+    Model* alignment;
 } SitePattern;
 
 SitePattern * new_SitePattern( const Sequences *aln );

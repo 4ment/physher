@@ -287,7 +287,7 @@ SBN* build(const char* file){
 	unsigned int bitset_length;
 
 	while ( (line = TreeFileIterator_next_tree(iter)) != NULL  ) {
-		Tree *t = new_Tree(line, true);
+		Tree *t = new_Tree(line, NULL, true);
 		free(line);
 		Node** nodes = Tree_get_nodes(t, POSTORDER);
 		if (sbn->bitsets == NULL) {

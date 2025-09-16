@@ -24,7 +24,7 @@
           "datatype": "nucleotide",
           "frequencies": {
             "id": "freqs",
-            "type": "Simplex",
+            "type": "simplex",
             "values": [
               0.25,
               0.25,
@@ -37,7 +37,13 @@
       "tree": {
         "id": "tree",
         "type": "tree",
-        "parameters": "tree.distances",
+        "branch_lengths": {
+          "id": "tree.distances",
+          "type": "parameter",
+          "value": 0.1,
+          "dimension": 135,
+          "lower": 0.0
+        },
         "file": "fluA-rooted.nxs"
       }
     },
@@ -56,6 +62,7 @@
             "type": "optimizer",
             "algorithm": "serial",
             "model": "&treelikelihood",
+            "_parameters":"&tree.distances",
             "treelikelihood": "&treelikelihood"
           }
         ]
@@ -63,7 +70,7 @@
       {
         "id": "log",
         "type": "logger",
-        "models": "&treelikelihood"
+        "models": ["&treelikelihood", "&tree"]
       },
       {
         "id": "log",

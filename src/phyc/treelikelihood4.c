@@ -106,9 +106,105 @@ void update_partials_flexible_4( SingleTreeLikelihood *tlk, double* partials, in
 //	}
 }
 
-void update_partials_4( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
+#ifdef GNUC47
+void partials_undefined_t_and_undefined_4( const SingleTreeLikelihood *tlk, const double * restrict apartials1, const double * restrict amatrices1, const double * restrict apartials2, const double * restrict amatrices2, double * restrict partials3 ){
+    const double *partials1 = __builtin_assume_aligned(apartials1, 16);
+    const double *partials2 = __builtin_assume_aligned(apartials2, 16);
+    const double *matrices1 = __builtin_assume_aligned(amatrices1, 16);
+    const double *matrices2 = __builtin_assume_aligned(amatrices2, 16);
+#else
+void partials_undefined_t_and_undefined_4( const SingleTreeLikelihood *tlk, const double * RESTRICT partials1, const double * RESTRICT matrices1, const double * RESTRICT partials2, const double * RESTRICT matrices2, double * RESTRICT partials3){
+#endif
+    double sum1, sum2;
+    int v = 0;
+    int k;
+    int w = 0;
+	
+    double *pPartials = partials3;
+    int cat_count = tlk->cat_count;
+    int sp_count = tlk->pattern_count;
+    
+    for ( int l = 0; l < cat_count; l++ ) {
+        
+        for ( k = 0; k < sp_count; k++ ) {
+            
+            sum1  = matrices1[w]   * partials1[v];
+            sum2  = matrices2[w]   * partials2[v];
+            
+            sum1 += matrices1[w+4] * partials1[v + 1];
+            sum2 += matrices2[w+1] * partials2[v + 1];
+            
+            sum1 += matrices1[w+8] * partials1[v + 2];
+            sum2 += matrices2[w+2] * partials2[v + 2];
+            
+            sum1 += matrices1[w+12] * partials1[v + 3];
+            sum2 += matrices2[w+3] * partials2[v + 3];
+            
+            *pPartials++ = sum1 * sum2;
+            
+            
+            sum1  = matrices1[w+1] * partials1[v];
+            sum2  = matrices2[w+4] * partials2[v];
+            
+            sum1 += matrices1[w+5] * partials1[v + 1];
+            sum2 += matrices2[w+5] * partials2[v + 1];
+            
+            sum1 += matrices1[w+9] * partials1[v + 2];
+            sum2 += matrices2[w+6] * partials2[v + 2];
+            
+            sum1 += matrices1[w+13] * partials1[v + 3];
+            sum2 += matrices2[w+7] * partials2[v + 3];
+            
+            *pPartials++ = sum1 * sum2;
+            
+            
+            sum1  = matrices1[w+2]  * partials1[v];
+            sum2  = matrices2[w+8]  * partials2[v];
+            
+            sum1 += matrices1[w+6]  * partials1[v + 1];
+            sum2 += matrices2[w+9]  * partials2[v + 1];
+            
+            sum1 += matrices1[w+10] * partials1[v + 2];
+            sum2 += matrices2[w+10] * partials2[v + 2];
+            
+            sum1 += matrices1[w+14] * partials1[v + 3];
+            sum2 += matrices2[w+11] * partials2[v + 3];
+            
+            *pPartials++ = sum1 * sum2;
+            
+            
+            sum1  = matrices1[w+3] * partials1[v];
+            sum2  = matrices2[w+12] * partials2[v];
+            
+            sum1 += matrices1[w+7] * partials1[v + 1];
+            sum2 += matrices2[w+13] * partials2[v + 1];
+            
+            sum1 += matrices1[w+11] * partials1[v + 2];
+            sum2 += matrices2[w+14] * partials2[v + 2];
+            
+            sum1 += matrices1[w+15] * partials1[v + 3];
+            sum2 += matrices2[w+15] * partials2[v + 3];
+            
+            *pPartials++ = sum1 * sum2;
+            
+            v += 4;
+        }
+        w += 16;
+    }
+    
+}
 
-	if(partialsIndex2 < 0){
+void update_partials_4( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
+	if(partialsIndex1 < 0){
+		partialsIndex1 = -partialsIndex1;
+			partials_undefined_t_and_undefined_4(tlk,
+											   tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+											   tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+											   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
+	}
+	else if(partialsIndex2 < 0){
 		if(  tlk->partials[0][partialsIndex1] != NULL ){
 			partials_undefined_4(tlk,
 							   tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],

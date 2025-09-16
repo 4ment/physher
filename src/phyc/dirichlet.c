@@ -23,7 +23,7 @@ double ddirchletln( const double *x, const size_t dim, const double *alphas ){
     double logp = 0;
     double sum = 0;
     for (size_t i = 0; i < dim; i++) {
-        logp += alphas[i]-1.0 + log(x[i]) - gammln(alphas[i]);;
+        logp += (alphas[i]-1.0) * log(x[i]) - gammln(alphas[i]);;
 		sum += alphas[i];
     }
     logp += gammln(sum);

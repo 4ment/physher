@@ -16,6 +16,8 @@
 #include "gaussian.h"
 #include "transforms.h"
 #include "solve.h"
+#include "compoundmodel.h"
+#include "distmodel.h"
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_vector.h>
@@ -231,62 +233,77 @@ void variational_klqp_grad_elbo(variational_t* var, const Parameters* parameters
 
 void klqp_block_meanfield_normal_initialize(variational_block_t* var){
 	size_t dim = Parameters_count(var->parameters);
+	size_t index = 0;
 	for (int j = 0; j < dim; j++) {
 		Parameter* p = Parameters_at(var->parameters, j);
-		Parameter* var_p_mu = Parameters_at(var->var_parameters[0], j);
-		Parameter* var_p_sigma = Parameters_at(var->var_parameters[1], j);
-		double x = Parameter_value(p);
-		double var_mu = INFINITY;
-		double var_sigma = INFINITY;
-		if(!isinf(Parameter_lower(p)) && !isinf(Parameter_upper(p))){
-			var_mu = transform(x, 0.0, 1.0);
-			var_sigma = 1.e-6;
-		}
-		else if(Parameter_lower(p) >= 0.0){
-			if(Parameter_lower(p) > 0.0){
-				x -= Parameter_lower(p);
+		for(size_t i = 0; i < Parameter_size(p); i++){
+			Parameter* var_p_mu = Parameters_at(var->var_parameters[0], index);
+			Parameter* var_p_sigma = Parameters_at(var->var_parameters[1], index);
+			double x = Parameter_value_at(p, i);
+			double var_mu = INFINITY;
+			double var_sigma = INFINITY;
+			if(!isinf(Parameter_lower(p)) && !isinf(Parameter_upper(p))){
+				var_mu = transform(x, 0.0, 1.0);
+				var_sigma = 0.15;// 1.e-6;
 			}
-			var_mu = log(x);
-			var_sigma = 1.e-6;
+			else if(Parameter_lower(p) >= 0.0){
+				if(Parameter_lower(p) > 0.0){
+					x -= Parameter_lower(p);
+				}
+				var_mu = log(x / sqrt(1 + 0.001 / pow(x,2)));
+				var_sigma = sqrt(log(1 + 0.001 / pow(x,2)));
+				// var_mu = log(x);
+				// var_sigma = 1.e-6;
+			}
+			else{
+				var_mu =x;
+				var_sigma = fabs(x) *0.01;
+			}
+			Parameter_set_value(var_p_mu, var_mu);
+			Parameter_set_value(var_p_sigma, var_sigma);
+			index++;
 		}
-		else{
-			var_mu =x;
-			var_sigma = fabs(x) *0.01;
-		}
-		Parameter_set_value(var_p_mu, var_mu);
-		Parameter_set_value(var_p_sigma, var_sigma);
 	}
 }
 
 void klqp_block_meanfield_normal_sample1(variational_block_t* var, double* jacobian){
     size_t dim = Parameters_count(var->parameters);
     double* etas = Vector_mutable_data(var->etas);
-    
+    size_t index = 0;
+
     for (int j = 0; j < dim; j++) {
         Parameter* p = Parameters_at(var->parameters, j);
-        Parameter* var_p_mu = Parameters_at(var->var_parameters[0], j);
-        Parameter* var_p_sigma = Parameters_at(var->var_parameters[1], j);
-        
-        if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
-        
-        double mu;
-        double sigma = Parameter_value(var_p_sigma);
-        
-        if(Parameter_estimate(var_p_mu)){
-            mu = Parameter_value(var_p_mu);
-        }
-        else{
-            //                if(Parameter_value(p) < 1.0e-6){
-            mu = -10 + sigma * sigma;
-            //                }
-            //                else{
-            //                    mu = log(Parameter_value(p)) + sigma*sigma;
-            //                }
-        }
-        etas[j] = rnorm();
-        double zeta = etas[j] * sigma + mu;
-        double theta = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), jacobian);
-        Parameter_set_value(p, theta);
+		for(size_t i = 0; i < Parameter_size(p); i++){
+			Parameter* var_p_mu = Parameters_at(var->var_parameters[0], index);
+			Parameter* var_p_sigma = Parameters_at(var->var_parameters[1], index);
+			
+			if(!Parameter_estimate(var_p_mu) && !Parameter_estimate(var_p_sigma)) continue;
+			
+			double mu;
+			double sigma = Parameter_value(var_p_sigma);
+			
+			if(Parameter_estimate(var_p_mu)){
+				mu = Parameter_value(var_p_mu);
+			}
+			else{
+				//                if(Parameter_value(p) < 1.0e-6){
+				mu = -10 + sigma * sigma;
+				//                }
+				//                else{
+				//                    mu = log(Parameter_value(p)) + sigma*sigma;
+				//                }
+			}
+			etas[j] = rnorm();
+			double zeta = etas[j] * sigma + mu;
+			double theta = NAN;
+			if(jacobian == NULL){
+				theta = inverse_transform2(zeta, Parameter_lower(p), Parameter_upper(p));
+			}else{
+				theta = inverse_transform(zeta, Parameter_lower(p), Parameter_upper(p), jacobian);
+			}
+						// printf("%f %f\n", Parameter_lower(p), Parameter_upper(p));
+			Parameter_set_value(p, theta);
+		}
     }
     
     if (jacobian != NULL) {
@@ -310,6 +327,7 @@ double klqp_block_meanfield_normal_entropy(variational_block_t* var){
     size_t dim = Parameters_count(var->parameters);
     for (size_t i = 0; i < dim; i++) {
         if(Parameters_estimate(var->var_parameters[1], i)){
+			// printf("var %f\n", Parameters_value(var->var_parameters[1], i));
             entropy += log(Parameters_value(var->var_parameters[1], i));
             count++;
         }
@@ -454,12 +472,18 @@ void klqp_block_meanfield_normal_grad_entropy(variational_block_t* var, const Pa
 double klqp_block_meanfield_normal_logP(variational_block_t* var, const double* values){
     size_t dim = Parameters_count(var->parameters);
     double logP = 0;
+	size_t index = 0;
     for (size_t i = 0; i < dim; i++) {
         Parameter* p = Parameters_at(var->parameters, i);
-        double mu = Parameters_value(var->var_parameters[0], i);
-        double sd = Parameters_value(var->var_parameters[1], i);
-        double zeta = transform2(values[i], Parameter_lower(p), Parameter_upper(p), &logP);
-        logP += dnorml(zeta, mu, sd);
+		double lower = Parameter_lower(p);
+		double upper = Parameter_upper(p);
+		for (size_t j = 0; j < Parameter_size(p); j++) {
+			double mu = Parameters_value(var->var_parameters[0], index);
+			double sd = Parameters_value(var->var_parameters[1], index);
+			double zeta = transform2(values[index], lower, upper, &logP);
+			logP += dnorml(zeta, mu, sd);
+			index++;
+		}
     }
     return logP;
 }

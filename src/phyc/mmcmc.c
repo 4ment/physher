@@ -67,7 +67,8 @@ void mmcmc_run(MMCMC* mmcmc){
 			
 			for (size_t s = 0; s < mmcmc->prior_samples; s++) {
 				for (int j = 1; j < cm->count; j++) {
-					cm->models[j]->sample_evaluate(cm->models[j]);
+					cm->models[j]->sample(cm->models[j]);
+					cm->models[j]->logP(cm->models[j]);
 				}
 				mcmc->model->logP(mcmc->model);
 				for (int j = 0; j < mcmc->log_count; j++) {

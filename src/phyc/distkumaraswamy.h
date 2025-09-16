@@ -13,7 +13,7 @@
 #include "mjson.h"
 #include "distmodel.h"
 
-DistributionModel* new_KumaraswamyDistributionModel_with_parameters(Parameters** parameters, Parameters* x);
+DistributionModel* new_KumaraswamyDistributionModel_with_parameters(Parameters* parameters, Parameters* x);
 
 Model* new_KumaraswamyDistributionModel_from_json(json_node* node, Hashtable* hash);
 

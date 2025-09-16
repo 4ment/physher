@@ -21,7 +21,6 @@ double _calculate_importance_sampler( ImportanceSampler* mvb ){
 	double* backup = dvector(dim);
 	Parameters_store_value(mvb->parameters, backup);
 	if(mvb->normalize == false){
-		double* samples = dvector(dim);
 		double sum = -DBL_MAX;
 		
 		for(size_t i = 0; i < n; i++){
@@ -30,17 +29,17 @@ double _calculate_importance_sampler( ImportanceSampler* mvb ){
 				size_t idx = roulette_wheel_gsl(mvb->rng, mvb->weights, mvb->distribution_count);
 				mvar = mvb->distribution[idx];
 			}
-			mvar->sample(mvar, samples, &logQ);
-			Parameters_restore_value(mvb->parameters, samples);
+			// mvar->sample(mvar, samples, &logQ);
+			// Parameters_restore_value(mvb->parameters, samples);
+			mvar->sample(mvar);
+			logQ = mvar->logP(mvar);
 			double logP = posterior->logP(posterior);
 			sum = logaddexp(sum, logP-logQ);
 			//            printf(",%f",logP);
 		}
 		lmarg = sum-log(n);
-		free(samples);
 	}
 	else{
-		double* samples = dvector(dim);
 		double sum = -DBL_MAX;
 		double denom = -DBL_MAX;
 		CompoundModel* cm = posterior->obj;
@@ -52,8 +51,10 @@ double _calculate_importance_sampler( ImportanceSampler* mvb ){
 				size_t idx = roulette_wheel_gsl(mvb->rng, mvb->weights, mvb->distribution_count);
 				mvar = mvb->distribution[idx];
 			}
-			mvar->sample(mvar, samples, &logQ);
-			Parameters_restore_value(mvb->parameters, samples);
+			// mvar->sample(mvar, samples, &logQ);
+			// Parameters_restore_value(mvb->parameters, samples);
+			mvar->sample(mvar);
+			logQ = mvar->logP(mvar);
 			posterior->logP(posterior);
 			double logP = lk->lp;
 			double logPrior = prior->lp;
