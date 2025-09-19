@@ -594,8 +594,9 @@ int main(int argc, char* argv[]) {
                                   csv, debug);
 
     printf("Tree likelihood time tree:\n");
-    test_tree_likelihood_time(iter, fasta_file, newick, 0, csv, debug);
-    test_tree_likelihood_time(iter, fasta_file, newick, 1, csv, debug);
+    test_tree_likelihood_time(iter, fasta_file, newick, TREE_TRANSFORM_RATIO_NAIVE, csv, debug);
+    test_tree_likelihood_time(iter, fasta_file, newick, TREE_TRANSFORM_RATIO, csv, debug);
+    test_tree_likelihood_time(iter, fasta_file, newick, TREE_TRANSFORM_PROPORTION, csv, debug);
 
     free(newick);
     if (csv != NULL) {

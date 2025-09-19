@@ -1239,9 +1239,17 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 				else if(strcasecmp(transform_desc, "shift") == 0){
 					tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_SHIFT);
 				}
+				else if(strcasecmp(transform_desc, "proportion") == 0){
+					tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_PROPORTION);
+					tree->tt->update_lowers(tree->tt);
+				}
+				else if(strcasecmp(transform_desc, "ratio") == 0){
+					tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO);
+					tree->tt->update_lowers(tree->tt);
+				}
 			}
 			else{
-				tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_RATIO);
+				tree->tt = new_HeightTreeTransform(tree,TREE_TRANSFORM_PROPORTION);
 				tree->tt->update_lowers(tree->tt);
 			}
 			init_heights_from_distances(tree);

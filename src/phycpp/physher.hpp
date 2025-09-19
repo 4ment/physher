@@ -34,6 +34,7 @@ enum class TreeLikelihoodGradientFlags {
 };
 
 enum class TreeTransformFlags {
+    PROPORTION = TREE_TRANSFORM_PROPORTION,
     RATIO = TREE_TRANSFORM_RATIO,
     SHIFT = TREE_TRANSFORM_SHIFT
 };

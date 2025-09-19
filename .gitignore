@@ -3,6 +3,9 @@
 /DerivedData
 /physher.xcodeproj
 
+/.vscode
+
 /bin
 /obj
 /Release
+/Debug

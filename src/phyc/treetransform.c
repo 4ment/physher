@@ -32,24 +32,33 @@ double _height_tree_inverse_shift_transform(TreeTransform *tt, Node *node) {
 
 void node_transform_jvp_shift(TreeTransform *tt, const double *height_gradient, double *gradient){
 	memset(gradient, 0.0, sizeof(double)*(tt->tipCount-1));
-    Node** nodes = Tree_nodes(tt->tree);
+    Node** nodes = Tree_get_nodes(tt->tree, PREORDER);
     size_t nodeCount = Tree_node_count(tt->tree);
+    double* adjoints = dvector(nodeCount);
+    memcpy(adjoints + tt->tipCount, height_gradient, sizeof(double)*(tt->tipCount-1));
+
     for(size_t i = 0; i < nodeCount; i++){
         Node* node = nodes[i];
         if(!Node_isleaf(node)){
-            size_t parameterIndex = Node_class_id(node); 
-            gradient[parameterIndex] += height_gradient[Node_class_id(node)];
+            size_t nodeClassIndex = Node_class_id(node);
+            double grad = adjoints[nodeClassIndex + tt->tipCount];
+            gradient[nodeClassIndex] = grad;
+            double hl = Node_height(node->left);
+            double hr = Node_height(node->right);
 
-            if(!Node_isroot(node)){
-                Node* node2 = node;
-                while(node2->parent != NULL && Node_height(node2) > Node_height(Node_sibling(node2))){
-                    // gradient[Node_class_id(node2->parent)] += height_gradient[Node_class_id(node)];
-                    gradient[parameterIndex] += height_gradient[Node_class_id(node2->parent)];
-                    node2 = node2->parent;
-                }
+            if(hl > hr){
+                adjoints[Node_id(node->left)] += grad;
+            }
+            else if(hl < hr){
+                adjoints[Node_id(node->right)] += grad;
+            }
+            else{
+                adjoints[Node_id(node->left)] += grad * 0.5;
+                adjoints[Node_id(node->right)] += grad * 0.5;
             }
         }
     }
+    free(adjoints);
 }
 
 double _node_transform_log_jacobian_zero(TreeTransform *tt){
@@ -62,6 +71,53 @@ double _node_transform_dlog_jacobian_zero(struct TreeTransform *tt, Node *node) 
 
 void _node_transform_log_jacobian_gradient_zero(struct TreeTransform *tt, double *gradient) {
 	
+}
+
+void node_transform_jvp_backprop(TreeTransform *tt, const double *height_gradient, double *gradient){
+	memset(gradient, 0.0, sizeof(double)*(tt->tipCount-1));
+    double *adjoints = clone_dvector(height_gradient, tt->tipCount-1);
+    Node** nodes = Tree_get_nodes(tt->tree, POSTORDER);
+    size_t nodeCount = Tree_node_count(tt->tree);
+    size_t rootId = Node_class_id(Tree_root(tt->tree));
+    for (size_t i = 0; i < nodeCount-1; i++) {
+        Node* node = nodes[i];
+        if (!Node_isleaf(node)) {
+            size_t nodeClassIndex = Node_class_id(node);
+            size_t parentClassIndex = Node_class_id(node->parent);
+	        gradient[nodeClassIndex] = adjoints[nodeClassIndex] * (Node_height(node->parent) - tt->lowers[Node_id(node)]);
+            adjoints[parentClassIndex] += adjoints[nodeClassIndex] * Parameters_value(tt->parameters, nodeClassIndex);
+        }
+    }
+    gradient[rootId] = adjoints[rootId];
+    free(adjoints);
+}
+
+void _node_transform_log_jacobian_gradient_backprop(struct TreeTransform *tt, double *gradient) {
+	size_t nodeCount = Tree_node_count(tt->tree);
+    size_t rootId = Node_class_id(Tree_root(tt->tree));
+	double *adjoints = dvector(tt->tipCount-1);
+    memset(adjoints, 0.0, sizeof(double)*(tt->tipCount-1));
+	Node** nodes = Tree_get_nodes(tt->tree, POSTORDER);
+	for (size_t i = 0; i < nodeCount-1; i++) {
+        Node* node = nodes[i];
+        if (!Node_isleaf(node)) {
+            size_t parentClassIndex = Node_class_id(nodes[i]->parent);
+            adjoints[parentClassIndex] += 1.0 / (Node_height(node->parent) - tt->lowers[Node_id(node)]);
+        }
+	}
+
+    for (size_t i = 0; i < nodeCount-1; i++) {
+        Node* node = nodes[i];
+        if (!Node_isleaf(node)) {
+            size_t nodeClassIndex = Node_class_id(node);
+            size_t parentClassIndex = Node_class_id(node->parent);
+	        gradient[nodeClassIndex] += adjoints[nodeClassIndex] * (Node_height(node->parent) - tt->lowers[Node_id(node)]);
+            adjoints[parentClassIndex] += adjoints[nodeClassIndex] * Parameters_value(tt->parameters, nodeClassIndex);
+        }
+    }
+    gradient[rootId] += adjoints[rootId];
+
+	free(adjoints);
 }
 
 // Efficient calculation of the ratio and root height gradient, adpated from BEAST.
@@ -321,6 +377,10 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_efficient;
 		tt->jvp = node_transform_jvp_efficient;
 	}
+	else if(parameterization == TREE_TRANSFORM_PROPORTION){
+		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_backprop;
+		tt->jvp = node_transform_jvp_backprop;
+	}
 	else if(parameterization == TREE_TRANSFORM_SHIFT){
         tt->update = _tree_transform_shift_update;
         tt->update_lowers = NULL;
@@ -347,15 +407,21 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
         StringBuffer_set_string(buffer, node->name);
         StringBuffer_append_string(buffer, ".reparam");
         Parameter *p = NULL;
-        if (Node_isroot(node)) {
-            // The constraint is updated during lowers collection
-            p = new_Parameter(buffer->c, Node_height(node), new_Constraint(0, INFINITY));
-            tt->rootHeight = p;
-            p->refCount++;
-
-        } else {
-            p = new_Parameter(buffer->c, Node_height(node) / Node_height(Node_parent(nodes[i])), new_Constraint(0., 1.));
+        if(tt->parameterization == TREE_TRANSFORM_SHIFT){
+            p = new_Parameter(buffer->c, 0.1, new_Constraint(0., INFINITY));
             Parameters_add(tt->ratios, p);
+        }
+        else{
+            if (Node_isroot(node)) {
+                // The constraint is updated during lowers collection
+                p = new_Parameter(buffer->c, Node_height(node), new_Constraint(0, INFINITY));
+                tt->rootHeight = p;
+                p->refCount++;
+
+            } else {
+                p = new_Parameter(buffer->c, Node_height(node) / Node_height(Node_parent(nodes[i])), new_Constraint(0., 1.));
+                Parameters_add(tt->ratios, p);
+            }
         }
         p->model = MODEL_TREE_TRANSFORM;
         Parameters_move(tt->parameters, p);
@@ -368,7 +434,10 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
     free(indices);
     free_StringBuffer(buffer);
 
-    tree_transform_collect_lowers(Tree_root(tree), tt, tt->lowers);
+    if(tt->update_lowers != NULL){
+        tt->update_lowers->(tt);
+        tree_transform_collect_lowers(Tree_root(tree), tt, tt->lowers);
+    }
     return tt;
 }
 
