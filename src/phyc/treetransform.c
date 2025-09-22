@@ -435,7 +435,7 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
     free_StringBuffer(buffer);
 
     if(tt->update_lowers != NULL){
-        tt->update_lowers->(tt);
+        tt->update_lowers(tt);
         tree_transform_collect_lowers(Tree_root(tree), tt, tt->lowers);
     }
     return tt;
