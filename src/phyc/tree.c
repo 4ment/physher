@@ -646,8 +646,7 @@ Tree * create_Tree( const char *nexus, bool containBL ){
             if( !success ) {
                 Node *temp = new_Node(current, NULL, atree->nNodes-1);
                 temp->poly = true;
-                
-                Node_set_distance(temp, BL_MIN);
+                temp->bl = BL_MIN;
                 
                 Node *r = current->right;
                 current->right = temp;
@@ -758,7 +757,7 @@ Tree * create_Tree( const char *nexus, bool containBL ){
 			else {
 				Node *temp = new_Node(current, NULL, atree->nNodes-1);
 				temp->poly = true;
-				Node_set_distance(temp, 0.0);
+				temp->bl = BL_MIN;
 				
 				//fprintf(stderr, "%s %s n:%s\n", current->name, temp->name, n->name);
 				
@@ -1004,17 +1003,16 @@ void Tree_init_heights ( Tree *atree ) {
 void _tree_handle_change( Model *self, Model *model, Parameter* parameter, int index ){
 	Tree *tree = (Tree*)self->obj;
 	tree->needUpdateBranchLengths = true;
-	// printf("%s %d\n", model->name, index);
-	// print_dvector(tree->distances->value, tree->distances->dim);
-	// print_dvector(tree->distances->transform->parameter->value, tree->distances->dim);
 	if ( tree->time_mode ) {
 		// using reparametrization
 		if(model != NULL){
-//			Node* n = tree->tt->map_to_node[index];
 			tree->need_update_height = true;
-			// notify treelikelihood but _tree_handle_change will be triggered again when heights need to be updated
-			// because of the reparameterization if an internal node changes every node below it should be updated
-			self->listeners->fire( self->listeners, self, parameter, -1 );
+			if(index < 0){
+				self->listeners->fire( self->listeners, self, parameter, -1 );
+			}
+			else{
+				self->listeners->fire( self->listeners, self, parameter, index );
+			}
 			return;
 		}
 		
@@ -1302,6 +1300,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		"keep_branch_lengths",
 		"newick",
 		"parameters", // distance parameters
+		"proportions", // reparameterization parameters
 		"ratios", // reparameterization parameters
 		"reparam", // reparametrization
 		"root_height",
@@ -1427,7 +1426,10 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			}
 			else{
 				json_node* rootHeightNode = get_json_node(node, "root_height");
-				json_node* ratios_node = get_json_node(node, "ratios");
+				json_node* ratios_node = get_json_node(node, "proportions");
+				if(ratios_node == NULL){
+					ratios_node = get_json_node(node, "ratios");
+				}
 				json_node* shifts_node = get_json_node(node, "shifts");
 				json_node* reparam_node = get_json_node(node, "reparam");
 				if (ratios_node != NULL || shifts_node != NULL || reparam_node != NULL){
@@ -1464,6 +1466,10 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 								fakeShiftNode = create_json_node_parameter_full(transformNode, "shifts", 1.0, Tree_tip_count(tree)-1, 0.0, INFINITY);
 							}
 							add_json_node_size_t(fakeShiftNode, "dimension", Tree_tip_count(tree)-1);
+						}
+						else{
+							json_node* clonedShiftsNode = clone_json_node(NULL, shifts_node);
+							add_json_node(transformNode, clonedShiftsNode);
 						}
 					}
 					if(transform_node != NULL){

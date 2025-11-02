@@ -89,6 +89,12 @@ void _treelikelihood_handle_change( Model *self, Model *model, Parameter* parame
 		else{
 			// printf("MODEL_TREE\n");
 			tlk->update_nodes[index] = true;
+			Tree* tree = tlk->tree;
+			if(Tree_is_time_mode(tree)){
+				Node* node = Tree_node(tree, index);
+				tlk->update_nodes[Node_id(node->left)] = true;
+				tlk->update_nodes[Node_id(node->right)] = true;
+			}
 			tlk->update = true;
 			tlk->update_upper = true;
 		}
@@ -3711,34 +3717,16 @@ void gradient_clock(SingleTreeLikelihood* tlk, Parameters* parameters, const dou
 	size_t nodeCount = Tree_node_count(tlk->tree);
 	Parameter* rates = Parameters_at(tlk->bm->rates, 0);
 	double mu =  tlk->sm->mu != NULL ? Parameter_value(tlk->sm->mu) : 1.0;
-	if (Parameter_size(rates) == 1) {
-		double grad = 0;
-		for(size_t i = 1; i < nodeCount; i++){
-			Node* node = nodes[i];
-			grad += ingrad[node->id] * Node_time_elapsed(node);
-		}
-		grad *= mu;
-		rates->grad[0] += grad;
-		Parameter* xx = Parameters_depends(parameters, rates);
-		if(xx != rates){
-			rates->transform->backward(rates->transform, &grad);
-		}
+
+	double* rateGradient = dvector(nodeCount-1);
+	size_t tipCount = Tree_tip_count(tlk->tree);
+	for(size_t i = 1; i < nodeCount; i++){
+		Node* node = nodes[i];
+		size_t index = Node_isleaf(node) ? node->class_id : node->class_id + tipCount;
+		rateGradient[index] = ingrad[node->id] * Node_time_elapsed(node) * mu;
 	}
-	else{
-		double* rateGradient = dvector(nodeCount-1);
-		size_t tipCount = Tree_tip_count(tlk->tree);
-		for(size_t i = 1; i < nodeCount; i++){
-			Node* node = nodes[i];
-			size_t index = Node_isleaf(node) ? node->class_id : node->class_id + tipCount;
-			rateGradient[index] = ingrad[node->id] * Node_time_elapsed(node) * mu;
-			rates->grad[index] += rateGradient[index];
-		}
-		Parameter* xx = Parameters_depends(parameters, rates);
-		if(xx != rates){
-			rates->transform->backward(rates->transform, rateGradient);
-		}
-		free(rateGradient);
-	}
+	BranchModel_backward(tlk->bm, parameters, rateGradient);
+	free(rateGradient);
 }
 
 // void gradient_PMatrix(SingleTreeLikelihood* tlk, const double* pattern_likelihoods){

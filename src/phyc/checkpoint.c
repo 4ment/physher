@@ -52,7 +52,11 @@ void checkpoint_save(const char* file_path, Parameters* parameters) {
     FILE* file = fopen(file_path, "w");
     for (size_t i = 0; i < Parameters_count(parameters); i++) {
         Parameter* p = Parameters_at(parameters, i);
-        fprintf(file, "%s,%e\n", Parameter_name(p), Parameter_value(p));
+        fprintf(file, "%s", Parameter_name(p));
+        for(size_t j = 0; j < Parameter_size(p); j++){
+            fprintf(file, ",%e", Parameter_value_at(p, j));
+        }
+        fprintf(file, "\n");
     }
     fclose(file);
 

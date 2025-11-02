@@ -28,7 +28,7 @@
 #define BRANCHMODEL_RATE_MIN 1e-15
 #define BRANCHMODEL_RATE_MAX 0.1
 
-typedef enum branchmodel { NO_CLOCK, CLOCK_STRICT, CLOCK_LOCAL, CLOCK_DISCRETE, CLOCK_RELAXED } branchmodel;
+typedef enum branchmodel { NO_CLOCK, CLOCK_STRICT, CLOCK_LOCAL, CLOCK_DISCRETE, CLOCK_RELAXED, CLOCK_ARBITRARY } branchmodel;
 
 typedef enum relaxed_clock{RELAXED_LOGNORMAL, RELAXED_EXPONENTIAL, RELAXED_DISCRETE} relaxed_clock;
 
@@ -74,11 +74,11 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash);
 
 Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model* ssvs);
 
-BranchModel * new_BranchModel( Tree *tree, branchmodel type );
-
 BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree, DiscreteParameter* dp );
 
 void BranchModel_vector_to_rates( BranchModel *bm, const double *rates );
+
+void BranchModel_backward(BranchModel *bm, Parameters* parameters, const double* ingrad);
 
 #pragma mark -
 #pragma mark NoClock
@@ -92,6 +92,10 @@ BranchModel * new_StrictClock( Tree *tree );
 
 BranchModel * new_StrictClock_with_parameter( Tree *tree, Parameter *rate );
 
+#pragma mark -
+#pragma mark ArbitraryClock
+
+BranchModel * new_ArbitraryClock_with_parameters( Tree *tree, Parameter *rates, Parameter *location, Parameter *scale );
 
 #pragma mark -
 #pragma mark LocalClock
