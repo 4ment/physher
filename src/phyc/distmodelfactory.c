@@ -21,6 +21,7 @@
 #include "exponential.h"
 #include "filereader.h"
 #include "gamma.h"
+#include "gar.h"
 #include "gmrf.h"
 #include "matrix.h"
 #include "parametersio.h"
@@ -43,6 +44,8 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash) {
         return new_ExponentialDistributionModel_from_json(node, hash);
     } else if (strcasecmp(d_string, "gamma") == 0) {
         return new_GammaDistributionModel_from_json(node, hash);
+    } else if (strcasecmp(d_string, "gar") == 0) {
+        return new_GARModel_from_json(node, hash);
     } else if (strcasecmp(d_string, "gmrf") == 0) {
         return new_GMRFModel_from_json(node, hash);
     } else if (strcasecmp(d_string, "dirichlet") == 0) {

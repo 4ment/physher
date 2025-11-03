@@ -2940,6 +2940,32 @@ bool Tree_is_time_mode(Tree* tree){
 	return tree->time_mode;
 }
 
+Parameters* Tree_dependencies(Tree* tree, const Parameters* parameters){
+	Parameters* reparam = get_reparams(tree);
+	Node** nodes = Tree_nodes(tree);
+	Parameters* treeModelParameters = new_Parameters(1);
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* parameter = Parameters_at(parameters, i);
+		// ratios and root_height transformed
+		if(parameter->model == MODEL_TREE_TRANSFORM){
+			for(size_t j = 0; j < Parameters_count(reparam); j++){
+				Parameter* xx = Parameters_depends(parameters, Parameters_at(reparam, j));
+				if(xx != NULL) {
+					Parameters_add(treeModelParameters, xx);
+				}
+			}
+		}
+		// heights
+		else if(parameter->model == MODEL_TREE){
+			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
+			if(xx != NULL){
+				Parameters_add(treeModelParameters, xx);
+			}
+		}
+	}
+	return treeModelParameters;
+}
+
 #pragma mark -
 #pragma mark TreeTransform
 

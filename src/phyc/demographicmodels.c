@@ -732,9 +732,8 @@ void height_gradient_from_interval_gradient(Coalescent* coal, const double* inte
 	}
 }
 
-#pragma mark -
-#pragma mark Constant coalescent
-
+#pragma region Constant coalescent
+// ============================== Constant coalescent ============================
 
 double _constant_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
@@ -823,26 +822,7 @@ double _constant_gradient(Coalescent* coal, const Parameters* parameters ){
 		}
     }
 
-	Parameters* treeModelParameters = new_Parameters(1);
-	for(size_t i = 0; i < Parameters_count(parameters); i++){
-		Parameter* parameter = Parameters_at(parameters, i);
-		// ratios and root_height transformed
-		if(parameter->model == MODEL_TREE_TRANSFORM){
-			for(size_t j = 0; j < Parameters_count(reparam); j++){
-				Parameter* xx = Parameters_depends(parameters, Parameters_at(reparam, j));
-				if(xx != NULL) {
-					Parameters_add(treeModelParameters, xx);
-				}
-			}
-		}
-		// heights
-		else if(parameter->model == MODEL_TREE){
-			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
-			if(xx != NULL){
-				Parameters_add(treeModelParameters, xx);
-			}
-		}
-	}
+	Parameters* treeModelParameters = Tree_dependencies(coal->tree, parameters);
 
 	if(Parameters_count(treeModelParameters) > 0){
 		double* interval_gradient = dvector(coal->n);		
@@ -1017,8 +997,10 @@ Coalescent * new_ConstantCoalescent_with_data( Parameter* theta, double* times, 
 	return coal;
 }
 
-#pragma mark -
-#pragma mark Exponential coalescent
+#pragma endregion Constant coalescent
+
+#pragma region Exponential coalescent
+// ============================== Exponential coalescent ============================
 
 double _coalescent_exponential_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
@@ -1218,8 +1200,10 @@ Coalescent * new_ExponentialCoalescent_with_data( Parameters* parameters, double
 	return coal;
 }
 
-#pragma mark -
-#pragma mark classic skyline
+#pragma endregion Exponential coalescent
+
+#pragma region Classic skyline
+// ============================== Classical skyline coalescent ============================
 
 double _coalescent_classical_skyline_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
@@ -1264,8 +1248,10 @@ Coalescent * new_ClassicalSkylineCoalescent_with_parameters( Tree *tree, Paramet
 	return coal;
 }
 
-#pragma mark -
-#pragma mark skyride
+#pragma endregion Classic skyline
+
+#pragma region Skyride
+// ============================== Skyride coalescent ============================
 
 double _skyride_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
@@ -1389,26 +1375,7 @@ double _skyride_gradient( Coalescent* coal, const Parameters* parameters ){
 		free(gradTheta);
 	}
 
-	Parameters* treeModelParameters = new_Parameters(1);
-	for(size_t i = 0; i < Parameters_count(parameters); i++){
-		Parameter* parameter = Parameters_at(parameters, i);
-		// ratios and root_height transformed
-		if(parameter->model == MODEL_TREE_TRANSFORM){
-			for(size_t j = 0; j < Parameters_count(reparam); j++){
-				Parameter* xx = Parameters_depends(parameters, Parameters_at(reparam, j));
-				if(xx != NULL) {
-					Parameters_add(treeModelParameters, xx);
-				}
-			}
-		}
-		// heights
-		else if(parameter->model == MODEL_TREE){
-			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
-			if(xx != NULL){
-				Parameters_add(treeModelParameters, xx);
-			}
-		}
-	}
+	Parameters* treeModelParameters = Tree_dependencies(coal->tree, parameters);
 
 	if(Parameters_count(treeModelParameters) > 0){
 		double* intervalGradient = dvector(coal->n);
@@ -1425,6 +1392,7 @@ double _skyride_gradient( Coalescent* coal, const Parameters* parameters ){
 		free(intervalGradient);
 		
 	}
+	free_Parameters(treeModelParameters);
 	free(chooses);
 	return 0;
 }
@@ -1642,9 +1610,10 @@ Coalescent * new_SkyrideCoalescent_with_data(Parameter* parameters, double* time
 	coal->need_update_intervals = false;
 	return coal;
 }
+#pragma endregion Skyride
 
-#pragma mark -
-#pragma mark skygrid
+#pragma region Skygrid
+// ============================== Skygrid coalescent ============================
 
 double _skygrid_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
@@ -1782,26 +1751,7 @@ static double _skygrid_gradient( Coalescent* coal, const Parameters* parameters 
 //			coal->grad[index] += invPop*(coal->times[i]*chooses[i] - 1.0);
 //		}
 	}
-	Parameters* treeModelParameters = new_Parameters(1);
-	for(size_t i = 0; i < Parameters_count(parameters); i++){
-		Parameter* parameter = Parameters_at(parameters, i);
-		// ratios and root_height transformed
-		if(parameter->model == MODEL_TREE_TRANSFORM){
-			for(size_t j = 0; j < Parameters_count(reparam); j++){
-				Parameter* xx = Parameters_depends(parameters, Parameters_at(reparam, j));
-				if(xx != NULL) {
-					Parameters_add(treeModelParameters, xx);
-				}
-			}
-		}
-		// heights
-		else if(parameter->model == MODEL_TREE){
-			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
-			if(xx != NULL){
-				Parameters_add(treeModelParameters, xx);
-			}
-		}
-	}
+	Parameters* treeModelParameters = Tree_dependencies(coal->tree, parameters);
 
 	if(Parameters_count(treeModelParameters) > 0){
 		double* interval_gradient = dvector(coal->n);
@@ -1918,8 +1868,10 @@ Coalescent * new_GridCoalescent_with_data(Parameter* parameters, double* times, 
 	return coal;
 }
 
-#pragma mark -
-#pragma mark piecewise linear with grid
+#pragma endregion Skygrid
+
+#pragma region Piecewise linear with grid
+// ============================== Piecewise linear with grid coalescent ============================
 
 double _coalescent_piecewise_linear_grid_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
@@ -2334,8 +2286,10 @@ Coalescent * new_PiecewiseLinearGridCoalescent_with_data(Parameter* parameters, 
 	return coal;
 }
 
-#pragma mark -
-#pragma mark skyline
+#pragma endregion Piecewise linear with grid
+
+#pragma region Skyline
+// ============================== Skyline coalescent ============================
 
 double _coalescent_skyline_calculate( Coalescent* coal ){
 	if ( coal->need_update_intervals ) {
@@ -2347,14 +2301,15 @@ double _coalescent_skyline_calculate( Coalescent* coal ){
 		
 		size_t cum = coal->groups->values[currentGroupIndex];
 		size_t coalescentCount = 0;
-		double popSize = Parameters_value(coal->p, currentGroupIndex);
+		Parameter* thetaParameter = Parameters_at(coal->p, 0);
+		double popSize = Parameter_value_at(thetaParameter, currentGroupIndex);
 		double logPopSize = log(popSize);
 		
 		for( int i = 0; i< coal->n; i++  ){
 			if (coalescentCount == cum) {
 				currentGroupIndex++;
 				cum += coal->groups->values[currentGroupIndex];
-				popSize = Parameters_value(coal->p, currentGroupIndex);
+				popSize = Parameter_value_at(thetaParameter, currentGroupIndex);
 				logPopSize = log(popSize);
 			}
 //			printf("%d %d %f\n", i, currentGroupIndex, Parameters_value(coal->p, currentGroupIndex));
@@ -2374,6 +2329,90 @@ double _coalescent_skyline_calculate( Coalescent* coal ){
 	return coal->logP;
 }
 
+double _coalescent_skyline_gradient( Coalescent* coal, const Parameters* parameters ){
+	if ( coal->need_update_intervals ) {
+		coal->update_intervals(coal);
+	}
+
+	Node** nodes = Tree_nodes(coal->tree);
+	double* chooses = dvector(coal->n);
+	for( int i = 0; i< coal->n; i++  ){
+		chooses [i] = CHOOSE2(coal->lineages[i]);
+	}
+	
+	size_t currentGroupIndex = 0;
+	size_t cum = coal->groups->values[currentGroupIndex];
+	size_t coalescentCount = 0;
+	Parameter* thetaParameter = Parameters_at(coal->p, 0);
+	size_t dim = Parameter_size(thetaParameter);
+	const double* theta = Parameter_values(thetaParameter);
+	double theta_inv = 1.0/theta[0];
+
+	// thetax is the unconstrained parameter if it exists otherwise it is the same as theta if it is in parameters
+	Parameter *thetax = Parameters_depends(parameters, thetaParameter);
+
+    if(thetax != NULL){
+		double* grad = dvector(dim);
+        double theta2 = theta[currentGroupIndex]*theta[currentGroupIndex];
+        for(size_t i = 0; i< coal->n; i++){
+			if (coalescentCount == cum) {
+				currentGroupIndex++;
+				cum += coal->groups->values[currentGroupIndex];
+				theta2 = theta[currentGroupIndex]*theta[currentGroupIndex];
+				theta_inv = 1.0/theta[currentGroupIndex];
+			}
+
+            grad[currentGroupIndex] += chooses[i] * coal->times[i] /theta2;
+
+			if (coal->iscoalescent[i]) {
+				grad[currentGroupIndex] -= theta_inv;
+				coalescentCount++;
+			}
+        }
+		for(size_t i = 0; i < dim; i++){
+			thetaParameter->grad[i] += grad[i];
+		}
+		
+		if(thetaParameter != thetax){
+			thetaParameter->transform->backward(thetaParameter->transform, grad);
+		}
+		free(grad);
+    }
+
+	Parameters* treeModelParameters = Tree_dependencies(coal->tree, parameters);
+
+	if(Parameters_count(treeModelParameters) > 0){
+		size_t currentGroupIndex = 0;
+		size_t cum = coal->groups->values[currentGroupIndex];
+		size_t coalescentCount = 0;
+		double theta_inv = 1.0/theta[0];
+		double* interval_gradient = dvector(coal->n);		
+		for(size_t i = 0; i < coal->n; i++){
+			if (coalescentCount == cum) {
+				currentGroupIndex++;
+				cum += coal->groups->values[currentGroupIndex];
+				theta_inv = 1.0/theta[currentGroupIndex];
+			}
+			interval_gradient[i] = -chooses[i]*theta_inv;
+
+			if(coal->iscoalescent[i]){
+				coalescentCount++;
+			}
+		}
+		
+		double* heightGradient = dvector(Tree_tip_count(coal->tree)-1);
+		// gradient wrt to node heights from the interval gradient
+		height_gradient_from_interval_gradient(coal, interval_gradient, heightGradient);
+		
+		Tree_height_backward(coal->tree, treeModelParameters, heightGradient);
+		free(heightGradient);
+		free(interval_gradient);
+	}
+	free(chooses);
+	free_Parameters(treeModelParameters);
+	return 0;
+}
+
 Coalescent * new_SkylineCoalescent_with_parameters( Parameter* parameters, int size, DiscreteParameter* groups ){
 	Coalescent *coal = create_Coalescent(COALESCENT_SKYLINE, size);
 	coal->groups = groups;
@@ -2382,9 +2421,10 @@ Coalescent * new_SkylineCoalescent_with_parameters( Parameter* parameters, int s
 	Parameter_set_model(parameters, MODEL_COALESCENT);
 
 	coal->calculate = _coalescent_skyline_calculate;
-	coal->dlogP = _coalescent_exponential_dlogP;
-	coal->d2logP = _coalescent_exponential_d2logP;
-	coal->ddlogP = _coalescent_exponential_ddlogP;
+	coal->gradient = _coalescent_skyline_gradient;
+	coal->dlogP = NULL;
+	coal->d2logP = NULL;
+	coal->ddlogP = NULL;
 	return coal;
 }
 
@@ -2406,3 +2446,4 @@ Coalescent * new_SkylineCoalescent_with_data( Parameter *parameters, double* tim
 	coal->need_update_intervals = false;
 	return coal;
 }
+#pragma endregion Skyline

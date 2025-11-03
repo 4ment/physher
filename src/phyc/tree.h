@@ -216,6 +216,8 @@ void Tree_StringBuffer_nexus_with_annotation( StringBuffer *treebuffer, Tree *tr
 
 bool Tree_is_time_mode(Tree* tree);
 
+Parameters* Tree_dependencies(Tree* tree, const Parameters* parameters);
+
 Parameters* get_reparams(Tree* tree);
 
 void Tree_node_transform_gradient(Tree* tree, const double* height_gradient);
