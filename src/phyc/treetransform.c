@@ -269,16 +269,41 @@ void _node_transform_log_jacobian_gradient_backprop(struct TreeTransform *tt, do
         }
 	}
 
-    for (size_t i = 0; i < nodeCount-1; i++) {
-        Node* node = nodes[i];
-        if (!Node_isleaf(node)) {
-            size_t nodeClassIndex = Node_class_id(node);
-            size_t parentClassIndex = Node_class_id(node->parent);
-	        gradient[nodeClassIndex] += adjoints[nodeClassIndex] * (Node_height(node->parent) - tt->lowers[Node_id(node)]);
-            adjoints[parentClassIndex] += adjoints[nodeClassIndex] * Parameters_value(tt->parameters, nodeClassIndex);
+    Parameter* ratios = Parameters_at(tt->parameters, 0);
+    if(gradient == NULL){
+        Parameter* rootHeight = Parameters_at(tt->parameters, 1);
+        double* gradient = dvector(tt->tipCount-1);
+        for (size_t i = 0; i < nodeCount-1; i++) {
+            Node* node = nodes[i];
+            if (!Node_isleaf(node)) {
+                size_t nodeClassIndex = Node_class_id(node);
+                size_t parentClassIndex = Node_class_id(node->parent);
+                gradient[nodeClassIndex] += adjoints[nodeClassIndex] * (Node_height(node->parent) - tt->lowers[Node_id(node)]);
+                ratios->grad[nodeClassIndex] += gradient[nodeClassIndex];
+                adjoints[parentClassIndex] += adjoints[nodeClassIndex] * Parameter_value_at(ratios, nodeClassIndex);
+            }
         }
+        rootHeight->grad[0] += adjoints[rootId];
+        if(rootHeight->transform){
+            rootHeight->transform->backward(rootHeight->transform, adjoints + rootId);
+        }
+        if(ratios->transform){
+            ratios->transform->backward(ratios->transform, gradient);
+        }
+        free(gradient);
     }
-    gradient[rootId] += adjoints[rootId];
+	else{
+        for (size_t i = 0; i < nodeCount-1; i++) {
+            Node* node = nodes[i];
+            if (!Node_isleaf(node)) {
+                size_t nodeClassIndex = Node_class_id(node);
+                size_t parentClassIndex = Node_class_id(node->parent);
+                gradient[nodeClassIndex] += adjoints[nodeClassIndex] * (Node_height(node->parent) - tt->lowers[Node_id(node)]);
+                adjoints[parentClassIndex] += adjoints[nodeClassIndex] * Parameter_value_at(ratios, nodeClassIndex);
+            }
+        }
+        gradient[rootId] += adjoints[rootId];
+    }
 
 	free(adjoints);
 }
@@ -382,18 +407,18 @@ double _height_tree_inverse_transform(TreeTransform *tt, Node *node) {
 
 #pragma region Proportion gradient inefficient algorithm
 
-void _node_transform_dlog_jacobian_aux(TreeTransform *tt, const Node *noderef, Node *node, double *dlogP, double *descendant) {
+void _node_transform_dlog_jacobian_aux(TreeTransform *tt, const Node *noderef, Node *node, const double* proportions, double *dlogP, double *descendant) {
     if (!Node_isleaf(node)) {
         if (!Node_isroot(node) && node != noderef) {
-            descendant[Node_id(node)] = descendant[Node_id(node->parent)] * Parameters_value(tt->parameters, Node_class_id(node));
+            descendant[Node_id(node)] = descendant[Node_id(node->parent)] * proportions[Node_class_id(node)];
         } else if (!Node_isroot(node)) {
             descendant[Node_id(node)] =
                 Node_height(Node_parent(node)) - tt->lowers[Node_id(node)];
         } else {
             descendant[Node_id(node)] = 1;
         }
-        _node_transform_dlog_jacobian_aux(tt, noderef, node->left, dlogP, descendant);
-        _node_transform_dlog_jacobian_aux(tt, noderef, node->right, dlogP, descendant);
+        _node_transform_dlog_jacobian_aux(tt, noderef, node->left, proportions, dlogP, descendant);
+        _node_transform_dlog_jacobian_aux(tt, noderef, node->right, proportions, dlogP, descendant);
 
         if (!Node_isroot(node) && node != noderef) {
             *dlogP += descendant[Node_id(node->parent)] / (Node_height(Node_parent(node)) - tt->lowers[Node_id(node)]);
@@ -405,8 +430,9 @@ void _node_transform_dlog_jacobian_aux(TreeTransform *tt, const Node *noderef, N
 double _node_transform_dlog_jacobian(struct TreeTransform *tt, Node *node) {
     size_t nodeCount = Tree_node_count(tt->tree);
     double *descendant = dvector(nodeCount);
+    const double* proportions = Parameter_values(Parameters_at(tt->parameters, 0));
     double adj = 0;
-    _node_transform_dlog_jacobian_aux(tt, node, node, &adj, descendant);
+    _node_transform_dlog_jacobian_aux(tt, node, node, proportions, &adj, descendant);
     free(descendant);
     return adj;
 }
@@ -415,12 +441,36 @@ double _node_transform_dlog_jacobian(struct TreeTransform *tt, Node *node) {
 void _node_transform_log_jacobian_gradient(struct TreeTransform *tt, double *gradient) {
     size_t nodeCount = Tree_node_count(tt->tree);
     double *descendant = dvector(nodeCount);
+    Parameter* proportions = Parameters_at(tt->parameters, 0);
+    const double* proportionValues = Parameter_values(proportions);
     Node **nodes = Tree_get_nodes(tt->tree, POSTORDER);
+    if(gradient == NULL){
+        Parameter* rootHeight = Parameters_at(tt->parameters, 1);
+        double* gradient = dvector(tt->tipCount-1);
+        for (size_t i = 0; i < nodeCount; i++) {
+            if (Node_isleaf(nodes[i])) continue;
+            double adj = 0;
+            _node_transform_dlog_jacobian_aux(tt, nodes[i], nodes[i], proportionValues, &adj, descendant);
+            gradient[nodes[i]->class_id] = adj;
+            proportions->grad[nodes[i]->class_id] += adj;
+        }
+        size_t rootId = Node_class_id(Tree_root(tt->tree));
+        rootHeight->grad[0] += gradient[rootId];
+        if(rootHeight->transform){
+            rootHeight->transform->backward(rootHeight->transform, gradient + rootId);
+        }
+        if(proportions->transform){
+            proportions->transform->backward(proportions->transform, gradient);
+        }
+        free(gradient);
+    }
+    else{
     for (size_t i = 0; i < nodeCount; i++) {
         if (Node_isleaf(nodes[i])) continue;
         double adj = 0;
-        _node_transform_dlog_jacobian_aux(tt, nodes[i], nodes[i], &adj, descendant);
+        _node_transform_dlog_jacobian_aux(tt, nodes[i], nodes[i], proportionValues, &adj, descendant);
         gradient[nodes[i]->class_id] += adj;
+    }
     }
     free(descendant);
 }

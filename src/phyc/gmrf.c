@@ -152,6 +152,53 @@ double DistributionModel_gmrf_time_aware_gradient(DistributionModel* dm, const P
 		}
 	}
 
+	Parameters* treeModelParameters = new_Parameters(1);
+	Parameters* reparam = get_reparams(coal->tree);
+	Node** nodes = Tree_nodes(coal->tree);
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* parameter = Parameters_at(parameters, i);
+		// ratios and root_height transformed
+		if(parameter->model == MODEL_TREE_TRANSFORM){
+			for(size_t j = 0; j < Parameters_count(reparam); j++){
+				Parameter* xx = Parameters_depends(parameters, Parameters_at(reparam, j));
+				if(xx != NULL) {
+					Parameters_add(treeModelParameters, xx);
+				}
+			}
+		}
+		// heights
+		else if(parameter->model == MODEL_TREE){
+			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
+			if(xx != NULL){
+				Parameters_add(treeModelParameters, xx);
+			}
+		}
+	}
+	if(Parameters_count(treeModelParameters) > 0){
+		size_t tipCount = Tree_tip_count(coal->tree);
+		double* heightGradient = dvector(tipCount - 1);
+		j = 0;
+		size_t previousInternalIndex = 0;
+		size_t previousInternalIndex2 = 0;
+		for( size_t i = 0; i< coal->n; i++  ){
+			// f(x) = (x_i - x_{i-1})^2*2/(intervals[i]+intervals[i-1]) = (x_i - x_{i-1})^2*2/(time_i - time_{i-2})
+			if(coal->iscoalescent[i]){
+				if(j >= 1){
+					double temp = -pow(x[j] - x[j-1], 2)*2/pow(intervals[j]+intervals[j-1], 2)*precision/2.0;
+					heightGradient[coal->nodes[i]->index - tipCount] += -temp;
+					if( j > 1){
+						heightGradient[previousInternalIndex2 - tipCount] += temp;
+					}
+				}
+				previousInternalIndex2 = previousInternalIndex;
+				previousInternalIndex = coal->nodes[i]->index;
+			}
+		}
+		Tree_height_backward(coal->tree, treeModelParameters, heightGradient);
+		free(heightGradient);
+	}
+	free_Parameters(treeModelParameters);
+
 	// precision
 	Parameter *precisionx = Parameters_depends(parameters, precisionParameter);
 	if(precisionx != NULL){
