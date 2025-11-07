@@ -1027,7 +1027,6 @@ double _coalescent_exponential_calculate( Coalescent* coal ){
 			coal->logP -= CHOOSE2(coal->lineages[i])*integral;
 			
 			if( coal->iscoalescent[i] ){
-				// coal->logP -= log(n0*exp( -finish * rate));
 				coal->logP -= logN0;
 				if (rate != 0.0) {
 					coal->logP += finish*rate;
@@ -1038,6 +1037,93 @@ double _coalescent_exponential_calculate( Coalescent* coal ){
 		coal->need_update = false;
 	}
 	return coal->logP;
+}
+
+double _coalescent_exponential_gradient( Coalescent* coal, const Parameters* parameters ){
+	if ( coal->need_update_intervals){
+		coal->update_intervals(coal);
+	}
+
+	Parameter* thetaParameter = Parameters_at(coal->p, 0);
+	Parameter* rateParameter = Parameters_at(coal->p, 1);
+	double theta = Parameter_value(thetaParameter);
+	double rate = Parameter_value(rateParameter);
+	double* chooses = dvector(coal->n);
+	for(size_t i = 0; i < coal->n; i++){
+		chooses[i] = CHOOSE2(coal->lineages[i]);
+	}
+	
+	Parameter *thetax = Parameters_depends(parameters, thetaParameter);
+	Parameter *ratex = Parameters_depends(parameters, rateParameter);
+	Parameters* reparam = get_reparams(coal->tree);
+
+	if(thetax != NULL || ratex != NULL){
+		double theta2 = theta*theta;
+		double rate2 = rate*rate;
+		double theta2rate = theta2*rate;
+		double gradTheta = 0;
+		double gradRate = 0;
+		double start = 0;
+		for(size_t i = 0; i < coal->n - 1; i++){
+			double finish = start + coal->times[i];
+			double integralTheta = 0;
+			double integralRate = 0;
+			double choose2 = CHOOSE2(coal->lineages[i]);
+			if(rate == 0.0){
+				integralTheta = -(finish - start)/theta2;
+				gradTheta -= choose2*integralTheta;
+			}
+			else{
+				integralTheta = -(exp(rate*coal->times[i]) -1)/theta2rate;
+				integralRate = (-finish*exp(rate*finish)/rate - (exp(rate*start) -1)/rate2)/theta;
+				
+				gradTheta -= chooses[i]*integralTheta;
+				gradRate += chooses[i]*integralRate;
+			}
+
+			if( coal->iscoalescent[i] ){
+				gradTheta -= 1.0/theta;
+				gradRate -= finish;
+			}
+			start = finish;
+		}
+		
+		if(thetax != NULL){
+			thetaParameter->grad[0] += gradTheta;
+			if(thetaParameter != thetax){
+				thetaParameter->transform->backward(thetaParameter->transform, &gradTheta);
+			}
+		}
+		if(ratex != NULL){
+			rateParameter->grad[0] += gradRate;
+			if(rateParameter != ratex){
+				rateParameter->transform->backward(rateParameter->transform, &gradRate);
+			}
+		}
+	}
+
+	Parameters* treeModelParameters = Tree_dependencies(coal->tree, parameters);
+
+	if(Parameters_count(treeModelParameters) > 0){
+		Node** nodes = Tree_nodes(coal->tree);
+		double* heightGradient = dvector(Tree_tip_count(coal->tree)-1);
+		for(size_t i = 1; i < coal->n; i++){
+			int ii = coal->nodes[i-1]->index;
+			if(ii >= 0 && !Node_isleaf(nodes[ii])){
+				heightGradient[nodes[ii]->class_id] += chooses[i]/theta*exp(rate*coal->times[i]);
+			}
+			ii = coal->nodes[i]->index;
+			if(ii >= 0 && !Node_isleaf(nodes[ii])){
+				heightGradient[nodes[ii]->class_id] += rate - chooses[i]/theta*exp(rate*coal->times[i]);
+			}
+		}
+		Tree_height_backward(coal->tree, treeModelParameters, heightGradient);
+		free(heightGradient);
+		
+	}
+	free_Parameters(treeModelParameters);
+	free(chooses);
+	return 0;
 }
 
 double _coalescent_exponential_dlogP( Coalescent* coal, const Parameter* p ){
@@ -1172,8 +1258,7 @@ Coalescent * new_ExponentialCoalescent_with_parameters( Parameters* parameters, 
 		Parameter_set_model(Parameters_at(parameters, i), MODEL_COALESCENT);
 		Parameters_at(parameters, i)->id = i;
 	}
-	//TODO: implement gradient
-	coal->gradient = NULL;
+	coal->gradient = _coalescent_exponential_gradient;
 	coal->calculate = _coalescent_exponential_calculate;
 	coal->dlogP = _coalescent_exponential_dlogP;
 	coal->d2logP = _coalescent_exponential_d2logP;
