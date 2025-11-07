@@ -55,6 +55,45 @@ double DistributionModel_lognormal_logP(DistributionModel* dm){
     return dm->lp;
 }
 
+double DistributionModel_lognormal_mean_stdev_logP(DistributionModel* dm){
+    if(!dm->need_update) return dm->lp;
+    dm->lp = 0.0;
+    const double* mean = Parameter_values(Parameters_at(dm->parameters, 0));
+    const double* sd = Parameter_values(Parameters_at(dm->parameters, 1));
+    size_t dimX = Parameters_count(dm->x);
+
+    // single parameter and len(x_i) >= 1 (e.g. prior) 
+    if(Parameter_size(Parameters_at(dm->parameters, 0)) == 1){
+        double sigma = sqrt(log(1.0 + (*sd * *sd) / (*mean * *mean)));
+        double mu = log(*mean) - 0.5 * sigma * sigma;
+        for(size_t j = 0; j < dimX; j++){
+            Parameter* x = Parameters_at(dm->x, j);
+            size_t dim = Parameter_size(x);
+            const double* values = Parameter_values(x);
+            for (size_t i = 0; i < dim; i++) {
+                dm->lp += log(gsl_ran_lognormal_pdf(values[i], mu, sigma));
+            }
+        }
+    }
+    // multiple parameter and len(x) >= 1 and \sum_i len(x_i) == len(parameter)
+    else{
+        size_t index = 0;
+        for(size_t j = 0; j < dimX; j++){
+            Parameter* x = Parameters_at(dm->x, j);
+            size_t dim = Parameter_size(x);
+            const double* values = Parameter_values(x);
+            for (size_t i = 0; i < dim; i++) {
+                double sigma = sqrt(log(1.0 + (sd[index] * sd[index]) / (mean[index] * mean[index])));
+                double mu = log(mean[index]) - 0.5 * sigma * sigma;
+                dm->lp += log(gsl_ran_lognormal_pdf(values[i], mu, sigma));
+                index++;
+            }
+        }
+    }
+    dm->need_update = false;
+    return dm->lp;
+}
+
 static void _broadcast_parameters(Parameters* x, Parameters* parameters,
                                   double** muValues, double** sigmaValues) {
     Parameter* mu = Parameters_at(parameters, 0);
@@ -73,8 +112,8 @@ static void _broadcast_parameters(Parameters* x, Parameters* parameters,
             double muValue = Parameter_value(mu);
             double sigmaValue = Parameter_value(sigma);
             for (size_t k = 0; k < dim; k++) {
-                *muValues[k] = muValue;
-                *sigmaValues[k] = sigmaValue;
+                (*muValues)[k] = muValue;
+                (*sigmaValues)[k] = sigmaValue;
             }
         }
     }
@@ -93,16 +132,31 @@ double DistributionModel_lognormal_gradient2(DistributionModel* dm,
     Parameter* sigmax = Parameters_depends(parameters, sigma);
 
     if (mux != NULL) {
-        size_t index = 0;
-        for (size_t k = 0; k < Parameters_count(dm->x); k++) {
-            Parameter* x = Parameters_at(dm->x, k);
-            size_t dim = Parameter_size(x);
-            const double* xValues = Parameter_values(x);
-            for (size_t j = 0; j < dim; j++) {
-                dm->tempp[j] =
-                    (log(xValues[j]) - muValues[index]) / pow(sigmaValues[index], 2.0);
-                mu->grad[j] += dm->tempp[j];
-                index++;
+        if(Parameter_size(mu) == 1){
+            double muValue = Parameter_value(mu);
+            double sigmaValue = Parameter_value(sigma);
+            dm->tempp[0] = 0.0;
+            for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+                Parameter* x = Parameters_at(dm->x, k);
+                size_t dim = Parameter_size(x);
+                const double* xValues = Parameter_values(x);
+                for (size_t j = 0; j < dim; j++) {
+                    dm->tempp[0] += (log(xValues[j]) - muValue) / pow(sigmaValue, 2.0);
+                }
+            }
+            mu->grad[0] += dm->tempp[0];
+        }
+        else{
+            size_t index = 0;
+            for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+                Parameter* x = Parameters_at(dm->x, k);
+                size_t dim = Parameter_size(x);
+                const double* xValues = Parameter_values(x);
+                for (size_t j = 0; j < dim; j++) {
+                    dm->tempp[index] = (log(xValues[j]) - muValues[index]) / pow(sigmaValues[index], 2.0);
+                    mu->grad[index] += dm->tempp[index];
+                    index++;
+                }
             }
         }
         if (mux != mu) {
@@ -111,16 +165,33 @@ double DistributionModel_lognormal_gradient2(DistributionModel* dm,
     }
 
     if (sigmax != NULL) {
-        size_t index = 0;
-        for (size_t k = 0; k < Parameters_count(dm->x); k++) {
-            Parameter* x = Parameters_at(dm->x, k);
-            size_t dim = Parameter_size(x);
-            const double* xValues = Parameter_values(x);
-            for (size_t j = 0; j < dim; j++) {
-                dm->tempp[j] = -1.0 / sigmaValues[index] +
-                               pow(log(xValues[j]) - muValues[index], 2.0) /
-                                   pow(sigmaValues[index], 3.0);
-                index++;
+        if(Parameter_size(sigma) == 1){
+            dm->tempp[0] = 0.0;
+            double muValue = Parameter_value(mu);
+            double sigmaValue = Parameter_value(sigma);
+            for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+                Parameter* x = Parameters_at(dm->x, k);
+                size_t dim = Parameter_size(x);
+                const double* xValues = Parameter_values(x);
+                for (size_t j = 0; j < dim; j++) {
+                    dm->tempp[0] += -1.0 / sigmaValue + pow(log(xValues[j]) - muValue, 2.0) /pow(sigmaValue, 3.0);
+                }
+            }
+            sigma->grad[0] += dm->tempp[0];
+        }
+        else{
+            size_t index = 0;
+            for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+                Parameter* x = Parameters_at(dm->x, k);
+                size_t dim = Parameter_size(x);
+                const double* xValues = Parameter_values(x);
+                for (size_t j = 0; j < dim; j++) {
+                    dm->tempp[index] = -1.0 / sigmaValues[index] +
+                                pow(log(xValues[j]) - muValues[index], 2.0) /
+                                    pow(sigmaValues[index], 3.0);
+                    sigma->grad[index] += dm->tempp[index];
+                    index++;
+                }
             }
         }
         if (sigmax != sigma) {
@@ -136,10 +207,10 @@ double DistributionModel_lognormal_gradient2(DistributionModel* dm,
         if (xx != NULL) {
             const double* xValues = Parameter_values(x);
             for (size_t j = 0; j < sizeX; j++) {
-                dm->tempp[j] =
+                dm->tempp[index] =
                     -1.0 / xValues[j] - (log(xValues[j]) - muValues[index]) /
                                             (pow(sigmaValues[index], 2.0) * xValues[j]);
-                x->grad[j] += dm->tempp[j];
+                x->grad[index] += dm->tempp[index];
                 index++;
             }
             if (x != xx) {
@@ -154,6 +225,152 @@ double DistributionModel_lognormal_gradient2(DistributionModel* dm,
         free(muValues);
         free(sigmaValues);
     }
+    return 0;
+}
+
+double DistributionModel_lognormal_mean_stdev_gradient2(DistributionModel* dm,
+                                             const Parameters* parameters) {
+    Parameter* mean = Parameters_at(dm->parameters, 0);
+    Parameter* sd = Parameters_at(dm->parameters, 1);
+    // double* muValues = NULL;
+    // double* sigmaValues = NULL;
+
+    // _broadcast_parameters(dm->x, dm->parameters, &muValues, &sigmaValues);
+
+    Parameter* meanx = Parameters_depends(parameters, mean);
+    Parameter* sdx = Parameters_depends(parameters, sd);
+
+    if (meanx != NULL) {
+        if(Parameter_size(mean) == 1){
+            double meanValue = Parameter_value(mean);
+            double sdValue = Parameter_value(sd);
+
+            double sigma = sqrt(log(1.0 + (sdValue * sdValue) / (meanValue * meanValue)));
+            double mu = log(meanValue) - 0.5 * sigma * sigma;
+
+            dm->tempp[0] = 0.0;
+            for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+                Parameter* x = Parameters_at(dm->x, k);
+                size_t dim = Parameter_size(x);
+                const double* xValues = Parameter_values(x);
+                double ratio = (sdValue * sdValue) / (meanValue * meanValue);
+                double sigma2 = sigma * sigma;
+                double sigma3 = sigma2 * sigma;
+                for (size_t j = 0; j < dim; j++) {
+                    double logx = log(xValues[j]);
+                    double diff = logx - mu;
+                    double dldmu = diff / sigma2;
+                    double denom = (1.0 + ratio);
+                    double dldsigma = -1.0 / sigma + (diff * diff) / sigma3;
+                    double dgdm = -2.0 * sdValue * sdValue / (meanValue * meanValue * meanValue * denom);
+                    double dmudm = 1.0 / meanValue - 0.5 * dgdm;
+                    double dsigdm = 0.5 * dgdm / sigma;
+                    double dldm = dldmu * dmudm + dldsigma * dsigdm;
+                    dm->tempp[0] += dldm;
+                }
+            }
+            mean->grad[0] += dm->tempp[0];
+        }
+        else{
+            // size_t index = 0;
+            // for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+            //     Parameter* x = Parameters_at(dm->x, k);
+            //     size_t dim = Parameter_size(x);
+            //     const double* xValues = Parameter_values(x);
+            //     for (size_t j = 0; j < dim; j++) {
+            //         dm->tempp[j] = (log(xValues[j]) - muValues[index]) / pow(sigmaValues[index], 2.0);
+            //         mean->grad[j] += dm->tempp[j];
+            //         index++;
+            //     }
+            // }
+        }
+        if (meanx != mean) {
+            mean->transform->backward(mean->transform, dm->tempp);
+        }
+    }
+
+    if (sdx != NULL) {
+        if(Parameter_size(sd) == 1){
+            double meanValue = Parameter_value(mean);
+            double sdValue = Parameter_value(sd);
+
+            double sigma = sqrt(log(1.0 + (sdValue * sdValue) / (meanValue * meanValue)));
+            double mu = log(meanValue) - 0.5 * sigma * sigma;
+
+            dm->tempp[0] = 0.0;
+            for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+                Parameter* x = Parameters_at(dm->x, k);
+                size_t dim = Parameter_size(x);
+                const double* xValues = Parameter_values(x);
+                double ratio = (sdValue * sdValue) / (meanValue * meanValue);
+                double sigma2 = sigma * sigma;
+                double sigma3 = sigma2 * sigma;
+                for (size_t j = 0; j < dim; j++) {
+                    double logx = log(xValues[j]);
+                    double diff = logx - mu;
+                    double dldmu = diff / sigma2;
+                    double denom = (1.0 + ratio);
+                    double dldsigma = -1.0 / sigma + (diff * diff) / sigma3;
+                    double dgds =  2.0 * sdValue / (meanValue * meanValue * denom);
+                    double dsigds = 0.5 * dgds / sigma;
+                    double dmuds = -0.5 * dgds;
+                    double dlds = dldmu * dmuds + dldsigma * dsigds;
+                    dm->tempp[0] += dlds;
+                }
+            }
+            sd->grad[0] += dm->tempp[0];
+        }
+        else{
+            // size_t index = 0;
+            // for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+            //     Parameter* x = Parameters_at(dm->x, k);
+            //     size_t dim = Parameter_size(x);
+            //     const double* xValues = Parameter_values(x);
+            //     for (size_t j = 0; j < dim; j++) {
+            //         dm->tempp[j] = -1.0 / sigmaValues[index] +
+            //                     pow(log(xValues[j]) - muValues[index], 2.0) /
+            //                         pow(sigmaValues[index], 3.0);
+            //         index++;
+            //     }
+            // }
+        }
+        if (sdx != sd) {
+            sd->transform->backward(sd->transform, dm->tempp);
+        }
+    }
+
+    size_t index = 0;
+    for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+        Parameter* x = Parameters_at(dm->x, k);
+        Parameter* xx = Parameters_depends(parameters, x);
+        size_t sizeX = Parameter_size(x);
+        if (xx != NULL) {
+            const double* xValues = Parameter_values(x);
+            const double* meanValues = Parameter_values(mean);
+            const double* sdValues = Parameter_values(sd);
+            // double muValue = Parameter_value(mu);
+            // double sigmaValue = Parameter_value(sigma);
+            for (size_t j = 0; j < sizeX; j++) {
+                // double sigma = sqrt(log(1.0 + (sdValues[index] * sdValues[index]) / (meanValues[index] * meanValues[index])));
+                // double mu = log(meanValues[index]) - 0.5 * sigma * sigma;
+                double sigma = sqrt(log(1.0 + (sdValues[0] * sdValues[0]) / (meanValues[0] * meanValues[0])));
+                double mu = log(meanValues[0]) - 0.5 * sigma * sigma;
+                dm->tempp[j] = -1.0 / xValues[j] - (log(xValues[j]) - mu) / (pow(sigma, 2.0) * xValues[j]);
+                x->grad[j] += dm->tempp[j];
+                index++;
+            }
+            if (x != xx) {
+                x->transform->backward(x->transform, dm->tempp);
+            }
+        } else {
+            index += sizeX;
+        }
+    }
+
+    // if (Parameter_values(mu) != muValues) {
+    //     free(muValues);
+    //     free(sigmaValues);
+    // }
     return 0;
 }
 
@@ -422,11 +639,18 @@ static void DistributionModel_lognormal_entropy_gradient(DistributionModel* dm,
 //     return DistributionModel_lognormal_logP(dm);
 // }
 
-DistributionModel* new_LogNormalDistributionModel_with_parameters(Parameters* parameters, Parameters* x){
+DistributionModel* new_LogNormalDistributionModel_with_parameters(Parameters* parameters, Parameters* x, distribution_parameterization parameterization){
     DistributionModel* dm = new_DistributionModel(parameters, x);
     dm->type = DISTRIBUTION_LOGNORMAL;
-    dm->logP = DistributionModel_lognormal_logP;
-    dm->gradient2 = DistributionModel_lognormal_gradient2;
+    dm->parameterization = parameterization;
+    if(parameterization == DISTRIBUTION_LOGNORMAL_MU_SIGMA){
+        dm->logP = DistributionModel_lognormal_logP;
+        dm->gradient2 = DistributionModel_lognormal_gradient2;
+    }
+    else if(parameterization == DISTRIBUTION_LOGNORMAL_MEAN_STDEV){
+        dm->logP = DistributionModel_lognormal_mean_stdev_logP;
+        dm->gradient2 = DistributionModel_lognormal_mean_stdev_gradient2;
+    }
     dm->rgradient = DistributionModel_lognormal_rgradient;
     // dm->logP_with_values = DistributionModel_lognormal_logP_with_values;
     dm->dlogP = DistributionModel_lognormal_dlogP;
@@ -458,6 +682,9 @@ Model* new_LogNormalDistributionModel_from_json(json_node* node, Hashtable* hash
     Parameters* parameters = new_Parameters(2);
     Parameter* mu = NULL;
     Parameter* sigma = NULL;
+
+    Parameter* m = NULL;
+    Parameter* sd = NULL;
 
     // empirical
     if (file != NULL) {
@@ -499,19 +726,40 @@ Model* new_LogNormalDistributionModel_from_json(json_node* node, Hashtable* hash
         json_node* muNode = get_json_node(parametersNode, "mu");
         json_node* sigmaNode = get_json_node(parametersNode, "sigma");
 
-        if(muNode == NULL || sigmaNode == NULL){
-            fprintf(stderr, "LogNormal distribution should be parametrized with mean and sigma\n");
+        json_node* meanNode = get_json_node(parametersNode, "mean");
+        json_node* sdNode = get_json_node(parametersNode, "stdev");
+
+        if(muNode != NULL && sigmaNode != NULL){
+            mu = distmodel_parse_parameter(muNode, hash, "", -INFINITY, INFINITY);
+            sigma = distmodel_parse_parameter(sigmaNode, hash, "", 0.0, INFINITY);
+        }
+        else if(meanNode != NULL && sdNode != NULL){
+            m = distmodel_parse_parameter(meanNode, hash, "", 0, INFINITY);
+            sd = distmodel_parse_parameter(sdNode, hash, "", 0.0, INFINITY);
+        }
+        else{
+            fprintf(stderr, "LogNormal distribution should be parametrized with (mean and stdev) or (mu and sigma)\n");
             exit(13);
         }
-    
-        mu = distmodel_parse_parameter(muNode, hash, "", -INFINITY, INFINITY);
-        sigma = distmodel_parse_parameter(sigmaNode, hash, "", 0.0, INFINITY);
     }
 
-    Parameters_move(parameters, mu);
-    Parameters_move(parameters, sigma);
-    
-    DistributionModel* dm = new_LogNormalDistributionModel_with_parameters(parameters, x);
+    if(mu != NULL && sigma != NULL){
+        Parameters_move(parameters, mu);
+        Parameters_move(parameters, sigma);
+    }
+    else if(m != NULL && sd != NULL){
+        Parameters_move(parameters, m);
+        Parameters_move(parameters, sd);
+    }
+
+    DistributionModel* dm = NULL;
+
+    if(m != NULL && sd != NULL){
+        dm = new_LogNormalDistributionModel_with_parameters(parameters, x, DISTRIBUTION_LOGNORMAL_MEAN_STDEV);
+    }
+    else{
+        dm = new_LogNormalDistributionModel_with_parameters(parameters, x, DISTRIBUTION_LOGNORMAL_MU_SIGMA);
+    }
     
     dm->shift = get_json_node_value_double(node, "shift", dm->shift);
     
