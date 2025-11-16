@@ -42,15 +42,25 @@ static void _expand_parameters(distribution_parameterization parameterization, P
 double DistributionModel_log_exp(DistributionModel* dm){
     if(!dm->need_update) return dm->lp;
     dm->lp = 0.0;
+    Parameter* parameter = Parameters_at(dm->parameters, 0); // lambda or mean
+
     size_t dimX = Parameters_count(dm->x);
     for(size_t j = 0; j < dimX; j++){
         Parameter* x = Parameters_at(dm->x, j);
-        Parameter* parameter = Parameters_at(dm->parameters, 0);
-        _expand_parameters(dm->parameterization, x, parameter, dm->tempp);
+        // _expand_parameters(dm->parameterization, x, parameter, dm->tempp);
         size_t dim = Parameter_size(x);
         const double* values = Parameter_values(x);
-        for (size_t i = 0; i < dim; i++) {
-            dm->lp += log(dm->tempp[i]) - dm->tempp[i] * values[i];
+        if(Parameter_size(parameter) == 1){
+            double lambdaValue = Parameter_value(parameter);
+            for (size_t i = 0; i < dim; i++) {
+                dm->lp += log(lambdaValue) - lambdaValue * values[i];
+            }
+        }
+        else{
+            const double* lambdaValues = Parameter_values(parameter);
+            for (size_t i = 0; i < dim; i++) {
+                dm->lp += log(lambdaValues[i]) - lambdaValues[i] * values[i];
+            }
         }
     }
     
@@ -106,15 +116,24 @@ double DistributionModel_gradient_exp(DistributionModel* dm, const Parameters* p
         // xx is unconstrained (e.g. transformed branch lengths)
 		if (xx != NULL) {
             // tempp contains lambda
-            _expand_parameters(dm->parameterization, x, parameter, dm->tempp);
+            // _expand_parameters(dm->parameterization, x, parameter, dm->tempp);
             size_t sizeX = Parameter_size(x);
-            for (size_t j = 0; j < sizeX; j++) {
-                dm->tempx[j] = -dm->tempp[j];
-                x->grad[j] += dm->tempx[j];
+            if(Parameter_size(parameter) == 1){
+                double lambdaValue = Parameter_value(parameter);
+                for (size_t j = 0; j < sizeX; j++) {
+                    dm->tempx[j] = -lambdaValue;
+                    x->grad[j] += dm->tempx[j];
+                }
+            }
+            else{
+                const double* lambdaValues = Parameter_values(parameter);
+                for (size_t j = 0; j < sizeX; j++) {
+                    dm->tempx[j] = -lambdaValues[j];
+                    x->grad[j] += dm->tempx[j];
+                }
             }
             if(xx != x){
-                Transform* t = x->transform;
-                t->backward(t, dm->tempx);
+                x->transform->backward(x->transform, dm->tempx);
             }
 		}
 	}
@@ -125,23 +144,49 @@ double DistributionModel_gradient_exp(DistributionModel* dm, const Parameters* p
             const double* xValues = Parameter_values(x);
             size_t sizeX = Parameter_size(x);
             if(dm->parameterization == DISTRIBUTION_EXPONENTIAL_RATE){
-                _expand_parameters(dm->parameterization, x, parameter, dm->tempp);
-                for (size_t j = 0; j < sizeX; j++) {
-                    dm->tempx[j] = -xValues[j] - 1.0/dm->tempp[j];
-                    x->grad[j] += dm->tempx[j];
+                // _expand_parameters(dm->parameterization, x, parameter, dm->tempp);
+                if(Parameter_size(parameter) == 1){
+                    double lambdaValue = Parameter_value(parameter);
+                    double d = 0;
+                    for (size_t j = 0; j < sizeX; j++) {
+                        d += 1.0/lambdaValue - xValues[j];
+                    }
+                    parameter->grad[0] += d;
+                }
+                else{
+                    const double* lambdaValues = Parameter_values(parameter);
+                    for (size_t j = 0; j < sizeX; j++) {
+                        dm->tempx[j] = 1.0/lambdaValues[j] - xValues[j];
+                        parameter->grad[j] += dm->tempx[j];
+                    }
                 }
             }
             else {
                 // tempp contains mean
-                _expand_parameters(DISTRIBUTION_EXPONENTIAL_RATE, x, parameter, dm->tempp);
+                // _expand_parameters(DISTRIBUTION_EXPONENTIAL_RATE, x, parameter, dm->tempp);
+                if(Parameter_size(parameter) == 1){
+                    double meanValue = Parameter_value(parameter);
+                    double meanValue2 = meanValue * meanValue;
+                    double d = 0;
+                    for (size_t j = 0; j < sizeX; j++) {
+                        d += xValues[j]/meanValue2 + 1.0/meanValue;
+                    }
+                    parameter->grad[0] += d;
+                }
+                else{
+                    const double* meanValues = Parameter_values(parameter);
+                    for (size_t j = 0; j < sizeX; j++) {
+                        dm->tempx[j] = xValues[j]/(pow(meanValues[j], 2)) + 1.0/meanValues[j];
+                        parameter->grad[j] += dm->tempx[j];
+                    }
+                }
                 for (size_t j = 0; j < sizeX; j++) {
                     dm->tempx[j] = xValues[j]/(pow(dm->tempp[j], 2)) + 1.0/dm->tempp[j];
-                    x->grad[j] += dm->tempx[j];
+                    parameter->grad[j] += dm->tempx[j];
                 }
             }
             if(px != parameter){
-                Transform* t = parameter->transform;
-                t->backward(t, dm->tempx);
+                parameter->transform->backward(parameter->transform, dm->tempx);
             }
         }
     }

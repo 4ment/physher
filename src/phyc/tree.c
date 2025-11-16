@@ -2246,9 +2246,19 @@ double Tree_distance_between_nodes( const Node *node, const Node *ancestor ){
 double Tree_length( const Tree *tree ){
 	double len = 0;
 	Node **nodes = Tree_nodes((Tree *)tree);
-	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
-        if( Node_isroot(nodes[i]) ) continue;
-		len += Node_distance(nodes[i]);
+	if(tree->time_mode){
+		Tree_update_heights((Tree *)tree);
+		for (size_t i = 0; i < Tree_node_count(tree); i++) {
+			if( Node_isroot(nodes[i]) ) continue;
+			len += Node_time_elapsed(nodes[i]);
+		}
+		return len;
+	}
+	else{
+		for (size_t i = 0; i < Tree_node_count(tree); i++) {
+			if( Node_isroot(nodes[i]) ) continue;
+			len += Node_distance(nodes[i]);
+		}
 	}
 	return len;
 }

@@ -240,6 +240,8 @@ const double *Parameter_values(const Parameter *p);
 
 void Parameter_set_model( Parameter *p, model_t model );
 
+void Parameter_save_to( const Parameter *p, double *dst );
+
 void Parameter_store(Parameter *p);
 
 void Parameter_restore(Parameter *p);

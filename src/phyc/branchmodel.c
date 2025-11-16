@@ -316,6 +316,10 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 	else if(strcasecmp(model, "ncln") == 0){
         json_node* rate_node = get_json_node(node, "rate");
         Parameter* rates = new_Parameter_from_json(rate_node, hash);
+		if(Parameter_size(rates) != Tree_node_count(mtree->obj)-1){
+			fprintf(stderr, "Error: number of rates %zu does not match number of branches %d in ncln clock model\n", Parameter_size(rates), Tree_node_count(mtree->obj)-1);
+			exit(1);
+		}
 		Parameter_set_model(rates, MODEL_BRANCHMODEL);
 		Hashtable_add(hash, rates->name, rates);
 
@@ -338,29 +342,24 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 		free_Parameter(scale);
     }
     else if(strcasecmp(model, "discrete") == 0){
-        json_node* parameters_node = get_json_node(node, "parameters");
-        Parameter* rates = new_Parameter_from_json(parameters_node, hash);
+        json_node* rate_node = get_json_node(node, "rate");
+        Parameter* rates = new_Parameter_from_json(rate_node, hash);
 		Parameter_set_model(rates, MODEL_BRANCHMODEL);
         Tree* tree = mtree->obj;
-        //TODO: check that the number of parameters is equal to the number of branches -1
-        DiscreteParameter* map = new_DiscreteParameter_with_postfix(DISCRETE_POSTFIX, Tree_node_count(tree));
-        // assumes that root has the highest id
-        StringBuffer* buffer = new_StringBuffer(10);
-        for (int i = 0; i < Tree_node_count(tree)-1; i++) {
-            Node* node = Tree_node(tree, i);
-            map->values[Node_id(node)] = i;
-            // StringBuffer_set_string(buffer, mtree->name);
-            // StringBuffer_append_format(buffer, ".%s", Parameter_name(rates));
-            // Parameters_at(rates, i)->id = Node_id(node);
-        }
-        free_StringBuffer(buffer);
-        bm = new_DiscreteClock_with_parameters(tree, rates, map);
-        // add Paramters to hash
-        char* id_ps = get_json_node_value_string(parameters_node, "id");
-        if(id_ps != NULL){
-            Parameters_set_name2(bm->rates, id_ps);
-            Hashtable_add(hash, id_ps, bm->rates);
-        }
+		size_t rateCount = Parameter_size(rates);
+        if(rateCount != Tree_node_count(tree)-1){
+			fprintf(stderr, "Error: number of rates %zu does not match number of branches %d in ncln clock model\n", rateCount, Tree_node_count(tree)-1);
+			exit(1);
+		}
+        // DiscreteParameter* map = new_DiscreteParameter_with_postfix(DISCRETE_POSTFIX, rateCount);
+        // for (size_t i = 0; i < rateCount; i++) {
+        //     map->values[i] = i;
+        // }
+		Hashtable_add(hash, rates->name, rates);
+        bm = new_DiscreteClock_with_parameters(tree, rates, NULL);
+		free_Parameter(rates);
+		Constraint_set_fupper(rates->cnstr, 0.1);
+		Constraint_set_flower(rates->cnstr, 0.00001);
     }
 	else{
 		fprintf(stderr, "BranchModel type unknown %s\n", model);
@@ -549,12 +548,7 @@ void _arbitrary_calculate_rates(BranchModel *bm){
 	}
 }
 
-void _arbitrary_gradient(BranchModel *bm, Parameters* parameters, double* ingrad){
-	// z_i = sigmaPhi / sigma0 * ( log(p_i) - mu0 ) + muPhi
-	// r_i = location * exp(z_i)
-	// dL/dlocation = 1/location * sum_i (r_i * dL/dr_i)
-	// dL/dscale    = (scale/(1 + scale^2)) * sum_i (r_i * dL/dr_i) * ((log(p_i) - mu0)/(sigma0*muPhi) - 1 )
-	// dL/dp_i      = r_i * dL/dr_i * (sigmaPhi / (sigma0 * p_i))
+void _arbitrary_gradient(BranchModel *bm, Parameters* parameters, const double* ingrad){
 	if( bm->need_update ){
 		_arbitrary_calculate_rates(bm);
 		bm->need_update = false;
@@ -568,8 +562,9 @@ void _arbitrary_gradient(BranchModel *bm, Parameters* parameters, double* ingrad
 	Parameter* scale    = Parameters_at(bm->rates, 2);
 	
 	const double* ratesValues = Parameter_values(rates);
-
-	double phi = pow(Parameter_value(scale), 2);
+	double locationValue = Parameter_value(location);
+	double scaleValue = Parameter_value(scale);
+	double phi = scaleValue*scaleValue;
 	double muPhi = -0.5 * log(1.0 + phi);
 	double mu0 = -0.5 * log(2.0);
     double sigma0 = sqrt(log(2.0));
@@ -580,7 +575,7 @@ void _arbitrary_gradient(BranchModel *bm, Parameters* parameters, double* ingrad
 	Parameter* scalex    = Parameters_depends(parameters, scale);
 
     if(ratesx != NULL){
-		double* temp = dvector(Parameter_size(rates)-1);
+		double* temp = dvector(Parameter_size(rates));
 		for(size_t i = 0 ; i < Tree_node_count(tree); i++ ){
 			Node* node = Tree_node(tree, i);
 			if( Node_isroot(node) ) continue;
@@ -601,7 +596,7 @@ void _arbitrary_gradient(BranchModel *bm, Parameters* parameters, double* ingrad
 			gradLoc += bm->unscaled_rates[Node_id(node)] * ingrad[Node_id(node)];
 			
 		}
-		gradLoc /= Parameter_value(location);
+		gradLoc /= locationValue;
 		location->grad[0] += gradLoc;
 		if (locationx != location) {
             location->transform->backward(location->transform, &gradLoc);
@@ -609,14 +604,14 @@ void _arbitrary_gradient(BranchModel *bm, Parameters* parameters, double* ingrad
     }
 
 	if(scalex != NULL){
-		// (scale/(1 + scale^2)) * sum_i (r_i * dL/dr_i) * ((log(p_i) - mu0)/(sigma0*muPhi) - 1 )
 		double gradScale = 0.0;
 		for(size_t i = 0 ; i < Tree_node_count(tree); i++ ){
 			Node* node = Tree_node(tree, i);
 			if( Node_isroot(node) ) continue;
-			gradScale += bm->unscaled_rates[Node_id(node)] * ingrad[Node_id(node)] * ( (log(ratesValues[Node_id(node)]) - mu0) /(sigma0 * muPhi) - 1.0 );
+			gradScale += ingrad[Node_id(node)] * bm->unscaled_rates[Node_id(node)] * ( (log(ratesValues[Node_id(node)]) - mu0) /(sigma0 * sigmaPhi) - 1.0 );
 		}
-		gradScale *= ( Parameter_value(scale) / (1.0 + phi) );
+		gradScale *= scaleValue / (1.0 + phi);
+
 		scale->grad[0] += gradScale;
 		if (scalex != scale) {
 			scale->transform->backward(scale->transform, &gradScale);
@@ -956,6 +951,7 @@ void LocalClock_get_indexes( const BranchModel *bm,  unsigned *indexes){
 
 static double _get_DiscreteClock2( BranchModel *bm , Node *node );
 static double _get_DiscreteClock( BranchModel *bm , Node *node );
+static double _get_DiscreteMapClock( BranchModel *bm , Node *node );
 static void _set_DiscreteClock( BranchModel *bm, const int index, const double value );
 
 BranchModel * new_DiscreteClock2( Tree *tree, const int n ){
@@ -985,8 +981,13 @@ BranchModel * new_DiscreteClock( Tree *tree, const int n ){
 
 BranchModel * new_DiscreteClock_with_parameters( Tree *tree, Parameter *rates, DiscreteParameter *map ){
 	BranchModel *bm = BranchModel_init(tree, CLOCK_DISCRETE);
-		
-	bm->get = _get_DiscreteClock;
+	
+	if(map == NULL){
+		bm->get = _get_DiscreteClock;
+	}
+	else{
+		bm->get = _get_DiscreteMapClock;
+	}
 	bm->set = _set_DiscreteClock;
 	
 	bm->rates = new_Parameters(1);
@@ -1193,8 +1194,21 @@ static double calculateScaleFactor( BranchModel *bm ) {
 /**
  * @param index id of the node
  */
+double _get_DiscreteMapClock( BranchModel *bm , Node *node ){
+	Parameter* rates = Parameters_at(bm->rates, 0);
+
+	if(Node_id(node) >= Parameter_size(rates)){
+		exit(2);
+	}
+	return Parameter_value_at(rates, bm->map->values[ Node_id(node) ] );
+}
+
 double _get_DiscreteClock( BranchModel *bm , Node *node ){
-    return Parameters_value(bm->rates, bm->map->values[ Node_id(node) ] );
+	Parameter* rates = Parameters_at(bm->rates, 0);
+	if(Node_id(node) >= Parameter_size(rates)){
+		exit(2);
+	}
+	return Parameter_value_at(rates, Node_id(node) );
 }
 
 /**

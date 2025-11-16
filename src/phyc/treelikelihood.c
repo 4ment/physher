@@ -92,8 +92,10 @@ void _treelikelihood_handle_change( Model *self, Model *model, Parameter* parame
 			Tree* tree = tlk->tree;
 			if(Tree_is_time_mode(tree)){
 				Node* node = Tree_node(tree, index);
-				tlk->update_nodes[Node_id(node->left)] = true;
-				tlk->update_nodes[Node_id(node->right)] = true;
+				if(!Node_isleaf(node)){
+					tlk->update_nodes[Node_id(node->left)] = true;
+					tlk->update_nodes[Node_id(node->right)] = true;
+				}
 			}
 			tlk->update = true;
 			tlk->update_upper = true;
@@ -3919,7 +3921,11 @@ double* _calculate_unscaled_branch_lengths(SingleTreeLikelihood* tlk){
 	const double* branchLengths = Tree_branch_lengths(tlk->tree);
 	if (time_mode) {
 		for(size_t i = 0; i < nodeCount; i++){
-			branch_lengths[nodes[i]->id] = branchLengths[nodes[i]->id] * tlk->bm->get(tlk->bm, nodes[i]);
+			if(Node_isroot(nodes[i])) {
+				branch_lengths[nodes[i]->id] = 0.0;
+			}else{
+				branch_lengths[nodes[i]->id] = branchLengths[nodes[i]->id] * tlk->bm->get(tlk->bm, nodes[i]);
+			}
 		}
 	}
 	else{

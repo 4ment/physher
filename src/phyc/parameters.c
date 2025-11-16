@@ -733,6 +733,14 @@ void Parameter_set_model(Parameter* p, model_t model) {
 	// }
 }
 
+void Parameter_save_to( const Parameter *p, double *dst ){
+	if (p->transform != NULL) {
+        p->transform->get(p->transform, p->value);
+    }
+
+	memcpy(dst, p->value, sizeof(double) * p->dim);
+}
+
 void Parameter_store(Parameter* p) {
     memcpy(p->stored_value, p->value, sizeof(double) * p->dim);
     if (p->transform != NULL) {
@@ -1164,14 +1172,21 @@ void Parameters_restore( Parameters *p ){
 }
 
 void Parameters_store_value( const Parameters *p, double *store ){
-	for (int i = 0; i < Parameters_count(p); i++) {
-		store[i] = Parameters_value(p, i);
+	size_t offset = 0;
+	for (size_t i = 0; i < Parameters_count(p); i++) {
+		Parameter* parameter = Parameters_at(p, i);
+		size_t dim = Parameter_size(parameter);
+		memcpy(store+offset, Parameter_values(parameter), sizeof(double)*dim);
+		offset += dim;
 	}
 }
 
 void Parameters_restore_value( Parameters *p, const double *store ){
-	for (int i = 0; i < Parameters_count(p); i++) {
-		Parameters_set_value(p, i, store[i]);
+	size_t offset = 0;
+	for (size_t i = 0; i < Parameters_count(p); i++) {
+		Parameter* parameter = Parameters_at(p, i);
+		Parameter_set_values(parameter, store + offset);
+		offset += Parameter_size(parameter);
 	}
 }
 

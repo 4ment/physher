@@ -805,9 +805,27 @@ static void _tree_transform_model_handle_change_shift(Model *self, Model *model,
     }
     else{
         TreeTransform *tt = (TreeTransform *)self->obj;
-        self->listeners->fire(self->listeners, self, parameter, tt->tipCount + index);
+        Node* node = Tree_node(tt->tree, tt->tipCount + index);
+        Node* root = Tree_root(tt->tree);
+        while(node != root){
+            /* This guarantees that branches above are updated.
+            In the treelikelihood the sibling node also need to be updated since they are the start of the branches
+            If node + is updated, then branches starting from node - also needs to be updated because h_*=max(h_+,h_-) + s_*.
+            All branches need to be updated except the 2 branches starting from C and D.
+
+              -*-
+             |   |
+             +   -
+            | | | |
+            A B C D
+            */
+            // treelikelihood marks both children of node as dirty
+            self->listeners->fire(self->listeners, self, parameter, Node_id(node));
+            node = node->parent;
+        }
     }
 }
+
 
 static void _tree_transform_model_store(Model *self) {
     TreeTransform *tt = (TreeTransform *)self->obj;
