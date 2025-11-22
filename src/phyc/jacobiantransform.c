@@ -36,11 +36,40 @@ static void _jacobian_model_free(Model* self) {
 	}
 }
 
+static void _jacobian_model_store(Model* self){
+    if(!self->stored){
+        self->storedLogP = self->lp;
+        Parameters* parameters = self->obj;
+        Parameters_store(parameters);
+        self->stored = true;
+    }
+}
+
+static void _jacobian_model_restore(Model* self){
+    if(self->stored){
+        self->lp = self->storedLogP;
+        Parameters* parameters = self->obj;
+        Parameters_restore(parameters);
+        self->stored = false;
+    }
+}
+
+static void _jacobian_model_accept(Model* self){
+    if(self->stored){
+        Parameters* parameters = self->obj;
+        Parameters_accept(parameters);
+        self->stored = false;
+    }
+}
+
 Model* new_JacobianTransformModel(const char* id, Parameters* parameters) {
     Model* model = new_Model(MODEL_JACOBIAN_TRANSFORM, id, parameters);
     model->logP = _jacobian_model_logP;
     model->full_logP = _jacobian_model_logP;
     model->gradient = _jacobian_model_gradient;
+    model->store = _jacobian_model_store;
+    model->restore = _jacobian_model_restore;
+    model->accept = _jacobian_model_accept;
     model->free = _jacobian_model_free;
     return model;
 }

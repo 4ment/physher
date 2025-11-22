@@ -262,24 +262,43 @@ static void _compound_model_free( Model *self ){
 }
 
 static void _compoundModel_store(Model* self){
-	self->storedLogP = self->lp;
-	CompoundModel* cm = (CompoundModel*)self->obj;
-	for (int i = 0; i < cm->count; i++) {
-		cm->models[i]->store(cm->models[i]);
-	}
-	if (cm->weights != NULL) {
-		cm->weights->store(cm->weights);
+	if(!self->stored){
+		self->storedLogP = self->lp;
+		CompoundModel* cm = (CompoundModel*)self->obj;
+		for (int i = 0; i < cm->count; i++) {
+			cm->models[i]->store(cm->models[i]);
+		}
+		if (cm->weights != NULL) {
+			cm->weights->store(cm->weights);
+		}
+		self->stored = true;
 	}
 }
 
 static void _compoundModel_restore(Model* self){
-	self->lp = self->storedLogP;
-	CompoundModel* cm = (CompoundModel*)self->obj;
-	for (int i = 0; i < cm->count; i++) {
-		cm->models[i]->restore(cm->models[i]);
+	if(self->stored){
+		self->lp = self->storedLogP;
+		CompoundModel* cm = (CompoundModel*)self->obj;
+		for (int i = 0; i < cm->count; i++) {
+			cm->models[i]->restore(cm->models[i]);
+		}
+		if (cm->weights != NULL) {
+			cm->weights->restore(cm->weights);
+		}
+		self->stored = false;
 	}
-	if (cm->weights != NULL) {
-		cm->weights->restore(cm->weights);
+}
+
+static void _compoundModel_accept(Model* self){
+	if(self->stored){
+		CompoundModel* cm = (CompoundModel*)self->obj;
+		for (size_t i = 0; i < cm->count; i++) {
+			cm->models[i]->accept(cm->models[i]);
+		}
+		if (cm->weights != NULL) {
+			cm->weights->accept(cm->weights);
+		}
+		self->stored = false;
 	}
 }
 
@@ -384,6 +403,7 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->clone = _compound_model_clone;
 	model->store = _compoundModel_store;
 	model->restore = _compoundModel_restore;
+	model->accept = _compoundModel_accept;
 	model->prepare_gradient = _compoundModel_prepare_gradient;
 	model->samplable = true;
 	for (int i = 0; i < cm->count; i++) {

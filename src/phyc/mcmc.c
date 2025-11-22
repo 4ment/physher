@@ -127,6 +127,7 @@ void run(MCMC* mcmc){
 			if ( alpha >=  0 || alpha > log(gsl_rng_uniform(mcmc->rng)) ) {
 	//			printf("%zu %f %f\n", iter, logP, proposed_logP);
 				logP = proposed_logP;
+				model->accept(model);
 				op->accepted_count++;
 			}
 			// reject

@@ -142,37 +142,49 @@ static void _branch_model_handle_restore( Model *self, Model *model, int index )
 }
 
 static void _branch_model_store(Model* self){
-	Model* mtree = ((Model**)self->data)[0];
-	mtree->store(mtree);
-	BranchModel* bm = (BranchModel*)self->obj;
-	for (int i = 0; i < Parameters_count(bm->rates); i++) {
-		Parameter_store(Parameters_at(bm->rates, i));
-	}
-	if(bm->ssvs != NULL){
-		Model* mdp = ((Model**)self->data)[1];
-		mdp->store(mdp);
+	if(!self->stored){
+		Model* mtree = ((Model**)self->data)[0];
+		mtree->store(mtree);
+		BranchModel* bm = (BranchModel*)self->obj;
+		Parameters_store(bm->rates);
+
+		if(bm->ssvs != NULL){
+			Model* mdp = ((Model**)self->data)[1];
+			mdp->store(mdp);
+		}
+		self->stored = true;
 	}
 }
 
 static void _branch_model_restore(Model* self){
-	Model* mtree = ((Model**)self->data)[0];
-	mtree->restore(mtree);
-	BranchModel* bm = (BranchModel*)self->obj;
-	bool changed = false;
-	Parameter*p = NULL;
-	for (int i = 0; i < Parameters_count(bm->rates); i++) {
-		p = Parameters_at(bm->rates, i);
-		if (Parameter_changed(p)) {
-			changed = true;
-			Parameter_restore_quietly(p);
+	if(self->stored){
+		Model* mtree = ((Model**)self->data)[0];
+		mtree->restore(mtree);
+		BranchModel* bm = (BranchModel*)self->obj;
+		bm->need_update = true;
+		Parameters_restore(bm->rates);
+		// p->listeners->fire_restore(p->listeners, NULL, p->id);
+
+		if(bm->ssvs != NULL){
+			Model* mdp = ((Model**)self->data)[1];
+			mdp->restore(mdp);
 		}
+		self->stored = false;
 	}
-	if (changed) {
-		p->listeners->fire_restore(p->listeners, NULL, p->id);
-	}
-	if(bm->ssvs != NULL){
-		Model* mdp = ((Model**)self->data)[1];
-		mdp->restore(mdp);
+}
+
+static void _branch_model_accept(Model* self){
+	if(self->stored){
+		Model* mtree = ((Model**)self->data)[0];
+		mtree->accept(mtree);
+		BranchModel* bm = (BranchModel*)self->obj;
+		Parameters_accept(bm->rates);
+
+		if(bm->ssvs != NULL){
+			Model* mdp = ((Model**)self->data)[1];
+			mdp->accept(mdp);
+		}
+		self->stored = false;
 	}
 }
 
@@ -259,6 +271,7 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model*
 	model->handle_restore = _branch_model_handle_restore;
 	model->store = _branch_model_store;
 	model->restore = _branch_model_restore;
+	model->accept = _branch_model_accept;
 	model->free = _branch_model_free;
 	model->clone = _branch_model_clone;
 	Model** models = malloc(sizeof(Model*)*2);

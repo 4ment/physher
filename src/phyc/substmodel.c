@@ -46,49 +46,64 @@ static void _substitution_model_handle_change(Model* self, Model* model,
 }
 
 static void _substitution_model_store(Model* self) {
-    if (self->data != NULL) {
-        Model* model = (Model*)self->data;
-        model->store(model);  // discrete parameter
-    }
-    SubstitutionModel* subst = self->obj;
-    if (Parameters_count(subst->rates) > 0) {
-        Parameters_store(subst->rates);
-    }
-    if (subst->rates_simplex != NULL) {
-        Parameter_store(subst->rates_simplex);
-    }
-    if (subst->simplex != NULL) {
-        Parameter_store(subst->simplex);
-    }
+	if(!self->stored){
+		if (self->data != NULL) {
+			Model* model = (Model*)self->data;
+			model->store(model);  // discrete parameter
+		}
+		SubstitutionModel* subst = self->obj;
+		if (Parameters_count(subst->rates) > 0) {
+			Parameters_store(subst->rates);
+		}
+		if (subst->rates_simplex != NULL) {
+			Parameter_store(subst->rates_simplex);
+		}
+		if (subst->simplex != NULL) {
+			Parameter_store(subst->simplex);
+		}
+		self->stored = true;
+	}
+	
 }
 
 static void _substitution_model_restore(Model* self) {
-    if (self->data != NULL) {
-        Model* model = (Model*)self->data;
-        model->restore(model);  // discrete parameter
-    }
-    SubstitutionModel* subst = self->obj;
-    if (Parameters_count(subst->rates) > 0) {
-        bool changed = false;
-        Parameter* p = NULL;
-        for (int i = 0; i < Parameters_count(subst->rates); i++) {
-            p = Parameters_at(subst->rates, i);
-            if (Parameter_changed(p)) {
-                changed = true;
-            }
-            Parameter_restore_quietly(p);
-        }
-        if (changed) {
-            p->listeners->fire_restore(p->listeners, NULL, p->id);
-        }
-    }
+	if(self->stored){
+		if (self->data != NULL) {
+			Model* model = (Model*)self->data;
+			model->restore(model);  // discrete parameter
+		}
+		SubstitutionModel* subst = self->obj;
+		if (Parameters_count(subst->rates) > 0) {
+			Parameters_restore(subst->rates);
+		}
 
-    if (subst->rates_simplex != NULL) {
-        Parameter_restore(subst->rates_simplex);
-    }
-    if (subst->simplex != NULL) {
-        Parameter_restore(subst->simplex);
-    }
+		if (subst->rates_simplex != NULL) {
+			Parameter_restore(subst->rates_simplex);
+		}
+		if (subst->simplex != NULL) {
+			Parameter_restore(subst->simplex);
+		}
+		self->stored = false;
+	}
+}
+
+static void _substitution_model_accept(Model* self) {
+	if(self->stored){
+		SubstitutionModel* subst = self->obj;
+		Parameters_accept(subst->rates);
+
+		if (subst->rates_simplex != NULL) {
+			Parameter_accept(subst->rates_simplex);
+		}
+		if (subst->simplex != NULL) {
+			Parameter_accept(subst->simplex);
+		}
+		if (self->data != NULL) {
+			Model* model = (Model*)self->data;
+			model->accept(model);  // discrete parameter
+		}
+		self->stored = false;
+	}
 }
 
 static void _substitution_model_handle_restore( Model *self, Model *model, int index ){
@@ -247,6 +262,7 @@ Model * new_SubstitutionModel3( const char* name, SubstitutionModel *sm, Model* 
 	model->handle_restore = _substitution_model_handle_restore;
 	model->store = _substitution_model_store;
 	model->restore = _substitution_model_restore;
+	model->accept = _substitution_model_accept;
 	model->free = _substitution_model_free;
 	model->clone = _substitution_model_clone;
 	return model;

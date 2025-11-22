@@ -828,26 +828,26 @@ static void _tree_transform_model_handle_change_shift(Model *self, Model *model,
 
 
 static void _tree_transform_model_store(Model *self) {
-    TreeTransform *tt = (TreeTransform *)self->obj;
-    for (int i = 0; i < Parameters_count(tt->parameters); i++) {
-        Parameter_store(Parameters_at(tt->parameters, i));
+    if(!self->stored){
+        TreeTransform *tt = (TreeTransform *)self->obj;
+        Parameters_store(tt->parameters);
+        self->stored = true;
     }
 }
 
 static void _tree_transform_model_restore(Model *self) {
-    TreeTransform *tt = (TreeTransform *)self->obj;
-    bool height_changed = false;
-    Parameter *r = NULL;
-    for (int i = 0; i < Parameters_count(tt->parameters); i++) {
-        r = Parameters_at(tt->parameters, i);
-        if (Parameter_changed(r)) {
-            Parameter_restore_quietly(r);
-            height_changed = true;
-        }
+    if(self->stored){
+        TreeTransform *tt = (TreeTransform *)self->obj;
+        Parameters_restore(tt->parameters);
+        self->stored = false;
     }
+}
 
-    if (height_changed) {
-        r->listeners->fire_restore(r->listeners, self, r->id);
+static void _tree_transform_model_accept(Model *self) {
+    if(self->stored){
+        TreeTransform *tt = (TreeTransform *)self->obj;
+        Parameters_accept(tt->parameters);
+        self->stored = false;
     }
 }
 
@@ -894,6 +894,7 @@ Model *new_TreeTransformModel(const char *name, TreeTransform *tt, Model *tree) 
     model->clone = _tree_transform_model_clone;
     model->store = _tree_transform_model_store;
     model->restore = _tree_transform_model_restore;
+    model->accept = _tree_transform_model_accept;
     model->update = _tree_transform_model_handle_change;
     model->handle_restore = _tree_transform_model_handle_restore;
 	

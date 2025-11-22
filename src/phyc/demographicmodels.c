@@ -45,42 +45,53 @@ void coalescentToLineage(Coalescent* c){
 }
 
 static void _coalescent_model_store(Model* self){
-	Coalescent* coalescent = (Coalescent*)self->obj;
-	for (int i = 0; i < Parameters_count(coalescent->p); i++) {
-		Parameter_store(Parameters_at(coalescent->p, i));
+	if(!self->stored){
+		Coalescent* coalescent = (Coalescent*)self->obj;
+		Parameters_store(coalescent->p);
+
+		memcpy(coalescent->stored_iscoalescent, coalescent->iscoalescent, coalescent->n*sizeof(bool));
+		memcpy(coalescent->stored_times, coalescent->times, coalescent->n*sizeof(double));
+		memcpy(coalescent->stored_lineages, coalescent->lineages, coalescent->n*sizeof(int));
+		// FIXME: coalescent->nodes is not stored/restored
+		if(self->data != NULL){
+			Model** models = self->data;
+			if(models[1] != NULL) models[1]->store(models[1]);
+		}
+		self->storedLogP = self->lp;
+		coalescent->stored_logP = coalescent->logP;
+		self->stored = true;
 	}
-	memcpy(coalescent->stored_iscoalescent, coalescent->iscoalescent, coalescent->n*sizeof(bool));
-	memcpy(coalescent->stored_times, coalescent->times, coalescent->n*sizeof(double));
-	memcpy(coalescent->stored_lineages, coalescent->lineages, coalescent->n*sizeof(int));
-	
-	if(self->data != NULL){
-		Model** models = self->data;
-		if(models[1] != NULL) models[1]->store(models[1]);
-	}
-	self->storedLogP = self->lp;
-	coalescent->stored_logP = coalescent->logP;
 }
 
 static void _coalescent_model_restore(Model* self){
-	bool changed = false;
-	Parameter*p = NULL;
-	Coalescent* coalescent = (Coalescent*)self->obj;
-	for (int i = 0; i < Parameters_count(coalescent->p); i++) {
-		p = Parameters_at(coalescent->p, i);
-		if (Parameter_changed(p)) {
-			changed = true;
-			Parameter_restore_quietly(p);
+	if(self->stored){
+		Coalescent* coalescent = (Coalescent*)self->obj;
+		Parameters_restore(coalescent->p);
+		memcpy(coalescent->iscoalescent, coalescent->stored_iscoalescent, coalescent->n*sizeof(bool));
+		memcpy(coalescent->times, coalescent->stored_times, coalescent->n*sizeof(double));
+		memcpy(coalescent->lineages, coalescent->stored_lineages, coalescent->n*sizeof(int));
+
+		if(self->data != NULL){
+			Model** models = self->data;
+			if(models[1] != NULL) models[1]->restore(models[1]);
 		}
+		self->lp = self->storedLogP;
+		coalescent->logP = coalescent->stored_logP;
+		self->stored = false;
 	}
-	// fire only once
-	if (changed) {
-		p->listeners->fire_restore(p->listeners, NULL, p->id);
+}
+
+static void _coalescent_model_accept(Model* self){
+	if(self->stored){
+		Coalescent* coalescent = (Coalescent*)self->obj;
+		Parameters_accept(coalescent->p);
+
+		if(self->data != NULL){
+			Model** models = self->data;
+			if(models[1] != NULL) models[1]->accept(models[1]);
+		}
+		self->stored = false;
 	}
-	if(self->data != NULL){
-		Model** models = self->data;
-		if(models[1] != NULL) models[1]->restore(models[1]);
-	}
-	self->lp = self->storedLogP;
 }
 
 static double _coalescent_model_logP(Model *self){
@@ -389,6 +400,7 @@ Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tre
 	model->clone = _coalescent_model_clone;
 	model->store = _coalescent_model_store;
 	model->restore = _coalescent_model_restore;
+	model->accept = _coalescent_model_accept;
 	model->sample = _coalescent_model_sample;
 	
 	model->update = _coalescent_model_handle_change;

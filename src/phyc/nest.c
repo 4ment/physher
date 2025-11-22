@@ -73,6 +73,8 @@ double nest_mcmc(NEST* mcmc, double minLnL){
 				//			printf("%zu %f %f\n", iter, logP, proposed_logP);
 				logP = proposed_logPrior;
 				logLikelihood = proposed_logLikelihood;
+				prior->accept(prior);
+				mcmc->likelihood->accept(mcmc->likelihood);
 				op->accepted_count++;
 			}
 			// reject

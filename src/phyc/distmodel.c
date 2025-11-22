@@ -252,23 +252,33 @@ void _dist_model_handle_restore( Model *self, Model *model, int index ){
 }
 
 static void _dist_model_store(Model* self){
-	self->storedLogP = self->lp;
-	DistributionModel* dm = self->obj;
-	dm->stored_lp = dm->lp;
-	if(dm->parameters != NULL){
-    	Parameters_store(dm->parameters);
-	}
-	if(dm->x != NULL){
-		Parameters_store(dm->x);
+	if(!self->stored){
+		self->storedLogP = self->lp;
+		DistributionModel* dm = self->obj;
+		dm->stored_lp = dm->lp;
+		if(dm->parameters != NULL){
+			Parameters_store(dm->parameters);
+		}
+		if(dm->x != NULL){
+			Parameters_store(dm->x);
+		}
+		self->stored = true;
 	}
 }
 
 static void _dist_model_restore(Model* self){
-	self->lp = self->storedLogP;
-	DistributionModel* dm = self->obj;
-	dm->lp = dm->stored_lp;
-	Parameters_restore(dm->parameters);
-	Parameters_restore(dm->x);
+	if(self->stored){
+		self->lp = self->storedLogP;
+		DistributionModel* dm = self->obj;
+		dm->lp = dm->stored_lp;
+		if(dm->parameters != NULL){
+			Parameters_restore(dm->parameters);
+		}
+		if(dm->x != NULL){
+			Parameters_restore(dm->x);
+		}
+		self->stored = false;
+	}
 	//TODO: think about that
 	// bool changed = false;
 	// Parameter*p = NULL;
@@ -296,6 +306,19 @@ static void _dist_model_restore(Model* self){
 	// if (changed) {
 	// 	p->listeners->fire_restore(p->listeners, NULL, p->id);
 	// }
+}
+
+static void _dist_model_accept(Model* self){
+	if(self->stored){
+		DistributionModel* dm = self->obj;
+		if(dm->parameters != NULL){
+			Parameters_accept(dm->parameters);
+		}
+		if(dm->x != NULL){
+			Parameters_accept(dm->x);
+		}
+		self->stored = false;
+	}
 }
 
 static double _dist_model_logP(Model *self){
@@ -454,6 +477,7 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 	model->clone = _dist_model_clone;
 	model->store = _dist_model_store;
 	model->restore = _dist_model_restore;
+	model->accept = _dist_model_accept;
 	model->update = _dist_model_handle_change;
 	model->handle_restore = _dist_model_handle_restore;
 	model->sample = _dist_model_sample;

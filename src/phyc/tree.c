@@ -54,6 +54,7 @@ struct _Tree{
     bool need_update_height;
 	bool needUpdateBranchLengths;
 	double* branchLengths;
+	double* storedBranchLengths;
 };
 
 static void _Tree_count_nodes( Node *node, int *tips, int *nodes);
@@ -786,6 +787,7 @@ Tree * create_Tree( const char *nexus, bool containBL ){
 	
 	// Node_set_distance( current, -1 );
 	atree->branchLengths = dvector(atree->nNodes);
+	atree->storedBranchLengths = dvector(atree->nNodes);
 	
 	free_StringBuffer(buffer);
 	
@@ -868,6 +870,7 @@ Tree * new_Tree2( Node *root ){
 	
 	// Node_set_distance( root, -1 );
 	atree->branchLengths = dvector(atree->nNodes);
+	atree->storedBranchLengths = dvector(atree->nNodes);
 	//Parameter_set_bounds( root->distance, -1, -1 );
 	//Parameter_set_fixed( root->distance, true );
 	
@@ -1068,60 +1071,69 @@ void _tree_handle_change( Model *self, Model *model, Parameter* parameter, int i
 }
 
 static void _tree_model_store(Model* self){
-	Tree* tree = self->obj;
-	Parameter_store(tree->distances);
-	for (int i = 0; i < Tree_node_count(tree); i++) {
-		// Parameter_store(Tree_node(tree, i)->distance);
-		Parameter_store(Tree_node(tree, i)->height);
-	}
-	//TODO: make treetransform store
-	if(tree->tt != NULL){
-		Model* mtt = self->data;
-		mtt->store(mtt);
-		// for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
-		// 	Parameter_store(Parameters_at(tree->tt->parameters, i));
-		// }
+	if(!self->stored){
+		Tree* tree = self->obj;
+		memcpy(tree->storedBranchLengths, tree->branchLengths, tree->nNodes * sizeof(double));
+
+		if(!tree->time_mode){
+			Parameter_store(tree->distances);
+		}
+		else{
+			for (int i = 0; i < Tree_node_count(tree); i++) {
+				Parameter_store(Tree_node(tree, i)->height);
+			}
+
+			if(tree->tt != NULL){
+				Model* mtt = self->data;
+				mtt->store(mtt);
+			}
+		}
+		self->stored = true;
 	}
 }
 
 static void _tree_model_restore(Model* self){
-	Tree* tree = self->obj;
-	bool distance_changed = false;
-	bool height_changed = false;
-	// Parameter* d = NULL;
-	Parameter* h = NULL;
-	Parameter_restore(tree->distances);
-	for (int i = 0; i < Tree_node_count(tree); i++) {
-		Node* n = Tree_node(tree, i);
-		// d = n->distance;
-		h = n->height;
-		// if (Parameter_changed(d)) {
-		// 	distance_changed = true;
-		// 	Parameter_restore_quietly(d);
-		// }
-		if (Parameter_changed(h)) {
-			height_changed = true;
-			Parameter_restore_quietly(h);
+	if(self->stored){
+		Tree* tree = self->obj;
+
+		memcpy(tree->branchLengths, tree->storedBranchLengths, tree->nNodes * sizeof(double));
+
+		if(!tree->time_mode){
+			Parameter_restore(tree->distances);
 		}
+		else{
+			for (size_t i = 0; i < Tree_node_count(tree); i++) {
+				Node* n = Tree_node(tree, i);
+				Parameter_restore(n->height);
+			}
+
+			if(tree->tt != NULL){
+				Model* mtt = self->data;
+				mtt->restore(mtt);
+			}
+		}
+		self->stored = false;
 	}
-	
-	//TODO: make treetransform restore
-	if(tree->tt != NULL){
-		Model* mtt = self->data;
-		mtt->restore(mtt);
-		// for (int i = 0; i < Parameters_count(tree->tt->parameters); i++) {
-		// 	Parameter* r = Parameters_at(tree->tt->parameters, i);
-		// 	if (Parameter_changed(r)) {
-		// 		Parameter_restore_quietly(r);
-		// 	}
-		// }
-	}
-	
-	// if (distance_changed) {
-	// 	d->listeners->fire_restore(d->listeners, NULL, d->id);
-	// }
-	if (height_changed) {
-		h->listeners->fire_restore(h->listeners, NULL, h->id);
+}
+static void _tree_model_accept(Model* self){
+	if(self->stored){
+		Tree* tree = self->obj;
+
+		if(!tree->time_mode){
+			Parameter_accept(tree->distances);
+		}
+		else{
+			for (size_t i = 0; i < Tree_node_count(tree); i++) {
+				Node* n = Tree_node(tree, i);
+				Parameter_accept(n->height);
+			}
+
+			if(tree->tt != NULL){
+				Model* mtt = self->data;
+				mtt->accept(mtt);
+			}
+		}
+		self->stored = false;
 	}
 }
 
@@ -1245,6 +1257,7 @@ Model * new_TreeModel2( const char* name, Tree *tree, Model* modelTransform ){
 	model->handle_restore = _tree_handle_restore;
 	model->store = _tree_model_store;
 	model->restore = _tree_model_restore;
+	model->accept = _tree_model_accept;
 	model->free = _tree_model_free;
 	model->clone = _tree_model_clone;
 	model->print = _TreeModel_print;
@@ -1658,6 +1671,7 @@ void free_Tree_for_model( Tree *t){
 	free_Parameter(t->distances);
 	free_Parameters(t->heights);
 	free(t->branchLengths);
+	free(t->storedBranchLengths);
 	free(t);
 }
 

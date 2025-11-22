@@ -209,6 +209,7 @@ Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, 
 	p->handle_restore = _parameter_handle_restore;
 	p->value = clone_dvector(value, dim);
 	p->stored_value = clone_dvector(value, dim);
+	p->stored = false;
 	p->dim = dim;
 	p->cnstr = constr;
 	p->estimate = true;
@@ -235,6 +236,7 @@ Parameter * new_Parameter_full( const char *name, double value, size_t dim, Cons
 		p->value[i] = value;
 		p->stored_value[i] = value;
 	}
+	p->stored = false;
 	p->dim = dim;
 	p->cnstr = constr;
 	p->estimate = true;
@@ -264,6 +266,7 @@ Parameter * new_ParameterModel( const char *name, const double* value, size_t di
 		p->value = dvector(dim);
 		p->stored_value = dvector(dim);
 	}
+	p->stored = false;
 	p->dim = dim;
 	p->cnstr = constr;
 	p->estimate = true;
@@ -460,6 +463,7 @@ Parameter * clone_Parameter( Parameter *p ){
 	pnew->estimate = p->estimate;
 	pnew->id = p->id;
 	pnew->model = p->model;
+	pnew->stored = p->stored;
 	memcpy(pnew->value, p->value, sizeof(double)* p->dim);
 	if(p->grad != NULL){
 		pnew->grad = clone_dvector(p->grad, p->dim);
@@ -742,44 +746,42 @@ void Parameter_save_to( const Parameter *p, double *dst ){
 }
 
 void Parameter_store(Parameter* p) {
-    memcpy(p->stored_value, p->value, sizeof(double) * p->dim);
-    if (p->transform != NULL) {
-        Parameter_store(p->transform->parameter);
-    }
-    // if(p->model_obj != NULL){
-    // 	p->model_obj->store(p->model_obj);
-    // }
+	if(!p->stored){
+		memcpy(p->stored_value, p->value, sizeof(double) * p->dim);
+		if (p->transform != NULL) {
+			Parameter_store(p->transform->parameter);
+		}
+		p->stored = true;
+	}
 }
 
 void Parameter_restore(Parameter* p) {
-    if (memcmp(p->stored_value, p->value, sizeof(double) * p->dim) != 0) {
+    // if (memcmp(p->stored_value, p->value, sizeof(double) * p->dim) != 0) {
+	if(p->stored){
         memcpy(p->value, p->stored_value, sizeof(double) * p->dim);
-        p->listeners->fire_restore(p->listeners, NULL, p->id);
-
+        // p->listeners->fire_restore(p->listeners, NULL, p->id);
         if (p->transform != NULL) {
-            // already notified above
-            Parameter_restore_quietly(p->transform->parameter);
+            Parameter_restore(p->transform->parameter);
         }
-
-        // if(p->model_obj != NULL){
-        // 	p->model_obj->listeners->enabled = false;
-        // 	p->model_obj->restore(p->model_obj);
-        // 	p->model_obj->listeners->enabled = true;
-        // }
+		p->stored = false;
     }
 }
 
 void Parameter_restore_quietly(Parameter* p) {
-    memcpy(p->value, p->stored_value, sizeof(double) * p->dim);
-    if (p->transform != NULL) {
-        Parameter_restore_quietly(p->transform->parameter);
-    }
+	if(p->stored){
+		memcpy(p->value, p->stored_value, sizeof(double) * p->dim);
+		if (p->transform != NULL) {
+			Parameter_restore_quietly(p->transform->parameter);
+		}
+		p->stored = false;
+	}
+}
 
-    // if(p->model_obj != NULL){
-    // 	p->model_obj->listeners->enabled = false;
-    // 	p->model_obj->restore(p->model_obj);
-    // 	p->model_obj->listeners->enabled = true;
-    // }
+void Parameter_accept(Parameter* p) {
+	p->stored = false;
+	if (p->transform != NULL) {
+		Parameter_accept(p->transform->parameter);
+	}
 }
 
 bool Parameter_changed(Parameter *p){
@@ -1073,6 +1075,12 @@ void Parameters_store(Parameters* ps){
 	}
 }
 
+void Parameters_accept(Parameters* ps){
+	for (size_t i = 0; i < Parameters_count(ps); i++) {
+		Parameter_accept(Parameters_at(ps, i));
+	}
+}
+
 bool Parameters_estimate( const Parameters *p, const size_t index ){
 	return Parameter_estimate(p->list[index] );
 }
@@ -1330,6 +1338,7 @@ static double _ddlogP(Model *self, const Parameter* p1, const Parameter* p2){ret
 static void _dummy_prepare_gradient(Model *model, const Parameters* ps){ }
 static void _dummy_reset(Model* m){}
 static void _dummy_restore(Model* m){}
+static void _dummy_accept(Model* m){}
 static void _dummy_store(Model* m){}
 static void _dummy_sample(Model* m) {
     fprintf(stderr, "Cannot sample from model %s\n", m->name);
@@ -1369,6 +1378,8 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->reset = _dummy_reset;
 	model->restore = _dummy_restore;
 	model->store = _dummy_store;
+	model->accept = _dummy_accept;
+	model->stored = false;
 	model->logP = 0;
 	model->lp = 0;
 	model->sample = _dummy_sample;

@@ -133,9 +133,12 @@ void _treelikelihood_handle_restore( Model *self, Model *model, int index ){
 	memcpy(tlk->current_partials_indexes, tlk->stored_partials_indexes, sizeof(unsigned)*Tree_node_count(tlk->tree)*2);
 	tlk->lk = tlk->stored_lk;
 	self->listeners->fire_restore( self->listeners, self, index );
+	fprintf(stderr, "Restoring treelikelihood disabled\n");
+	exit(2);
 }
 
 static void _singleTreeLikelihood_store(Model* self){
+	if(!self->stored){
 	SingleTreeLikelihood* tlk = self->obj;
 	if(tlk->partials[1] == NULL){
 		allocate_storage(tlk, 1);
@@ -159,9 +162,16 @@ static void _singleTreeLikelihood_store(Model* self){
 	}
 	self->storedLogP = self->lp;
 	tlk->stored_lk = tlk->lk;
+		self->stored = true;
+	}
 }
 
 static void _singleTreeLikelihood_restore(Model* self){
+	if(self->stored){
+		SingleTreeLikelihood* tlk = self->obj;
+		memcpy(tlk->current_matrices_indexes, tlk->stored_matrices_indexes, sizeof(unsigned)*Tree_node_count(tlk->tree)*2);
+		memcpy(tlk->current_partials_indexes, tlk->stored_partials_indexes, sizeof(unsigned)*Tree_node_count(tlk->tree)*2);
+
 	Model** models = (Model**)self->data;
 	models[0]->restore(models[0]); // tree
 	models[1]->restore(models[1]); // substitutionmodel
@@ -170,6 +180,22 @@ static void _singleTreeLikelihood_restore(Model* self){
 		models[3]->restore(models[3]); // branchmodel
 	}
 	self->lp = self->storedLogP;
+		tlk->lk = tlk->stored_lk;
+		self->stored = false;
+	}
+}
+
+static void _singleTreeLikelihood_accept(Model* self){
+	if(self->stored){
+		Model** models = (Model**)self->data;
+		models[0]->accept(models[0]); // tree
+		models[1]->accept(models[1]); // substitutionmodel
+		models[2]->accept(models[2]); // sitemodel
+		if(models[3] != NULL){
+			models[3]->accept(models[3]); // branchmodel
+		}
+		self->stored = false;
+	}
 }
 
 double _singleTreeLikelihood_logP(Model *self){
@@ -862,6 +888,8 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	model->data = (Model**)malloc(sizeof(Model*)*4);
 	model->store = _singleTreeLikelihood_store;
 	model->restore = _singleTreeLikelihood_restore;
+	model->accept = _singleTreeLikelihood_accept;
+	
 	Model** list = (Model**)model->data;
 	list[0] = tree;
 	list[1] = m;

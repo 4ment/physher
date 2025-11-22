@@ -64,37 +64,45 @@ static void _site_model_handle_change( Model *self, Model *model, Parameter* par
 }
 
 static void _site_model_store(Model* self){
-	Model *mprop = (Model*)self->data;
-	if(mprop != NULL) mprop->store(mprop); // simplex proportion model
-	SiteModel* sm = self->obj;
-	if (Parameters_count(sm->rates) > 0) {
-		Parameters_store(sm->rates);
-	}
-	if (sm->mu != NULL) {
-		Parameter_store(sm->mu);
+	if(!self->stored){
+		Model *mprop = (Model*)self->data;
+		if(mprop != NULL) mprop->store(mprop); // simplex proportion model
+		SiteModel* sm = self->obj;
+		if (Parameters_count(sm->rates) > 0) {
+			Parameters_store(sm->rates);
+		}
+		if (sm->mu != NULL) {
+			Parameter_store(sm->mu);
+		}
+		self->stored = true;
 	}
 }
 
 static void _site_model_restore(Model* self){
-	Model *mprop = (Model*)self->data;
-	if(mprop != NULL) mprop->restore(mprop); // simplex proportion model
-	SiteModel* sm = self->obj;
-	if (Parameters_count(sm->rates) > 0) {
-		bool changed = false;
-		Parameter*p = NULL;
-		for (int i = 0; i < Parameters_count(sm->rates); i++) {
-			p = Parameters_at(sm->rates, i);
-			if (Parameter_changed(p)) {
-				changed = true;
-				Parameter_restore_quietly(p);
-			}
+	if(self->stored){
+		Model *mprop = (Model*)self->data;
+		if(mprop != NULL) mprop->restore(mprop); // simplex proportion model
+		SiteModel* sm = self->obj;
+		sm->need_update = true; // cat_rates and cat_proportions are not stored/restored
+		if(Parameters_count(sm->rates) > 0) Parameters_restore(sm->rates);
+
+		if (sm->mu != NULL) {
+			Parameter_restore(sm->mu);
 		}
-		if (changed) {
-			p->listeners->fire_restore(p->listeners, NULL, p->id);
-		}
+		self->stored = false;
 	}
-	if (sm->mu != NULL) {
-		Parameter_restore(sm->mu);
+}
+
+static void _site_model_accept(Model* self){
+	if(self->stored){
+		Model *mprop = (Model*)self->data;
+		if(mprop != NULL) mprop->accept(mprop); // simplex proportion model
+		SiteModel* sm = self->obj;
+		if(Parameters_count(sm->rates) > 0) Parameters_accept(sm->rates);
+		if (sm->mu != NULL) {
+			Parameter_accept(sm->mu);
+		}
+		self->stored = false;
 	}
 }
 
@@ -213,6 +221,7 @@ Model * new_SiteModel2( const char* name, SiteModel *sm ){
 	model->handle_restore = _site_model_handle_restore;
 	model->store = _site_model_store;
 	model->restore = _site_model_restore;
+	model->accept = _site_model_accept;
 	model->free = _site_model_free;
 	model->clone = _site_model_clone;
 	return model;

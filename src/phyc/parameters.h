@@ -140,6 +140,7 @@ struct _Parameter{
 	int id;
 	double *value;
 	double *stored_value;
+	bool stored;
 	size_t dim;
 	Constraint *cnstr;
 	bool estimate;
@@ -248,6 +249,8 @@ void Parameter_restore(Parameter *p);
 
 void Parameter_restore_quietly(Parameter *p);
 
+void Parameter_accept(Parameter* p);
+
 bool Parameter_changed(Parameter *p);
 
 double check_value( Constraint *cnstr, double value );
@@ -337,6 +340,8 @@ double Parameters_value( const Parameters *p, const size_t index );
 void Parameters_store(Parameters* ps);
 
 void Parameters_restore(Parameters *p);
+
+void Parameters_accept(Parameters *p);
 
 bool Parameters_estimate( const Parameters *p, const size_t index );
 
@@ -443,8 +448,10 @@ struct _Model {
 
     void(*store)(Model*);
 	void(*restore)(Model*);
+	void(*accept)(Model*);
 	double lp;
 	double storedLogP;
+	double stored;
 	bool samplable; // model is a distribution that can sampled directly
 	void (*print)(Model*, FILE*);
     void (*jsonize)(Model*, json_node*);
