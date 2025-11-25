@@ -279,33 +279,6 @@ static void _dist_model_restore(Model* self){
 		}
 		self->stored = false;
 	}
-	//TODO: think about that
-	// bool changed = false;
-	// Parameter*p = NULL;
-	// // restore the parameters of the model
-	// for (size_t j = 0; j < Parameters_count(dm->parameters); j++) {
-	// 	p = Parameters_at(dm->parameters, j);
-	// 	if (Parameter_changed(p)) {
-	// 		changed = true;
-	// 		Parameter_restore_quietly(p);
-	// 	}
-	// }
-	// if (changed) {
-	// 	p->listeners->fire_restore(p->listeners, NULL, p->id);
-	// }
-	
-	// // restore the domain
-	// changed = false;
-	// for (int i = 0; i < Parameters_count(dm->x); i++) {
-	// 	p = Parameters_at(dm->x, i);
-	// 	if (Parameter_changed(p)) {
-	// 		changed = true;
-	// 		Parameter_restore_quietly(p);
-	// 	}
-	// }
-	// if (changed) {
-	// 	p->listeners->fire_restore(p->listeners, NULL, p->id);
-	// }
 }
 
 static void _dist_model_accept(Model* self){

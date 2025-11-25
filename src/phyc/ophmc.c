@@ -8,47 +8,104 @@
 
 #include "ophmc.h"
 
+#include <string.h>
+
 #include "simplex.h"
 #include "matrix.h"
 #include "utilsgsl.h"
 #include "gaussian.h"
 
+void operator_hmc_optimize(Operator* op, double logAlpha){
+	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
+	bool useAcceptanceRate = true;
+	if(count >= 0 && (!useAcceptanceRate || count >= 10)){
+		double prob = useAcceptanceRate ? op->accepted_count / count : exp(logAlpha);
+		double oldStepSize = op->parameters[0];
+		double newStepSize = log(oldStepSize) + (prob - op->target) / (2 + count);
+		op->parameters[0] = exp(newStepSize);
+	}
+}
 
 bool operator_hmc(Operator* op, double* logHR){
-	size_t index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
-	Parameter* p = Parameters_at(op->x, index);
+	size_t paramCount = Parameters_count(op->x);
+	size_t dim = Parameters_size(op->x);
 	Model* posterior = op->models[0];
-	double p0 = rnorm();
-	double x0 = Parameter_value(p);
-	double delta = op->parameters[0];
+	double stepSize = op->parameters[0];
 	int steps = op->parameters[1];
 	
-	double dU = -posterior->dlogP(posterior, p);
-	double pStep = p0 - delta/2.0* dU;
- 
-	// Full step
-	double xStep = x0 + delta*pStep;
-	
-	for (int i = 0; i < steps; i++) {
-		// Update momentum
-		Parameter_set_value(p, xStep);
-		double dU  = -posterior->dlogP(posterior, p);
-		pStep = pStep - delta*dU;
-		
-		// Update position
-		xStep = xStep + delta*pStep;
-		if (xStep < 0) {
-			Parameter_set_value(p, x0);
-			return false;
-		}
-//			printf("%f %f\n", x0, xStep);
+	double* momentum0 = dvector(dim);
+	double* momentum = dvector(dim);
+	double* position = dvector(dim);
+
+	for(size_t i = 0; i < dim; i++){
+		momentum0[i] = rnorm();
 	}
-//		printf("\n");
-	Parameter_set_value(p, xStep);
-	dU  = -posterior->dlogP(posterior, p);
-	pStep = pStep - delta/2*dU;
-	Parameter_set_value(p, xStep);
-	*logHR = p0*p0/2 - pStep*pStep/2;
+	size_t offset = 0;
+	for(size_t i = 0; i < paramCount; i++){
+		Parameter* p = Parameters_at(op->x, i);
+		const double* values = Parameter_values(p);
+		memcpy(position + offset, values, Parameter_size(p)*sizeof(double));
+		offset += Parameter_size(p);
+	}
+
+	// const double U0 = -posterior->logP(posterior);
+	Parameters_zero_grad(op->x);
+	posterior->gradient(posterior, op->x);
+	offset = 0;
+	for(size_t i = 0; i < paramCount; i++){
+		Parameter* p = Parameters_at(op->x, i);
+		for(size_t j = 0; j < Parameter_size(p); j++){
+			double dU = -p->grad[j];
+			momentum[offset] -= stepSize/2.0 * dU;
+			offset++;
+		}
+	}
+
+	for (size_t s = 0; s < steps; s++) {
+		for(size_t i = 0; i < dim; i++){
+			position[i] += stepSize * momentum[i];
+		}
+		Parameters_set_values(op->x, position);
+
+		Parameters_zero_grad(op->x);
+		posterior->gradient(posterior, op->x);
+		offset = 0;
+		for(size_t i = 0; i < paramCount; i++){
+			Parameter* p = Parameters_at(op->x, i);
+			for(size_t j = 0; j < Parameter_size(p); j++){
+				double dU = -p->grad[j];
+				momentum[offset] -= stepSize * dU;
+				offset++;
+			}
+		}
+	}
+
+	offset = 0;
+	for(size_t i = 0; i < paramCount; i++){
+		Parameter* p = Parameters_at(op->x, i);
+		for(size_t j = 0; j < Parameter_size(p); j++){
+			double dU = -p->grad[j];
+			momentum[offset] += stepSize/2.0 * dU;
+			offset++;
+		}
+	}
+
+	double K0 = 0.0;
+	double K1 = 0.0;
+    for(size_t i = 0; i < dim; i++){
+        K0 += momentum0[i] * momentum0[i];
+        K1 += momentum[i] * momentum[i];
+    }
+    K0 /= 2.0;
+    K1 /= 2.0;
+	// const double U1 = -posterior->logP(posterior);
+	// *logHR = (U0 + K0) - (U1 + K1);
+	*logHR = K0 - K1;
+
+	free(momentum0);
+	free(momentum);
+	free(position);
+
 	return true;
 }
 
@@ -59,6 +116,9 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 		"delay",
 		"model",
 		"parameters",
+		"stepsize",
+		"steps",
+		"target",
 		"tree",
 		"weight",
 		"x"
@@ -80,13 +140,14 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	op->model_count = 1;
 	
 	op->propose = operator_hmc;
-	op->optimize = NULL;
+	op->optimize = operator_hmc_optimize;
 	op->parameters = dvector(2);
-	op->parameters[0] = get_json_node_value_double(node, "delta", 0.0001);
-	op->parameters[1] = get_json_node_value_double(node, "steps", 35);
+	op->parameters[0] = get_json_node_value_double(node, "stepsize", 0.01);
+	op->parameters[1] = get_json_node_value_double(node, "steps", 5);
 	
 	op->rejected_count = 0;
 	op->accepted_count = 0;
+	op->target = get_json_node_value_double(node, "target", 0.8);
 	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return op;
 }

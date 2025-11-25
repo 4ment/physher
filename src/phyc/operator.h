@@ -28,6 +28,7 @@ typedef struct Operator{
 	size_t accepted_count;
 	size_t failure_count;
 	size_t tuning_delay;
+	double target;
 	bool (*propose)(struct Operator*, double*);
 	void (*optimize)(struct Operator*, double);
 	gsl_rng* rng;

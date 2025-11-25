@@ -72,12 +72,12 @@ bool operator_uniform_height(Operator* op, double* logHR){
 }
 
 bool operator_uniform(Operator* op, double* logHR){
-	size_t index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
-	Parameter* p = Parameters_at(op->x, index);
-	double lower = Parameter_lower(p);
-	double upper = Parameter_upper(p);
+	Parameter* param = Parameters_at(op->x, 0);
+	size_t index = Parameter_size(param) == 1 ? 0 : gsl_rng_uniform_int(op->rng, Parameter_size(param));
+	double lower = Parameter_lower(param);
+	double upper = Parameter_upper(param);
 	double newValue = (gsl_rng_uniform(op->rng) * (upper - lower)) + lower;
-	Parameter_set_value(p, newValue);
+	Parameter_set_value_at(param, newValue, index);
 	*logHR = 0;
 	return true;
 }
@@ -114,23 +114,37 @@ bool operator_interval_scaler(Operator* op, double* logHR){
 
 bool operator_scaler(Operator* op, double* logHR){
 	if(op->x != NULL){
-		size_t index = 0;
-		if(Parameters_count(op->x) != 1){
-			index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
-		}
-		Parameter* p = Parameters_at(op->x, index);
+		Parameter* param = Parameters_at(op->x, 0);
 		double scaler_scaleFactor = op->parameters[0];
-		double v = Parameter_value(p);
-		double vv = v;
 		double s = (scaler_scaleFactor + (gsl_rng_uniform(op->rng)  * ((1.0 / scaler_scaleFactor) - scaler_scaleFactor)));
-		vv *= s;
-		*logHR = -log(s);
-		
-		if ( vv > Parameter_upper(p) || vv < Parameter_lower(p ) ) {
-			op->rejected_count++;
-			return false;
+		if (op->all) {
+			const double* v = Parameter_values(param);
+			double* vv = clone_dvector(v, Parameter_size(param));
+			for (size_t i = 0; i < Parameter_size(param); i++) {
+				vv[i] *= s;
+				if ( vv[i] > Parameter_upper(param) || vv[i] < Parameter_lower(param) ) {
+					free(vv);
+					op->rejected_count++;
+					return false;
+				}
+			}
+			*logHR = log(s)*(Parameter_size(param) - 2);
+			Parameter_set_values(param, vv);
+			free(vv);
 		}
-		Parameter_set_value(p, vv);
+		else{
+			size_t index = Parameter_size(param) == 1 ? 0 : gsl_rng_uniform_int(op->rng, Parameter_size(param));
+			double v = Parameter_value_at(param, index);
+			double vv = v;
+			vv *= s;
+			*logHR = -log(s);
+
+			if ( vv > Parameter_upper(param) || vv < Parameter_lower(param) ) {
+				op->rejected_count++;
+				return false;
+			}
+			Parameter_set_value_at(param, vv, index);
+		}
 	}
 	else{
 		Tree* tree = op->models[0]->obj;
@@ -165,20 +179,20 @@ bool operator_scaler(Operator* op, double* logHR){
 }
 
 bool operator_slider(Operator* op, double* logHR){
-	size_t index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
-	Parameter* p = Parameters_at(op->x, index);
-	double v = Parameter_value(p);
+	Parameter* param = Parameters_at(op->x, 0);
+	size_t index = Parameter_size(param) == 1 ? 0 : gsl_rng_uniform_int(op->rng, Parameter_size(param));
+	double v = Parameter_value_at(param, index);
 	double vv = v;
 	double w = (gsl_rng_uniform(op->rng) - 0.5)*op->parameters[0];//slider_delta;
 	vv += w;
 	//	printf("%s %f %f ", Parameter_name(p), w, Parameter_value(p));
 	bool ok = false;
 	do{
-		if ( vv > Parameter_upper(p) ) {
-			vv = 2.0*Parameter_upper(p) - vv;
+		if ( vv > Parameter_upper(param) ) {
+			vv = 2.0*Parameter_upper(param) - vv;
 		}
-		else if ( vv < Parameter_lower(p ) ) {
-			vv = 2.0*Parameter_lower(p) - vv;
+		else if ( vv < Parameter_lower(param ) ) {
+			vv = 2.0*Parameter_lower(param) - vv;
 		}
 		else{
 			ok = true;
@@ -187,47 +201,63 @@ bool operator_slider(Operator* op, double* logHR){
 	
 	*logHR = 0;
 	
-	Parameter_set_value(p, vv);
+	Parameter_set_value_at(param, vv, index);
 	return true;
 }
 
+bool operator_up_down(Operator* op, double* logHR){
+	double scaleFactor = op->parameters[0];
+	double s = (scaleFactor + (gsl_rng_uniform(op->rng) * ((1.0 / scaleFactor) - scaleFactor)));
+	Parameter* up = Parameters_at(op->x, 0);
+	Parameter* down = Parameters_at(op->x, 1);
+	double upValue = Parameter_value(up) * s;
+	double downValue = Parameter_value(down) / s;
+	if ( upValue > Parameter_upper(up) || upValue < Parameter_lower(up) || downValue > Parameter_upper(down) || downValue < Parameter_lower(down) ) {
+		return false;
+	}
+	Parameter_set_value(up, upValue);
+	Parameter_set_value(down, downValue);
+	*logHR = -2*log(s);
+	return true;
+}
 
 bool operator_random_walk_unif(Operator* op, double* logHR){
-	size_t index = gsl_rng_uniform_int(op->rng, Parameters_count(op->x));
-	Parameter* p = Parameters_at(op->x, index);
-	double v = Parameter_value(p);
+	Parameter* param = Parameters_at(op->x, 0);
+	size_t index = Parameter_size(param) == 1 ? 0 : gsl_rng_uniform_int(op->rng, Parameter_size(param));
+	double v = Parameter_value_at(param, index);
 	double vv = v;
 	double w = (gsl_rng_uniform(op->rng) * 2.0 - 1.0)*op->parameters[0];
 	vv += w;
-	
-	if ( vv > Parameter_upper(p) || vv < Parameter_lower(p) ) {
+
+	if ( vv > Parameter_upper(param) || vv < Parameter_lower(param) ) {
 		return false;
 	}
 	
 	*logHR = 0;
-	
-	Parameter_set_value(p, vv);
+
+	Parameter_set_value_at(param, vv, index);
 	return true;
 }
 
 bool operator_simplex_exchange(Operator* op, double* logHR){
-	Simplex* simplex = op->models[0]->obj;
+	Parameter* simplex = Parameters_at(op->x, 0);
+	size_t K = Parameter_size(simplex);
 	double lambda = op->parameters[0];
-	long idx1 = gsl_rng_uniform_int(op->rng, simplex->K);
+	long idx1 = gsl_rng_uniform_int(op->rng, K);
 	long idx2 = idx1;
 	while(idx1 == idx2){
-		idx2 = gsl_rng_uniform_int(op->rng, simplex->K);
+		idx2 = gsl_rng_uniform_int(op->rng, K);
 	}
-	
-	const double* oldValues = simplex->get_values(simplex);
-	double* newValues = clone_dvector(oldValues, simplex->K);
+
+	const double* oldValues = Parameter_values(simplex);
+	double* newValues = clone_dvector(oldValues, K);
 	
 	double w = gsl_rng_uniform(op->rng)*lambda;
 	
 	newValues[idx1] += w;
 	newValues[idx2] -= w;
-	
-	for(int i = 0; i < simplex->K; i++){
+
+	for(size_t i = 0; i < K; i++){
 		if (newValues[i] < 0.0001) {
 			free(newValues);
 			op->rejected_count++;;
@@ -235,8 +265,8 @@ bool operator_simplex_exchange(Operator* op, double* logHR){
 			return false;
 		}
 	}
-	
-	for (int i = 0; i < simplex->K; i++) {
+
+	for (size_t i = 0; i < K; i++) {
 		if (isnan(newValues[i])) {
 			free(newValues);
 			op->rejected_count++;;
@@ -244,40 +274,42 @@ bool operator_simplex_exchange(Operator* op, double* logHR){
 			return false;
 		}
 	}
-	simplex->set_values(simplex, newValues);
+	Parameter_set_values(simplex, newValues);
 	free(newValues);
 	return true;
 }
 
 bool operator_beta(Operator* op, double* logHR){
+	Parameter* param = Parameters_at(op->x, 0);
 	double alpha = op->parameters[0];
-	double v = Parameters_value(op->x, 0);
+	double v = Parameter_value_at(param, 0);
 	double newValue = gsl_ran_beta(op->rng, alpha*v+1.0, alpha*(1.0-v)+1.0);
 	if (newValue == 1.0 || newValue == 0.0) {
 		return false;
 	}
-	Parameters_set_value(op->x, 0, newValue);
+	Parameter_set_value_at(param, newValue, 0);
 	*logHR = log(gsl_ran_beta_pdf(v, alpha*newValue+1.0, alpha*(1.0-newValue)+1.0)/gsl_ran_beta_pdf(newValue, alpha*v+1.0, alpha*(1.0-v))+1.0);
 	return true;
 }
 
 bool operator_dirichlet(Operator* op, double* logHR){
-	Simplex* simplex = op->models[0]->obj;
+	Parameter* simplex = Parameters_at(op->x, 0);
+	size_t K = Parameter_size(simplex);
 	double alpha = op->parameters[0];
-	double* scaledOld = dvector(simplex->K);
-	double* newScaled = dvector(simplex->K);
-	double* newValues = dvector(simplex->K);
-	
-	double* oldValues = clone_dvector(simplex->get_values(simplex), simplex->K);
-	for (int i = 0; i < simplex->K; i++) {
+	double* scaledOld = dvector(K);
+	double* newScaled = dvector(K);
+	double* newValues = dvector(K);
+	const double* values = Parameter_values(simplex);
+	double* oldValues = clone_dvector(values, K);
+	for (size_t i = 0; i < K; i++) {
 		scaledOld[i] = alpha*oldValues[i];
 	}
 	
 	bool ok = false;
 	int failures = 0;
 	while (!ok && failures != 50) {
-		gsl_ran_dirichlet(op->rng, simplex->K, scaledOld, newValues); //rdirichlet(newValues, simplex->K, scaledOld);
-		for(int i = 0; i < simplex->K; i++){
+		gsl_ran_dirichlet(op->rng, K, scaledOld, newValues); //rdirichlet(newValues, simplex->K, scaledOld);
+		for(size_t i = 0; i < K; i++){
 			ok = true;
 			if (newValues[i] < 0.00001) {
 				ok = false;
@@ -295,12 +327,12 @@ bool operator_dirichlet(Operator* op, double* logHR){
 		op->failure_count++;
 		return false;
 	}
-	
-	for (int i = 0; i < simplex->K; i++) {
+
+	for (size_t i = 0; i < K; i++) {
 		newScaled[i] = alpha*newValues[i];
 	}
-	
-	for (int i = 0; i < simplex->K; i++) {
+
+	for (size_t i = 0; i < K; i++) {
 		if (isnan(newValues[i])) {
 			free(oldValues);
 			free(scaledOld);
@@ -311,10 +343,10 @@ bool operator_dirichlet(Operator* op, double* logHR){
 			return false;
 		}
 	}
-	simplex->set_values(simplex, newValues);
+	Parameter_set_values(simplex, newValues);
 
-	double f = gsl_ran_dirichlet_lnpdf(simplex->K, scaledOld, newValues);// ddirchletln(newValues, simplex->K, scaledOld);
-	double b = gsl_ran_dirichlet_lnpdf(simplex->K, newScaled, oldValues); //ddirchletln(oldValues, simplex->K, newScaled);
+	double f = gsl_ran_dirichlet_lnpdf(K, scaledOld, newValues);// ddirchletln(newValues, simplex->K, scaledOld);
+	double b = gsl_ran_dirichlet_lnpdf(K, newScaled, oldValues); //ddirchletln(oldValues, simplex->K, newScaled);
 
 	*logHR = b-f;
 	free(oldValues);
@@ -378,6 +410,14 @@ void operator_slider_optimize(Operator* op, double alpha){
 	}
 }
 
+void operator_up_down_optimize(Operator* op, double alpha){
+	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
+	if(count >= 0){
+		double scaleFactor = optimizeScaleFactor(op->parameters[0], count+1, alpha, 0.24);
+		op->parameters[0] = fmin(1.0, fmax(0.0, scaleFactor));
+	}
+}
+
 void operator_dirichlet_optimize(Operator* op, double alpha){
 	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
 	if(count >= 0){
@@ -429,9 +469,12 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		"coalescent",
 		"delay",
 		"parameters",
+		"target",
 		"tree",
 		"weight",
-		"x"
+		"x",
+		"up",
+		"down"
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
@@ -502,6 +545,28 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 				json_node* child = p_node->children[0];
 				op->parameters[0] = get_json_node_value_double(child, "parameters", 0.001);
 				
+			}
+		}
+	}
+	else if (strcasecmp(algorithm_string, "updown") == 0) {
+		op->x = new_Parameters(2);
+		char* upNode = get_json_node_value_string(node, "up");
+		char* downNode = get_json_node_value_string(node, "down");
+		Parameter* up = Hashtable_get(hash, upNode+1);
+		Parameter* down = Hashtable_get(hash, downNode+1);
+		Parameters_add(op->x, up);
+		Parameters_add(op->x, down);
+		op->propose = operator_up_down;
+		op->optimize = operator_up_down_optimize;
+		op->parameters = dvector(1);
+		op->parameters[0] = 0.75;
+		if(p_node != NULL){
+			if (p_node->node_type == MJSON_PRIMITIVE){
+				op->parameters[0] = get_json_node_value_double(node, "parameters", 0.75);
+			}
+			else if(p_node->node_type == MJSON_ARRAY){
+				json_node* child = p_node->children[0];
+				op->parameters[0] = get_json_node_value_double(child, "parameters", 0.75);
 			}
 		}
 	}
@@ -628,6 +693,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	op->rejected_count = 0;
 	op->accepted_count = 0;
 	op->failure_count = 0;
+	op->target = get_json_node_value_double(node, "target", 0.24);
 	return op;
 }
 
