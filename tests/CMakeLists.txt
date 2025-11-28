@@ -5,8 +5,8 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../src")
 # add_executable(test_clone test_clone.c)
 # target_link_libraries(test_clone phyc)
 
-# add_executable(test_distributions test_distributions.c)
-# target_link_libraries(test_distributions phyc)
+add_executable(test_distributions test_distributions.c)
+target_link_libraries(test_distributions phyc)
 
 add_executable(test_coalescent test_coalescent.c)
 target_link_libraries(test_coalescent phyc)
@@ -39,9 +39,9 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/data
 # 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 # 		COMMAND test_clone)
 
-# add_test (NAME Test_distributions
-# 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
-# 		COMMAND test_distributions)
+add_test (NAME Test_distributions
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_distributions)
 
 add_test (NAME Test_coalescent
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"

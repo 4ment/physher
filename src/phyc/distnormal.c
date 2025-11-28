@@ -73,38 +73,14 @@ double DistributionModel_normal_logP(DistributionModel* dm){
     return dm->lp;
 }
 
-static void _expand_parameters(Parameters* x, Parameters* parameters, double** muValues,
-                               double** sigmaValues) {
-    Parameter* mu = Parameters_at(parameters, 0);
-    Parameter* sigma = Parameters_at(parameters, 1);
-    *muValues = Parameter_values(mu);
-    *sigmaValues = Parameter_values(sigma);
-
-    if (Parameter_size(mu) == 1) {
-        size_t dim = 0;
-        for (size_t k = 0; k < Parameters_count(x); k++) {
-            dim += Parameter_size(Parameters_at(x, k));
-        }
-        if (dim > 1) {
-            *muValues = dvector(dim);
-            *sigmaValues = dvector(dim);
-            double muValue = Parameter_value(mu);
-            double sigmaValue = Parameter_value(sigma);
-            for (size_t k = 0; k < dim; k++) {
-                *muValues[k] = muValue;
-                *sigmaValues[k] = sigmaValue;
-            }
-        }
-    }
-}
-
 double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameters* parameters){
     Parameter* mu = Parameters_at(dm->parameters, 0);
     Parameter* sigma = Parameters_at(dm->parameters, 1);
-    double* muValues = NULL;
-    double* sigmaValues = NULL;
+    
+    const double* muValues = Parameter_values(mu);
+    const double* sigmaValues = Parameter_values(sigma);
 
-    _expand_parameters(dm->x, dm->parameters, &muValues, &sigmaValues);
+    size_t mask = -(Parameter_size(mu) != 1);
 
     Parameter* mux = Parameters_depends(parameters, mu);
     Parameter* sigmax = Parameters_depends(parameters, sigma);
@@ -115,13 +91,15 @@ double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameter
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
+            memset(dm->tempp, 0, dim * sizeof(double));
             for(size_t j = 0; j < dim; j++){
-                double sigmaValue = sigmaValues[index];
+                double sigmaValue = sigmaValues[index & mask];
+                size_t idx = j & mask;
                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
                     sigmaValue = sqrt(1.0/sigmaValue);
                 }
-                dm->tempp[j] = (xValues[j] - muValues[index])/(sigmaValue*sigmaValue);
-                mu->grad[j] += dm->tempp[j];
+                dm->tempp[idx] = (xValues[j] - muValues[index & mask])/(sigmaValue*sigmaValue);
+                mu->grad[idx] += dm->tempp[idx];
                 index++;
             }
         }
@@ -136,18 +114,22 @@ double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameter
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
+            memset(dm->tempp, 0, dim * sizeof(double));
             for(size_t j = 0; j < dim; j++){
-                double sigmaValue = sigmaValues[index];
+                double muValue = muValues[index & mask];
+                double sigmaValue = sigmaValues[index & mask];
+                size_t idx = j & mask;
                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
-                    dm->tempp[j] = 1.0/(2.0*sigmaValue) - pow(xValues[j] - muValues[index], 2.0)/2.0;
+                    dm->tempp[idx] = 1.0/(2.0*sigmaValue) - pow(xValues[j] - muValue, 2.0)/2.0;
                 }
                 else{
-                    dm->tempp[j] =  (muValues[index]*muValues[index] - sigmaValue*sigmaValue - 2.0*muValues[index]*xValues[j] + xValues[j]*xValues[j])/(sigmaValue*sigmaValue*sigmaValue);
+                    dm->tempp[idx] =  (muValue*muValue - sigmaValue*sigmaValue - 2.0*muValue*xValues[j] + xValues[j]*xValues[j])/(sigmaValue*sigmaValue*sigmaValue);
                 }
-                sigma->grad[j] += dm->tempp[j];
+                sigma->grad[idx] += dm->tempp[idx];
                 index++;
             }
         }
+
         if(sigma != sigmax){
             sigma->transform->backward(sigma->transform, dm->tempp);
         }
@@ -157,17 +139,17 @@ double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameter
     for(size_t k = 0; k < Parameters_count(dm->x); k++){
         Parameter* x = Parameters_at(dm->x, k);
         Parameter* xx = Parameters_depends(parameters, x);
+        size_t sizeX = Parameter_size(x);
         if (xx != NULL) {
-            size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
-        
-            for(size_t j = 0; j < dim; j++){
-                double sigmaValue = sigmaValues[index];
+            for(size_t j = 0; j < sizeX; j++){
+                double muValue = muValues[index & mask];
+                double sigmaValue = sigmaValues[index & mask];
                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
                     sigmaValue = sqrt(1.0/sigmaValue);
                 }
-                dm->tempp[j] = (muValues[index] - xValues[j])/(sigmaValue*sigmaValue);
-                x->grad[j] += dm->tempp[j];
+                dm->tempp[index] = (muValue - xValues[j])/(sigmaValue*sigmaValue);
+                x->grad[index] += dm->tempp[index];
                 index++;
             }
             if(x != xx){
@@ -175,13 +157,8 @@ double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameter
             }
         }
         else{
-            index += Parameter_size(x);
+            index += sizeX;
         }
-    }
-
-    if(Parameter_values(mu) != muValues){
-        free(muValues);
-        free(sigmaValues);
     }
     return 0;
 }
@@ -477,7 +454,7 @@ Model* new_NormalDistributionModel_from_json(json_node* node, Hashtable* hash){
         }
 
         if(muNode == NULL || sigmaNode == NULL){
-            fprintf(stderr, "Normal distribution should be parametrized with mean and (sigma or tau)\n");
+            fprintf(stderr, "Normal distribution should be parametrized with mu and (sigma or tau)\n");
             exit(13);
         }
         mu = distmodel_parse_parameter(muNode, hash, "", -INFINITY, INFINITY);
