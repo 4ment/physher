@@ -10,7 +10,6 @@
 #define compoundmodel_h
 
 #include "parameters.h"
-#include "simplex.h"
 #include "mjson.h"
 
 struct _CompoundModel;
@@ -19,12 +18,9 @@ typedef struct _CompoundModel CompoundModel;
 struct _CompoundModel{
 	Model** models;
 	int count;
-	Model* weights;
+	Parameter* weights;
 	double (*logP)(CompoundModel*);
 	double (*full_logP)(CompoundModel*);
-	double (*dlogP)(CompoundModel*, const Parameter*);
-	double (*d2logP)(CompoundModel*, const Parameter*);
-	double (*ddlogP)(CompoundModel*, const Parameter*, const Parameter*);
 	void (*free)(CompoundModel*);
 	void(*add)(CompoundModel*, Model*);
 	void(*move)(CompoundModel*, Model*);

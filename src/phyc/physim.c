@@ -33,6 +33,7 @@
 #include "sitepattern.h"
 #include "lognormal.h"
 #include "exponential.h"
+#include "distmodelfactory.h"
 
 
 
@@ -65,7 +66,7 @@ Sequences * Sequence_simulate( Tree *tree, SubstitutionModel *m, SiteModel *sm, 
         for ( int i = 0; i < sm->cat_count; i++ ) {
             accum += sm->get_proportion(sm,i);
         }
-        if( accum < 0.000001 ){
+        if(fabs(1.0-accum) > 0.001){
             fprintf(stderr, "Proportions in SiteModel must add up to 1\n");
             for ( int i = 0; i < sm->cat_count; i++ ) {
                 fprintf(stderr, "%d %e\n",i, sm->get_proportion(sm,i));
@@ -125,7 +126,112 @@ Sequences * Sequence_simulate( Tree *tree, SubstitutionModel *m, SiteModel *sm, 
             }
 			m->p_t(m, t, p);
 
-            memcpy(residue, &parent->seq[j], residue_length*sizeof(char));
+            memcpy(residue, &parent->seq[j*residue_length], residue_length*sizeof(char));
+            int parent_state = seqs->datatype->encoding_string(seqs->datatype, residue);
+            const char *temp = seqs->datatype->state_string(seqs->datatype, roulette_wheel(&p[parent_state*nstate], nstate));
+            strcpy(&current->seq[j*residue_length], temp);
+            current->length = len;
+            
+        }
+    }
+    seqs->size = Tree_node_count(tree);
+    
+    if( !keep_internal ){
+        for ( int i = 0; i < Tree_node_count(tree); i++ ) {
+            if ( !Node_isleaf(nodes[i]) ) {
+                free_Sequence(seqs->seqs[nodes[i]->postorder_idx]);
+                seqs->seqs[nodes[i]->postorder_idx] = NULL;
+                //Sequences_delete(seqs, nodes[i]->postorder_idx);
+            }
+        }
+        Sequences_pack2(seqs);
+    }
+    
+    seqs->aligned  = true;
+    seqs->datatype->genetic_code  = m->gen_code;
+    seqs->datatype->type = m->datatype->type;
+    
+    free(residue);
+    free(p);
+    free(rates);
+    return seqs;
+}
+
+Sequences * Sequence_simulate_dist( Tree *tree, SubstitutionModel *m, DistributionModel *dm, BranchModel *bm, DataType *datatype, unsigned len, bool keep_internal ){
+    int nstate = m->nstate;
+    double *p = dvector(nstate*nstate);
+    double *rates = dvector(len);
+    
+    const double *freqs = m->get_frequencies(m);
+    
+    double accum = 0;
+    for ( int i = 0; i < nstate; i++ ) {
+        accum += freqs[i];
+    }
+    
+    if(fabs(1.0-accum) > 0.001){
+        fprintf(stderr, "Frequencies must add up to 1 (%e)\n", accum);
+        for ( int i = 0; i < nstate; i++ ) {
+            fprintf(stderr, "%d %e\n", i, freqs[i]);
+        }
+        exit(1);
+    }
+    
+    m->need_update = true;
+    Parameter* x = Parameters_at(dm->x, 0);
+    fprintf(stdout, "Site rate: ");
+    for ( int i = 0; i < len; i++ ) {
+        dm->sample(dm);
+        rates[i] = Parameter_value(x);
+        fprintf(stdout,"%f%s", rates[i], (i == len-1 ? "\n": ","));
+    }
+    
+    Sequences *seqs = new_Sequences( Tree_node_count(tree));
+    seqs->datatype = datatype;
+    
+    seqs->length = len;
+    if( datatype->type == DATA_TYPE_CODON ){
+        seqs->length *= 3;
+    }
+    
+    Node **nodes = Tree_get_nodes(tree, PREORDER);
+    // This is the root sequence
+    Sequence *current = new_Sequence2(Node_name(Tree_root(tree)), seqs->length);
+    seqs->seqs[Tree_root(tree)->postorder_idx] = current;
+    
+    
+    int residue_length = strlen(seqs->datatype->state_string(seqs->datatype,0));
+    char *residue = (char*)malloc((residue_length+1)*sizeof(char));
+    assert(residue);
+    residue[residue_length] = '\0';
+    
+    for ( int i = 0; i < len; i++ ) {
+        const char *temp = seqs->datatype->state_string(seqs->datatype, roulette_wheel(freqs, nstate));
+        strcpy(&current->seq[i*residue_length], temp);
+    }
+    current->length = len;
+    
+    
+    Sequence *parent  = NULL;
+    // Iterate over nodes
+    for ( int i = 1; i < Tree_node_count(tree); i++ ) {
+        
+        current = new_Sequence2(Node_name(nodes[i]), seqs->length);
+        seqs->seqs[ nodes[i]->postorder_idx ] = current;
+        parent = seqs->seqs[ Node_parent(nodes[i])->postorder_idx ];
+        
+        // Iterate over sites
+        for ( int j = 0; j < len; j++ ) {
+            double t = rates[j];
+            if ( bm == NULL ) {
+                t *= Node_distance(nodes[i]);
+            }
+            else {
+                t *= Node_time_elapsed(nodes[i]) * bm->get(bm, nodes[i]);
+            }
+			m->p_t(m, t, p);
+
+            memcpy(residue, &parent->seq[j*residue_length], residue_length*sizeof(char));
             int parent_state = seqs->datatype->encoding_string(seqs->datatype, residue);
             const char *temp = seqs->datatype->state_string(seqs->datatype, roulette_wheel(&p[parent_state*nstate], nstate));
             strcpy(&current->seq[j*residue_length], temp);
@@ -201,7 +307,9 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
 		"length",
 		"output",
 		"scaler",
+        "seed",
 		"sitemodel",
+        "substitutionmodel",
 		"tree",
 		"verbosity"
 	};
@@ -212,22 +320,26 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     json_node* tree_node = get_json_node(node, "tree");
 	json_node* m_node = get_json_node(node, "substitutionmodel");
 	json_node* sm_node = get_json_node(node, "sitemodel");
+    char* sm_type = get_json_node_value_string(sm_node, "type");
     json_node* bm_node = get_json_node(node, "branchmodel");
     json_node* datatype_node = get_json_node(node, "datatype");
     int length = get_json_node_value_int(node, "length", 1000);
     bool internal = get_json_node_value_bool(node, "internal", false);
     double scaler = get_json_node_value_double(node, "scaler", 1.0);
+    double seed = get_json_node_value_double(node, "seed", 1.0);
     char* rate_dist = get_json_node_value_string(node, "distribution");
 	int verbosity = get_json_node_value_int(node, "verbosity", 1);
-
-	if(format == NULL){
-		format = "fasta";
-	}
     
     Model* mtree = NULL;
-	Model* msm = NULL;
+	Model* msm = NULL; // SiteModel or DistributionModel
 	Model* mm = NULL;
     Model* mbm = NULL;
+
+    init_genrand(seed);
+	gsl_rng * r = gsl_rng_alloc (gsl_rng_taus);
+	gsl_rng_set(r, seed);
+	char* rand_key = "RANDOM_GENERATOR!@";
+	Hashtable_add(hash, rand_key, r);
     
     if (tree_node->node_type == MJSON_STRING) {
         char* ref = (char*)tree_node->value;
@@ -249,7 +361,7 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     }
     else{
         char* id = get_json_node_value_string(m_node, "id");
-        mm = new_SiteModel_from_json(m_node, hash);
+        mm = new_SubstitutionModel_from_json(m_node, hash);
         Hashtable_add(hash, id, mm);
     }
 	
@@ -261,8 +373,13 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
 		msm->ref_count++;
 	}
 	else{
-		char* id = get_json_node_value_string(sm_node, "id");
-		msm = new_SiteModel_from_json(sm_node, hash);
+        if(strcasecmp(sm_type, "sitemodel") == 0){
+            msm = new_SiteModel_from_json(sm_node, hash);
+        }
+        else{
+            msm = new_DistributionModel_from_json(sm_node, hash);
+        }
+        char* id = get_json_node_value_string(sm_node, "id");
 		Hashtable_add(hash, id, msm);
 	}
     BranchModel* bm = NULL;
@@ -447,9 +564,16 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
         free(rate_dist);
     }
     
-    Sequences *sim = Sequence_simulate(tree, mm->obj, msm->obj, bm, datatype, length, internal);
+    Sequences *sim = NULL;
     
-    if(strcasecmp(format, "fasta") == 0){
+    if(strcasecmp(sm_type, "sitemodel") == 0){
+        sim = Sequence_simulate(tree, mm->obj, msm->obj, bm, datatype, length, internal);
+    }
+    else{
+        sim = Sequence_simulate_dist(tree, mm->obj, msm->obj, bm, datatype, length, internal);
+    }
+    
+    if(format == NULL || strcasecmp(format, "fasta") == 0){
         Sequences_save_fasta(sim, output);
     }
     else if(strcasecmp(format, "nexus") == 0){

@@ -24,12 +24,13 @@
 typedef struct LineFunction{
 	Parameters *parameters;
 	
-	Parameters *x;
+	// Parameters *x;
 	
 	double *s;
 	double *xi; // d
 	
-	int dim;
+	size_t dim; // number of parameters
+	size_t size; // total number of values
 	
 	double lower;
 	double upper;
@@ -48,14 +49,14 @@ double LineFunction_minimize( LineFunction *lf );
 
 double LineFunction_evaluate( LineFunction *lf, double lambda );
 
-void LineFunction_set_parameters( const LineFunction *lf, const double lambda, Parameters *p );
+void LineFunction_set_parameters(const LineFunction *lf, const double lambda);
 
-bool LineFunction_force_within_bounds( const LineFunction *lf, Parameters *p);
+bool LineFunction_force_within_bounds(const LineFunction *lf);
 
-void LineFunction_update( LineFunction *lf, Parameters *p, double *xi );
+void LineFunction_update( LineFunction *lf, double *xi );
 
-int LineFunction_constrain_direction( const LineFunction *lf, const Parameters *p, double *xi );
+int LineFunction_constrain_direction( const LineFunction *lf, double *xi );
 
-int LineFunction_set_active_parameters( const LineFunction *lf, const Parameters *p, const double *grad, bool *active);
+int LineFunction_set_active_parameters( const LineFunction *lf, const double *grad, bool *active);
 
 #endif

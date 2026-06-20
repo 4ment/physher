@@ -70,4 +70,9 @@ void inverse_transform_simplex2(double* x, const double* y, int K);
 
 void grad_log_det_inverse_transform_simplex(const double* z, double* dz, int K);
 
+// Map a simplex from constrained (K probabilities in x) to unconstrained (K-1
+// values in y) space using the stick-breaking (Stan) parameterization. dim = K-1.
+void _transform_simplex_stan(const double* x, double* y, size_t dim, double lower,
+                             double upper);
+
 #endif /* transforms_h */

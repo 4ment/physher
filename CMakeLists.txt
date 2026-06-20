@@ -261,7 +261,6 @@ IF(DISABLE_GSL)
 		src/phyc/random.c
 		src/phyc/sequence.c
 		src/phyc/sequenceio.c
-		src/phyc/simplex.c
 		src/phyc/sitemodel.c
 		src/phyc/sitepattern.c
 		src/phyc/solve.c
@@ -293,8 +292,8 @@ ELSE()
 	file(GLOB SRC_FILES src/phyc/*.c)
 	file(GLOB HEADER_FILES src/phyc/*.h)
 
-	list(REMOVE_ITEM HEADER_FILES ${PROJECT_SOURCE_DIR}/src/phyc/vb.h ${PROJECT_SOURCE_DIR}/src/phyc/opvb.h)
-	list(REMOVE_ITEM SRC_FILES ${PROJECT_SOURCE_DIR}/src/phyc/vb.c ${PROJECT_SOURCE_DIR}/src/phyc/opvb.c)
+	list(REMOVE_ITEM HEADER_FILES ${PROJECT_SOURCE_DIR}/src/phyc/vb.h ${PROJECT_SOURCE_DIR}/src/phyc/opvb.h ${PROJECT_SOURCE_DIR}/src/phyc/klqp.h)
+	list(REMOVE_ITEM SRC_FILES ${PROJECT_SOURCE_DIR}/src/phyc/vb.c ${PROJECT_SOURCE_DIR}/src/phyc/opvb.c ${PROJECT_SOURCE_DIR}/src/phyc/klqp.c)
 ENDIF(DISABLE_GSL)
 
 include_directories("${PROJECT_SOURCE_DIR}/contrib")

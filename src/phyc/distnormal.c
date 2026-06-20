@@ -382,7 +382,6 @@ DistributionModel* new_NormalDistributionModel_with_parameters(Parameters* param
     dm->type = DISTRIBUTION_NORMAL;
     dm->parameterization = parameterization;
     dm->logP = DistributionModel_normal_logP;
-    // dm->logP_with_values = DistributionModel_normal_logP_with_values;
     dm->gradient2 = DistributionModel_normal_gradient2;
     dm->rgradient = DistributionModel_normal_rgradient;
     dm->dlogP = DistributionModel_normal_dlogP;
@@ -392,7 +391,6 @@ DistributionModel* new_NormalDistributionModel_with_parameters(Parameters* param
     dm->rsample = DistributionModel_normal_rsample;
     dm->entropy = DistributionModel_normal_entropy;
     dm->gradient_entropy = DistributionModel_normal_entropy_gradient;
-    // dm->sample_evaluate = DistributionModel_normal_sample_evaluate;
     dm->shift = -INFINITY; // can't be shifted
     return dm;
 }
@@ -487,8 +485,7 @@ Model* new_NormalDistributionModel_from_json(json_node* node, Hashtable* hash){
 double DistributionModel_half_normal_logP(DistributionModel* dm){
     if(!dm->need_update) return dm->lp;
     dm->lp = 0.0;
-    const double* mu = Parameter_values(Parameters_at(dm->parameters, 0));
-    const double* sigma = Parameter_values(Parameters_at(dm->parameters, 1));
+    const double* sigma = Parameter_values(Parameters_at(dm->parameters, 0));
     size_t dimX = Parameters_count(dm->x);
 
     // single parameter and len(x_i) >= 1 (e.g. prior) 
@@ -502,7 +499,7 @@ double DistributionModel_half_normal_logP(DistributionModel* dm){
             size_t dim = Parameter_size(x);
             const double* values = Parameter_values(x);
             for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(sqrt(2)/(sigmaValue*sqrt(M_PI))) - pow(values[i], 2.0)/(2.0*sigmaValue*sigmaValue);
+                dm->lp += log(sqrt(2.0)/(sigmaValue*sqrt(M_PI))) - pow(values[i], 2.0)/(2.0*sigmaValue*sigmaValue);
             }
         }
     }
@@ -528,47 +525,64 @@ double DistributionModel_half_normal_logP(DistributionModel* dm){
 }
 
 double DistributionModel_half_normal_gradient2(DistributionModel* dm, const Parameters* parameters){
-    // size_t offset = 0;
-    // for(size_t i = 0; i < Parameters_count(parameters); i++){
-    //     Parameter* p = Parameters_at(parameters, i);
-    //     // derivative wrt x
-    //     if (p == dm->x) {
-    //         Parameter* sigma = Parameters_at(dm->parameters, 0);
-    //         size_t dim = Parameter_size(dm->x);
+    Parameter* sigma = Parameters_at(dm->parameters, 0);
 
-    //         double muValue = -1;
-    //         double sigmaValue = -1
-    //         size_t dim = Parameter_size(sigma);
+    const double* sigmaValues = Parameter_values(sigma);
 
-    //         if(dim > 1){
-    //             for(size_t j = 0; j < dim; j++){
-    //                 sigmaValue = Parameter_value_at(sigma, j);
-    //                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
-    //                     sigmaValue = sqrt(1.0/sigmaValue);
-    //                 }
-    //                 grad[offset] = -Parameter_value_at(p, j)/sigmaValue/sigmaValue;
-    //                 offset++;
-    //             }
-    //         }
-    //         else{
-    //             sigmaValue = Parameter_value(sigma);
-    //             if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
-    //                 sigmaValue = sqrt(1.0/sigmaValue);
-    //             }
-    //             for (size_t j = 0; j < dim; j++) {
-    //                 grad[offset] = -Parameter_value_at(p, j)/sigmaValue/sigmaValue;
-    //                 offset++;
-    //             }
-    //         }
-    //     }
-    //     //TODO: wrt sigma
-    //     else if(p == Parameters_at(dm->parameters, 0)){
-    //         error("DistributionModel_half+normal_gradient2 not implemented for mu and sigma\n");
-    //     }
-    //     else{
-    //         offset += Parameter_size(p);
-    //     }
-    // }
+    size_t mask = -(Parameter_size(sigma) != 1);
+
+    Parameter* sigmax = Parameters_depends(parameters, sigma);
+
+    if(sigmax != NULL){
+        size_t index = 0;
+        for(size_t k = 0; k < Parameters_count(dm->x); k++){
+            Parameter* x = Parameters_at(dm->x, k);
+            size_t dim = Parameter_size(x);
+            const double* xValues = Parameter_values(x);
+            memset(dm->tempp, 0, dim * sizeof(double));
+            for(size_t j = 0; j < dim; j++){
+                double sigmaValue = sigmaValues[index & mask];
+                size_t idx = j & mask;
+                if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+                    dm->tempp[idx] = 1.0/(2.0*sigmaValue) - pow(xValues[j], 2.0)/2.0;
+                }
+                else{
+                    dm->tempp[idx] =  (- sigmaValue*sigmaValue + xValues[j]*xValues[j])/(sigmaValue*sigmaValue*sigmaValue);
+                }
+                sigma->grad[idx] += dm->tempp[idx];
+                index++;
+            }
+        }
+
+        if(sigma != sigmax){
+            sigma->transform->backward(sigma->transform, dm->tempp);
+        }
+    }
+
+    size_t index = 0;
+    for(size_t k = 0; k < Parameters_count(dm->x); k++){
+        Parameter* x = Parameters_at(dm->x, k);
+        Parameter* xx = Parameters_depends(parameters, x);
+        size_t sizeX = Parameter_size(x);
+        if (xx != NULL) {
+            const double* xValues = Parameter_values(x);
+            for(size_t j = 0; j < sizeX; j++){
+                double sigmaValue = sigmaValues[index & mask];
+                if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
+                    sigmaValue = sqrt(1.0/sigmaValue);
+                }
+                dm->tempp[index] = - xValues[j]/(sigmaValue*sigmaValue);
+                x->grad[index] += dm->tempp[index];
+                index++;
+            }
+            if(x != xx){
+                x->transform->backward(x->transform, dm->tempp);
+            }
+        }
+        else{
+            index += sizeX;
+        }
+    }
     return 0;
 }
 
@@ -604,25 +618,16 @@ static void DistributionModel_half_normal_sample(DistributionModel* dm){
     exit(2);
 }
 
-
-// static double DistributionModel_half_normal_sample_evaluate(DistributionModel* dm){
-//     fprintf(stderr, "DistributionModel_half_normal_sample not DistributionModel_half_normal_sample_evaluate implemented\n");
-//     exit(2);
-//     return 0;
-// }
-
 DistributionModel* new_HalfNormalDistributionModel_with_parameters(Parameters* parameters, Parameters* x, distribution_parameterization param){
     DistributionModel* dm = new_DistributionModel(parameters, x);
     dm->type = DISTRIBUTION_HALFNORMAL;
     dm->parameterization = param;
     dm->logP = DistributionModel_half_normal_logP;
-    // dm->logP_with_values = DistributionModel_half_normal_logP_with_values;
     dm->gradient2 = DistributionModel_half_normal_gradient2;
     dm->dlogP = DistributionModel_half_normal_dlogP;
     dm->d2logP = DistributionModel_half_normal_d2logP;
     dm->ddlogP = DistributionModel_ddlog_0;
     dm->sample = DistributionModel_half_normal_sample;
-    // dm->sample_evaluate = DistributionModel_half_normal_sample_evaluate;
     dm->shift = 0;
     return dm;
 }

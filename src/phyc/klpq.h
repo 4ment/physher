@@ -11,12 +11,10 @@
 
 #include <stdio.h>
 
-#include "vb.h"
+#include "mjson.h"
+#include "hashtable.h"
+#include "parameters.h"
 
 Model* new_KLpqBound_from_json(json_node* node, Hashtable* hash);
-
-void grad_klpq_normal_meanfield(variational_t* var, const Parameters* parameters, double* grads);
-
-double klpq_normal_meanfield(variational_t* var);
 
 #endif /* klpq_h */

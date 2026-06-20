@@ -10,7 +10,6 @@
 
 #include <string.h>
 
-#include "simplex.h"
 #include "matrix.h"
 #include "utilsgsl.h"
 #include "gaussian.h"

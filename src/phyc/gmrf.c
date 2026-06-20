@@ -176,7 +176,8 @@ double DistributionModel_gmrf_time_aware_gradient(DistributionModel* dm, const P
 	}
 	if(Parameters_count(treeModelParameters) > 0){
 		size_t tipCount = Tree_tip_count(coal->tree);
-		double* heightGradient = dvector(tipCount - 1);
+		size_t nodeCount = Tree_node_count(coal->tree);
+		double* heightGradient = dvector(nodeCount);
 		j = 0;
 		size_t previousInternalIndex = 0;
 		size_t previousInternalIndex2 = 0;
@@ -185,9 +186,9 @@ double DistributionModel_gmrf_time_aware_gradient(DistributionModel* dm, const P
 			if(coal->iscoalescent[i]){
 				if(j >= 1){
 					double temp = -pow(x[j] - x[j-1], 2)*2/pow(intervals[j]+intervals[j-1], 2)*precision/2.0;
-					heightGradient[coal->nodes[i]->index - tipCount] += -temp;
+					heightGradient[coal->nodes[i]->index] += -temp;
 					if( j > 1){
-						heightGradient[previousInternalIndex2 - tipCount] += temp;
+						heightGradient[previousInternalIndex2] += temp;
 					}
 				}
 				previousInternalIndex2 = previousInternalIndex;
@@ -514,10 +515,8 @@ DistributionModel* new_GMRF_with_parameters(Parameters* parameters, Parameter* x
 	dm->parameterization = parameterization;
 	dm->logP = DistributionModel_log_gmrf;
 	dm->gradient2 = DistributionModel_gmrf_gradient;
-	// dm->logP_with_values = DistributionModel_log_gmrf_with_values;
 	dm->dlogP = DistributionModel_dlog_gmrf;
 	dm->sample = DistributionModel_gmrf_sample;
-	// dm->sample_evaluate = DistributionModel_gmrf_sample_evaluate;
 	dm->d2logP = DistributionModel_d2log_gmrf;
 	dm->ddlogP = DistributionModel_ddlog_gmrf;
 	dm->data = coalescent;

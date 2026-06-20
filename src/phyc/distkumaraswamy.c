@@ -8,11 +8,19 @@
 
 #include "distkumaraswamy.h"
 
+#include <math.h>
 #include <strings.h>
 
 #include <gsl/gsl_randist.h>
 
+#include "distmodel.h"
+#include "matrix.h"
 #include "parametersio.h"
+#include "transforms.h"
+
+// Kumaraswamy distribution parameterized with a and b (both > 0), support (0, 1):
+//   f(x; a, b) = a b x^(a-1) (1 - x^a)^(b-1)
+//   log f      = log(a) + log(b) + (a-1)log(x) + (b-1)log(1 - x^a)
 
 
 double DistributionModel_log_kumaraswamy(DistributionModel* dm){
@@ -50,25 +58,96 @@ double DistributionModel_log_kumaraswamy(DistributionModel* dm){
     return dm->lp;
 }
 
+// d/da log f = 1/a + log(x) - (b-1) x^a log(x)/(1 - x^a)
+// d/db log f = 1/b + log(1 - x^a)
+// d/dx log f = (a-1)/x - (b-1) a x^(a-1)/(1 - x^a)
+double DistributionModel_kumaraswamy_gradient(DistributionModel* dm, const Parameters* parameters){
+    Parameter* a = Parameters_at(dm->parameters, 0);
+    Parameter* b = Parameters_at(dm->parameters, 1);
+
+    const double* aValues = Parameter_values(a);
+    const double* bValues = Parameter_values(b);
+    size_t mask = -(Parameter_size(a) != 1);
+
+    Parameter* ax = Parameters_depends(parameters, a);
+    Parameter* bx = Parameters_depends(parameters, b);
+
+    if(ax != NULL){
+        size_t index = 0;
+        for(size_t k = 0; k < Parameters_count(dm->x); k++){
+            Parameter* x = Parameters_at(dm->x, k);
+            size_t dim = Parameter_size(x);
+            const double* xValues = Parameter_values(x);
+            memset(dm->tempp, 0, dim * sizeof(double));
+            for(size_t j = 0; j < dim; j++){
+                double aValue = aValues[index & mask];
+                double bValue = bValues[index & mask];
+                size_t idx = j & mask;
+                double xs = xValues[j] - dm->shift;
+                double xa = pow(xs, aValue);
+                dm->tempp[idx] = 1.0 / aValue + log(xs) - (bValue - 1.0) * xa * log(xs) / (1.0 - xa);
+                a->grad[idx] += dm->tempp[idx];
+                index++;
+            }
+        }
+        if(a != ax){
+            a->transform->backward(a->transform, dm->tempp);
+        }
+    }
+
+    if(bx != NULL){
+        size_t index = 0;
+        for(size_t k = 0; k < Parameters_count(dm->x); k++){
+            Parameter* x = Parameters_at(dm->x, k);
+            size_t dim = Parameter_size(x);
+            const double* xValues = Parameter_values(x);
+            memset(dm->tempp, 0, dim * sizeof(double));
+            for(size_t j = 0; j < dim; j++){
+                double aValue = aValues[index & mask];
+                double bValue = bValues[index & mask];
+                size_t idx = j & mask;
+                double xs = xValues[j] - dm->shift;
+                double xa = pow(xs, aValue);
+                dm->tempp[idx] = 1.0 / bValue + log(1.0 - xa);
+                b->grad[idx] += dm->tempp[idx];
+                index++;
+            }
+        }
+        if(b != bx){
+            b->transform->backward(b->transform, dm->tempp);
+        }
+    }
+
+    size_t index = 0;
+    for(size_t k = 0; k < Parameters_count(dm->x); k++){
+        Parameter* x = Parameters_at(dm->x, k);
+        Parameter* xx = Parameters_depends(parameters, x);
+        size_t sizeX = Parameter_size(x);
+        if (xx != NULL) {
+            const double* xValues = Parameter_values(x);
+            for(size_t j = 0; j < sizeX; j++){
+                double aValue = aValues[index & mask];
+                double bValue = bValues[index & mask];
+                double xs = xValues[j] - dm->shift;
+                double xa = pow(xs, aValue);
+                dm->tempp[index] = (aValue - 1.0) / xs - (bValue - 1.0) * aValue * pow(xs, aValue - 1.0) / (1.0 - xa);
+                x->grad[index] += dm->tempp[index];
+                index++;
+            }
+            if(x != xx){
+                x->transform->backward(x->transform, dm->tempp);
+            }
+        }
+        else{
+            index += sizeX;
+        }
+    }
+    return 0;
+}
+
 double DistributionModel_dlog_kumaraswamy(DistributionModel* dm, const Parameter* p){
-	//TODO: implement
-	// for (int i = 0; i < Parameters_count(dm->x); i++) {
-	// 	if (p == Parameters_at(dm->x,i)) {
-	// 		double a;
-	// 		double b;
-	// 		if(Parameters_count(dm->parameters[0]) > 1){
-	// 			a = Parameters_value(dm->parameters[0], i);
-	// 			b = Parameters_value(dm->parameters[1], i);
-	// 		}
-	// 		else{
-	// 			a = Parameters_value(dm->parameters[0], 0);
-	// 			b = Parameters_value(dm->parameters[1], 0);
-	// 		}
-	// 		double x = Parameters_value(dm->x, i);
-	// 		return (a - 1.0)/x + (b - 1.0)*a*pow(x, a - 1.0)/(pow(x, a) - 1.0);
-	// 	}
-	// }
-	return 0;
+    //TODO: implement
+    return 0;
 }
 
 // F_X(x) = p(X <= x)
@@ -109,6 +188,57 @@ static void DistributionModel_kumaraswamy_sample(DistributionModel* dm){
     }
 }
 
+// Reparameterization trick: eta ~ Uniform(0, 1), x = (1 - (1-eta)^(1/b))^(1/a)
+static void DistributionModel_kumaraswamy_rsample(DistributionModel* dm){
+    const double* a = Parameter_values(Parameters_at(dm->parameters, 0));
+    const double* b = Parameter_values(Parameters_at(dm->parameters, 1));
+    size_t dimX = Parameters_count(dm->x);
+    size_t mask = -(Parameter_size(Parameters_at(dm->parameters, 0)) != 1);
+    size_t index = 0;
+    for(size_t j = 0; j < dimX; j++){
+        Parameter* x = Parameters_at(dm->x, j);
+        size_t sizeX = Parameter_size(x);
+        double* temp = dvector(sizeX);
+        for (size_t i = 0; i < sizeX; i++) {
+            size_t idx = index & mask;
+            double eta = gsl_ran_flat(dm->rng, 0.0, 1.0);
+            temp[i] = DistributionModel_kumaraswamy_inverse_CDF(eta, a[idx], b[idx]) + dm->shift;
+            index++;
+        }
+        Parameter_set_values(x, temp);
+        free(temp);
+    }
+}
+
+// Gradient of x wrt the parameters where x was drawn via the reparameterization
+// trick (see DistributionModel_kumaraswamy_rsample). With xs = x - shift:
+//   dx/da = -xs log(xs)/a
+//   dx/db =  xs (1 - xs^a) log(1 - xs^a)/(a b xs^a)
+static void DistributionModel_kumaraswamy_rgradient(DistributionModel* dm){
+    Parameter* a = Parameters_at(dm->parameters, 0);
+    Parameter* b = Parameters_at(dm->parameters, 1);
+    const double* aValues = Parameter_values(a);
+    const double* bValues = Parameter_values(b);
+    size_t dimX = Parameters_count(dm->x);
+    size_t index = 0;
+    for (size_t j = 0; j < dimX; j++) {
+        Parameter* x = Parameters_at(dm->x, j);
+        size_t dim = Parameter_size(x);
+        const double* xValues = Parameter_values(x);
+        for (size_t i = 0; i < dim; i++) {
+            double aValue = aValues[index];
+            double bValue = bValues[index];
+            double xs = xValues[i] - dm->shift;
+            double xa = pow(xs, aValue);
+            double dtransda = -xs * log(xs) / aValue;
+            double dtransdb = xs * (1.0 - xa) * log(1.0 - xa) / (aValue * bValue * xa);
+            a->grad[index] += x->grad[i] * dtransda;
+            b->grad[index] += x->grad[i] * dtransdb;
+            index++;
+        }
+    }
+}
+
 // static double DistributionModel_kumaraswamy_sample_evaluate(DistributionModel* dm){
 // 	if(Parameters_count(dm->parameters[0]) > 1){
 // 		for (int i = 0; i < Parameters_count(dm->x); i++) {
@@ -136,10 +266,13 @@ DistributionModel* new_KumaraswamyDistributionModel_with_parameters(Parameters* 
 	
 	dm->logP = DistributionModel_log_kumaraswamy;
 	// dm->logP_with_values = DistributionModel_log_kumaraswamy_with_values;
+	dm->gradient2 = DistributionModel_kumaraswamy_gradient;
+	dm->rgradient = DistributionModel_kumaraswamy_rgradient;
 	dm->dlogP = DistributionModel_dlog_kumaraswamy;
 	dm->sample = DistributionModel_kumaraswamy_sample;
+	dm->rsample = DistributionModel_kumaraswamy_rsample;
 	// dm->sample_evaluate = DistributionModel_kumaraswamy_sample_evaluate;
-	
+
 	dm->d2logP = DistributionModel_d2log_0;
 	dm->ddlogP = DistributionModel_ddlog_0;
     dm->shift = 0;
@@ -172,7 +305,7 @@ Model* new_KumaraswamyDistributionModel_from_json(json_node* node, Hashtable* ha
         double* bValues = malloc(sizeof(double)*paramCount);
 
 		for (size_t i = 0; i < paramCount; i++) {
-            aValues[i] = 0;
+            aValues[i] = 1;
             bValues[i] = 1;
         }
 

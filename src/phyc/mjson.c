@@ -13,6 +13,7 @@
 
 #include "mstring.h"
 #include "ctype.h"
+#include "transforms.h"
 
 json_node* clone_json_node(json_node* parent, json_node* node) {
     json_node* clone = NULL;
@@ -152,22 +153,40 @@ json_node* create_json_node_parameters2(json_node* parent, const char* name, siz
 	return jnode;
 }
 
-json_node* create_json_node_simplex(json_node* parent, const char* name, size_t dimension){
-	json_node* jnode = create_json_node_object(parent, name);
-	add_json_node(parent, jnode);
-	add_json_node_string(jnode, "id", name);
+// Fill an existing (already parent-attached) node as a simplex parameter in the
+// transformed-parameter form: a "simplex" parameter wrapping an unconstrained
+// "<id>.unconstrained" parameter of dimension K-1, seeded from the constrained
+// `values` via the stick-breaking transform.
+json_node* fill_json_node_simplex(json_node* jnode, const char* id, size_t dimension, const double* values){
+	add_json_node_string(jnode, "id", id);
 	add_json_node_string(jnode, "type", "simplex");
-	add_json_node_size_t(jnode, "dimension", dimension);
+
+	double* unconstrained = malloc(sizeof(double) * (dimension - 1));
+	_transform_simplex_stan(values, unconstrained, dimension - 1, 0, 1);
+
+	json_node* junc = create_json_node_object(jnode, "x");
+	add_json_node(jnode, junc);
+	StringBuffer* buffer = new_StringBuffer(10);
+	StringBuffer_append_format(buffer, "%s.unconstrained", id);
+	add_json_node_string(junc, "id", buffer->c);
+	free_StringBuffer(buffer);
+	add_json_node_string(junc, "type", "parameter");
+	add_json_node_array_double(junc, "x", unconstrained, dimension - 1);
+	free(unconstrained);
 	return jnode;
 }
 
 json_node* create_json_node_simplex2(json_node* parent, const char* name, size_t dimension, const double* values){
 	json_node* jnode = create_json_node_object(parent, name);
 	add_json_node(parent, jnode);
-	add_json_node_string(jnode, "id", name);
-	add_json_node_string(jnode, "type", "simplex");
-	add_json_node_size_t(jnode, "dimension", dimension);
-	add_json_node_array_double(jnode, "values", values, dimension);
+	return fill_json_node_simplex(jnode, name, dimension, values);
+}
+
+json_node* create_json_node_simplex(json_node* parent, const char* name, size_t dimension){
+	double* values = malloc(sizeof(double) * dimension);
+	for (size_t i = 0; i < dimension; i++) values[i] = 1.0 / dimension;
+	json_node* jnode = create_json_node_simplex2(parent, name, dimension, values);
+	free(values);
 	return jnode;
 }
 
@@ -404,13 +423,56 @@ json_node* create_json_tree(const char* json){
 	size_t len = strlen(json);
 	StringBuffer* buffer = new_StringBuffer(100);
 	size_t i = 1;
-	while (json[i] != '{') i++;
+	size_t lineNbr = 0;
+	while (json[i] != '{') {
+		if(json[i] == '\n')
+			lineNbr++;
+		i++;
+	}
 	i++;
 	while (json[len-1] != '}') {
 		len--;
 	}
 	for(size_t i = 1; i < len-1; i++){
-		if (json[i] == '{') {
+		if(json[i] == '\n'){
+			lineNbr++;
+		}
+		// support comment but breaks JSON standard
+		// only use for debugging purpose
+		else if (json[i] == '/') {
+			i++;
+			if (json[i] == '/') {
+				i++;
+				// printf("%zu = ", lineNbr);
+				while (json[i] != '\n') {
+					// printf("%c", json[i]);
+					i++;
+				}
+				i--;
+				// printf("\n");
+			}
+			else if(json[i] == '*'){
+				size_t startComment = lineNbr;
+				i++;
+				while(json[i] != '*' && json[i+1] != '/' && i < len-2) {
+					i++;
+					if(json[i] == '\n'){
+						lineNbr++;
+					}
+				}
+				if(i == len-2){
+					fprintf(stderr, "Runnaway comment starting at %zu\n", startComment);
+					exit(1);
+				}
+				i++;
+			}
+			else{
+				fprintf(stderr, "Error parsing JSON: unexpected character after /\n");
+				exit(1);
+			}
+
+		}
+		else if (json[i] == '{') {
 			if(current->node_type == MJSON_ARRAY){
 				json_node* n = create_json_node(current);
 				add_json_node(current, n);
@@ -492,7 +554,7 @@ json_node* create_json_tree(const char* json){
 		}
 		else if((json[i] >=48 && json[i] <= 57) || json[i] == '.' || json[i] == '+' || json[i] == '-'){
 			StringBuffer_empty(buffer);
-			while (json[i] != ',' && json[i] != ']' && json[i] != '}') {
+			while (json[i] != ',' && json[i] != ']' && json[i] != '}' && json[i] != '\n') {
 				StringBuffer_append_char(buffer, json[i]);
 				i++;
 			}

@@ -53,7 +53,7 @@ char* test_skyride() {
     char* taxa[4] = {"a", "b", "c", "d"};
     Model* mtree =
         new_TimeTreeModel_from_newick("(((a:2,b:2):4,c:6):6,d:12);", taxa, dates);
-    TreeModel_set_transform(mtree, TREE_TRANSFORM_RATIO);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
     Tree* tree = mtree->obj;
 
     Parameters* ps = new_Parameters(3);
@@ -100,7 +100,7 @@ char* test_skygrid() {
     Model* mtree =
         new_TimeTreeModel_from_newick("(((a:2,b:2):4,c:6):6,d:12);", taxa, dates);
     Tree* tree = mtree->obj;
-    TreeModel_set_transform(mtree, TREE_TRANSFORM_RATIO);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
 
     Parameters* ps = new_Parameters(5);
     Parameters* reparams = get_reparams(tree);
@@ -158,7 +158,7 @@ char* test_skygrid() {
     return NULL;
 }
 
-char* test_constant() {
+char* test_constant_with_transform(tree_transform_t transform) {
     double dates[4] = {0.0, 0.0, 0.0, 0.0};
     char* taxa[4] = {"a", "b", "c", "d"};
     Model* mtree =
@@ -237,7 +237,7 @@ char* test_constant() {
     }
 
     // use reparameterization
-    TreeModel_set_transform(mtree, TREE_TRANSFORM_RATIO);
+    TreeModel_set_transform(mtree, transform);
 
     Parameters_removeAll(ps);
     Parameters_add(ps, N);
@@ -265,6 +265,21 @@ char* test_constant() {
     mtree->free(mtree);
     free_Parameter(N);
     free_Parameters(ps);
+    return NULL;
+}
+
+char* test_constant_ratios() {
+    test_constant_with_transform(TREE_TRANSFORM_RATIO);
+    return NULL;
+}
+
+char* test_constant_proportions_naive() {
+    test_constant_with_transform(TREE_TRANSFORM_RATIO_NAIVE);
+    return NULL;
+}
+
+char* test_constant_proportions() {
+    test_constant_with_transform(TREE_TRANSFORM_PROPORTION);
     return NULL;
 }
 
@@ -432,7 +447,9 @@ char* test_piecewise_linear() {
 
 char* all_tests() {
     mu_suite_start();
-    mu_run_test(test_constant);
+    mu_run_test(test_constant_proportions_naive);
+    mu_run_test(test_constant_proportions);
+    mu_run_test(test_constant_ratios);
     mu_run_test(test_constant_data);
     // // mu_run_test(test_constant_clone);
     mu_run_test(test_skyride);

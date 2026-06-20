@@ -94,6 +94,8 @@ Node * Tree_node( Tree *tree, int index );
 void postorder_generic( Tree *tree, void *data, void (*action)( Node *node, void *data ));
 void preorder_generic( Tree *tree, void *data, void (*action)( Node *node, void *data ));
 
+bool* Tree_unknown_leaves(Tree* tree);
+
 void Tree_save(Tree* tree);
 
 void Tree_revert(Tree* tree);

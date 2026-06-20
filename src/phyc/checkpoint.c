@@ -29,7 +29,8 @@ void checkpoint_apply(const char* file_path, Parameters* parameters) {
     free_FileReader(reader);
 
     for (size_t i = 0; i < Parameters_count(parameters); i++) {
-        double* value = Hashtable_get(hash, Parameters_name(parameters, i));
+        Parameter* p = Parameters_at(parameters, i);
+        double* value = Hashtable_get(hash, Parameter_name(p));
         if (value != NULL) {
             Parameters_set_value(parameters, i, *value);
         }

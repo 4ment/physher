@@ -49,14 +49,6 @@ static void _log_write_header(Log* logger){
 					fprintf(logger->file, "\t%s.%d", model->name, j+1);
 				}
 			}
-			else if(model->type == MODEL_SIMPLEX){
-				Simplex* simplex = model->obj;
-				for (int j = 0; j < simplex->K; j++) {
-					StringBuffer_set_string(buffer, model->name);
-					StringBuffer_append_format(buffer, ".%d", (j+1));
-					fprintf(logger->file, "\t%s", buffer->c);
-				}
-			}
 			else{
 				fprintf(logger->file, "\t%s", model->name);
 			}
@@ -82,7 +74,7 @@ static void _log_write_header(Log* logger){
 void log_tree(Log* logger, size_t iter){
 	Tree* tree = logger->models[0]->obj;
 	if(strcasecmp(logger->format, "newick") == 0){
-		Tree_print_newick(logger->file, tree, false);
+		Tree_print_newick(logger->file, tree, false, 12);
 	}
 	else if(strcasecmp(logger->format, "nexus") == 0){
 		char root_tag = 'U';
@@ -103,12 +95,6 @@ void log_log(Log* logger, size_t iter){
 			DiscreteParameter* dp = model->obj;
 			for (int j = 0; j < dp->length; j++) {
 				fprintf(logger->file, "\t%d", dp->values[j]);
-			}
-		}
-		else if(model->type == MODEL_SIMPLEX){
-			Simplex* simplex = model->obj;
-			for (int j = 0; j < simplex->K; j++) {
-				fprintf(logger->file, "\t%e", simplex->get_value(simplex, j));
 			}
 		}
 		else{
@@ -163,15 +149,7 @@ void log_log_with(Log* logger, size_t iter, const char* more){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
 		Model* model = logger->models[i];
-		if(model->type == MODEL_SIMPLEX){
-			Simplex* simplex = model->obj;
-			for (int j = 0; j < simplex->K; j++) {
-				fprintf(logger->file, "\t%e", simplex->get_value(simplex, j));
-			}
-		}
-		else{
-			fprintf(logger->file, "\t%e", model->lp);
-		}
+		fprintf(logger->file, "\t%e", model->lp);
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
 		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));

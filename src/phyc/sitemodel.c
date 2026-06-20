@@ -36,6 +36,9 @@
 
 static bool _gamma_approx_quantile( SiteModel *sm );
 static void _calculate_rates_discrete( SiteModel *sm );
+static void _calculate_rates_discrete_simplex( SiteModel *sm );
+static void _calculate_rates_discrete_cumsum( SiteModel *sm );
+static void _calculate_rates_discrete_prop( SiteModel *sm );
 
 static double _get_rate( SiteModel *sm, const int index );
 static double _get_proportion( SiteModel *sm, const int index );
@@ -145,8 +148,7 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 	Model* mprop = (Model*)self->data;
 	Model* mpropclone = NULL;
     Parameter* propclone = NULL;
-	Simplex* simplexPropclone = NULL;
-	
+
     if(mprop != NULL){
         if (Hashtable_exists(hash, mprop->name)) {
             mpropclone = Hashtable_get(hash, mprop->name);
@@ -206,15 +208,8 @@ Model * new_SiteModel2( const char* name, SiteModel *sm ){
 		Parameters_add_recursively(model->parameters, sm->mu);
 	}
 	if (sm->proportions != NULL) {
-		// model->data = proportions;
-		// proportions->ref_count++;
-		// sm->proportions->listeners->add( sm->proportions->listeners, model );
-
-		// Model* m = sm->proportions->model_obj;
-		// m->listeners->add(m->listeners, model);
-		// Parameters_add_parameters_recursively(model->parameters, m->parameters);
 		sm->proportions->listeners->add(sm->proportions->listeners, model);
-		Parameters_add(model->parameters, sm->proportions);
+		Parameters_add_recursively(model->parameters, sm->proportions);
 	}
 	
 	model->update = _site_model_handle_change;
@@ -657,7 +652,9 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 		for (int i = 0; i < sm->cat_count-cat; i++) {
 			quantiles[i+cat] = sum + values[i+cat]/2.0; // pick midpoint
 			sum += values[i];
+			// printf("%f ", values[i]);
 		}
+		// printf("\n");
 		memcpy(sm->cat_proportions, values, sizeof(double)*Parameter_size(sm->proportions));
 	}
 	// if the dimension of the simplex is then only pinv is estimated
@@ -710,6 +707,7 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 			gsl_error_handler_t* handler = gsl_set_error_handler_off();
 			for ( ; i < sm->cat_count - cat; i++) {
 				sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( quantiles[i+cat], alpha, 1.0/alpha );
+				// printf("quantiles[%d] = %f, alpha = %f, sm->cat_rates[%d] = %f, sm->cat_proportions[%d] = %f\n", i+cat, quantiles[i+cat], alpha, i+cat, sm->cat_rates[i + cat], i+cat, sm->cat_proportions[i + cat]);
 				if(isnan(sm->cat_rates[i + cat])){
 					break;
 				}
@@ -849,24 +847,28 @@ void SiteModel_set_mu(SiteModel *sm, Parameter* mu){
 #pragma mark -
 // MARK: Discrete SiteModel
 
+static void _update_rates_discrete(SiteModel *sm) {
+    if (!sm->need_update) return;
+    if (Parameters_count(sm->rates) == 1) {
+        if (Parameters_at(sm->rates, 0)->simplex) _calculate_rates_discrete_simplex(sm);
+        else _calculate_rates_discrete_cumsum(sm);
+    } else {
+        _calculate_rates_discrete_prop(sm);
+    }
+}
+
 double _get_rate_discrete( SiteModel *sm, const int index ){
-	if ( sm->need_update ) {
-		_calculate_rates_discrete(sm);
-	}
+	_update_rates_discrete(sm);
 	return sm->cat_rates[index];
 }
 
 double _get_proportion_discrete( SiteModel *sm, const int index ){
-	if ( sm->need_update ) {
-		_calculate_rates_discrete(sm);
-	}
+	_update_rates_discrete(sm);
 	return sm->cat_proportions[index];
 }
 
 double *_get_proportions_discrete( SiteModel *sm ){
-	if ( sm->need_update ) {
-		_calculate_rates_discrete(sm);
-	}
+	_update_rates_discrete(sm);
 	return sm->cat_proportions;
 }
 
@@ -883,26 +885,110 @@ void _calculate_rates_discrete( SiteModel *sm ) {
 		sm->need_update = false;
 		return;
 	}
-	
+
 	sm->cat_rates[cat] = Parameters_value(sm->rates, j++);
 	sm->cat_rates[cat+1] = 1;
 	double sum = sm->cat_rates[cat]*sm->cat_proportions[cat] + sm->cat_proportions[cat+1];
 	if(sm->invariant) sum += sm->cat_proportions[0];
 	double prod = 1;
+	const double* rates_multipliers = Parameter_values(Parameters_at(sm->rates, 1));
 	for (int i = cat+2; i < cat_count; i++, j++ ) {
-		prod *= Parameters_value(sm->rates, j);
+		prod *= rates_multipliers[j];
 		sm->cat_rates[i] = prod;
 		sum += prod*sm->cat_proportions[i];
 	}
 	
 	for (int i = 0; i < cat_count; i++ ) {
 		sm->cat_rates[i] /= sum;
+		// printf("cat_rates[%d] = %f\n", i, sm->cat_rates[i]);
 	}
 	sm->need_update = false;
 }
 
-#pragma  mark -
-#pragma mark CAT
+void _calculate_rates_discrete_simplex( SiteModel *sm ) {
+	int cat_count = Parameter_size(sm->proportions);
+	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
+	const double* cat_proportions = Parameter_values(sm->proportions);
+	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
+	
+	if(Parameters_count(sm->rates) == 0){
+		sm->cat_rates[1] = 1.0/sm->cat_proportions[1];
+		sm->need_update = false;
+		return;
+	}
+	Parameter* parameter_simplex = Parameters_at(sm->rates, 0);
+	const double* cat_rates = Parameter_values(parameter_simplex);
+	memcpy(sm->cat_rates, cat_rates, sizeof(double)*cat_count);
+	
+	double norm = 0;
+	for (size_t i = 0; i < cat_count; i++ ) {
+		norm += sm->cat_rates[i]*sm->cat_proportions[i];
+	}
+	
+	for (size_t i = 0; i < cat_count; i++ ) {
+		sm->cat_rates[i] /= norm;
+		// printf("cat_rates[%zu] = %f\n", i, sm->cat_rates[i]);
+	}
+	sm->need_update = false;
+}
+
+void _calculate_rates_discrete_cumsum( SiteModel *sm ) {
+	int cat_count = Parameter_size(sm->proportions);
+	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
+	const double* cat_proportions = Parameter_values(sm->proportions);
+	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
+	
+	if(Parameters_count(sm->rates) == 0){
+		sm->cat_rates[1] = 1.0/sm->cat_proportions[1];
+		sm->need_update = false;
+		return;
+	}
+	Parameter* parameter_simplex = Parameters_at(sm->rates, 0);
+	const double* cat_rates = Parameter_values(parameter_simplex);
+	sm->cat_rates[0] = cat_rates[0];
+	
+	double norm = 0;
+	for (size_t i = 1; i < cat_count; i++ ) {
+		sm->cat_rates[i] = cat_rates[i] + sm->cat_rates[i-1];
+		norm += sm->cat_rates[i]*sm->cat_proportions[i];
+	}
+	
+	for (size_t i = 0; i < cat_count; i++ ) {
+		sm->cat_rates[i] /= norm;
+		// printf("cat_rates[%zu] = %f\n", i, sm->cat_rates[i]);
+	}
+	sm->need_update = false;
+}
+
+void _calculate_rates_discrete_prop( SiteModel *sm ) {
+	int cat_count = Parameter_size(sm->proportions);
+	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
+	const double* cat_proportions = Parameter_values(sm->proportions);
+	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
+	
+	if(Parameters_count(sm->rates) == 0){
+		sm->cat_rates[1] = 1.0/sm->cat_proportions[1];
+		sm->need_update = false;
+		return;
+	}
+	Parameter* prop_parameter = Parameters_at(sm->rates, 0);
+	Parameter* last_parameter = Parameters_at(sm->rates, 1);
+	const double* prop_rates = Parameter_values(prop_parameter);
+	sm->cat_rates[cat_count-1] = Parameter_value(last_parameter);
+	
+	double norm = sm->cat_rates[cat_count-1] * sm->cat_proportions[cat_count-1];
+	for (size_t i = cat_count-1; i >= 1; i-- ) {
+		sm->cat_rates[i-1] = prop_rates[i-1] * sm->cat_rates[i];
+		norm += sm->cat_rates[i-1]*sm->cat_proportions[i-1];
+	}
+	
+	for (size_t i = 0; i < cat_count; i++ ) {
+		sm->cat_rates[i] /= norm;
+	}
+	sm->need_update = false;
+}
+
+#pragma region CAT
 
 void _cat_update(SiteModel* sm){
 	double avg = 0;
@@ -964,7 +1050,7 @@ SiteModel * new_CATSiteModel_with_parameters( const Parameters *params,  const s
 	return sm;
 }
 
-#pragma mark -
+#pragma endregion
 
 SiteModel * clone_SiteModel( const SiteModel *sm ){
 	return clone_SiteModel_with(sm);
@@ -1083,6 +1169,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		"invariant",
 		"model",
 		"mu",
+		"proportions",
 		"rates",
 		"sitepattern",
 		"substitutionmodel" // allowed for backward compatibility
@@ -1108,12 +1195,12 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	bool invariant = false;
 	
 	if (distribution_node != NULL) {
-		invariant = get_json_node_value_bool(distribution_node, "invariant", false);
+		invariant = get_json_node_value_bool(node, "invariant", false);
 
-		proportions_node = get_json_node(distribution_node, "proportions");
-		cat = get_json_node_value_int(distribution_node, "categories", 4);
+		proportions_node = get_json_node(node, "proportions");
+		cat = get_json_node_value_int(node, "categories", 4);
 
-		char* distribution_name = get_json_node_value_string(distribution_node, "distribution");
+		char* distribution_name = get_json_node_value_string(node, "distribution");
 		if (strcasecmp(distribution_name, "gamma") == 0){
 			distribution = DISTRIBUTION_GAMMA;
 		}
@@ -1134,7 +1221,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			exit(13);
 		}
 		
-		json_node* discretization_node = get_json_node(distribution_node, "quadrature");
+		json_node* discretization_node = get_json_node(node, "quadrature");
 		
 		if (proportions_node != NULL) {
 			if (proportions_node->node_type == MJSON_STRING) {
@@ -1217,31 +1304,70 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		}
 		
 		if (distribution == DISTRIBUTION_DISCRETE) {
-			json_node* parameters_node = get_json_node(distribution_node, "parameters");
-			if(parameters_node!= NULL){
-				get_parameters_references(parameters_node, hash, rates);
-				
-				int i = 0;
-				Parameters_set_bounds(rates, i++, 1.e-8, 0.99);
-				for ( ; i < Parameters_count(rates); i++) {
-					Parameters_set_bounds(rates, i, 1, 100);
+			json_node* rates_node = get_json_node(node, "rates");
+			if(rates_node != NULL){
+				if (rates_node->node_type == MJSON_OBJECT) {
+					Parameter* rates_parameter = new_Parameter_from_json(rates_node, hash);
+					Parameters_move(rates, rates_parameter);
 				}
-				
-				char* id_ps = get_json_node_value_string(parameters_node, "id");
-				if(id_ps != NULL){
-					Parameters_set_name2(rates, id_ps);
+				else if (rates_node->node_type == MJSON_ARRAY) {
+					for (size_t i = 0; i < rates_node->child_count; i++) {
+						json_node* child = rates_node->children[i];
+						Parameter* rate_parameter = new_Parameter_from_json(child, hash);
+						Parameters_move(rates, rate_parameter);
+					}
+					
+					// Parameters_set_bounds(rates, 0, 1.e-8, 0.99);
+					// for (size_t i = 1; i < Parameters_count(rates); i++) {
+					// 	Parameters_set_bounds(rates, i, 1, 100);
+					// }
+					// Parameters_set_bounds(rates, 0, 0.001, 100);
+					// Parameters_set_bounds(rates, 1, 1.e-8, 0.99);
 				}
 			}
-			if (parameters_node == NULL || Parameters_count(rates) == dimProportion) {
+			else{
+				invariant = true;
+				// simple +I model
+				cat = 1; // cat will be incremented in the constructor to include invariant
+			}
+			/*if (parameters_node == NULL || Parameters_count(rates) == dimProportion) {
 				invariant = true;
 				// simple +I model
 				if (parameters_node == NULL || Parameters_count(rates) == 0){
 					cat = 1; // cat will be incremented in the constructor to include invariant
 				}
-			}
+			}*/
 		}
 		else{
-			get_parameters_references(distribution_node, hash, rates);
+			if(distribution == DISTRIBUTION_GAMMA || distribution == DISTRIBUTION_WEIBULL){
+				json_node* shape_node = get_json_node(node, "shape");
+				Parameter* shape_parameter = new_Parameter_from_json(shape_node, hash);
+				Parameters_move(rates, shape_parameter);
+			}
+			else if(distribution == DISTRIBUTION_LOGNORMAL){
+				json_node* scale_node = get_json_node(node, "scale");
+				Parameter* scale_parameter = new_Parameter_from_json(scale_node, hash);
+				Parameters_move(rates, scale_parameter);
+			}
+
+			if(quad == QUADRATURE_BETA){
+				json_node* alpha_node = get_json_node(node, "alpha");
+				Parameter* alpha_parameter = new_Parameter_from_json(alpha_node, hash);
+				Parameters_move(rates, alpha_parameter);
+
+				json_node* beta_node = get_json_node(node, "beta");
+				Parameter* beta_parameter = new_Parameter_from_json(beta_node, hash);
+				Parameters_move(rates, beta_parameter);
+			}
+			else if(quad == QUADRATURE_KUMARASWAMY){
+				json_node* a_node = get_json_node(node, "a");
+				Parameter* a_parameter = new_Parameter_from_json(a_node, hash);
+				Parameters_move(rates, a_parameter);
+
+				json_node* b_node = get_json_node(node, "b");
+				Parameter* b_parameter = new_Parameter_from_json(b_node, hash);
+				Parameters_move(rates, b_parameter);
+			}
 		}
 		
 		for (int i = 0; i < Parameters_count(rates); i++) {
@@ -1282,7 +1408,6 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	
 	if (mu_node != NULL) {
 		sm->mu = new_Parameter_from_json(mu_node, hash);
-		sm->mu->model = MODEL_SITEMODEL;
 		Parameter_set_model(sm->mu, MODEL_SITEMODEL);
 		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);

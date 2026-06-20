@@ -11,7 +11,6 @@
 #include <string.h>
 #include <strings.h>
 
-#include "simplex.h"
 #include "gamma.h"
 #include "dirichlet.h"
 #include "tree.h"
@@ -205,7 +204,7 @@ bool operator_slider(Operator* op, double* logHR){
 	return true;
 }
 
-bool operator_up_down(Operator* op, double* logHR){
+bool operator_up_down2(Operator* op, double* logHR){
 	double scaleFactor = op->parameters[0];
 	double s = (scaleFactor + (gsl_rng_uniform(op->rng) * ((1.0 / scaleFactor) - scaleFactor)));
 	Parameter* up = Parameters_at(op->x, 0);
@@ -218,6 +217,32 @@ bool operator_up_down(Operator* op, double* logHR){
 	Parameter_set_value(up, upValue);
 	Parameter_set_value(down, downValue);
 	*logHR = -2*log(s);
+	return true;
+}
+
+bool operator_up_down(Operator* op, double* logHR){
+	double scaleFactor = op->parameters[0];
+	double s = (scaleFactor + (gsl_rng_uniform(op->rng) * ((1.0 / scaleFactor) - scaleFactor)));
+	int upCount = Parameters_count(op->x) - 1;
+	int downCount = 1;
+	for(size_t i = 0; i < upCount; i++){
+		Parameter* up = Parameters_at(op->x, i);
+		double upValue = Parameter_value(up) * s;
+		if ( upValue > Parameter_upper(up) || upValue < Parameter_lower(up) ) {
+			return false;
+		}
+		Parameter_set_value(up, upValue);
+	}
+	// Parameter* up = Parameters_at(op->x, 0);
+	Parameter* down = Parameters_at(op->x, upCount);
+	// double upValue = Parameter_value(up) * s;
+	double downValue = Parameter_value(down) / s;
+	if ( downValue > Parameter_upper(down) || downValue < Parameter_lower(down) ) {
+		return false;
+	}
+	// Parameter_set_value(up, upValue);
+	Parameter_set_value(down, downValue);
+	*logHR = (upCount - downCount - 2)*log(s);
 	return true;
 }
 
@@ -490,7 +515,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	op->models = NULL;
 	op->optimize = NULL;
 	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
-	//op->tuning_delay = get_json_node_value_size_t(node, "delay", 10000);
+	op->tuning_delay = get_json_node_value_size_t(node, "delay", 0);
 	op->all = get_json_node_value_bool(node, "all", false);
 	
 	if (strcasecmp(algorithm_string, "scaler") == 0) {
@@ -552,9 +577,14 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->x = new_Parameters(2);
 		char* upNode = get_json_node_value_string(node, "up");
 		char* downNode = get_json_node_value_string(node, "down");
-		Parameter* up = Hashtable_get(hash, upNode+1);
+		if(upNode[0] == '&'){
+			Parameter* up = Hashtable_get(hash, upNode+1);
+			Parameters_add(op->x, up);
+		}
+		else{
+			get_parameters_references2(node, hash, op->x, "up");
+		}
 		Parameter* down = Hashtable_get(hash, downNode+1);
-		Parameters_add(op->x, up);
 		Parameters_add(op->x, down);
 		op->propose = operator_up_down;
 		op->optimize = operator_up_down_optimize;

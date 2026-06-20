@@ -25,128 +25,181 @@
 #include "matrix.h"
 #include "optimizer.h"
 #include "linesearch.h"
-#include "derivative.h"
 
 #define STPMX 100.0  // Scaled maximum step length allowed in line searches
 #define EPS 3.0e-8   // Machine accuracy
 #define TOLX (4*EPS) // Convergence criterion on x values
 
-static int check_variables( const Parameters *p, const double *grad, bool *active, double **hessian );
-
-
 /*
- * Given a starting point p[0..n-1] that is a vector of length n, the Broyden-Fletcher-Goldfarb-Shanno variant of Davidon-Fletcher-Powell minimization
- * is performed on a function func, using its gradient as calculated by a routine dfunc. 
- * The convergence requirement on zeroing the gradient is input as gtol. Returned quantities are p[1..n] (the location of the minimum), 
- * iter (the number of iterations that were performed), and fret (the minimum value of the function).
- * The routine lnsrch is called to perform approximate line minimizations.
+ * Bound-constrained BFGS minimization of func, using the gradient supplied by
+ * grad_f. Starting from p, it returns the minimizer in p and the minimum value
+ * in fmin. Bounds are enforced with an active set (coordinates pinned on a bound
+ * whose gradient points outward are frozen) together with clamping in the line
+ * search (lnsrch). Stops on a small relative step (TOLX), a small projected
+ * gradient (stop.tolg), or after stop.iter_max iterations.
  */
 
-	
-opt_result dfpmin_optimize( Parameters *p, opt_func f, void *data, OptStopCriterion stop, double *fmin ){
-	
-	int i,its,j; 
-	double den,fac,fad,fae,fp,stpmax,sum=0.0,sumdg,sumxi,temp,test; 
-	
+opt_result dfpmin_optimize( Parameters *p, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion stop, double *fmin, double alpha){
+
+	int i,its,j;
+	double den,fac,fad,fae,fp,stpmax,sum=0.0,sumdg,sumxi,temp,test;
+
 	opt_result status = OPT_SUCCESS;
-	
+
 	int maxeval = stop.iter_max;
 	double gtol = stop.tolg;
-		
-	int n = Parameters_count(p);
-	
-	double *dg      = dvector(n); 
+
+	size_t n = Parameters_size(p);
+	size_t paramCount = Parameters_count(p);
+
+	double *dg      = dvector(n);
 	double *g       = dvector(n);
 	double *hdg     = dvector(n);
 	double **hessin = dmatrix(n,n);
 	double *xi      = dvector(n);
 	bool *active    = bvector(n);
-	
-	Parameters *pnew = clone_Parameters(p);
-	
-	// Evaluate at point p and get gradients g
-	fp = f(p, g, data);
-	
-	for (i = 0; i < n; i++ ) {
+	double *lwr     = dvector(n);  // per-scalar lower bounds
+	double *upr     = dvector(n);  // per-scalar upper bounds
+	double *pnew    = dvector(n);
+
+	// Evaluate the function and gradient at the starting point.
+	fp = f(NULL, NULL, data);
+	grad_f(p, g, data);
+
+	// Initialize the inverse-Hessian approximation to the identity.
+	for (size_t i = 0; i < n; i++) {
 		memset(hessin[i], 0, n*sizeof(double));
 		hessin[i][i] = 1.0;
-		
-		xi[i] = -g[i]; 
-		sum  += Parameters_value(p,i)*Parameters_value(p,i);
-		
-		// force the parameters to be active
-		if( Parameters_value(pnew, i) < Parameters_flower(pnew,i) ){
-			Parameters_set_value(pnew, i, Parameters_flower(pnew,i) );
-		}
-		else if( Parameters_value(pnew, i) > Parameters_fupper(pnew,i) ){
-			Parameters_set_value(pnew, i, Parameters_fupper(pnew,i) );
-		}
-		active[i] = true;
 	}
-	
+
+	// Initial direction is steepest descent; record per-scalar bounds.
+	size_t index = 0;
+	for (i = 0; i < paramCount; i++ ) {
+		Parameter* param = Parameters_at(p, i);
+		const double* values = Parameter_values(param);
+		memcpy(pnew + index, values, Parameter_size(param)*sizeof(double));
+
+		double lower = Parameter_flower(param);
+		double upper = Parameter_fupper(param);
+
+		for (size_t j = 0; j < Parameter_size(param); j++) {
+			xi[index] = -g[index];
+			sum  += values[j]*values[j];
+			lwr[index] = lower;
+			upr[index] = upper;
+			active[index] = true;
+			index++;
+		}
+	}
+
 	stpmax = STPMX * dmax(sqrt(sum),(double)n);
 
-	//Main loop over the iterations. 
+	// Main loop over the iterations.
 	for ( its = 0; its < maxeval; its++ ) {
-		
-		status = lnsrch( p, pnew, f, data, fp, g, xi, fmin, stpmax );
-		
-		// The new function evaluation occurs in lnsrch; save the function value in fp for the next line search. It is usually safe to ignore the value of check.
+		status = lnsrch( p, pnew, f, data, fp, g, xi, fmin, stpmax, alpha );
+
+		// The new function evaluation occurs in lnsrch; save it for the next one.
 		fp = *fmin;
-		
-		// Update the line direction, and the current point
-		for ( i = 0; i < n; i++ ) {
-			xi[i] = Parameters_value(pnew,i) - Parameters_value(p,i);
-			Parameters_set_value(p, i, Parameters_value(pnew, i) );
+
+		// Move to the new point and recover the step actually taken (xi = s);
+		// lnsrch may have clamped it to the feasible box.
+		size_t index = 0;
+		for (size_t i = 0; i < paramCount; i++) {
+			Parameter* param = Parameters_at(p, i);
+			const double* values = Parameter_values(param);
+			size_t idx = index;
+			for (size_t j = 0; j < Parameter_size(param); j++) {
+				xi[index] = pnew[index] - values[j];
+				index++;
+			}
+			Parameter_set_values(param, pnew + idx);
 		}
-		
-		// Test for convergence on ∆x
+
+		// Test for convergence on the relative step size.
 		test = 0.0;
 		for ( i = 0; i < n; i++ ) {
-			temp = fabs(xi[i])/dmax(fabs(Parameters_value(p,i)),1.0);
+			temp = fabs(xi[i])/dmax(fabs(pnew[i]), 1.0);
 			if (temp > test) test = temp;
 		}
-
 		if (test < TOLX) {
+			status = OPT_SUCCESS;
 			break;
 		}
-		
-		// Save the old gradient
-		memcpy(dg, g, n*sizeof(double));
 
-		// Get the new gradient (we only need the gradient here, not the evaluation of the function at this point)
-		f(p, g, data);
-		
-		//Test for convergence on zero gradient
-		test = 0.0; 
+		// Save the old gradient, then compute the new one at the new point.
+		memcpy(dg, g, n*sizeof(double));
+		grad_f(p, g, data);
+
+		// Update the active set. Freeze a coordinate that sits on a bound while
+		// its gradient points out of the feasible region (its optimum lies on the
+		// boundary); release one that has moved off its bound. Frozen coordinates
+		// are excluded from the search direction and the Hessian update via the
+		// active[] guards below, so the bound-constrained problem is solved on the
+		// free subspace. Without this, clamping in the line search pins variables
+		// at a bound and the shared step length couples them, stalling the search.
+		// Done before the convergence test so a coordinate that is optimal on its
+		// bound does not keep the test from being satisfied.
+		for ( i = 0; i < n; i++ ) {
+			bool at_lower = pnew[i] <= lwr[i] + EPS && g[i] > 0.0;
+			bool at_upper = pnew[i] >= upr[i] - EPS && g[i] < 0.0;
+			bool now_active = !(at_lower || at_upper);
+			if ( now_active != active[i] ) {
+				// status changed: drop stale curvature for this coordinate
+				for ( j = 0; j < n; j++ ) { hessin[i][j] = 0.0; hessin[j][i] = 0.0; }
+				hessin[i][i] = 1.0;
+			}
+			active[i] = now_active;
+		}
+
+		// Test for convergence on the projected (zero) gradient. Only free
+		// coordinates count; a frozen one already satisfies the KKT conditions.
+		test = 0.0;
 		den = dmax(*fmin,1.);
 		for ( i = 0; i < n; i++ ) {
-			temp = fabs(g[i])*dmax(fabs(Parameters_value(p,i)),1.)/den; 
+			if ( !active[i] ) continue;
+			temp = fabs(g[i])*dmax(fabs(pnew[i]), 1.)/den;
 			if (temp > test) test = temp;
-		} 
+		}
 		if (test < gtol) {
+			status = OPT_SUCCESS;
 			break;
 		}
-		
-		check_variables(p, g, active, hessin);		
-		
-		// Compute difference of gradients
+
+		// Compute difference of gradients (dg = y).
 		for ( i = 0; i < n; i++ ) dg[i] = g[i] - dg[i];
-		
-		// Compute difference times current Hessian matrix
+
+		// On the first update, rescale the identity inverse-Hessian to
+		// H0 = (s^T y)/(y^T y) I (Nocedal & Wright eq. 6.20). An identity H0
+		// combined with a gradient whose magnitude differs from the parameters'
+		// by orders of magnitude gives a badly scaled first step and the method
+		// stalls; this rescaling fixes the conditioning.
+		if (its == 0) {
+			double sy = 0.0, yy = 0.0;
+			for (i = 0; i < n; i++) {
+				if (active[i]) { sy += xi[i]*dg[i]; yy += dg[i]*dg[i]; }
+			}
+			if (sy > 0.0 && yy > 0.0) {
+				double scale = sy/yy;
+				for (i = 0; i < n; i++) {
+					if (active[i]) hessin[i][i] = scale;
+				}
+			}
+		}
+
+		// hdg = H * y
 		for ( i = 0; i < n; i++ ) {
 			hdg[i] = 0.0;
 			if ( !active[i] ) continue;
-			
+
 			for ( j = 0; j < n; j++ ){
 				if ( active[j] ) {
 					hdg[i] += hessin[i][j]*dg[j];
 				}
 			}
 		}
-		
-		// Calculate dot products for the denominators.
-		fac = fae = sumdg = sumxi = 0.0; 
+
+		// Dot products for the denominators: fac = y^T s, fae = y^T H y.
+		fac = fae = sumdg = sumxi = 0.0;
 		for ( i = 0; i < n; i++ ) {
 			if ( active[i] ) {
 				fac += dg[i]*xi[i];
@@ -155,93 +208,60 @@ opt_result dfpmin_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 				sumxi += SQR(xi[i]);
 			}
 		}
-		
+		// Curvature condition: skip the update unless y^T s > sqrt(eps ||y||^2 ||s||^2),
+		// which keeps the approximation positive definite and avoids tiny denominators.
 		if (fac > sqrt(EPS*sumdg*sumxi)) {
 			fac = 1.0/fac;
 			fad = 1.0/fae;
-			
+
 			// The vector that makes BFGS different from DFP:
 			for ( i = 0; i < n; i++ ){
 				if ( active[i] ) {
 					dg[i] = fac*xi[i] - fad*hdg[i];
 				}
 			}
-			
+
 			// The BFGS updating formula:
 			for ( i = 0; i < n; i++ ) {
 				if ( !active[i] ) continue;
-				
+
 				for ( j = i; j < n; j++ ) {
 					if ( active[j] ) {
-						hessin[i][j] += fac*xi[i]*xi[j] - fad*hdg[i]*hdg[j] + fae*dg[i]*dg[j]; 
+						hessin[i][j] += fac*xi[i]*xi[j] - fad*hdg[i]*hdg[j] + fae*dg[i]*dg[j];
 						hessin[j][i]  = hessin[i][j];
 					}
 				}
 			}
 		}
-		
-		// Calculate the next direction to go
+
+		// Calculate the next direction to go.
 		for (i = 0; i < n; i++ ) {
 			xi[i] = 0.0;
 			if ( !active[i] ) continue;
-			
+
 			for ( j = 0; j < n; j++ ){
 				if ( active[j] ) {
 					xi[i] -= hessin[i][j]*g[j];
 				}
 			}
 		}
-		
+
 	}
-	
+
 	free(xi);
-	free_Parameters(pnew);
+	free(pnew);
 	free_dmatrix(hessin,n);
 	free(hdg);
 	free(g);
 	free(dg);
 	free(active);
-	
+	free(lwr);
+	free(upr);
+
 	if ( its == maxeval ) {
 		status = OPT_MAXEVAL;
 	}
-	
-	return status;
-}
+	stop.iter = its;
 
-int check_variables( const Parameters *p, const double *grad, bool *active, double **hessian ){
-	int numActive = 0;
-	//fprintf(stderr, "----------------------------\n");
-	//fprintf(stderr, "LineFunction_check_variables\n");
-	int n = Parameters_count(p);
-	int j = 0;
-	for ( int i = 0; i < n; i++ ){
-		active[i] = true;
-		if ( active[i] && Parameters_value(p, i) <= Parameters_flower(p,i)+EPS ){
-			// no search towards lower boundary
-			if ( grad[i] > 0 ){
-				active[i] = false;
-			}
-		}
-		else if ( active[i] && Parameters_value(p, i) >= Parameters_fupper(p,i)-EPS ){
-			// no search towards upper boundary
-			if ( grad[i] < 0 ){
-				active[i] = false;
-			}
-		}
-		else if( !active[i] ){
-			for ( j = 0; j < n; j++ ) {
-				hessian[j][i] = 0.0;
-			}
-			memset(hessian[i], 0.0, n*sizeof(double));
-			hessian[i][i] = 1.0;
-			numActive++;
-		}
-		else {
-			numActive++;
-		}
-		//fprintf(stderr, "%s %d\n", Parameters_name(p, i), active[i] );
-	}
-	//fprintf(stderr, "\n");
-	return numActive;
+	return status;
 }

@@ -305,48 +305,6 @@ static double _dist_model_gradient(Model *self, const Parameters* parameters){
 	return dm->gradient2(dm, parameters);
 }
 
-static double _dist_model_dlogP(Model *self, const Parameter* p){
-	DistributionModel* dm = (DistributionModel*)self->obj;
-	return dm->dlogP(dm, p);
-}
-
-static double _dist_model_d2logP(Model *self, const Parameter* p){
-	DistributionModel* dm = (DistributionModel*)self->obj;
-	return dm->d2logP(dm, p);
-}
-
-static double _dist_model_ddlogP(Model *self, const Parameter* p1, const Parameter* p2){
-	//TODO: implement
-	// DistributionModel* dm = (DistributionModel*)self->obj;
-	// bool found1 = false;
-	// bool found2 = false;
-	
-	// for (int i = 0; i < Parameters_count(dm->x); i++) {
-	// 	if(Parameters_at(dm->x, i) == p1){
-	// 		found1 = true;
-	// 	}
-	// 	else if(Parameters_at(cm->x, i) == p2){
-	// 		found2 = true;
-	// 	}
-	// }
-	// if(found1 && found2) return dm->ddlogP(cm, p1, p2);
-	
-	// found1 = false;
-	// found2 = false;
-    // for (int i = 0; i < cm->parameter_count; i++) {
-    //     for (int j = 0; j < Parameters_count(cm->parameters[i]); j++) {
-    //         if(Parameters_at(cm->parameters[i], j) == p1){
-    //             found1 = true;
-    //         }
-    //         else if(Parameters_at(cm->parameters[i], j) == p2){
-    //             found2 = true;
-    //         }
-    //     }
-    // }
-	// if(found1 && found2) return cm->ddlogP(cm, p1, p2);
-	return 0;
-}
-
 static void _dist_model_free( Model *self ){
 	if(self->ref_count == 1){
 		//printf("Free distribution model %s\n", self->name);
@@ -443,9 +401,6 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 	Model *model = new_Model(MODEL_DISTRIBUTION,name, dm);
 	model->logP = _dist_model_logP;
 	model->gradient = _dist_model_gradient;
-	model->dlogP = _dist_model_dlogP;
-	model->d2logP = _dist_model_d2logP;
-	model->ddlogP = _dist_model_ddlogP;
 	model->free = _dist_model_free;
 	model->clone = _dist_model_clone;
 	model->store = _dist_model_store;

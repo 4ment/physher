@@ -13,7 +13,6 @@
 
 #include "mjson.h"
 #include "parameters.h"
-#include "simplex.h"
 #include "matrix.h"
 #include "gradient.h"
 
@@ -21,7 +20,7 @@
 
 typedef struct variational_block_t{
     Model* posterior;
-    Model** simplices;
+    Parameter** simplices;
     size_t simplex_count;
     size_t simplex_parameter_count;
     Parameters* parameters; // parameters of the posterior
@@ -49,7 +48,7 @@ typedef struct variational_t{
     Model* posterior;
     variational_block_t** blocks;
     size_t block_count;
-	Model** simplices;
+	Parameter** simplices;
 	size_t simplex_count;
     Parameters* parameters; // parameters of the posterior
     Parameters* var_parameters; // parameters of variational distribution

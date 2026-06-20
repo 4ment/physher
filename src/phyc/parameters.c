@@ -30,7 +30,6 @@
 #include "matrix.h"
 #include "transforms.h"
 
-#include "simplex.h"
 
 
 struct _Constraint{
@@ -214,6 +213,7 @@ Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, 
 	p->cnstr = constr;
 	p->estimate = true;
 	p->id = 0;
+	p->simplex = false;
 	p->listeners = new_ListenerList(1);
 	p->refCount = 1;
 	p->model = -1;
@@ -241,6 +241,7 @@ Parameter * new_Parameter_full( const char *name, double value, size_t dim, Cons
 	p->cnstr = constr;
 	p->estimate = true;
 	p->id = 0;
+	p->simplex = false;
 	p->listeners = new_ListenerList(1);
 	p->refCount = 1;
 	p->model = -1;
@@ -271,6 +272,7 @@ Parameter * new_ParameterModel( const char *name, const double* value, size_t di
 	p->cnstr = constr;
 	p->estimate = true;
 	p->id = 0;
+	p->simplex = false;
 	p->listeners = new_ListenerList(1);
 	p->refCount = 1;
 	p->model = -1;
@@ -370,6 +372,9 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash) {
 
     Parameter* parameter = new_Parameter2(id, values, dim, cnstr);
     parameter->transform = transform;
+	if (strcasecmp(type, "simplex") == 0) {
+		parameter->simplex = true;
+	}
     if (transform != NULL) {
         // Parameters_add(transform->parameter->listeners->parameters, parameter);
 		transform->parameter->listeners->add_parameter(transform->parameter->listeners, parameter);
@@ -464,6 +469,7 @@ Parameter * clone_Parameter( Parameter *p ){
 	pnew->id = p->id;
 	pnew->model = p->model;
 	pnew->stored = p->stored;
+	pnew->simplex = p->simplex;
 	memcpy(pnew->value, p->value, sizeof(double)* p->dim);
 	if(p->grad != NULL){
 		pnew->grad = clone_dvector(p->grad, p->dim);
@@ -1332,10 +1338,10 @@ static void _dummy_update(Model* self, Model* model, Parameter* parameter, int i
 static void _dummy_restore_update(Model* self, Model* model, int index) {}
 static double _logP(Model *model){return 0;}
 static double _fulllogP(Model *model){return model->logP(model);}
-static double _dlogP(Model *model, const Parameter* p){return 0;}
-static double _d2logP(Model *model, const Parameter* p){return 0;}
-static double _ddlogP(Model *self, const Parameter* p1, const Parameter* p2){return 0;}
-static void _dummy_prepare_gradient(Model *model, const Parameters* ps){ }
+static double _dummy_gradient(Model *model, const Parameters* ps){
+    fprintf(stderr, "gradient function not implemented for model %s\n", model->name);
+    exit(2);
+}
 static void _dummy_reset(Model* m){}
 static void _dummy_restore(Model* m){}
 static void _dummy_accept(Model* m){}
@@ -1365,9 +1371,7 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->obj = obj;
 	model->logP = _logP;
 	model->full_logP = _fulllogP;
-	model->dlogP = _dlogP;
-	model->d2logP = _d2logP;
-	model->ddlogP = _ddlogP;
+	model->gradient = _dummy_gradient;
 	model->update = _dummy_update;
 	model->handle_restore = _dummy_restore_update;
 	model->free = free_Model;
@@ -1386,7 +1390,6 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->rsample = _dummy_rsample;
 	model->samplable = false;
 	model->print = NULL;
-	model->prepare_gradient = _dummy_prepare_gradient;
     model->jsonize = _dummy_jsonize;
 	model->epsilon = 0.0;
 	model->get = NULL;
@@ -1725,12 +1728,6 @@ void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* para
 					}
 					Parameters_set_name2(parameters, ref+1);
 				}
-				// simplex
-				else if (ref[0] == '$') {
-					Model* msimplex = Hashtable_get(hash, ref+1);
-					Simplex* simplex = msimplex->obj;
-					Parameters_add(parameters, simplex->parameter);
-				}
 			}
 			// it's a value
 			else if(child->node_type == MJSON_PRIMITIVE){
@@ -1759,12 +1756,6 @@ void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* para
 				Parameters_add_parameters(parameters, ps);
 			}
 			Parameters_set_name2(parameters, ref+1);
-		}
-		// simplex
-		else if (ref[0] == '$') {
-			Model* msimplex = Hashtable_get(hash, ref+1);
-			Simplex* simplex = msimplex->obj;
-			Parameters_add(parameters, simplex->parameter);
 		}
 	}
 	else if(node->node_type == MJSON_OBJECT){

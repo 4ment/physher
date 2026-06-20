@@ -32,7 +32,8 @@ typedef enum distribution_parameterization{
 	DISTRIBUTION_LOGNORMAL_MEAN_STDEV,
 	DISTRIBUTION_LOGNORMAL_MU_SIGMA,
     DISTRIBUTION_NORMAL_MEAN_SIGMA,
-    DISTRIBUTION_NORMAL_MEAN_TAU
+    DISTRIBUTION_NORMAL_MEAN_TAU,
+    DISTRIBUTION_WEIBULL_SCALE_SHAPE
 }distribution_parameterization;
 
 typedef enum distribution_t{
@@ -86,7 +87,6 @@ struct _DistributionModel{
 	double* tempx; // array to pass to multivariate distributions and sampling in general
 	double* tempp;
 	double (*logP)(DistributionModel*);
-	// double (*logP_with_values)(DistributionModel*, const double*);
 	double (*gradient2)(DistributionModel*, const Parameters*);
 	void (*rgradient)(DistributionModel*);
 	double (*dlogP)(DistributionModel*, const Parameter*);

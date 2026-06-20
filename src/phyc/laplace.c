@@ -104,7 +104,7 @@ double calculate_laplace_beta(Laplace* laplace){
 	
 	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
 		double map = Parameters_value(laplace->parameters, i);
-		double d2logP = posterior->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
+		double d2logP = Model_second_derivative(posterior, Parameters_at(laplace->parameters, i), NULL, 1e-5);
 		double a = map*map/(1.0 - map)/(1.0 - map);
 		double b = 1.0 - map*map*d2logP;
 		double c = 1.0 - map;
@@ -230,13 +230,13 @@ double calculate_laplace_gamma(Laplace* laplace){
 	double logP = posterior->logP(posterior);
 	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
 		double map = Parameters_value(laplace->parameters, i);
-		double d2logP = laplace->model->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
+		double d2logP = Model_second_derivative(laplace->model, Parameters_at(laplace->parameters, i), NULL, 1e-5);
 		double rate = map * -d2logP;
 		double shape = rate*map + 1;
 		
 		// Very small branch -> exponential shape
 		if (map < 1.e-6 || d2logP >= 0) {
-			double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
+			double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
 			shape = 1;
 			rate = fabs(dlogP);
 			
@@ -284,7 +284,7 @@ double calculate_laplace_gamma(Laplace* laplace){
 		}
 		// Small branch with a maximum and spurious large variance
 		else if(shape/(rate*rate) > 0.1 && map < 0.0001){
-			double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
+			double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
 			shape = 1;
 			rate = fabs(dlogP);
 			
@@ -379,14 +379,13 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 		double map_orig = Parameter_value(parameter);
 		double map = map_orig - dm->shift;
 		double dlogP;
-		double d2logP = posterior->d2logP(posterior, parameter);
-//		double d2logP = Model_second_derivative(posterior, parameter, &dlogP, 1e-5);
+		double d2logP = Model_second_derivative(posterior, parameter, &dlogP, 1e-5);
 		double rate = map * -d2logP;
 		double shape = rate*map + 1;
 		
 		// Very small branch -> exponential shape
 		if (map < 1.e-6 || d2logP >= 0) {
-			double dlogP = posterior->dlogP(posterior, parameter);
+			double dlogP = Model_first_derivative(posterior, parameter, 1e-5);
 			shape = 1;
 			rate = fabs(dlogP);
 			
@@ -434,7 +433,7 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 		}
 		// Small branch with a maximum and spurious large variance
 		else if(shape/(rate*rate) > 0.1 && map < 0.0001){
-			dlogP = posterior->dlogP(posterior, parameter);
+			dlogP = Model_first_derivative(posterior, parameter, 1e-5);
 			shape = 1;
 			rate = fabs(dlogP);
 			
@@ -527,8 +526,8 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
 		if (mapi < 1.0e-6) {
 			mapi += epsilon;
 		}
-		double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
-		double d2logP = laplace->model->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
+		double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
+		double d2logP = Model_second_derivative(laplace->model, Parameters_at(laplace->parameters, i), NULL, 1e-5);
 		double Hii = dlogP*mapi + d2logP*mapi*mapi;
 		//printf("%f %f %f %f\n",mapi,dlogP,d2logP, Hii);
 		gsl_matrix_set(H, i, i, Hii);
@@ -539,8 +538,7 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
 			if (mapj < 1.0e-6) {
 				mapj += epsilon;
 			}
-//			double didj = Model_mixed_derivative(laplace->model, Parameters_at(laplace->parameters, i), Parameters_at(laplace->parameters, j));
-			double didj = laplace->model->ddlogP(laplace->model, Parameters_at(laplace->parameters, i), Parameters_at(laplace->parameters, j));
+			double didj = Model_mixed_derivative(laplace->model, Parameters_at(laplace->parameters, i), Parameters_at(laplace->parameters, j));
 //			printf("%f %f %f\n", didj, Parameters_value(laplace->parameters, i), Parameters_value(laplace->parameters, j));
 			double Hij = didj * mapi * mapj;
 			gsl_matrix_set(H, i, j, Hij);
@@ -626,7 +624,7 @@ double calculate_laplace_lognormal(Laplace* laplace){
 	
 	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
 		double map = Parameters_value(laplace->parameters, i);
-		double d2logP = laplace->model->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
+		double d2logP = Model_second_derivative(laplace->model, Parameters_at(laplace->parameters, i), NULL, 1e-5);
 		
 		double sigma = sqrt(-1.0/(d2logP*map*map));
 		double mu = log(map) + sigma*sigma;
@@ -635,7 +633,7 @@ double calculate_laplace_lognormal(Laplace* laplace){
 			double shape = rate*map + 1;
 			// Very small branch -> exponential shape
 			if (map < 1.e-6 || d2logP >= 0) {
-				double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
+				double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
 				shape = 1;
 				rate = fabs(dlogP);
 				
@@ -683,7 +681,7 @@ double calculate_laplace_lognormal(Laplace* laplace){
 			}
 			// Small branch with a maximum and spurious large variance
 			else if(shape/(rate*rate) > 0.1 && map < 0.0001){
-				double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
+				double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
 				shape = 1;
 				rate = fabs(dlogP);
 				
@@ -773,8 +771,8 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 	for (int i = 0; i < Parameters_count(parameters); i++) {
 		Parameter* parameter = Parameters_at(parameters, i);
 		double map = Parameter_value(parameter);
-		double d2logP = posterior->d2logP(posterior, parameter);
-		
+		double d2logP = Model_second_derivative(posterior, parameter, NULL, 1e-5);
+
 		double sigma = sqrt(-1.0/(d2logP*map*map));
 		double mu = log(map) + sigma*sigma;
 		if (map < 1.e-6 || d2logP >= 0 || mu > 5) {
@@ -782,7 +780,7 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 			double shape = rate*map + 1;
 			// Very small branch -> exponential shape
 			if (map < 1.e-6 || d2logP >= 0) {
-				double dlogP = posterior->dlogP(posterior, parameter);
+				double dlogP = Model_first_derivative(posterior, parameter, 1e-5);
 				shape = 1;
 				rate = fabs(dlogP);
 				
@@ -830,7 +828,7 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 			}
 			// Small branch with a maximum and spurious large variance
 			else if(shape/(rate*rate) > 0.1 && map < 0.0001){
-				double dlogP = posterior->dlogP(posterior, parameter);
+				double dlogP = Model_first_derivative(posterior, parameter, 1e-5);
 				shape = 1;
 				rate = fabs(dlogP);
 				
@@ -931,12 +929,12 @@ double calculate_laplace_betaprime(Laplace* laplace){
 	double logP = posterior->logP(posterior);
 	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
 		double map = Parameters_value(laplace->parameters, i);
-		double d2logP = laplace->model->d2logP(laplace->model, Parameters_at(laplace->parameters, i));
+		double d2logP = Model_second_derivative(laplace->model, Parameters_at(laplace->parameters, i), NULL, 1e-5);
 		double alpha = 1.0 - d2logP*(map*map)*(map + 1.0);
 		double beta = -d2logP*map*(map + 1.0) - 1.0;
 
         if (beta < 0) {
-			double dlogP = laplace->model->dlogP(laplace->model, Parameters_at(laplace->parameters, i));
+			double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
 			beta = fabs(dlogP) - 1;
 			alpha = 1;
 

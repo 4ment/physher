@@ -12,7 +12,6 @@
 #include <strings.h>
 
 #include "treeio.h"
-#include "simplex.h"
 #include "discreteparameter.h"
 
 
@@ -28,13 +27,6 @@ void _log(struct Logger* logger){
 			for (int j = 0; j < dp->length; j++) {
 				fprintf(logger->file, " %d", dp->values[j]);
 			}
-		}
-		else if (model->type == MODEL_SIMPLEX) {
-			Simplex* simplex = model->obj;
-			for (int j = 0; j < simplex->K; j++) {
-				fprintf(logger->file, " %f", simplex->get_value(simplex, j));
-			}
-			fprintf(logger->file, "\n");
 		}
 		else if (model->print != NULL) {
 			//only print name of model with stderr or stdout
@@ -62,7 +54,7 @@ void _log(struct Logger* logger){
 void _log_tree(struct Logger* logger){
 	Tree* tree = logger->models[0]->obj;
 	if(strcasecmp(logger->format, "newick") == 0){
-		Tree_print_newick(logger->file, tree, logger->internal);
+		Tree_print_newick(logger->file, tree, logger->internal, 12);
 	}
 	else if(strcasecmp(logger->format, "nexus") == 0){
 		fprintf(logger->file, "#NEXUS\n\n");
@@ -94,7 +86,7 @@ void get_references(json_node* node, Hashtable* hash, struct Logger* logger){
 				json_node* child = models_node->children[i];
 				char* ref = (char*)child->value;
 				// it's a ref
-				if (child->node_type == MJSON_STRING && (ref[0] == '&' || ref[0] == '$')) {
+				if (child->node_type == MJSON_STRING && ref[0] == '&') {
 					if (logger->model_count == 0) {
 						logger->models = malloc(sizeof(Model*));
 					}

@@ -38,12 +38,22 @@
 #include "vb.h"
 #include "logger.h"
 
-static double _logP( Parameters *params, double *grad, void *data ){
+static double model_logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
 	double logP = model->logP(model);
 	if (grad != NULL) {
-		for (int i = 0; i < Parameters_count(params); i++) {
-			grad[i] = model->dlogP(model, Parameters_at(params, i));
+		for(size_t i = 0; i < Parameters_count(params); i++){
+			Parameter_zero_grad(Parameters_at(params, i));
+		}
+		model->gradient(model, params);
+		
+		size_t index = 0;
+		for(size_t i = 0; i < Parameters_count(params); i++){
+			Parameter* p = Parameters_at(params, i);
+			for(size_t j = 0; j < Parameter_size(p); j++){
+				grad[index] = p->grad[j];
+				index++;
+			}
 		}
 	}
 	//	printf("%f\n", logP);
@@ -55,8 +65,18 @@ double model_negative_logP( Parameters *params, double *grad, void *data ){
 	double logP = model->logP(model);
 //		printf("%f\n", model->logP(model));
 	if (grad != NULL) {
-		for (int i = 0; i < Parameters_count(params); i++) {
-			grad[i] = -model->dlogP(model, Parameters_at(params, i));
+		for(size_t i = 0; i < Parameters_count(params); i++){
+			Parameter_zero_grad(Parameters_at(params, i));
+		}
+		model->gradient(model, params);
+		
+		size_t index = 0;
+		for(size_t i = 0; i < Parameters_count(params); i++){
+			Parameter* p = Parameters_at(params, i);
+			for(size_t j = 0; j < Parameter_size(p); j++){
+				grad[index] = p->grad[j];
+				index++;
+			}
 		}
 	}
 	return -logP;
@@ -68,6 +88,17 @@ static void _gradient( Parameters *params, double *grad, void *data ){
 		Parameter_zero_grad(Parameters_at(params, i));
 	}
 	model->gradient(model, params);
+
+	if(grad != NULL){
+		size_t index = 0;
+		for(size_t i = 0; i < Parameters_count(params); i++){
+			Parameter* p = Parameters_at(params, i);
+			for(size_t j = 0; j < Parameter_size(p); j++){
+				grad[index] = p->grad[j];
+				index++;
+			}
+		}
+	}
 }
 
 static void _negative_gradient( Parameters *params, double *grad, void *data ){
@@ -76,10 +107,12 @@ static void _negative_gradient( Parameters *params, double *grad, void *data ){
 		Parameter_zero_grad(Parameters_at(params, i));
 	}
 	model->gradient(model, params);
+	size_t index = 0;
 	for(size_t i = 0; i < Parameters_count(params); i++){
 		Parameter* p = Parameters_at(params, i);
 		for(size_t j = 0; j < Parameter_size(p); j++){
-			p->grad[j] = -p->grad[j];
+			grad[index] = -p->grad[j];
+			index++;
 		}
 	}
 }
@@ -542,9 +575,10 @@ opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx ){
 	opt_result stopflag = OPT_KEEP_GOING;
 	
 	if ( stop->count == 0 ) {
-		for (int i = 0; i < Parameters_count(x); i++) {
-			stop->oldx[i] = Parameters_value(x,i);
+		if(stop->oldx == NULL){
+			stop->oldx = dvector(Parameters_size(x));
 		}
+		Parameters_store_value(x, stop->oldx);
 		stop->oldfx = fx;
 		stop->count++;
 		return stopflag;
@@ -599,9 +633,17 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 	if(ps != NULL){
 		opt->dimension = Parameters_count(ps);
 	}
+	else if (opt->parameters != NULL){
+		opt->dimension = Parameters_size(opt->parameters);
+	}
+	else{
+		opt->dimension = 0;
+	}
 	
 	// should probably moved somewhere else
-	opt->stop.oldx = dvector(opt->dimension);
+	if(opt->dimension > 0){
+		opt->stop.oldx = dvector(opt->dimension);
+	}
     opt->stop.iter = 0;
     opt->stop.f_eval_current = 0;
     opt->stop.count = 0;
@@ -630,15 +672,15 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 			break;
 		}
 		case OPT_BFGS:{
-			result = dfpmin_optimize( ps, opt->f, opt->data, opt->stop, fmin );
+			result = dfpmin_optimize( opt->parameters, opt->f, opt->grad_f, opt->data, opt->stop, fmin, opt->etas[0]);
 			break;
 		}
 		case OPT_CG_FR:{
-			result = frprmn_optimize( ps, opt->f, opt->data, opt->stop, fmin, OPT_CG_FR );
+			result = frprmn_optimize( opt->parameters, opt->f, opt->grad_f, opt->data, opt->stop, fmin, OPT_CG_FR );
 			break;
         }
         case OPT_CG_PR:{
-            result = frprmn_optimize( ps, opt->f, opt->data, opt->stop, fmin, OPT_CG_PR );
+            result = frprmn_optimize( opt->parameters, opt->f, opt->grad_f, opt->data, opt->stop, fmin, OPT_CG_PR );
             break;
         }
 		case OPT_SG: case OPT_SG_ADAM:{
@@ -674,8 +716,9 @@ opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
 			result = -100;
 			break;
 	}
-	
-	free(opt->stop.oldx);
+	if(opt->stop.oldx != NULL){
+		free(opt->stop.oldx);
+	}
 	return result;
 }
 
@@ -702,7 +745,9 @@ opt_result opt_optimize_univariate( Optimizer *opt, Parameter *p, double *fmin )
 	result = brent_optimize( ps, opt->f, opt->data, &opt->stop, fmin );
 	
     free_Parameters(ps);
-	free(opt->stop.oldx);
+	if(opt->stop.oldx != NULL){
+		free(opt->stop.oldx);
+	}
 	return result;
 }
 
@@ -741,6 +786,7 @@ bool xStop( const Parameters *x, double *xold, const double tolx){
 }
 
 bool fxStop( double fx, double *fxold, const double tolfx){
+	// printf("%f %f %f\n", fx, *fxold, tolfx);
 	if ( fabs(fx - *fxold) > tolfx ){
 		*fxold = fx;
 		return false;
@@ -768,6 +814,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	
 	char* allowed[] = {
 		"algorithm",
+		"alpha",
 		"checkpoint",
 		"checkpoint_frequency",
 		"eta",
@@ -789,13 +836,22 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	};
 	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
 	
-	
+	const char* idNode = get_json_node_value_string(node, "id");
 	size_t max = get_json_node_value_size_t(node, "max", 1000);
 	size_t min = get_json_node_value_size_t(node, "min", 1);
 	bool maximize = get_json_node_value_bool(node, "maximize", true);
 	double precision = get_json_node_value_double(node, "precision", 0.001);
 	Parameters* parameters = new_Parameters(1);
 	Optimizer* opt = NULL;
+	json_node* parametersNode = get_json_node(node, "parameters");
+
+	if(get_json_node(node, "treelikelihood") != NULL && parametersNode != NULL){
+		fprintf(stderr, "Cannot specify both `treelikelihood' and `parameters' for object %s\n", idNode);
+		exit(13);
+	}
+	if(parametersNode != NULL){
+		get_parameters_references(node, hash, parameters);
+	}
 	
 	if (strcasecmp(algorithm_string, "meta") == 0) {
 		opt = new_Optimizer(OPT_META);
@@ -808,18 +864,19 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 			int child_rounds = get_json_node_value_int(child, "rounds", 1);
 			opt->schedule->rounds[opt->schedule->count-1] = child_rounds;
 		}
-		opt_set_max_iteration(opt, max);
-		opt_set_min_iteration(opt, min);
 		opt_set_tolfx(opt, precision);
-		opt->maximize = maximize;
+	}
+	// BFGS
+	else if (strcasecmp(algorithm_string, "bfgs") == 0) {
+		opt = new_Optimizer(OPT_BFGS);
+		opt_set_tolfx(opt, precision);
+		opt->etas = dvector(1);
+		// Quasi-Newton: try the full Newton step (alpha = 1) first.
+		opt->etas[0] = get_json_node_value_double(node, "alpha", 1.0);
 	}
 	// Conjugate gradient
 	else if (strcasecmp(algorithm_string, "cg") == 0) {
 		opt = new_Optimizer(OPT_CG_PR);
-		get_parameters_references(node, hash, parameters);
-		opt_set_parameters(opt, parameters);
-		opt_set_max_iteration(opt, max);
-		opt_set_min_iteration(opt, min);
 		opt_set_tolfx(opt, precision);
 	}
 	else if (strcasecmp(algorithm_string, "brent") == 0 || strcasecmp(algorithm_string, "serial") == 0) {
@@ -830,17 +887,13 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 			//opt->treelikelihood->ref_count++;
 		}
 		else{
-			get_parameters_references(node, hash, parameters);
 			if (Parameters_count(parameters) == 1 && Parameter_size(Parameters_at(parameters, 0)) == 1){
 				opt = new_Optimizer(OPT_BRENT);
 			}
 			else{
 				opt = new_Optimizer(OPT_SERIAL_BRENT);
 			}
-			opt_set_parameters(opt, parameters);
 		}
-		opt_set_max_iteration(opt, max);
-		opt_set_min_iteration(opt, min);
 		opt_set_tolx(opt, precision);
 	}
     // stochastic gradient
@@ -872,27 +925,35 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 			opt->etas[0] = get_json_node_value_double(node, "eta", 1.0);
 			opt->eta_count = 1;
 		}
-		
-		opt_set_max_iteration(opt, max);
-		opt_set_min_iteration(opt, min);
     }
+	
+	opt->maximize = maximize;
+	opt_set_max_iteration(opt, max);
+	opt_set_min_iteration(opt, min);
+
 	json_node* model_node = get_json_node(node, "model");
-    
-	if(model_node != NULL){
-        const char* ref = (char*)model_node->value;
-        Model* model = Hashtable_get(hash, ref+1);
-		opt_set_data(opt, model);
+	if(model_node == NULL){
+		fprintf(stderr, "The `model' key is not specified for object %s\n", idNode);
+		exit(13);
+	}
+	const char* ref = (char*)model_node->value;
+	Model* model = Hashtable_get(hash, ref+1);
+	opt_set_data(opt, model);
+	
+	if(maximize){
 		opt_set_objective_function(opt, model_negative_logP);
+		opt->grad_f = _negative_gradient;
+	}
+	else{
+		opt_set_objective_function(opt, model_logP);
 		opt->grad_f = _gradient;
-		
-		if(strcasecmp(algorithm_string, "sg") == 0){
-			get_parameters_references(node, hash, parameters);
-			opt_set_parameters(opt, parameters);
-			opt_set_objective_function(opt, model_negative_logP);
-			opt->maximize = maximize;
-		}
-		opt->reset = _reset;
-    }
+	}
+	opt->reset = _reset;
+    
+	if(parametersNode != NULL){
+		opt_set_parameters(opt, parameters);
+	}
+
 	opt->threads = get_json_node_value_size_t(node, "threads", 1);
 	opt->verbosity = get_json_node_value_int(node, "verbosity", 1);
 

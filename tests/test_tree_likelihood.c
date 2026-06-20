@@ -33,7 +33,7 @@ char* test_treelikelihood_time() {
 
     int flags = TREELIKELIHOOD_FLAG_TREE_MODEL | TREELIKELIHOOD_FLAG_BRANCH_MODEL;
     double* gradient = dvector(69);
-    
+
     Parameters* params = get_reparams(tree);
     Parameter* ratios = Parameters_at(params, 0);
     Parameter* root = Parameters_at(params, 1);
@@ -68,45 +68,47 @@ char* test_treelikelihood_time() {
         6.802521820384058};
     double expected_root_height_grad = 17.492484957839924;
 
-// do it several times to check the gradient is properly reset
-for(size_t k = 0 ; k < 2; k++){
-    TreeLikelihood_gradient(model, flags, gradient);
-    Parameters_zero_grad(parameters);
-    model->gradient(model, parameters);
+    // do it several times to check the gradient is properly reset
+    for (size_t k = 0; k < 2; k++) {
+        TreeLikelihood_gradient(model, flags, gradient);
+        Parameters_zero_grad(parameters);
+        model->gradient(model, parameters);
 
-    mu_assert(fabs(gradient[68] - expected_rate_grad) < 1.e-8,
-              "dlogP/dx clock not matching with TreeLikelihood_gradient");
+        mu_assert(fabs(gradient[68] - expected_rate_grad) < 1.e-8,
+                  "dlogP/dx clock not matching with TreeLikelihood_gradient");
 
-    mu_assert(fabs(Parameters_at(parameters, 2)->grad[0] - expected_rate_grad) < 1.e-8,
-              "dlogP/dx clock not matching");
+        mu_assert(
+            fabs(Parameters_at(parameters, 2)->grad[0] - expected_rate_grad) < 1.e-8,
+            "dlogP/dx clock not matching");
 
-    for (size_t i = 0; i < 67; i++) {
-        mu_assert(fabs(gradient[i] - expected_ratio_grad[i]) < 1.e-8,
-                  "dlogP ratios not matching with TreeLikelihood_gradient");
-        mu_assert(fabs(ratios->grad[i] - expected_ratio_grad[i]) < 1.e-8,
-                  "dlogP ratios not matching");
+        for (size_t i = 0; i < 67; i++) {
+            mu_assert(fabs(gradient[i] - expected_ratio_grad[i]) < 1.e-8,
+                      "dlogP ratios not matching with TreeLikelihood_gradient");
+            mu_assert(fabs(ratios->grad[i] - expected_ratio_grad[i]) < 1.e-8,
+                      "dlogP ratios not matching");
+        }
+
+        mu_assert(fabs(gradient[67] - expected_root_height_grad) < 1.e-8,
+                  "dlogP root not matching with TreeLikelihood_gradient");
+
+        mu_assert(fabs(root->grad[0] - expected_root_height_grad) < 1.e-8,
+                  "dlogP root not matching");
     }
-
-    mu_assert(fabs(gradient[67] - expected_root_height_grad) < 1.e-8,
-              "dlogP root not matching with TreeLikelihood_gradient");
-    
-    mu_assert(fabs(root->grad[0] - expected_root_height_grad) < 1.e-8,
-              "dlogP root not matching");
-}
 
     // check the gradient is accumulated in parameter->grad
     // Parameters_zero_grad is not called so the gradient should be doubled
     model->gradient(model, parameters);
 
-    mu_assert(fabs(Parameters_at(parameters, 2)->grad[0] - expected_rate_grad*2) < 1.e-8,
-              "dlogP/dx clock not matching in accumulated");
+    mu_assert(
+        fabs(Parameters_at(parameters, 2)->grad[0] - expected_rate_grad * 2) < 1.e-8,
+        "dlogP/dx clock not matching in accumulated");
 
     for (size_t i = 0; i < 67; i++) {
-        mu_assert(fabs(ratios->grad[i] - expected_ratio_grad[i]*2) < 1.e-8,
+        mu_assert(fabs(ratios->grad[i] - expected_ratio_grad[i] * 2) < 1.e-8,
                   "dlogP ratios not matching in accumulated");
     }
-    
-    mu_assert(fabs(root->grad[0]  - expected_root_height_grad*2) < 1.e-8,
+
+    mu_assert(fabs(root->grad[0] - expected_root_height_grad * 2) < 1.e-8,
               "dlogP root not matching in accumulated");
 
     tlk->include_jacobian = true;
@@ -208,11 +210,12 @@ char* test_treelikelihood_time_unconstrained() {
 
     double expected_logP = -4777.616209217359;
     double logP = model->logP(model);
+    printf("logP: %f, expected_logP: %f\n", logP, expected_logP);
     mu_assert(fabs(logP - expected_logP) < 1.e-8, "logP not matching");
 
     int flags = TREELIKELIHOOD_FLAG_TREE_MODEL | TREELIKELIHOOD_FLAG_BRANCH_MODEL;
     double* gradient = dvector(69);
-    
+
     Parameters* params = get_reparams(tree);
     Parameter* ratios = Parameters_at(params, 0);
     Parameter* root = Parameters_at(params, 1);
@@ -250,47 +253,84 @@ char* test_treelikelihood_time_unconstrained() {
         40.51912724901265,   30.451660702191045,  2.840830939900187,
         6.802521820384058};
     double expected_ratios_unconstrained_grad[67] = {
-        -0.13274170070753702, 0.7757537767050319, 0.9649292279997707, 1.1327897228892874, -0.24708410677114834, 0.6151267488296555, 0.2268931184341151, 0.9118957036219864, 1.2921405461541102, 0.8257510376411261, 1.1192659367874378, 5.58923885747713, 18.126603385870844, 22.959722080018743, 2.6418528126199847, 3.8183876666762875, -0.1671482466858141, 2.0052767589800475, 4.644206371457391, 5.35183120408595, 2.4316470575593487, 0.24918727212011263, 2.7195717134513298, 2.631790338953837, 1.9087540051352347, -0.8602399958831338, 14.146078574968916, 0.43684000020042285, 4.61798903325333, 1.4165351345947172, 4.129274435446002, 3.575131223924172, 2.2670550015479596, 0.3480403066106321, 1.425694491228683, 13.085434563221968, 8.639569166459847, 1.8781871705264628, 1.0007380786793565, 0.6984737528022062, -0.6201082243176413, 6.022394850305062, 13.446244364474069, 37.9104400919227, 0.8361441423692472, 2.141575868027888, 0.17398749882036438, 2.251165586010986, 5.4825191893696035, 0.741393657507105, 1.0088653000435974, 2.227362577707621, 3.1046176816560265, 17.130539364674693, 0.7844883947046429, 1.2255051052496124, 5.630899806429098, 0.5106427284716466, 13.755725570710087, 1.9110158608426027, 1.1140807177193426, 0.7144352770901691, 0.34921331789395427, 9.208466923664183, 7.0775363562310565, 0.5197912298495507, 1.254968860544365
-    };
+        -0.13274170070753702, 0.7757537767050319,   0.9649292279997707,
+        1.1327897228892874,   -0.24708410677114834, 0.6151267488296555,
+        0.2268931184341151,   0.9118957036219864,   1.2921405461541102,
+        0.8257510376411261,   1.1192659367874378,   5.58923885747713,
+        18.126603385870844,   22.959722080018743,   2.6418528126199847,
+        3.8183876666762875,   -0.1671482466858141,  2.0052767589800475,
+        4.644206371457391,    5.35183120408595,     2.4316470575593487,
+        0.24918727212011263,  2.7195717134513298,   2.631790338953837,
+        1.9087540051352347,   -0.8602399958831338,  14.146078574968916,
+        0.43684000020042285,  4.61798903325333,     1.4165351345947172,
+        4.129274435446002,    3.575131223924172,    2.2670550015479596,
+        0.3480403066106321,   1.425694491228683,    13.085434563221968,
+        8.639569166459847,    1.8781871705264628,   1.0007380786793565,
+        0.6984737528022062,   -0.6201082243176413,  6.022394850305062,
+        13.446244364474069,   37.9104400919227,     0.8361441423692472,
+        2.141575868027888,    0.17398749882036438,  2.251165586010986,
+        5.4825191893696035,   0.741393657507105,    1.0088653000435974,
+        2.227362577707621,    3.1046176816560265,   17.130539364674693,
+        0.7844883947046429,   1.2255051052496124,   5.630899806429098,
+        0.5106427284716466,   13.755725570710087,   1.9110158608426027,
+        1.1140807177193426,   0.7144352770901691,   0.34921331789395427,
+        9.208466923664183,    7.0775363562310565,   0.5197912298495507,
+        1.254968860544365};
     double expected_root_height_grad = 17.492484957839924;
     double expected_root_height_unconstrained_grad = 27.19186079725137;
 
-// do it several times to check the gradient is properly reset
-for(size_t k = 0 ; k < 2; k++){
-    // TreeLikelihood_gradient(model, flags, gradient);
-    Parameters_zero_grad(parameters);
-    model->gradient(model, parameters);
+    // do it several times to check the gradient is properly reset
+    for (size_t k = 0; k < 2; k++) {
+        TreeLikelihood_gradient(model, flags, gradient);
+        Parameters_zero_grad(parameters);
+        model->gradient(model, parameters);
 
-    mu_assert(fabs(rate->transform->parameter->grad[0] - expected_rate_unconstrained_grad) < 1.e-8,
-              "dlogP/dx clock not matching");
+        mu_assert(fabs(rate->transform->parameter->grad[0] -
+                       expected_rate_unconstrained_grad) < 1.e-8,
+                  "dlogP/dx clock not matching");
 
-    for (size_t i = 0; i < 67; i++) {
-        // mu_assert(fabs(gradient[i] - expected_ratio_grad[i]) < 1.e-8,
-        //           "dlogP ratios not matching with TreeLikelihood_gradient");
-        mu_assert(fabs(expected_ratios_unconstrained_grad[i] - ratios->transform->parameter->grad[i]) < 1.e-8,
-                  "dlogP ratios not matching");
+        printf("rate grad: expected %g got %g diff %g\n", gradient[68],
+               expected_rate_grad, gradient[68] - expected_rate_grad);
+        mu_assert(fabs(gradient[68] - expected_rate_grad) < 1.e-2,
+                  "dlogP/dx clock not matching with TreeLikelihood_gradient");
+
+        for (size_t i = 0; i < 67; i++) {
+            // printf("ratio %zu: expected %g got %g\n", i, expected_ratio_grad[i],
+            // gradient[i]);
+            mu_assert(fabs(gradient[i] - expected_ratio_grad[i]) < 1.e-3,
+                      "dlogP ratios not matching with TreeLikelihood_gradient");
+            // printf("ratio %zu: expected %g got %g\n", i,
+            // expected_ratios_unconstrained_grad[i],
+            // ratios->transform->parameter->grad[i]);
+            mu_assert(fabs(expected_ratios_unconstrained_grad[i] -
+                           ratios->transform->parameter->grad[i]) < 1.e-8,
+                      "dlogP ratios not matching");
+        }
+
+        mu_assert(fabs(gradient[67] - expected_root_height_grad) < 1.e-4,
+                  "dlogP root not matching with TreeLikelihood_gradient");
+
+        mu_assert(fabs(expected_root_height_unconstrained_grad -
+                       root->transform->parameter->grad[0]) < 1.e-8,
+                  "dlogP root not matching");
     }
-
-    // mu_assert(fabs(gradient[67] - expected_root_height_grad) < 1.e-8,
-    //           "dlogP root not matching with TreeLikelihood_gradient");
-    
-    mu_assert(fabs(expected_root_height_unconstrained_grad - root->transform->parameter->grad[0]) < 1.e-8,
-              "dlogP root not matching");
-}
 
     // check the gradient is accumulated in parameter->grad
     // Parameters_zero_grad is not called so the gradient should be doubled
     model->gradient(model, parameters);
 
-    mu_assert(fabs(expected_rate_unconstrained_grad*2 - rate->transform->parameter->grad[0]) < 1.e-8,
+    mu_assert(fabs(expected_rate_unconstrained_grad * 2 -
+                   rate->transform->parameter->grad[0]) < 1.e-8,
               "dlogP/dx clock not matching in accumulated");
 
     for (size_t i = 0; i < 67; i++) {
-        mu_assert(fabs(expected_ratios_unconstrained_grad[i]*2 - ratios->transform->parameter->grad[i]) < 1.e-8,
+        mu_assert(fabs(expected_ratios_unconstrained_grad[i] * 2 -
+                       ratios->transform->parameter->grad[i]) < 1.e-8,
                   "dlogP ratios not matching in accumulated");
     }
-    
-    mu_assert(fabs(expected_root_height_unconstrained_grad*2 - root->transform->parameter->grad[0]) < 1.e-8,
+
+    mu_assert(fabs(expected_root_height_unconstrained_grad * 2 -
+                   root->transform->parameter->grad[0]) < 1.e-8,
               "dlogP root not matching in accumulated");
 
     tlk->include_jacobian = true;
@@ -324,8 +364,29 @@ for(size_t k = 0 ; k < 2; k++){
         53.70242275637265,   37.835952010113665,  2.840830939900187,
         7.517186267961684};
     double expectedRatiosUnconstrainedJacobianGrad[67] = {
--0.13274170070753702, 0.7757537767050319, 1.21169172883093, 1.1327897228892874, -0.04366588628505873, 0.6151267488296555, 0.35675961670794615, 1.6326662598918036, 2.4026265317592084, 1.2074522227651623, 1.5172741708664017, 7.768683424270772, 24.62213868393231, 30.916466070863855, 3.0512066192138088, 5.254102963777162, -0.1671482466858141, 2.2469733002806693, 5.411215635665562, 6.777422270224085, 2.9502877952728577, 0.24918727212011263, 3.1264502312284317, 3.2393806581383786, 2.2341904671223562, -0.8602399958831338, 16.91654919457692, 0.5915046719807964, 5.686298796323111, 1.4165351345947172, 5.338512731751605, 4.542116335273242, 2.9517261384675835, 0.3480403066106321, 1.6129368145500587, 18.44949801237873, 11.521383627363338, 1.8781871705264628, 1.5919706446687631, 0.6984737528022062, -0.6201082243176413, 7.366292245205609, 15.699485878822047, 47.00720431253316, 0.8361441423692472, 2.6077916454436796, 0.17398749882036438, 2.966019246405346, 7.115904052991468, 0.741393657507105, 1.0088653000435974, 2.8636392779338156, 3.927865433352233, 23.37624470106702, 0.7844883947046429, 1.5103167096490036, 7.177008637398779, 0.5106427284716466, 17.158445964147663, 2.237431941450079, 1.5210238338970705, 0.7144352770901691, 0.41775132843043744, 12.204533158328786, 8.793784454079837, 0.5197912298495507, 1.3868141466982251
-    };
+        -0.13274170070753702, 0.7757537767050319,   1.21169172883093,
+        1.1327897228892874,   -0.04366588628505873, 0.6151267488296555,
+        0.35675961670794615,  1.6326662598918036,   2.4026265317592084,
+        1.2074522227651623,   1.5172741708664017,   7.768683424270772,
+        24.62213868393231,    30.916466070863855,   3.0512066192138088,
+        5.254102963777162,    -0.1671482466858141,  2.2469733002806693,
+        5.411215635665562,    6.777422270224085,    2.9502877952728577,
+        0.24918727212011263,  3.1264502312284317,   3.2393806581383786,
+        2.2341904671223562,   -0.8602399958831338,  16.91654919457692,
+        0.5915046719807964,   5.686298796323111,    1.4165351345947172,
+        5.338512731751605,    4.542116335273242,    2.9517261384675835,
+        0.3480403066106321,   1.6129368145500587,   18.44949801237873,
+        11.521383627363338,   1.8781871705264628,   1.5919706446687631,
+        0.6984737528022062,   -0.6201082243176413,  7.366292245205609,
+        15.699485878822047,   47.00720431253316,    0.8361441423692472,
+        2.6077916454436796,   0.17398749882036438,  2.966019246405346,
+        7.115904052991468,    0.741393657507105,    1.0088653000435974,
+        2.8636392779338156,   3.927865433352233,    23.37624470106702,
+        0.7844883947046429,   1.5103167096490036,   7.177008637398779,
+        0.5106427284716466,   17.158445964147663,   2.237431941450079,
+        1.5210238338970705,   0.7144352770901691,   0.41775132843043744,
+        12.204533158328786,   8.793784454079837,    0.5197912298495507,
+        1.3868141466982251};
     double expectedRateUnconstrainedJacobianGrad = 328.01765057378356;
     double expected_root_height_jac_grad = 19.936860572419484;
     double expectedRootHeightUnconstrainedJacobianGrad = 30.99161526317372;
@@ -335,15 +396,18 @@ for(size_t k = 0 ; k < 2; k++){
     Parameters_zero_grad(parameters);
     model->gradient(model, parameters);
 
-    mu_assert(fabs(expectedRateUnconstrainedJacobianGrad - rate->transform->parameter->grad[0]) < 1.e-8,
+    mu_assert(fabs(expectedRateUnconstrainedJacobianGrad -
+                   rate->transform->parameter->grad[0]) < 1.e-8,
               "dlogP clock include_jacobian not matching");
 
     for (size_t i = 0; i < 67; i++) {
-        mu_assert(fabs(ratios->transform->parameter->grad[i] - expectedRatiosUnconstrainedJacobianGrad[i]) < 1.e-8,
+        mu_assert(fabs(ratios->transform->parameter->grad[i] -
+                       expectedRatiosUnconstrainedJacobianGrad[i]) < 1.e-8,
                   "dlogP ratios include_jacobian not matching");
     }
 
-    mu_assert(fabs(root->transform->parameter->grad[0] - expectedRootHeightUnconstrainedJacobianGrad) < 1.e-8,
+    mu_assert(fabs(root->transform->parameter->grad[0] -
+                   expectedRootHeightUnconstrainedJacobianGrad) < 1.e-8,
               "dlogP root include_jacobian not matching");
 
     // check log det jacobian and its gradient from tree Model alone
@@ -357,15 +421,21 @@ for(size_t k = 0 ; k < 2; k++){
     Parameters_zero_grad(parameters);
     mtree->gradient(mtree, parameters);
 
-    mu_assert(fabs(expectedRootHeightUnconstrainedJacobianGrad - expected_root_height_unconstrained_grad - root->transform->parameter->grad[0]) < 1.e-8,
+    mu_assert(fabs(expectedRootHeightUnconstrainedJacobianGrad -
+                   expected_root_height_unconstrained_grad -
+                   root->transform->parameter->grad[0]) < 1.e-8,
               "dlogP root det jacobian not matching");
     for (size_t i = 0; i < 67; i++) {
-        mu_assert(fabs(expectedRatiosUnconstrainedJacobianGrad[i] - expected_ratios_unconstrained_grad[i] - ratios->transform->parameter->grad[i]) < 1.e-8,
+        mu_assert(fabs(expectedRatiosUnconstrainedJacobianGrad[i] -
+                       expected_ratios_unconstrained_grad[i] -
+                       ratios->transform->parameter->grad[i]) < 1.e-8,
                   "dlogP ratios det jacobian not matching");
     }
 
-    // rate is independent from the tree model transformation so the gradient should be zero
-    mu_assert(rate->transform->parameter->grad[0] == 0.0, "dlogP rate det jacobian not matching");
+    // rate is independent from the tree model transformation so the gradient should be
+    // zero
+    mu_assert(rate->transform->parameter->grad[0] == 0.0,
+              "dlogP rate det jacobian not matching");
 
     free_Parameters(parameters);
     model->free(model);
@@ -380,7 +450,7 @@ for(size_t k = 0 ; k < 2; k++){
 
 // #include "phyc/distnormal.h"
 // char* test_normal_distribution_issigma(bool issigma) {
-    
+
 //     Parameter* mu = new_Parameter("mu", 2.0, new_Constraint(-INFINITY, INFINITY));
 //     Parameter* sigma = new_Parameter("sigma", 0.1, new_Constraint(0, INFINITY));
 //     Parameters* parameters = new_Parameters(2);
@@ -423,7 +493,8 @@ for(size_t k = 0 ; k < 2; k++){
 //     //
 //     // 	double dlogPds = model->dlogP(model, Parameters_at(ps[1], 0));
 //     // 	double dlogPds2 = gsl_normal_1dist_dlogPdp(xs, p, 1, eps, issigma);
-//     // 	mu_assert(fabs(dlogPds - dlogPds2) < 0.0001, "dlogPdsigma not matching");
+//     // 	mu_assert(fabs(dlogPds - dlogPds2) < 0.0001, "dlogPdsigma not
+//     matching");
 
 //     model->free(model);
 //     for (size_t i = 0; i < 2; i++) free_Parameters(ps[i]);

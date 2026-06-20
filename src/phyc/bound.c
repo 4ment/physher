@@ -80,14 +80,10 @@ Model* new_BoundModel(const char* name, Bound* bound) {
     model->logP = _BoundModel_logP;
     model->full_logP = _BoundModel_full_logP;
     model->gradient = _BoundModel_gradient;
-    model->dlogP = NULL;
-    model->d2logP = NULL;
-    model->ddlogP = NULL;
     model->free = _BoundModel_free;
     model->clone = NULL;
     model->store = NULL;
     model->restore = NULL;
-    model->prepare_gradient = NULL;
     model->sample = NULL;
     model->samplable = false;
     // TODO: add listeners to var parameters

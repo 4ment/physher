@@ -7,5 +7,6 @@
 /obj
 /Release
 /Debug
+/build*
 
 .vscode/*

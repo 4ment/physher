@@ -18,6 +18,7 @@
 #include "distmultinormal.h"
 #include "distnormal.h"
 #include "distoneonx.h"
+#include "distweibull.h"
 #include "exponential.h"
 #include "filereader.h"
 #include "gamma.h"
@@ -63,6 +64,8 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash) {
         return new_NormalDistributionModel_from_json(node, hash);
     } else if (strcasecmp(d_string, "halfnormal") == 0) {
         return new_HalfNormalDistributionModel_from_json(node, hash);
+    } else if (strcasecmp(d_string, "weibull") == 0) {
+        return new_WeibullDistributionModel_from_json(node, hash);
     } else if (strcasecmp(d_string, "oneonx") == 0) {
         return new_OneOnXDistributionModel_from_json(node, hash);
     } else if (strcasecmp(d_string, "ctmcscale") == 0) {

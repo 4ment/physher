@@ -26,6 +26,7 @@
 #include "matrix.h"
 #include "mathconstant.h"
 #include "linefunction.h"
+#include "linesearch.h"
 
 
 void conjugate_gradient( const int n, double *sdir, const double *gvec, const double *gold, const bool *active, opt_algorithm algorithm );
@@ -36,6 +37,174 @@ static double _findStep( LineFunction *lf, double f0, double s0, double lastStep
 
 static double _computeDerivative(LineFunction *lf, double lambda, size_t *numFun );
 
+// Dot product helper
+double dot(const double *a, const double *b, int n) {
+    double s = 0.0;
+    for (int i = 0; i < n; i++)
+        s += a[i] * b[i];
+    return s;
+}
+
+// y = a*x + b*y
+void axpy(double a, const double *x, double *y, int n) {
+    for (int i = 0; i < n; i++)
+        y[i] += a * x[i];
+}
+
+void extract_gradient( Parameters *params, double *grad ){
+	size_t index = 0;
+	for(size_t i = 0; i < Parameters_count(params); i++){
+		Parameter* p = Parameters_at(params, i);
+		for(size_t j = 0; j < Parameter_size(p); j++){
+			grad[index] = -p->grad[j];
+			index++;
+		}
+	}
+}
+// Nonlinear conjugate gradient optimizer
+opt_result frprmn_optimize( Parameters *parameters, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion stop, double *fmin, opt_algorithm algorithm ){
+// int conjugate_gradient(opt_func f, opt_grad_func grad, void* data, Parameters* parameters, double tol, int max_iter) {
+	size_t n = Parameters_size(parameters);
+    double *g = malloc(n * sizeof(double));
+    double *g_new = malloc(n * sizeof(double));
+    double *p = malloc(n * sizeof(double));
+    double *x = malloc(n * sizeof(double));
+	double *x_new = malloc(n * sizeof(double));
+	double *x_start = malloc(n * sizeof(double));
+
+	opt_result status = OPT_KEEP_GOING;
+
+	Parameters_store_value(parameters, x);
+	memcpy(x_start, x, n*sizeof(double));
+	double fx = f(parameters, NULL, data);
+	double fx_start = fx;
+    grad_f(parameters, g, data);
+
+    for (size_t i = 0; i < n; i++){
+        p[i] = -g[i];
+	}
+
+    double gnorm = sqrt(dot(g, g, n));
+	double previousAlpha = 1.0;
+    size_t iter = 0;
+	size_t *numFun = &stop.f_eval_current;
+	(*numFun)++;
+	// init stop condition
+	opt_check_stop( &stop, parameters, fx );
+	printf("Initial function value: %f\n", fx);
+
+    // while (gnorm > tol && iter < max_iter) {
+	while(status == OPT_KEEP_GOING) {
+        double f0 = f(parameters, NULL, data);
+        // Strong-Wolfe line search. CG requires the curvature condition (and a
+        // tight c2, < 0.5) to keep generating descent directions; a plain
+        // backtracking-Armijo search does not and lets the step length collapse.
+        LineSearchResult ls = strong_wolfe_line_search(parameters, f, grad_f, data, x, p, g,
+                                                        f0, 1.0e-4, 0.1, previousAlpha, 1.0e8);
+        double alpha = ls.alpha;
+		printf("Step size: %f\n", alpha);
+
+        // p was not a descent direction: restart with steepest descent and retry.
+        if (ls.status == 2 || alpha == 0.0) {
+            if (sqrt(dot(g, g, n)) <= stop.tolg) {
+                status = OPT_SUCCESS;
+                break;
+            }
+            for (size_t i = 0; i < n; i++) p[i] = -g[i];
+            previousAlpha = 1.0;
+            continue;
+        }
+
+		for (size_t i = 0; i < n; i++){
+            x_new[i] = x[i] + alpha * p[i];
+		}
+		Parameters_restore_value(parameters, x_new);
+
+		fx = f(parameters, NULL, data);
+		printf("Function value: %f\n", fx);
+        grad_f(parameters, g_new, data);
+
+        double beta;
+        switch (algorithm) {
+            case OPT_CG_FR:   // Fletcher-Reeves: |g_new|^2 / |g_old|^2
+                beta = dot(g_new, g_new, n) / dot(g, g, n);
+                break;
+            case OPT_CG_PR: { // Polak-Ribiere: (g_new . (g_new - g_old)) / |g_old|^2
+                double num = dot(g_new, g_new, n) - dot(g_new, g, n);
+                beta = num / dot(g, g, n);
+                if (beta < 0.0) beta = 0.0;   // PR+: restart on negative beta
+                break;
+            }
+            default:
+                assert(0);
+                beta = 0.0;
+        }
+
+        for (size_t i = 0; i < n; i++){
+            p[i] = -g_new[i] + beta * p[i];
+		}
+
+        // Restart to steepest descent when the conjugate direction is not a
+        // descent direction (slope >= 0) or periodically every n iterations.
+        // Without this, a poor CG direction forces the backtracking line search
+        // to collapse the step length, from which previousAlpha never recovers.
+        double slope = dot(g_new, p, n);
+        iter++;
+        if (slope >= 0.0 || (iter % n) == 0) {
+            for (size_t i = 0; i < n; i++){
+                p[i] = -g_new[i];
+            }
+            previousAlpha = 1.0;
+        }
+        else {
+            previousAlpha = alpha;
+        }
+
+        for (size_t i = 0; i < n; i++){
+            x[i] = x_new[i];
+		}
+		Parameters_restore_value(parameters, x_new);
+
+        for (int i = 0; i < n; i++){
+            g[i] = g_new[i];
+		}
+
+        gnorm = sqrt(dot(g, g, n));
+
+        // Converge on a small gradient norm rather than only on a small change
+        // in function value: tiny line-search steps can make |fx - fxold| fall
+        // below tolfx far from the optimum.
+        if (gnorm <= stop.tolg) {
+            status = OPT_SUCCESS;
+            break;
+        }
+
+		// test for for convergence
+		if ( (status = opt_check_stop( &stop, parameters, fx )) != OPT_KEEP_GOING ){
+			//fprintf(stderr, "opt_check_stop status %d iter = %d\n", status, stop.iter_current );
+			break;
+		}
+    }
+
+	if( fx > fx_start ){
+		Parameters_restore_value(parameters, x_start);
+		status = OPT_FAIL;
+		*fmin = fx_start;
+    }
+    else {
+        *fmin = fx;
+    }
+
+    free(g);
+    free(g_new);
+    free(p);
+    free(x_new);
+	free(x_start);
+    free(x);
+
+    return status;
+}
+
 /*! Conjugate gradient in multidimension.
  * Given a starting point p[1..n], Fletcher-Reeves-Polak-Ribiere minimization is performed on a function func, 
  * using its gradient as calculated by a routine dfunc. The convergence tolerance on the function value is input as ftol.
@@ -45,198 +214,209 @@ static double _computeDerivative(LineFunction *lf, double lambda, size_t *numFun
 //void frprmn(double p[], int n, double ftol, int *iter, double *fret, double (*func)(double []), void (*dfunc)(double [], double [])){
 
 
-opt_result frprmn_optimize( Parameters *xvec, opt_func f, void *data, OptStopCriterion stop, double *fmin, opt_algorithm algorithm ){
-    int prin = 0, numArgs;
-    double *backup = NULL;
-    //Parameters *xvec = x;
-    
-	numArgs = Parameters_count(xvec);
+// opt_result frprmn_optimize( Parameters *xvec, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion stop, double *fmin, opt_algorithm algorithm ){
+//     int prin = 1, numArgs;
+//     double *backup = NULL;
+//     //Parameters *xvec = x;
+//     Model* model = (Model*)data;
+// 	numArgs = Parameters_size(xvec);
 	
-    backup = dvector(numArgs);
-    Parameters_store_value(xvec, backup);
+//     backup = dvector(numArgs);
+//     Parameters_store_value(xvec, backup);
 
 	
-	opt_result status = OPT_KEEP_GOING;
+// 	opt_result status = OPT_KEEP_GOING;
 	
-	// line function
-	LineFunction *lf = new_LineFunction( xvec, f, data );
+// 	// line function
+// 	LineFunction *lf = new_LineFunction( xvec, f, data );
 	
-	// Force points to be between bounds
-	LineFunction_force_within_bounds( lf, xvec );
+// 	// Force points to be between bounds
+// 	LineFunction_force_within_bounds(lf);
 	
 	
-	// function value and gradient at current guess
-	size_t *numFun = &stop.f_eval_current;
-	double fx = 0;
-	//double numGrad = 0;
-	double *gvec = dvector(numArgs);
+// 	// function value and gradient at current guess
+// 	size_t *numFun = &stop.f_eval_current;
+// 	double fx = 0;
+// 	//double numGrad = 0;
+// 	double *gvec = dvector(numArgs);
 	
-    // Evaluate function and calculate the gradient
-	fx = f(xvec, gvec, data);
-	(*numFun)++;
-	*numFun += 2*numArgs;
+//     // Evaluate function and calculate the gradient
+// 	// fx = f(xvec, gvec, data);
+// 	fx = f(xvec, NULL, data);
+// 	grad_f(xvec, gvec, data);
+// 	(*numFun)++;
+// 	*numFun += 2*numArgs;
     
-    double fx_start = fx;
+//     double fx_start = fx;
     
-	double *gold = clone_dvector(gvec, numArgs);	
+// 	double *gold = clone_dvector(gvec, numArgs);	
 
-	// init stop condition
-	opt_check_stop( &stop, xvec, fx );
+// 	// init stop condition
+// 	opt_check_stop( &stop, xvec, fx );
 	
-	// currently active variables
-	bool *active = bvector(numArgs);
+// 	// currently active variables
+// 	bool *active = bvector(numArgs);
 	
-    // Set variable as not active if its value are outside its bounds
-	int numActive = LineFunction_set_active_parameters(lf, xvec, gvec, active);
+//     // Set variable as not active if its value are outside its bounds
+// 	int numActive = LineFunction_set_active_parameters(lf, gvec, active);
 	
-	// if no variables are active return
-	if ( numActive == 0 ){
-		free(active);
-		free(gvec);
-		free(gold);
-		free_LineFunction(lf);
-		*fmin = fx;
-        free(backup);
-		return OPT_NEED_CHECK;
-	}
+// 	// if no variables are active return
+// 	if ( numActive == 0 ){
+// 		free(active);
+// 		free(gvec);
+// 		free(gold);
+// 		free_LineFunction(lf);
+// 		*fmin = fx;
+//         free(backup);
+// 		return OPT_NEED_CHECK;
+// 	}
 	
-	// initial search direction (steepest descent)
-	double *sdir = dvector(numArgs);
+// 	// initial search direction (steepest descent)
+// 	double *sdir = dvector(numArgs);
     
-    // Compute direction of steepest descent (active == true ? -gvec : 0)
-	steepestDescentDirection(numArgs, sdir, gvec, active);
+//     // Compute direction of steepest descent (active == true ? -gvec : 0)
+// 	steepestDescentDirection(numArgs, sdir, gvec, active);
 
-	LineFunction_update(lf, xvec, sdir);
+// 	LineFunction_update(lf, sdir);
 	
-	// Slope at start point in initial direction
-	double slope = gradientProjection(numArgs, sdir, gvec);
+// 	// Slope at start point in initial direction
+// 	double slope = gradientProjection(numArgs, sdir, gvec);
 	
 	
-	if (prin > 0){
-		fprintf(stdout,"--- starting minimization ---\n");
-		fprintf(stdout,"... current parameter settings ...\n");
-		fprintf(stdout,"...   numArgs   ... %d\n", numArgs);
-		fprintf(stdout,"...   tolx   ... %f\n", stop.tolx);
-		fprintf(stdout,"...   tolfx   ... %f\n", stop.tolfx);
-		fprintf(stdout,"... maxFun  ... %lu\n", stop.f_eval_max);
-		fprintf(stdout,"... numActive  ... %d\n", numActive);
-		fprintf(stdout,"... slope  ... %f\n\n", slope);
+// 	if (prin > 0){
+// 		fprintf(stdout,"--- starting minimization ---\n");
+// 		fprintf(stdout,"... current parameter settings ...\n");
+// 		fprintf(stdout,"...   numArgs   ... %d\n", numArgs);
+// 		fprintf(stdout,"...   tolx   ... %f\n", stop.tolx);
+// 		fprintf(stdout,"...   tolfx   ... %f\n", stop.tolfx);
+// 		fprintf(stdout,"... maxFun  ... %lu\n", stop.f_eval_max);
+// 		fprintf(stdout,"... numActive  ... %d\n", numActive);
+// 		fprintf(stdout,"... slope  ... %f\n\n", slope);
 		
-		fprintf(stdout,"... start vector ...\n");
-        for ( int i = 0; i < numArgs; i++ ) {
-            fprintf(stdout,"%s value: %f active: %d direction: %f\n", Parameters_name(xvec, i), Parameters_value(xvec, i), active[i], sdir[i]);
-        }
-		fprintf(stderr, "\n\n");
-	}
+// 		fprintf(stdout,"... start vector ...\n");
+//         // for ( int i = 0; i < numArgs; i++ ) {
+//         //     fprintf(stdout,"%s value: %f active: %d direction: %f\n", Parameters_name(xvec, i), Parameters_value(xvec, i), active[i], sdir[i]);
+//         // }
+// 		fprintf(stderr, "\n\n");
+// 	}
 	
-	int numLin = 0;
+// 	int numLin = 0;
 	
-	double defaultStep = 1.;
-	double lastStep = defaultStep;
+// 	double defaultStep = 1.;
+// 	double lastStep = defaultStep;
 
-	while( status == OPT_KEEP_GOING ){
-		// determine an appropriate step
-        if( prin > 0 ) printf("Find step lower: %e upper: %e\n", lf->lower, lf->upper);
-		double step = _findStep( lf, fx, slope, lastStep, numFun );
-		lastStep = step;
-		numLin++;
+// 	double *preStep = dvector(numArgs);
+
+// 	while( status == OPT_KEEP_GOING ){
+// 		// determine an appropriate step
+//         if( prin > 0 ) printf("Find step lower: %e upper: %e\n", lf->lower, lf->upper);
+
+// 		Parameters_store_value(xvec, preStep);
+// 		double step = _findStep( lf, fx, slope, lastStep, numFun );
+// 		Parameters_restore_value(xvec, preStep);
+
+// 		lastStep = step;
+// 		numLin++;
         
-		// update xvec using step
-		LineFunction_set_parameters(lf, step, xvec);
-        // force xvec to be within bounds (lf not needed)
-		LineFunction_force_within_bounds( lf, xvec );
+// 		// update xvec using step
+// 		LineFunction_set_parameters(lf, step);
+//         // force xvec to be within bounds (lf not needed)
+// 		LineFunction_force_within_bounds(lf);
         
-		if( prin > 0 ) printf("Step: %e LnL %f\n", step, fx);
-		// Evaluate function using xvec
-		fx = f(xvec, gvec, data);
-        if( prin > 0 ) printf("LnL %f\n\n", fx);
-		(*numFun)++;
-		*numFun += 2*numArgs;
+// 		if( prin > 0 ) printf("Step: %e LnL %f\n", step, fx);
+// 		// Evaluate function using xvec
+// 		// fx = f(xvec, gvec, data);
+// 		fx = f(NULL, NULL, data);
+// 		grad_f(xvec, gvec, data);
+//         if( prin > 0 ) printf("LnL %f\n\n", fx);
+// 		(*numFun)++;
+// 		*numFun += 2*numArgs;
         
-		// test for for convergence		
-		if ( (status = opt_check_stop( &stop, xvec, fx )) != OPT_KEEP_GOING ){
-			//fprintf(stderr, "opt_check_stop status %d iter = %d\n", status, stop.iter_current );
-			break;
-		}
+// 		// test for for convergence		
+// 		if ( (status = opt_check_stop( &stop, xvec, fx )) != OPT_KEEP_GOING ){
+// 			//fprintf(stderr, "opt_check_stop status %d iter = %d\n", status, stop.iter_current );
+// 			break;
+// 		}
 		
-		// Determine which parameters should be active based on their gradient
-		numActive = LineFunction_set_active_parameters(lf, xvec, gvec, active);
+// 		// Determine which parameters should be active based on their gradient
+// 		numActive = LineFunction_set_active_parameters(lf, gvec, active);
 		
-		// if all variables are inactive return
-		if (numActive == 0){
-			break;
-		}
+// 		// if all variables are inactive return
+// 		if (numActive == 0){
+// 			break;
+// 		}
 		
-		// Determine new search direction (sdir)
-		conjugate_gradient(numArgs, sdir, gvec, gold, active, algorithm);
+// 		// Determine new search direction (sdir)
+// 		conjugate_gradient(numArgs, sdir, gvec, gold, active, algorithm);
 		
-        // Directions (sdir) that point outside boundaries are set to 0 (lf not needed)
-		LineFunction_constrain_direction(lf, xvec, sdir);
+//         // Directions (sdir) that point outside boundaries are set to 0 (lf not needed)
+// 		LineFunction_constrain_direction(lf, sdir);
 		
-		// compute slope in new direction
-		slope = gradientProjection(numArgs, sdir, gvec);
+// 		// compute slope in new direction
+// 		slope = gradientProjection(numArgs, sdir, gvec);
 		
-		if (slope >= 0){
-			//reset to steepest descent direction
-			steepestDescentDirection(numArgs, sdir, gvec, active);
+// 		if (slope >= 0){
+// 			//reset to steepest descent direction
+// 			steepestDescentDirection(numArgs, sdir, gvec, active);
 			
-			// compute slope in new direction
-			slope = gradientProjection(numArgs, sdir, gvec);
+// 			// compute slope in new direction
+// 			slope = gradientProjection(numArgs, sdir, gvec);
 			
-			// reset to default step length
-			lastStep = defaultStep;
-		}
+// 			// reset to default step length
+// 			lastStep = defaultStep;
+// 		}
 		
 		
-		// other updates
-		LineFunction_update(lf, xvec, sdir);
+// 		// other updates
+// 		LineFunction_update(lf, sdir);
 	
-		memcpy(gold, gvec, numArgs * sizeof(double) );
+// 		memcpy(gold, gvec, numArgs * sizeof(double) );
 		
-		if (prin > 1){
-            double ff = f(xvec, NULL, data);
-			fprintf(stderr, "\nFunction value: %f recalculated %f diff %e\n", fx, ff, (ff-fx) );
-			fprintf(stderr, "... new vector ...\n");
-            for ( int i = 0; i < numArgs; i++ ) {
-                fprintf(stdout,"%s value: %f active: %d direction: %f\n", Parameters_name(xvec, i), Parameters_value(xvec, i), active[i], sdir[i]);
-            }
-			fprintf(stderr, "... numFun  ... %lu\n", *numFun);
+// 		if (prin > 1){
+//             double ff = f(xvec, NULL, data);
+// 			fprintf(stderr, "\nFunction value: %f recalculated %f diff %e\n", fx, ff, (ff-fx) );
+// 			fprintf(stderr, "... new vector ...\n");
+//             for ( int i = 0; i < numArgs; i++ ) {
+//                 fprintf(stdout,"%s value: %f active: %d direction: %f\n", Parameters_name(xvec, i), Parameters_value(xvec, i), active[i], sdir[i]);
+//             }
+// 			fprintf(stderr, "... numFun  ... %lu\n", *numFun);
 			
-			fprintf(stderr, "... numLin  ... %d\n", numLin);
-            fprintf(stdout,"... numActive  ... %d\n", numActive);
-            fprintf(stdout,"------------------------------------------------------------------------------------------\n\n");
-		}
+// 			fprintf(stderr, "... numLin  ... %d\n", numLin);
+//             fprintf(stdout,"... numActive  ... %d\n", numActive);
+//             fprintf(stdout,"------------------------------------------------------------------------------------------\n\n");
+// 		}
 		
-	}
+// 	}
 	
-	if (prin > 0){
-		fprintf(stderr, "\n");
-		fprintf(stderr, "... final vector ...\n");
-		fprintf(stderr,"... numFun  ... %lu", *numFun);
-		fprintf(stderr,"... numLin  ... %d", numLin);
-		fprintf(stderr,"... LnL  ... %f (%f)", fx, fx_start);
-        fprintf(stdout,"... numActive  ... %d\n", numActive);
-		fprintf(stderr,"\n--- end of minimization ---\n\n");
-	}
+// 	if (prin > 0){
+// 		fprintf(stderr, "\n");
+// 		fprintf(stderr, "... final vector ...\n");
+// 		fprintf(stderr,"... numFun  ... %lu", *numFun);
+// 		fprintf(stderr,"... numLin  ... %d", numLin);
+// 		fprintf(stderr,"... LnL  ... %f (%f)", fx, fx_start);
+//         fprintf(stdout,"... numActive  ... %d\n", numActive);
+// 		fprintf(stderr,"\n--- end of minimization ---\n\n");
+// 	}
 	
-    if( fx > fx_start ){
-        Parameters_restore_value(xvec, backup);
-        status = OPT_FAIL;
-        *fmin = fx_start;
-    }
-    else {
-        *fmin = fx;
-    }
+//     if( fx > fx_start ){
+//         Parameters_restore_value(xvec, backup);
+//         status = OPT_FAIL;
+//         *fmin = fx_start;
+//     }
+//     else {
+//         *fmin = fx;
+//     }
     
 	
-	free(active);
-	free(gvec);
-	free(gold);
-	free(sdir);
-	free_LineFunction(lf);
-    free(backup);
-	return status;
-}
+// 	free(active);
+// 	free(gvec);
+// 	free(gold);
+// 	free(sdir);
+// 	free_LineFunction(lf);
+//     free(backup);
+// 	free(preStep);
+// 	return status;
+// }
 
 
 

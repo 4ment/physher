@@ -20,6 +20,13 @@ double mseconds(struct timespec start, struct timespec end) {
            (end.tv_nsec - start.tv_nsec) / 1000000.;
 }
 
+char* transformations[4] ={
+    "naive",
+    "ratios",
+    "proportions",
+    "shifts"
+};
+
 char* json_jc69_strict =
     "{ \
 	\"id\":\"treelikelihood\", \
@@ -143,7 +150,7 @@ void test_height_transform_jacobian(size_t iter, const char* newick,
     init_heights_from_bls(tree);
 
     Model* mtree = new_TreeModel("letree", tree);
-    TreeModel_set_transform(mtree, TREE_TRANSFORM_RATIO);
+    TreeModel_set_transform(mtree, reparameterization);
     Model* mtt = mtree->data;
     TreeTransform* tt = mtt->obj;
     Parameters* reparams = get_reparams(tree);
@@ -157,8 +164,7 @@ void test_height_transform_jacobian(size_t iter, const char* newick,
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu evaluations: %f ms (%f)\n", iter, mseconds(start, end), logP);
     if (csv != NULL)
-        fprintf(csv, "ratio_transform_jacobian%s,evaluation,off,%f,%f\n",
-                (reparameterization == TREE_TRANSFORM_RATIO_NAIVE ? "2" : ""),
+        fprintf(csv, "transform_jacobian-%s,evaluation,off,%f,%f\n", transformations[reparameterization],
                 mseconds(start, end) / 1000., logP);
 
     if (debug) {
@@ -174,8 +180,7 @@ void test_height_transform_jacobian(size_t iter, const char* newick,
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
     if (csv != NULL)
-        fprintf(csv, "ratio_transform_jacobian%s,gradient,off,%f,\n",
-                (reparameterization == TREE_TRANSFORM_RATIO_NAIVE ? "2" : ""),
+        fprintf(csv, "transform_jacobian-%s,gradient,off,%f,\n", transformations[reparameterization],
                 mseconds(start, end) / 1000.);
 
     if (debug) {
@@ -205,7 +210,7 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     init_heights_from_bls(tree);
 
     Model* mtree = new_TreeModel("letree", tree);
-    TreeModel_set_transform(mtree, TREE_TRANSFORM_RATIO);
+    TreeModel_set_transform(mtree, reparameterization);
     Model* mtt = mtree->data;
     TreeTransform* tt = mtt->obj;
     Parameters* reparams = get_reparams(tree);
@@ -217,8 +222,7 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu evaluations: %f ms\n", iter, mseconds(start, end));
     if (csv != NULL)
-        fprintf(csv, "ratio_transform%s,evaluation,off,%f,\n",
-                (reparameterization == TREE_TRANSFORM_RATIO_NAIVE ? "2" : ""),
+        fprintf(csv, "transform-%s,evaluation,off,%f,\n", transformations[reparameterization],
                 mseconds(start, end) / 1000.);
 
     double* gradient = malloc((Tree_tip_count(tree) - 1) * sizeof(double));
@@ -235,8 +239,8 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
     if (csv != NULL)
-        fprintf(csv, "ratio_transform%s,gradient,off,%f,\n",
-                (reparameterization == TREE_TRANSFORM_RATIO_NAIVE ? "2" : ""),
+        fprintf(csv, "transform-%s,gradient,off,%f,\n",
+                transformations[reparameterization],
                 mseconds(start, end) / 1000.);
 
     free(gradient);
@@ -599,12 +603,18 @@ int main(int argc, char* argv[]) {
                                    debug);
     printf("efficient:\n");
     test_height_transform_jacobian(iter, newick, TREE_TRANSFORM_RATIO, csv, debug);
+    printf("proportions:\n");
+    test_height_transform_jacobian(iter, newick, TREE_TRANSFORM_PROPORTION, csv, debug);
 
     printf("Height transform:\n");
     printf("naive:\n");
     test_height_transform(iter, newick, TREE_TRANSFORM_RATIO_NAIVE, csv, debug);
     printf("efficient:\n");
     test_height_transform(iter, newick, TREE_TRANSFORM_RATIO, csv, debug);
+    printf("proportions:\n");
+    test_height_transform(iter, newick, TREE_TRANSFORM_PROPORTION, csv, debug);
+    printf("shifts:\n");
+    test_height_transform(iter, newick, TREE_TRANSFORM_SHIFT, csv, debug);
 
     printf("Constant coalescent:\n");
     test_constant(iter, newick, csv, debug);

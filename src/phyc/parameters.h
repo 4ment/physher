@@ -48,7 +48,6 @@ typedef enum model_t{
 	MODEL_LAPLACE,
 	MODEL_PARAMETERS,
 	MODEL_PARSIMONY,
-	MODEL_SIMPLEX,
 	MODEL_SITEMODEL,
 	MODEL_SUBSTITUTION,
 	MODEL_TREE,
@@ -70,7 +69,6 @@ static const char* model_type_strings[] = {
 	"laplace",
 	"parameters",
 	"parsimony",
-	"simplex",
 	"sitemodel",
 	"substitutionmodel",
 	"tree",
@@ -142,6 +140,7 @@ struct _Parameter{
 	double *stored_value;
 	bool stored;
 	size_t dim;
+	bool simplex;
 	Constraint *cnstr;
 	bool estimate;
 	ListenerList *listeners;
@@ -424,11 +423,7 @@ struct _Model {
 	void* data;
 	double (*logP)( Model * );
 	double (*full_logP)( Model * );
-	double (*dlogP)( Model *, const Parameter* );
-	double (*d2logP)( Model *, const Parameter* );
-	double (*ddlogP)(Model*, const Parameter*, const Parameter*);
 	double (*gradient)( Model *, const Parameters*);
-	void (*prepare_gradient)( Model *, const Parameters* );
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, Parameter*, int );

@@ -42,14 +42,14 @@ void print_tree_extended( FILE *pf, const Node *n, char **info ){
 	if( n == NULL ) return;
 	if( n->left != NULL ) fprintf(pf, "(");
 	else{
-		fprintf(pf, "%s[&%s]:%f", n->name, info[n->postorder_idx], n->distance->value[0]);
+		fprintf(pf, "%s[&%s]:%f", n->name, info[n->postorder_idx], Node_distance(n));
 		return;
 	}
 	print_tree_extended( pf, n->left, info );
 	fprintf(pf, ",");
 	print_tree_extended( pf, n->right, info );
 	fprintf(pf, ")");
-	if( n->parent != NULL ) fprintf(pf, "[&%s]:%f", info[n->postorder_idx], n->distance->value[0]);
+	if( n->parent != NULL ) fprintf(pf, "[&%s]:%f", info[n->postorder_idx], Node_distance(n));
 	//else fprintf(pf, "\n");	
 }
 
@@ -124,20 +124,20 @@ static void _Tree_print_nexus_with_annotation_aux( FILE *pf, Tree *tree, const N
             }
             StringBuffer_chop(buff);
             if(time){
-                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, (n->parent->height->value[0] - n->height->value[0]) );
+                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, Node_time_elapsed(n));
             }
             else {
-                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, n->distance->value[0] );
+                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, Node_distance(n));
             }
             //fflush(pf);
             free_StringBuffer(buff);
         }
         else {
             if(time){
-                fprintf(pf, "%d:%.20f", ++(*count), (n->parent->height->value[0] - n->height->value[0]) );
+                fprintf(pf, "%d:%.20f", ++(*count), Node_time_elapsed(n));
             }
             else{
-                fprintf(pf, "%d:%.20f", ++(*count), n->distance->value[0] );
+                fprintf(pf, "%d:%.20f", ++(*count), Node_distance(n));
             }
         }
 		return;
@@ -186,12 +186,18 @@ static void _Tree_print_nexus_with_annotation_aux( FILE *pf, Tree *tree, const N
 }
 
 void Tree_print_nexus_with_annotation( FILE *pf, Tree *tree ){
+    if(Tree_is_time_mode(tree)){
+        Tree_update_heights(tree);
+    }
     int cunt = 0;
     _Tree_print_nexus_with_annotation_aux(pf, tree, Tree_root(tree), &cunt, true);
 }
 
 void Tree_print_nexus_with_annotation2( FILE *pf, Tree *tree, bool time ){
     int cunt = 0;
+    if(Tree_is_time_mode(tree)){
+        Tree_update_heights(tree);
+    }
     _Tree_print_nexus_with_annotation_aux(pf, tree, Tree_root(tree), &cunt, time);
 }
 
@@ -200,7 +206,7 @@ static void _Tree_print_nexus_aux( FILE *pf, Tree *tree, const Node *n, int *cou
 	if( !Node_isleaf(n) ) fprintf(pf, "(");
 	else {
 		if(Tree_is_time_mode(tree)){
-        	fprintf(pf, "%d:%f", ++(*count), (n->parent->height->value[0] - n->height->value[0]) );
+        	fprintf(pf, "%d:%f", ++(*count), Node_time_elapsed(n));
 		}
 		else{
 			fprintf(pf, "%d:%f", ++(*count), Node_distance(n) );
@@ -228,42 +234,48 @@ static void _Tree_print_nexus_aux( FILE *pf, Tree *tree, const Node *n, int *cou
 }
 
 void Tree_print_nexus( FILE *pf, Tree *tree ){
+    if(Tree_is_time_mode(tree)){
+        Tree_update_heights(tree);
+    }
     int cunt = 0;
     _Tree_print_nexus_aux(pf, tree, Tree_root(tree), &cunt);
 }
 
 
 
-void Tree_print_newick_subtree( FILE *pf, bool time, const Node *n, bool internal ){
+void Tree_print_newick_subtree( FILE *pf, bool time, const Node *n, bool internal, int precision ){
 	if( n == NULL ) return;
 	if( n->left != NULL ) fprintf(pf, "(");
 	else{
 		if(time){
-			fprintf(pf, "%s:%.8f", n->name, Node_time_elapsed((Node*)n) );
+			fprintf(pf, "%s:%.*f", n->name, precision, Node_time_elapsed((Node*)n) );
 		}
 		else{
-			fprintf(pf, "%s:%.8f", n->name, n->distance->value[0]);
+			fprintf(pf, "%s:%.*f", n->name, precision, Node_distance(n));
 		}
 		return;
 	}
-	Tree_print_newick_subtree( pf, time, n->left, internal );
+	Tree_print_newick_subtree( pf, time, n->left, internal, precision );
 	fprintf(pf, ",");
-	Tree_print_newick_subtree( pf, time, n->right, internal );
+	Tree_print_newick_subtree( pf, time, n->right, internal, precision );
 	fprintf(pf, ")");
 	if( n->parent != NULL ){
 		if( internal ) fprintf(pf, "%s", n->name);
 		if(time){
-			fprintf(pf, ":%.8f", Node_time_elapsed((Node*)n));
+			fprintf(pf, ":%.*f", precision, Node_time_elapsed((Node*)n));
 		}
 		else{
-			fprintf(pf, ":%.8f", n->distance->value[0]);
+			fprintf(pf, ":%.*f", precision, Node_distance(n));
 		}
 	}
 	else fprintf(pf, ";");
 }
 
-void Tree_print_newick( FILE *pf, Tree *tree, bool internal ){
-    Tree_print_newick_subtree(pf, Tree_is_time_mode(tree), Tree_root(tree), internal);
+void Tree_print_newick(FILE *pf, Tree *tree, bool internal, int precision){
+    if(Tree_is_time_mode(tree)){
+        Tree_update_heights(tree);
+    }
+    Tree_print_newick_subtree(pf, Tree_is_time_mode(tree), Tree_root(tree), internal, precision);
 }
 
 static void _Tree_print_height_newick_aux( FILE *pf, Tree *tree, const Node *n, bool internal ){
@@ -286,6 +298,9 @@ static void _Tree_print_height_newick_aux( FILE *pf, Tree *tree, const Node *n, 
 }
 
 void Tree_print_height_newick( FILE *pf, Tree *tree, bool internal ){
+    if(Tree_is_time_mode(tree)){
+        Tree_update_heights(tree);
+    }
 	_Tree_print_height_newick_aux(pf, tree, Tree_root(tree), internal);
 }
 

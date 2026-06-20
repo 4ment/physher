@@ -475,6 +475,7 @@ static double _inverse_transform_gradient_log_jacobian_exp(double* res, const do
 // [0,1]
 
 // y = T^{-1}(x)
+// R+ -> R
 static void _transform_logit(const double* x, double* y, size_t dim, double lower,
                              double upper) {
     for (size_t i = 0; i < dim; i++) {
@@ -483,10 +484,13 @@ static void _transform_logit(const double* x, double* y, size_t dim, double lowe
 }
 
 // x = T(y)
+// R -> R+
 static void _inverse_transform_logit(double* x, const double* y, size_t dim, double lb,
                                      double ub) {
     for (size_t i = 0; i < dim; i++) {
+        // printf("y[%zu]=%f %f\n", i, y[i], inverse_logit(y[i]));
         x[i] = inverse_logit(y[i]);
+        // x[i] = (x[i] > 1.0 - 1e-1) ? 1.0 - 1e-1 : x[i];
     }
 }
 

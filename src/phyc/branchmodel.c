@@ -121,9 +121,9 @@ static void _branchmodel_handle_change(Model *self, Model *model, Parameter *par
         self->listeners->fire(self->listeners, self, parameter, index);
     } else if (bm->name == CLOCK_DISCRETE) {
         self->listeners->fire(self->listeners, self, parameter, index);
-    } if (bm->name == CLOCK_ARBITRARY) {
+    } else if (bm->name == CLOCK_ARBITRARY) {
 		if(parameter == Parameters_at(bm->rates, 0)){
-			// rates
+			// rates: could be -1 for all branches or index for one branch
 			self->listeners->fire(self->listeners, self, parameter, index);
 		} else {
 			// location or scale

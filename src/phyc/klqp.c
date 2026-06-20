@@ -308,10 +308,10 @@ void klqp_block_meanfield_normal_sample1(variational_block_t* var, double* jacob
     
     if (jacobian != NULL) {
         for(int s = 0; s < var->simplex_count; s++){
-            Simplex* simplex = var->simplices[s]->obj;
-            const double* constrained_values = simplex->get_values(simplex);
+            Parameter* simplex = var->simplices[s];
+            const double* constrained_values = Parameter_values(simplex);
             double stick = 1;
-            for(int k = 0; k < simplex->K-1; k++){
+            for(int k = 0; k < Parameter_size(simplex)-1; k++){
                 *jacobian += log(stick);
                 stick -= constrained_values[k];
             }
@@ -392,8 +392,8 @@ void klqp_block_meanfield_normal_grad_elbo(variational_block_t* var, const Param
     int idx = 0;
     if (simplex_parameter_count > 0) {
         for(int s = 0; s < var->simplex_count; s++){
-            Simplex* simplex = var->simplices[s]->obj;
-            for(int k = 0; k < simplex->K-1; k++){
+            Parameter* simplex = var->simplices[s];
+            for(int k = 0; k < Parameter_size(simplex)-1; k++){
                 Parameter* p = Parameters_at(var->parameters, idx);
                 double mu = Parameters_value(var->var_parameters[0], idx);
                 double sigma = Parameters_value(var->var_parameters[1], idx);
@@ -581,10 +581,10 @@ void klqp_block_fullrank_normal_sample1(variational_block_t* var, double* jacobi
     
     if (jacobian != NULL) {
         for(int s = 0; s < var->simplex_count; s++){
-            Simplex* simplex = var->simplices[s]->obj;
-            const double* constrained_values = simplex->get_values(simplex);
+            Parameter* simplex = var->simplices[s];
+            const double* constrained_values = Parameter_values(simplex);
             double stick = 1;
-            for(int k = 0; k < simplex->K-1; k++){
+            for(int k = 0; k < Parameter_size(simplex)-1; k++){
                 *jacobian += log(stick);
                 stick -= constrained_values[k];
             }
@@ -883,10 +883,10 @@ double klqp_meanfield_normal_elbo(variational_t* var){
 		
 		if (var->simplex_count > 0) {
 			for(int s = 0; s < var->simplex_count; s++){
-				Simplex* simplex = var->simplices[s]->obj;
-				const double* constrained_values = simplex->get_values(simplex);
+				Parameter* simplex = var->simplices[s];
+				const double* constrained_values = Parameter_values(simplex);
 				double stick = 1;
-				for(int k = 0; k < simplex->K-1; k++){
+				for(int k = 0; k < Parameter_size(simplex)-1; k++){
 					jacobian += log(stick);
 					stick -= constrained_values[k];
 				}
@@ -950,10 +950,10 @@ double klqp_meanfield_normal_elbo_multi(variational_t* var){
 			
 			if (var->simplex_count > 0) {
 				for(int s = 0; s < var->simplex_count; s++){
-					Simplex* simplex = var->simplices[s]->obj;
-					const double* constrained_values = simplex->get_values(simplex);
+					Parameter* simplex = var->simplices[s];
+					const double* constrained_values = Parameter_values(simplex);
 					double stick = 1;
-					for(int k = 0; k < simplex->K-1; k++){
+					for(int k = 0; k < Parameter_size(simplex)-1; k++){
 						jacobian += log(stick);
 						stick -= constrained_values[k];
 					}
@@ -1003,8 +1003,8 @@ void klqp_meanfield_normal_grad_elbo(variational_t* var, const Parameters* param
 	int simplex_parameter_count = 0;
 	if (var->simplex_count > 0) {
 		for(int s = 0; s < var->simplex_count; s++){
-			Simplex* simplex = var->simplices[s]->obj;
-			simplex_parameter_count += simplex->K - 1;
+			Parameter* simplex = var->simplices[s];
+			simplex_parameter_count += Parameter_size(simplex) - 1;
 		}
 	}
 	
@@ -1013,8 +1013,8 @@ void klqp_meanfield_normal_grad_elbo(variational_t* var, const Parameters* param
 		if (var->simplex_count > 0) {
 			int idx = 0;
 			for(int s = 0; s < var->simplex_count; s++){
-				Simplex* simplex = var->simplices[s]->obj;
-				for(int k = 0; k < simplex->K-1; k++){
+				Parameter* simplex = var->simplices[s];
+				for(int k = 0; k < Parameter_size(simplex)-1; k++){
 					Parameter* p = Parameters_at(var->parameters, idx);
 					double mu = Parameters_value(var->var_parameters, idx);
 					double sigma = exp(Parameters_value(var->var_parameters, idx+dim));
@@ -1028,8 +1028,8 @@ void klqp_meanfield_normal_grad_elbo(variational_t* var, const Parameters* param
 			}
 			idx = 0;
 			for(int s = 0; s < var->simplex_count; s++){
-				Simplex* simplex = var->simplices[s]->obj;
-				for(int k = 0; k < simplex->K-1; k++){
+				Parameter* simplex = var->simplices[s];
+				for(int k = 0; k < Parameter_size(simplex)-1; k++){
 					Parameter* p = Parameters_at(var->parameters, idx);
 					double dlogP = posterior->dlogP(posterior, p);
 					double gldits = 1.0/zeta[idx] + 1.0/(zeta[idx]-1.0); // grad log det transform of stick
@@ -1192,12 +1192,12 @@ void klqp_meanfield_normal_log_samples(variational_t* var, FILE* file){
 	int offset = 0; // don't log the simplex unconstrained parameters
 	if (var->simplex_count > 0) {
 		for(int s = 0; s < var->simplex_count; s++){
-			Model* msimplex = var->simplices[s];
-			Simplex* simplex = msimplex->obj;
-			for(int k = 0; k < simplex->K; k++){
-				fprintf(file, ",%s.%d", msimplex->name, k);
+			Parameter* msimplex = var->simplices[s];
+			Parameter* simplex = msimplex;
+			for(int k = 0; k < Parameter_size(simplex); k++){
+				fprintf(file, ",%s.%d", Parameter_name(msimplex), k);
 			}
-			offset += simplex->K-1;
+			offset += Parameter_size(simplex)-1;
 		}
 	}
 	
@@ -1237,9 +1237,9 @@ void klqp_meanfield_normal_log_samples(variational_t* var, FILE* file){
 		
 		if (var->simplex_count > 0) {
 			for(int s = 0; s < var->simplex_count; s++){
-				Simplex* simplex = var->simplices[s]->obj;
-				const double* constrained_values = simplex->get_values(simplex);
-				for(int k = 0; k < simplex->K; k++){
+				Parameter* simplex = var->simplices[s];
+				const double* constrained_values = Parameter_values(simplex);
+				for(int k = 0; k < Parameter_size(simplex); k++){
 					fprintf(file, ",%e",constrained_values[k]);
 				}
 			}
@@ -1425,12 +1425,12 @@ void klqp_meanfield_lognormal_log_samples(variational_t* var, FILE* file){
     int offset = 0; // don't log the simplex unconstrained parameters
     if (var->simplex_count > 0) {
         for(int s = 0; s < var->simplex_count; s++){
-            Model* msimplex = var->simplices[s];
-            Simplex* simplex = msimplex->obj;
-            for(int k = 0; k < simplex->K; k++){
-                fprintf(file, ",%s.%d", msimplex->name, k);
+            Parameter* msimplex = var->simplices[s];
+            Parameter* simplex = msimplex;
+            for(int k = 0; k < Parameter_size(simplex); k++){
+                fprintf(file, ",%s.%d", Parameter_name(msimplex), k);
             }
-            offset += simplex->K-1;
+            offset += Parameter_size(simplex)-1;
         }
     }
     
@@ -1462,9 +1462,9 @@ void klqp_meanfield_lognormal_log_samples(variational_t* var, FILE* file){
         
         if (var->simplex_count > 0) {
             for(int s = 0; s < var->simplex_count; s++){
-                Simplex* simplex = var->simplices[s]->obj;
-                const double* constrained_values = simplex->get_values(simplex);
-                for(int k = 0; k < simplex->K; k++){
+                Parameter* simplex = var->simplices[s];
+                const double* constrained_values = Parameter_values(simplex);
+                for(int k = 0; k < Parameter_size(simplex); k++){
                     fprintf(file, ",%e",constrained_values[k]);
                 }
             }
@@ -1622,10 +1622,10 @@ double klqp_fullrank_normal_elbo(variational_t* var){
 		}
         
         for(int s = 0; s < var->simplex_count; s++){
-            Simplex* simplex = var->simplices[s]->obj;
-            const double* constrained_values = simplex->get_values(simplex);
+            Parameter* simplex = var->simplices[s];
+            const double* constrained_values = Parameter_values(simplex);
             double stick = 1;
-            for(int k = 0; k < simplex->K-1; k++){
+            for(int k = 0; k < Parameter_size(simplex)-1; k++){
                 jacobian += log(stick);
                 stick -= constrained_values[k];
             }
@@ -1660,8 +1660,8 @@ void klqp_fullrank_normal_grad_elbo(variational_t* var, const Parameters* parame
 	
     size_t simplex_parameter_count = 0;
     for(int s = 0; s < var->simplex_count; s++){
-        Simplex* simplex = var->simplices[s]->obj;
-        simplex_parameter_count += simplex->K - 1;
+        Parameter* simplex = var->simplices[s];
+        simplex_parameter_count += Parameter_size(simplex) - 1;
     }
     
 	for (int i = 0; i < var->grad_samples; i++) {
@@ -1806,12 +1806,12 @@ void klqp_fullrank_log_samples(variational_t* var, FILE* file){
 	int offset = 0; // don't log the simplex unconstrained parameters
 	if (var->simplex_count > 0) {
 		for(int s = 0; s < var->simplex_count; s++){
-			Model* msimplex = var->simplices[s];
-			Simplex* simplex = msimplex->obj;
-			for(int k = 0; k < simplex->K; k++){
-				fprintf(file, ",%s.%d", msimplex->name, k);
+			Parameter* msimplex = var->simplices[s];
+			Parameter* simplex = msimplex;
+			for(int k = 0; k < Parameter_size(simplex); k++){
+				fprintf(file, ",%s.%d", Parameter_name(msimplex), k);
 			}
-			offset += simplex->K-1;
+			offset += Parameter_size(simplex)-1;
 		}
 	}
 	
@@ -1853,9 +1853,9 @@ void klqp_fullrank_log_samples(variational_t* var, FILE* file){
 		
 		if (var->simplex_count > 0) {
 			for(int s = 0; s < var->simplex_count; s++){
-				Simplex* simplex = var->simplices[s]->obj;
-				const double* constrained_values = simplex->get_values(simplex);
-				for(int k = 0; k < simplex->K; k++){
+				Parameter* simplex = var->simplices[s];
+				const double* constrained_values = Parameter_values(simplex);
+				for(int k = 0; k < Parameter_size(simplex); k++){
 					fprintf(file, ",%f",constrained_values[k]);
 				}
 			}

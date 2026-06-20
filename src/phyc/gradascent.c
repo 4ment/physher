@@ -225,9 +225,23 @@ int compare (const void * a, const void * b){
 	return ( *(double*)a - *(double*)b );
 }
 
+
+bool adam_interrupted = false;
+
+void adam_signal_callback_handler( int signum ) {
+	printf("Caught signal %d\n",signum);
+	if ( adam_interrupted == true ) {
+		exit(SIGINT);
+	}
+	adam_interrupted = true;
+}
+
 // use loss to compute gradient
 // opt_result optimize_stochastic_gradient_adam(Model* loss, Parameters* parameters, double eta, bool maximize, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer){
 opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer, Logger* logger){
+	signal(SIGINT, adam_signal_callback_handler);
+	adam_interrupted = false;
+
 	size_t dim = 0;
 	for(size_t i = 0; i < Parameters_count(parameters); i++){
 		Parameter* p = Parameters_at(parameters, i);
@@ -263,14 +277,55 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 	// if(verbose > 0)
 	// 	printf("%zu ELBO: %f\n", stop->iter, elbo0);
 	if(logger){
+#ifndef ADAM_DEBUG
 		printf("0 ");
 		logger->log(logger);
+#endif
 	}
-	
+
+#ifdef ADAM_DEBUG
+	fprintf(stdout, "logP");
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* p = Parameters_at(parameters, i);
+		for(size_t j = 0; j < Parameter_size(p); j++){
+			fprintf(stdout, ",%s.%zu", Parameter_name(p), j);
+		}
+	}
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* p = Parameters_at(parameters, i);
+		for(size_t j = 0; j < Parameter_size(p); j++){
+			fprintf(stdout, ",g.%s.%zu", Parameter_name(p), j);
+		}
+	}
+	fprintf(stdout, "\n");
+#endif
+
 	while(stop->iter++ < stop->iter_max){
 		// grad_f(parameters, grads, data);
+#ifdef ADAM_DEBUG
+		logger->log(logger);
+#endif
+		double logP = model->logP(model);
 		Parameters_zero_grad(parameters);
 		model->gradient(model, parameters);
+
+#ifdef ADAM_DEBUG
+		fprintf(stdout, "%.10f", logP);
+		for(size_t i = 0; i < Parameters_count(parameters); i++){
+			Parameter* p = Parameters_at(parameters, i);
+			const double* value = Parameter_values(p);
+			for(size_t j = 0; j < Parameter_size(p); j++){
+				fprintf(stdout, ",%.10f", value[j]);
+			}
+		}
+		for(size_t i = 0; i < Parameters_count(parameters); i++){
+			Parameter* p = Parameters_at(parameters, i);
+			for(size_t j = 0; j < Parameter_size(p); j++){
+				fprintf(stdout, ",%.10f", p->grad[j]);
+			}
+		}
+		fprintf(stdout, "\n");
+#endif
 		double eta_scaled = eta / sqrt(stop->iter);
 		double beta1p = pow(beta1, stop->iter);
 		double beta2p = pow(beta2, stop->iter);
@@ -317,6 +372,7 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 			}
 		}
 
+#ifndef ADAM_DEBUG
 		if (stop->iter % eval_elbo == 0) {
 			elbo_prev = elbo;
 			// elbo = f(parameters, NULL, data);
@@ -356,7 +412,15 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 				conv++;
 			}
 		}
+#endif
+
+		if(adam_interrupted){
+			break;
+		}
 	}
+
+	signal(SIGINT, SIG_DFL);// restore the default handler
+
 	free(temp);
 	free(grads);
 	free(var_grad);

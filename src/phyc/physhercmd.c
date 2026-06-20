@@ -402,12 +402,10 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 			json_node* jfreqs = create_json_node_object(jsubstmodel, "frequencies");
 			add_json_node(jsubstmodel, jfreqs);
 			
-			add_json_node_string(jfreqs, "id", "freqs");
-			add_json_node_string(jfreqs, "type", "simplex");
-			add_json_node_array_double(jfreqs, "values", frequencies, 4);
+			fill_json_node_simplex(jfreqs, "freqs", 4, frequencies);
 			
 			if (!frequencies_fixed && strcasecmp("K80", model_string) != 0 && strcasecmp("SYM", model_string) != 0 && strcasecmp("JC69", model_string) != 0) {
-				add_json_node_string(jparams, NULL, "$freqs");
+				add_json_node_string(jparams, NULL, "&freqs.unconstrained");
 			}
 			
 			if(!equal_frequencies){
@@ -465,9 +463,12 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 				}
 			}
 			else if( rateCount == 6 ){
-				add_json_node_string(jrates, "id", "rates");
-				add_json_node_string(jrates, "type", "Simplex");
-				add_json_node_size_t(jrates, "dimension", 6);
+				double rates_uniform[6];
+				for (int i = 0; i < 6; i++) rates_uniform[i] = 1.0 / 6.0;
+				fill_json_node_simplex(jrates, "rates", 6, rates_uniform);
+				if (!rates_fixed) {
+					add_json_node_string(jparams, NULL, "&rates.unconstrained");
+				}
 			}
 			else if( rateCount == 1 ){
 				rates = dvector(rateCount);
@@ -502,9 +503,7 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 		json_node* jfreqs = create_json_node_object(jsubstmodel, "frequencies");
 		add_json_node(jsubstmodel, jfreqs);
 		
-		add_json_node_string(jfreqs, "id", "freqs");
-		add_json_node_string(jfreqs, "type", "simplex");
-		add_json_node_array_double(jfreqs, "values", frequencies, matrixDimension);
+		fill_json_node_simplex(jfreqs, "freqs", matrixDimension, frequencies);
 	}
 	else if ( dt == DATA_TYPE_AMINO_ACID ) {
 		add_json_node_string(jsubstmodel, "model", model_string);
@@ -513,9 +512,7 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 			json_node* jfreqs = create_json_node_object(jsubstmodel, "frequencies");
 			add_json_node(jsubstmodel, jfreqs);
 			
-			add_json_node_string(jfreqs, "id", "freqs");
-			add_json_node_string(jfreqs, "type", "simplex");
-			add_json_node_array_double(jfreqs, "values", frequencies, matrixDimension);
+			fill_json_node_simplex(jfreqs, "freqs", matrixDimension, frequencies);
 		}
 //		rates_fixed = true;
 //		frequencies_fixed = true;
@@ -530,9 +527,7 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 		json_node* jfreqs = create_json_node_object(jsubstmodel, "frequencies");
 		add_json_node(jsubstmodel, jfreqs);
 		
-		add_json_node_string(jfreqs, "id", "freqs");
-		add_json_node_string(jfreqs, "type", "simplex");
-		add_json_node_array_double(jfreqs, "values", frequencies, matrixDimension);
+		fill_json_node_simplex(jfreqs, "freqs", matrixDimension, frequencies);
 		
 		rateCount = 1;
 		if( strcasecmp(model_string,"ER") == 0 ){
@@ -655,7 +650,7 @@ void create_json_site_model(Hashtable* options, Hashtable* nodes){
 			
 			
 			if(!pinv_fixed){
-				add_json_node_string(jopt_sm_params, NULL, "$proportions");
+				add_json_node_string(jopt_sm_params, NULL, "&proportions.unconstrained");
 			}
 		}
 		else {
@@ -668,11 +663,11 @@ void create_json_site_model(Hashtable* options, Hashtable* nodes){
 			
 			if(strcasecmp(dist, "discrete") == 0 || strcasecmp(quad, "discrete") == 0){
 				json_node* p = create_json_node_simplex(jdistribution, "proportions", cat);
-				add_json_node_string(jopt_sm_params, NULL, "$proportions");
+				add_json_node_string(jopt_sm_params, NULL, "&proportions.unconstrained");
 			}
 			else if(pinv > 0 && strcasecmp(dist, "discrete") != 0 && strcasecmp(quad, "beta") != 0 && strcasecmp(quad, "laguerre") != 0){
 				json_node* p = create_json_node_simplex(jdistribution, "proportions", 2);
-				add_json_node_string(jopt_sm_params, NULL, "$proportions");
+				add_json_node_string(jopt_sm_params, NULL, "&proportions.unconstrained");
 			}
 			
 			json_node* jparameters = create_json_node_object(jdistribution, "parameters");

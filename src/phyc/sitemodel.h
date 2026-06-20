@@ -22,7 +22,6 @@
 #include "mstring.h"
 #include "distmodel.h"
 #include "sitepattern.h"
-#include "simplex.h"
 
 #define SITEMODEL_ALPHA_MIN 0.001
 #define SITEMODEL_ALPHA_MAX 100

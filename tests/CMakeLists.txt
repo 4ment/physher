@@ -26,6 +26,9 @@ target_link_libraries(test_tree phyc)
 add_executable(test_tree_likelihood test_tree_likelihood.c)
 target_link_libraries(test_tree_likelihood phyc)
 
+add_executable(test_compound test_compound.c)
+target_link_libraries(test_compound phyc)
+
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/data
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
@@ -66,6 +69,10 @@ add_test (NAME Test_tree
 add_test (NAME Test_tree_likelihood
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_tree_likelihood)
+
+add_test (NAME Test_compound
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_compound)
 
 
 find_program(VALGRIND "valgrind")

@@ -23,10 +23,10 @@
 double _compoundModel_logP(CompoundModel* cm){
 	double logP = 0;
 	if (cm->weights != NULL) {
-		Simplex* s = cm->weights->obj;
 		logP = -DBL_MAX;
+		const double* weights = Parameter_values(cm->weights);
 		for(int i = 0; i < cm->count; i++){
-			logP = logaddexp(logP, log(s->get_value(s, i)) + cm->models[i]->logP(cm->models[i]));
+			logP = logaddexp(logP, log(weights[i]) + cm->models[i]->logP(cm->models[i]));
 		}
 	}
 	else{
@@ -40,10 +40,10 @@ double _compoundModel_logP(CompoundModel* cm){
 double _compoundModel_full_logP(CompoundModel* cm){
 	double logP = 0;
 	if (cm->weights != NULL) {
-		Simplex* s = cm->weights->obj;
 		logP = -DBL_MAX;
+		const double* weights = Parameter_values(cm->weights);
 		for(int i = 0; i < cm->count; i++){
-			logP = logaddexp(logP, log(s->get_value(s, i)) + cm->models[i]->full_logP(cm->models[i]));
+			logP = logaddexp(logP, log(weights[i]) + cm->models[i]->full_logP(cm->models[i]));
 		}
 	}
 	else{
@@ -57,10 +57,10 @@ double _compoundModel_full_logP(CompoundModel* cm){
 double _compoundModel_gradient(CompoundModel* cm, Parameters* parameters){
 	double logP = 0;
 	if (cm->weights != NULL) {
-		Simplex* s = cm->weights->obj;
 		logP = -DBL_MAX;
+		const double* weights = Parameter_values(cm->weights);
 		for(int i = 0; i < cm->count; i++){
-			logP = logaddexp(logP, log(s->get_value(s, i)) + cm->models[i]->full_logP(cm->models[i]));
+			logP = logaddexp(logP, log(weights[i]) + cm->models[i]->full_logP(cm->models[i]));
 		}
 	}
 	else{
@@ -69,50 +69,6 @@ double _compoundModel_gradient(CompoundModel* cm, Parameters* parameters){
 		}
 	}
 	return logP;
-}
-
-double _compoundModel_dlogP(CompoundModel* cm, const Parameter* p){
-	double dlogP = 0;
-	if (cm->weights != NULL) {
-		Simplex* s = cm->weights->obj;
-		for(int i = 0; i < cm->count; i++){
-			dlogP += log(s->get_value(s, i)) + cm->models[i]->dlogP(cm->models[i], p);
-		}
-	}
-	else{
-		for(int i = 0; i < cm->count; i++){
-			dlogP += cm->models[i]->dlogP(cm->models[i], p);
-		}
-	}
-	return dlogP;
-}
-
-double _compoundModel_d2logP(CompoundModel* cm, const Parameter* p){
-	double d2logP = 0;
-	if (cm->weights != NULL) {
-		Simplex* s = cm->weights->obj;
-		for(int i = 0; i < cm->count; i++){
-			d2logP += log(s->get_value(s, i)) + cm->models[i]->d2logP(cm->models[i], p);
-		}
-	}
-	else{
-		for(int i = 0; i < cm->count; i++){
-			d2logP += cm->models[i]->d2logP(cm->models[i], p);
-		}
-	}
-	return d2logP;
-}
-
-double _compoundModel_ddlogP(CompoundModel* cm, const Parameter* p1, const Parameter* p2){
-	double ddlogP = 0;
-	if(cm->weights!=NULL){
-		fprintf(stderr, "Mixture _compoundModel_ddlogP not yet implemented\n");
-		exit(11);
-	}
-	for(int i = 0; i < cm->count; i++){
-		ddlogP += cm->models[i]->ddlogP(cm->models[i], p1, p2);
-	}
-	return ddlogP;
 }
 
 static void _compoundModel_add(CompoundModel* cm, Model*model){
@@ -159,7 +115,7 @@ static void _free_compound_model(CompoundModel* cm){
 	for (int i = 0; i < cm->count; i++) {
 		cm->models[i]->free(cm->models[i]);
 	}
-	if(cm->weights!=NULL) cm->weights->free(cm->weights);
+	if(cm->weights!=NULL) free_Parameter(cm->weights);
 	free(cm->models);
 	free(cm);
 }
@@ -171,9 +127,6 @@ CompoundModel* clone_compound_model(CompoundModel* cm){
 	clone->remove = cm->remove;
 	clone->removeAll = cm->removeAll;
 	clone->logP = cm->logP;
-	clone->dlogP = cm->dlogP;
-	clone->d2logP = cm->d2logP;
-	clone->ddlogP = cm->ddlogP;
 	clone->free = cm->free;
     clone->weights = NULL;
 	return clone;
@@ -203,16 +156,16 @@ static Model* _compound_model_clone( Model *self, Hashtable* hash ){
 		mclone->free(mclone);
 	}
 	if(cm->weights != NULL){
-		Model* msimplex_rates_clone = NULL;
-		if (Hashtable_exists(hash, cm->weights->name)) {
-			msimplex_rates_clone = Hashtable_get(hash, cm->weights->name);
-			msimplex_rates_clone->ref_count++;
+		Parameter* weights_clone = NULL;
+		if (Hashtable_exists(hash, Parameter_name(cm->weights))) {
+			weights_clone = Hashtable_get(hash, Parameter_name(cm->weights));
+			weights_clone->refCount++;
 		}
 		else{
-			msimplex_rates_clone = cm->weights->clone(cm->weights, hash);
-			Hashtable_add(hash, msimplex_rates_clone->name, msimplex_rates_clone);
+			weights_clone = clone_Parameter(cm->weights);
+			Hashtable_add(hash, Parameter_name(weights_clone), weights_clone);
 		}
-		cmclone->weights = msimplex_rates_clone;
+		cmclone->weights = weights_clone;
 	}
 	Model* clone = new_CompoundModel2(self->name, cmclone);
 	
@@ -241,9 +194,6 @@ CompoundModel* new_CompoundModel(){
 	cm->removeAll = _compoundModel_remove_all;
 	cm->logP = _compoundModel_logP;
 	cm->full_logP = _compoundModel_full_logP;
-	cm->dlogP = _compoundModel_dlogP;
-	cm->d2logP = _compoundModel_d2logP;
-	cm->ddlogP = _compoundModel_ddlogP;
 	cm->free = _free_compound_model;
 	return cm;
 }
@@ -269,7 +219,7 @@ static void _compoundModel_store(Model* self){
 			cm->models[i]->store(cm->models[i]);
 		}
 		if (cm->weights != NULL) {
-			cm->weights->store(cm->weights);
+			Parameter_store(cm->weights);
 		}
 		self->stored = true;
 	}
@@ -283,7 +233,7 @@ static void _compoundModel_restore(Model* self){
 			cm->models[i]->restore(cm->models[i]);
 		}
 		if (cm->weights != NULL) {
-			cm->weights->restore(cm->weights);
+			Parameter_restore(cm->weights);
 		}
 		self->stored = false;
 	}
@@ -296,7 +246,7 @@ static void _compoundModel_accept(Model* self){
 			cm->models[i]->accept(cm->models[i]);
 		}
 		if (cm->weights != NULL) {
-			cm->weights->accept(cm->weights);
+			Parameter_accept(cm->weights);
 		}
 		self->stored = false;
 	}
@@ -316,56 +266,102 @@ double _compoundModel_full_logP2(Model *self){
 
 double _compoundModel_gradient2(Model* self, const Parameters* ps){
 	CompoundModel* cm = (CompoundModel*)self->obj;
-	//FIXME: does not work with weights
-	double logP = 0;
-	// size_t parameterCount = Parameters_count(ps);
-	// size_t size = 0;
-	// for(size_t i = 0; i < parameterCount; i++){
-	// 	size += Parameter_size(Parameters_at(ps, i));
-	// }
-	// double* grads = dvector(size);
-	// size_t index = 0;
-	for (size_t i = 0; i < cm->count; i++) {
-		logP += cm->models[i]->gradient(cm->models[i], ps);
-		// index = 0;
-		// for(size_t j = 0; j < parameterCount; j++){
-		// 	Parameter* p = Parameters_at(ps, j);
-		// 	for(size_t k = 0; k < Parameter_size(p); k++){
-		// 		grads[index++] += p->grad[k];
-		// 	}
-		// }
+
+	// Non-mixture: the caller zeroed the grads and each submodel accumulates
+	// (+=) into the shared p->grad buffers, so the sum over submodels is
+	// already in place when the loop finishes.
+	if (cm->weights == NULL) {
+		double logP = 0;
+		for (size_t i = 0; i < cm->count; i++) {
+			logP += cm->models[i]->gradient(cm->models[i], ps);
+		}
+		return logP;
 	}
 
-	// index = 0;
-	// for(size_t j = 0; j < parameterCount; j++){
-	// 	Parameter* p = Parameters_at(ps, j);
-	// 	memcpy(p->grad, grads+index, sizeof(double)* Parameter_size(p));
-	// 	index += Parameter_size(p);
-	// }
-	// free(grads);
+	// Mixture: logP = logsumexp_i(log w_i + logP_i). The gradient is the
+	// responsibility-weighted sum  d logP = sum_i r_i * d logP_i  with
+	// r_i = exp(log w_i + logP_i - logP). Because submodels accumulate into
+	// the shared p->grad, each component must be computed in isolation,
+	// scaled by r_i, and summed into a separate accumulator.
+	size_t parameterCount = Parameters_count(ps);
+	size_t size = Parameters_size(ps);
+
+	const double* weights = Parameter_values(cm->weights);
+
+	// Pass 1: per-component logP_i and the total logP.
+	double* logPi = dvector(cm->count);
+	double logP = -DBL_MAX;
+	for (size_t i = 0; i < cm->count; i++) {
+		logPi[i] = cm->models[i]->logP(cm->models[i]);
+		logP = logaddexp(logP, log(weights[i]) + logPi[i]);
+	}
+
+	// Pass 2: ps must not be zeroed - it may hold the weights, parameters
+	// shared with the mixture components, or parameters belonging to sibling
+	// models that already accumulated into these buffers. The leaf gradients
+	// accumulate (+=), so after each component call the increment over the
+	// running total is exactly that component's own gradient g_i. The calls
+	// leave the unweighted sum (sum_i g_i) in p->grad; we want the weighted sum
+	// (sum_i r_i * g_i), so we collect the correction sum_i (r_i - 1) * g_i and
+	// add it at the end, never overwriting the pre-existing gradient.
+	double* running = dvector(size);
+	size_t index = 0;
+	for (size_t j = 0; j < parameterCount; j++) {
+		Parameter* p = Parameters_at(ps, j);
+		memcpy(running + index, p->grad, sizeof(double) * Parameter_size(p));
+		index += Parameter_size(p);
+	}
+
+	double* correction = dvector(size);
+	for (size_t i = 0; i < cm->count; i++) {
+		double r = exp(log(weights[i]) + logPi[i] - logP);
+		cm->models[i]->gradient(cm->models[i], ps);
+		index = 0;
+		for (size_t j = 0; j < parameterCount; j++) {
+			Parameter* p = Parameters_at(ps, j);
+			for (size_t k = 0; k < Parameter_size(p); k++) {
+				double gi = p->grad[k] - running[index];
+				correction[index] += (r - 1.0) * gi;
+				running[index] = p->grad[k];
+				index++;
+			}
+		}
+	}
+
+	// Accumulate the correction to turn the unweighted sum left in p->grad into
+	// the responsibility-weighted mixture gradient.
+	index = 0;
+	for (size_t j = 0; j < parameterCount; j++) {
+		Parameter* p = Parameters_at(ps, j);
+		for (size_t k = 0; k < Parameter_size(p); k++) {
+			p->grad[k] += correction[index++];
+		}
+	}
+
+	// Gradient wrt the (constrained) weights: d logP / d w_i = exp(logP_i - logP).
+	// Only computed when ps contains the weights or their unconstrained version.
+	Parameter* weightsx = Parameters_depends(ps, cm->weights);
+	if (weightsx != NULL) {
+		double* dweights = dvector(cm->count);
+		for (size_t i = 0; i < cm->count; i++) {
+			dweights[i] = exp(logPi[i] - logP);
+		}
+		if (weightsx == cm->weights) {
+			for (size_t i = 0; i < cm->count; i++) {
+				cm->weights->grad[i] += dweights[i];
+			}
+		}
+		else {
+			// chain rule into the unconstrained parameter's grad (accumulates).
+			cm->weights->transform->backward(cm->weights->transform, dweights);
+		}
+		free(dweights);
+	}
+
+	free(logPi);
+	free(running);
+	free(correction);
 	return logP;
-}
-
-void _compoundModel_prepare_gradient(Model* self, const Parameters* ps){
-	CompoundModel* cm = (CompoundModel*)self->obj;
-	for (size_t i = 0; i < cm->count; i++) {
-		cm->models[i]->prepare_gradient(cm->models[i], ps);
-	}
-}
-
-double _compoundModel_dlogP2(Model *self, const Parameter* p){
-	CompoundModel* cm = (CompoundModel*)self->obj;
-	return cm->dlogP(cm, p);
-}
-
-double _compoundModel_d2logP2(Model *self, const Parameter* p){
-	CompoundModel* cm = (CompoundModel*)self->obj;
-	return cm->d2logP(cm, p);
-}
-
-double _compoundModel_ddlogP2(Model *self, const Parameter* p1, const Parameter* p2){
-	CompoundModel* cm = (CompoundModel*)self->obj;
-	return cm->ddlogP(cm, p1, p2);
 }
 
 void _compound_model_sample(Model *self){
@@ -396,15 +392,11 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	model->logP = _compoundModel_logP2;
 	model->full_logP = _compoundModel_full_logP2;
 	model->gradient = _compoundModel_gradient2;
-	model->dlogP = _compoundModel_dlogP2;
-	model->d2logP = _compoundModel_d2logP2;
-	model->ddlogP = _compoundModel_ddlogP2;
 	model->free = _compound_model_free;
 	model->clone = _compound_model_clone;
 	model->store = _compoundModel_store;
 	model->restore = _compoundModel_restore;
 	model->accept = _compoundModel_accept;
-	model->prepare_gradient = _compoundModel_prepare_gradient;
 	model->samplable = true;
 	for (int i = 0; i < cm->count; i++) {
 		if (!cm->models[i]->samplable) {
@@ -415,9 +407,10 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 //	for(int i = 0; i < cm->count; i++){
 //		cm->models[i]->listeners->add(cm->models[i]->listeners, model),
 //	}
-//	if (cm->weights != NULL) {
-//		cm->weights->listeners->add( cm->weights->listeners, model );
-//	}
+	if (cm->weights != NULL) {
+		cm->weights->listeners->add( cm->weights->listeners, model );
+		Parameters_add_recursively(model->parameters, cm->weights);
+	}
 	model->sample = _compound_model_sample;
 	model->rsample = _compound_model_rsample;
 	// model->sample_evaluate = _compound_model_sample_evaluate;
@@ -551,15 +544,14 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 	// it's a mixture
 	if (simplex_node != NULL) {
 		if (simplex_node->node_type == MJSON_OBJECT) {
-			cm->weights = new_SimplexModel_from_json(simplex_node, hash);
-			char* id = get_json_node_value_string(simplex_node, "id");
-			Hashtable_add(hash, id, simplex_node);
+			cm->weights = new_Parameter_from_json(simplex_node, hash);
+			Hashtable_add(hash, Parameter_name(cm->weights), cm->weights);
 		}
 		else if(simplex_node->node_type == MJSON_STRING){
 			char* ref = (char*)simplex_node->value;
 			// check it starts with a &
 			cm->weights = Hashtable_get(hash, ref+1);
-			cm->weights->ref_count++;
+			cm->weights->refCount++;
 		}
 	}
 	Model* model = new_CompoundModel2(id, cm);

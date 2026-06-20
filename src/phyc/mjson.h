@@ -40,6 +40,7 @@ json_node* create_json_node_parameters2(json_node* parent, const char* name, siz
 json_node* create_json_node_parameter_full(json_node* parent, const char* name, double value, size_t dimension, double lower, double upper);
 json_node* create_json_node_simplex(json_node* parent, const char* name, size_t dimension);
 json_node* create_json_node_simplex2(json_node* parent, const char* name, size_t dimension, const double* values);
+json_node* fill_json_node_simplex(json_node* jnode, const char* id, size_t dimension, const double* values);
 void add_json_node(json_node* parent, json_node* child);
 json_node* add_json_node_bool(json_node* parent, const char* key, bool value);
 json_node* add_json_node_string(json_node* parent, const char* key, const char* value);

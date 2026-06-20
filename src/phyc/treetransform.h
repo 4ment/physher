@@ -27,6 +27,7 @@ typedef struct TreeTransform {
     double* lowers;
     size_t tipCount;
 	tree_transform_t parameterization;
+    bool* unknownLeaves;
     double (*inverse_transform)(struct TreeTransform*, Node*);
     void (*update)(struct TreeTransform*);
     void (*update_lowers)(struct TreeTransform*);

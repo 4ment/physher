@@ -11,7 +11,7 @@ char* test_tree_serial() {
     char* taxa[4] = {"A", "B", "C", "D"};
     Model* model =
         new_TimeTreeModel_from_newick("(A:2,(B:1.5,(C:2,D:1):2.5):2.5);", taxa, dates);
-    TreeModel_set_transform(model, TREE_TRANSFORM_RATIO);
+    TreeModel_set_transform(model, TREE_TRANSFORM_PROPORTION);
     Tree* tree = model->obj;
     Parameters* ratios = get_reparams(tree);
 

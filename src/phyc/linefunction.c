@@ -32,24 +32,27 @@ LineFunction *new_LineFunction( Parameters *x, opt_func f, void *data ){
 	assert(linfunc);
 	
 	linfunc->dim = Parameters_count(x);
+	linfunc->size = Parameters_size(x);
 	
 	linfunc->parameters = x; // original parameters. I should clone x in linefunc->x in order to keep the boundaries
 	
-	linfunc->x = new_Parameters(Parameters_count(x));
-	for (int i = 0; i < Parameters_count(x); i++) {
-		Parameters_move(linfunc->x, new_Parameter(Parameters_name(x, i), 0, NULL) );
-	}
+	// linfunc->x = new_Parameters(Parameters_count(x));
+	// for (int i = 0; i < Parameters_count(x); i++) {
+	// 	Parameters_move(linfunc->x, new_Parameter(Parameters_name(x, i), 0, NULL) );
+	// }
 	
-	linfunc->s = dvector(Parameters_count(x));	
-	linfunc->xi = dvector(Parameters_count(x));
-	
+	linfunc->s = dvector(linfunc->size);
+	linfunc->xi = dvector(linfunc->size);
+
 	linfunc->f = f;
 	linfunc->data = data;
+	linfunc->lower = -INFINITY;
+	linfunc->upper = INFINITY;
 	return linfunc;
 }
 
 void free_LineFunction( LineFunction *lf ){
-	free_Parameters(lf->x);
+	// free_Parameters(lf->x);
 	lf->parameters = NULL;
 	free(lf->s);
 	free(lf->xi);
@@ -68,17 +71,23 @@ double LineFunction_minimize( LineFunction *lf ){
 }
 
 double LineFunction_evaluate( LineFunction *lf, double lambda ){
-	LineFunction_set_parameters( lf, lambda, lf->x );
-	return lf->f(lf->x, NULL, lf->data);
+	LineFunction_set_parameters( lf, lambda );
+	return lf->f(NULL, NULL, lf->data);
 }
 
 
 // p = s + lambda * xi
 // where are s and xi are local variables
 // Does not modify the LineFunction object
-void LineFunction_set_parameters( const LineFunction *lf, const double lambda, Parameters *p ){
-	for (int i = 0; i < lf->dim; i++){
-		Parameters_set_value(p, i, lf->s[i] + lambda * lf->xi[i] );
+void LineFunction_set_parameters( const LineFunction *lf, const double lambda ){
+	for(size_t i = 0; i < lf->dim; i++){
+		Parameter* param = Parameters_at(lf->parameters, i);
+		double* temp = dvector( Parameter_size(param) );
+		for(size_t j = 0; j < Parameter_size(param); j++){
+			temp[j] = lf->s[j] + lambda * lf->xi[j];
+		}
+		Parameter_set_values(param, temp);
+		free(temp);
 	}
 }
 
@@ -91,18 +100,25 @@ void LineFunction_set_parameters( const LineFunction *lf, const double lambda, P
  *
  * @return true if p was modified, false otherwise
  */
-bool LineFunction_force_within_bounds( const LineFunction *lf, Parameters *p ){
+bool LineFunction_force_within_bounds( const LineFunction *lf ){
 	bool modified = false;
 	//fprintf(stderr, "-------------------------\nLineFunction_check_point\n");
 	for (int i = 0; i < lf->dim; i++){
-		//fprintf(stderr, "%s %f\n",Parameters_name(p, i) , Parameters_value(p, i));
-		if( Parameters_value(p, i) < Parameters_flower(lf->parameters,i) ){
-			Parameters_set_value(p, i, Parameters_flower(lf->parameters,i) );
-			modified = true;
-		}
-		if( Parameters_value(p, i) > Parameters_fupper(lf->parameters,i) ){
-			Parameters_set_value(p, i, Parameters_fupper(lf->parameters,i) );
-			modified = true;
+		Parameter* param = Parameters_at(lf->parameters, i);
+		const double* values = Parameter_values(param);
+		double lower = Constraint_flower(param->cnstr);
+		double upper = Constraint_fupper(param->cnstr);
+	
+		for(size_t j = 0; j < Parameter_size(param); j++){
+			//fprintf(stderr, "%s %f\n",Parameters_name(p, i) , Parameters_value(p, i));
+			if( values[j] < lower ){
+				Parameter_set_value_at(param, lower, j);
+				modified = true;
+			}
+			if( values[j] > upper ){
+				Parameter_set_value_at(param, upper, j);
+				modified = true;
+			}
 		}
 	}
 	//fprintf(stderr, "%s\n\n", (modified ? "modified" : "not modified"));
@@ -110,58 +126,74 @@ bool LineFunction_force_within_bounds( const LineFunction *lf, Parameters *p ){
 }
 
 // Update lf->s and lf->xi vectors with p and xi
-void LineFunction_update( LineFunction *lf, Parameters *p, double *xi ){
-	for (int i = 0; i < lf->dim; i++){
-		lf->s[i] = Parameters_value(p, i);
-	}
-	memcpy(lf->xi, xi, lf->dim * sizeof(double) );
+void LineFunction_update( LineFunction *lf, double *xi ){
+	Parameters_store_value(lf->parameters, lf->s);
+	memcpy(lf->xi, xi, lf->size * sizeof(double));
 	
 	_LineFunction_compute_bounds( lf );
 }
 
-int LineFunction_set_active_parameters( const LineFunction *lf, const Parameters *p, const double *grad, bool *active){
+int LineFunction_set_active_parameters( const LineFunction *lf, const double *grad, bool *active){
 	int numActive = 0;
+	size_t index = 0;
 	//fprintf(stderr, "-------------------------\nLineFunction_check_variables\n");
 	for (int i = 0; i < lf->dim; i++){
-		active[i] = true;
-		if ( Parameters_value(p, i) <= Parameters_flower(lf->parameters,i)+EPS ){
+		Parameter* param = Parameters_at(lf->parameters, i);
+		const double* values = Parameter_values(param);
+		double lower = Constraint_flower(param->cnstr);
+		double upper = Constraint_fupper(param->cnstr);
+
+		for(size_t j = 0; j < Parameter_size(param); j++){
+		active[index] = true;
+		if ( values[j] <= lower + EPS ){
 			// no search towards lower boundary
-			if ( grad[i] > 0 ){
-				active[i] = false;
+			if ( grad[index] > 0 ){
+				active[index] = false;
 			}
 		}
-		else if ( Parameters_value(p, i) >= Parameters_fupper(lf->parameters,i)-EPS ){
+		else if ( values[j] >= upper - EPS ){
 			// no search towards upper boundary
-			if ( grad[i] < 0 ){
-				active[i] = false;
+			if ( grad[index] < 0 ){
+				active[index] = false;
 			}
 		}
 		else{
 			numActive++;
 		}
+		index++;
 		//ftolfx(stderr, "%s %d\n", Parameters_name(p, i), active[i] );
+		}
 	}
 	//fprintf(stderr, "\n");
 	return numActive;
 }
 
 
-int LineFunction_constrain_direction( const LineFunction *lf, const Parameters *p, double *dir ){
+int LineFunction_constrain_direction( const LineFunction *lf, double *dir ){
 	int n = 0;
+	size_t index = 0;
 	for (int i = 0; i < lf->dim; i++){
+		Parameter* param = Parameters_at(lf->parameters, i);
+		const double* values = Parameter_values(param);
+		double lower = Constraint_flower(param->cnstr);
+		double upper = Constraint_fupper(param->cnstr);
+		
+		for(size_t j = 0; j < Parameter_size(param); j++){
 		// no search towards lower boundary
-		if (  Parameters_value(p, i) <= Parameters_flower(lf->parameters,i)+ EPS ){
-			if( dir[i] < 0 ){
-				dir[i] = 0;
+		if (  values[j] <= lower + EPS ){
+			if( dir[index] < 0 ){
+				dir[index] = 0;
 				n++;
 			}
 		}
 		// no search towards upper boundary
-		else if ( Parameters_value(p, i) >= Parameters_fupper(lf->parameters,i) - EPS ){
-			if( dir[i] > 0 ){
-				dir[i] = 0;
+		else if ( values[j] >= upper - EPS ){
+			if( dir[index] > 0 ){
+				dir[index] = 0;
 				n++;
 			}
+		}
+		index++;
 		}
 	}
 	
@@ -170,11 +202,18 @@ int LineFunction_constrain_direction( const LineFunction *lf, const Parameters *
 
 void _LineFunction_compute_bounds( LineFunction *lf ){
 	bool firstVisit = true;
-	double upper, lower;
+	double lower = -INFINITY;
+	double upper = INFINITY;
+	size_t index = 0;
 	for (int i = 0; i < lf->dim; i++){
-		if ( lf->xi[i] != 0){
-			upper = ( Parameters_fupper(lf->parameters,i) - lf->s[i])/lf->xi[i];
-			lower = ( Parameters_flower(lf->parameters,i) - lf->s[i])/lf->xi[i];
+		Parameter* param = Parameters_at(lf->parameters, i);
+		double flower = Constraint_flower(param->cnstr);
+		double fupper = Constraint_fupper(param->cnstr);
+
+		for(size_t j = 0; j < Parameter_size(param); j++){
+		if ( lf->xi[index] != 0){
+			upper = ( fupper - lf->s[i])/lf->xi[index];
+			lower = ( flower - lf->s[i])/lf->xi[index];
 			if (lower > upper){
 				dswap(&upper, &lower);
 			}
@@ -194,6 +233,8 @@ void _LineFunction_compute_bounds( LineFunction *lf ){
                     //printf("%s %f u %e %e %e\n", Parameters_name(lf->parameters, i), upper,Parameters_lower(lf->parameters,i), lf->s[i],lf->xi[i]);
 				}
 			}
+		}
+		index++;
 		}
 	}
 }

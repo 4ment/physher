@@ -36,20 +36,20 @@ variational_block_t* clone_VariationalBlock(variational_block_t* block, Hashtabl
     clone->numerical_eps = block->numerical_eps;
     
     if(block->simplices != NULL){
-        clone->simplices = malloc(block->simplex_count*sizeof(Model*));
+        clone->simplices = malloc(block->simplex_count*sizeof(Parameter*));
         clone->simplex_count = block->simplex_count;
         clone->simplex_parameter_count = block->simplex_parameter_count;
         
         for (int i = 0; i < block->simplex_count; i++) {
-            if (Hashtable_exists(hash, block->simplices[i]->name)) {
-                clone->simplices[i] = Hashtable_get(hash, block->simplices[i]->name);
-                clone->simplices[i]->ref_count++; // it is decremented at the end using free
+            if (Hashtable_exists(hash, Parameter_name(block->simplices[i]))) {
+                clone->simplices[i] = Hashtable_get(hash, Parameter_name(block->simplices[i]));
+                clone->simplices[i]->refCount++; // it is decremented at the end using free
             }
             else{
-                clone->simplices[i] = block->simplices[i]->clone(block->simplices[i], hash);
-                Hashtable_add(hash, clone->simplices[i]->name, clone->simplices[i]);
+                clone->simplices[i] = clone_Parameter(block->simplices[i]);
+                Hashtable_add(hash, Parameter_name(clone->simplices[i]), clone->simplices[i]);
             }
-            Parameters_add_parameters(clone->parameters, ((Simplex*)clone->simplices[i])->parameters);
+            Parameters_add_recursively(clone->parameters, clone->simplices[i]);
         }
     }
     
@@ -149,29 +149,29 @@ variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* 
 
     if(simplices_node != NULL){
         if (simplices_node->node_type == MJSON_ARRAY) {
-            var->simplices = malloc(simplices_node->child_count*sizeof(Model*));
+            var->simplices = malloc(simplices_node->child_count*sizeof(Parameter*));
             for (int i = 0; i < simplices_node->child_count; i++) {
                 json_node* simplex_node = simplices_node->children[i];
                 char* ref = simplex_node->value;
-                Model* msimplex = Hashtable_get(hash, ref+1);
-                Simplex* simplex = msimplex->obj;
-                Parameters_add_parameters(var->parameters, simplex->parameters);
+                Parameter* msimplex = Hashtable_get(hash, ref+1);
+                Parameter* simplex = msimplex;
+                Parameters_add_recursively(var->parameters, simplex);
                 var->simplices[i] = msimplex;
-                msimplex->ref_count++;
+                msimplex->refCount++;
                 var->simplex_count++;
-                var->simplex_parameter_count += simplex->K-1;
+                var->simplex_parameter_count += Parameter_size(simplex)-1;
             }
         }
         else if(simplices_node->node_type == MJSON_STRING){
-            var->simplices = malloc(sizeof(Model*));
+            var->simplices = malloc(sizeof(Parameter*));
             char* ref = simplices_node->value;
-            Model* msimplex = Hashtable_get(hash, ref+1);
-            Simplex* simplex = msimplex->obj;
-            Parameters_add_parameters(var->parameters, simplex->parameters);
+            Parameter* msimplex = Hashtable_get(hash, ref+1);
+            Parameter* simplex = msimplex;
+            Parameters_add_recursively(var->parameters, simplex);
             var->simplices[0] = msimplex;
-            msimplex->ref_count++;
+            msimplex->refCount++;
             var->simplex_count++;
-            var->simplex_parameter_count += simplex->K-1;
+            var->simplex_parameter_count += Parameter_size(simplex)-1;
         }
         else{
             fprintf(stderr, "Cannot read simplices in variational block %s\n", id);
@@ -614,15 +614,15 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
 	var->simplices = NULL;
 	if(simplices_node != NULL){
 		if (simplices_node->node_type == MJSON_ARRAY) {
-			var->simplices = malloc(simplices_node->child_count*sizeof(Model*));
+			var->simplices = malloc(simplices_node->child_count*sizeof(Parameter*));
 			for (int i = 0; i < simplices_node->child_count; i++) {
 				json_node* simplex_node = simplices_node->children[i];
 				char* ref = simplex_node->value;
-				Model* msimplex = Hashtable_get(hash, ref+1);
-				Simplex* simplex = msimplex->obj;
-				Parameters_add_parameters(var->parameters, simplex->parameters);
+				Parameter* msimplex = Hashtable_get(hash, ref+1);
+				Parameter* simplex = msimplex;
+				Parameters_add_recursively(var->parameters, simplex);
 				var->simplices[i] = msimplex;
-				msimplex->ref_count++;
+				msimplex->refCount++;
 				var->simplex_count++;
 			}
 		}
@@ -856,7 +856,7 @@ void free_Variational(variational_t* var){
 	free_Parameters(var->parameters);
 	if(var->simplices != NULL){
 		for(int i = 0; i < var->simplex_count; i++){
-			var->simplices[i]->free(var->simplices[i]);
+			free_Parameter(var->simplices[i]);
 		}
 		free(var->simplices);
 	}
@@ -868,7 +868,7 @@ void free_Variational(variational_t* var){
             }
 			if(block->simplices != NULL){
 				for (int j = 0; j < block->simplex_count; j++) {
-					block->simplices[j]->free(block->simplices[j]);
+					free_Parameter(block->simplices[j]);
 				}
 				free(block->simplices);
 			}
@@ -985,17 +985,17 @@ static Model* _variational_model_clone(Model* self, Hashtable *hash){
     clone->simplex_count = var->simplex_count;
     clone->simplices = NULL;
     if(var->simplices != NULL){
-        clone->simplices = malloc(var->simplex_count*sizeof(Model*));
+        clone->simplices = malloc(var->simplex_count*sizeof(Parameter*));
         for (int i = 0; i < var->simplex_count; i++) {
-            if (Hashtable_exists(hash, var->simplices[i]->name)) {
-                clone->simplices[i] = Hashtable_get(hash, var->simplices[i]->name);
-                clone->simplices[i]->ref_count++; // it is decremented at the end using free
+            if (Hashtable_exists(hash, Parameter_name(var->simplices[i]))) {
+                clone->simplices[i] = Hashtable_get(hash, Parameter_name(var->simplices[i]));
+                clone->simplices[i]->refCount++; // it is decremented at the end using free
             }
             else{
-                clone->simplices[i] = var->simplices[i]->clone(var->simplices[i], hash);
-                Hashtable_add(hash, clone->simplices[i]->name, clone->simplices[i]);
+                clone->simplices[i] = clone_Parameter(var->simplices[i]);
+                Hashtable_add(hash, Parameter_name(clone->simplices[i]), clone->simplices[i]);
             }
-            Parameters_add_parameters(clone->parameters, ((Simplex*)clone->simplices[i])->parameters);
+            Parameters_add_recursively(clone->parameters, clone->simplices[i]);
         }
     }
     

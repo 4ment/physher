@@ -64,9 +64,9 @@ opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 	
 	LineFunction *lf = new_LineFunction( p, f, data );
 
-	LineFunction_force_within_bounds( lf, p );
+	LineFunction_force_within_bounds(lf);
 	
-	int numActive = LineFunction_set_active_parameters(lf, p, NULL, active); // should bot be NULL
+	int numActive = LineFunction_set_active_parameters(lf, NULL, active); // should bot be NULL
 	
 	// if no variables are active return
 	if ( numActive == 0 ){
@@ -92,7 +92,7 @@ opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 			for ( j = 0; j < n; j++ ) xit[j] = xi[j][i];	//Copy the direction,
 			fptt = fret; 
 			
-			LineFunction_update(lf, p, xit);
+			LineFunction_update(lf, xit);
 			fret = LineFunction_minimize(lf);
 			
 			//linemin( p, f, data, xit, &fret,uf, &stop);

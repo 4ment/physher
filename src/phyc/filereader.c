@@ -297,6 +297,7 @@ char* load_file(const char *filename){
 	StringBuffer* buffer = new_StringBuffer(100);
 	while ( reader->read_line(reader) ) {
 		StringBuffer_append_string(buffer, reader->buffer->c);
+        StringBuffer_append_char(buffer, '\n');
 	}
 	free_FileReader(reader);
 	char* content = StringBuffer_tochar(buffer);

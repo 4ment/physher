@@ -44,7 +44,7 @@
                     "x": 2.0
                 }
             },
-            "ratios": {
+            "proportions": {
                 "id": "ratios",
                 "type": "parameter",
                 "lower": 0,
