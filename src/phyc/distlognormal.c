@@ -375,114 +375,9 @@ double DistributionModel_lognormal_mean_stdev_gradient2(DistributionModel* dm,
 }
 
 // multiple Xs one distribution
-double DistributionModel_lognormal_dlogP(DistributionModel* dm, const Parameter* p){
-    //TODO: implement
-    // // multiple Xs one distribution
-    // // derivative wrt mu
-    // if (p == Parameters_at(dm->parameters[0], 0)) {
-    //     double mu = Parameters_value(dm->parameters[0], 0);
-    //     double sigma = Parameters_value(dm->parameters[1], 0);
-    //     double dlogf = 0;
-    //     for (int i = 0; i < Parameters_count(dm->x); i++) {
-    //         dlogf += -(mu - log(Parameters_value(dm->x, i)))/(sigma*sigma);
-    //     }
-    //     return dlogf;
-    // }
-    // // derivative wrt sigma
-    // else if (p == Parameters_at(dm->parameters[1], 0)) {
-    //     double mu = Parameters_value(dm->parameters[0], 0);
-    //     double sigma = Parameters_value(dm->parameters[1], 0);
-    //     double dlogf = 0;
-    //     for (int i = 0; i < Parameters_count(dm->x); i++) {
-    //         dlogf += (pow(mu - log(Parameters_value(dm->x, i)), 2.0) - sigma*sigma)/(sigma*sigma*sigma);
-    //     }
-    //     return dlogf;
-    // }
-    
-    // // derivative wrt x
-    // for (int i = 0; i < Parameters_count(dm->x); i++) {
-    //     if (p == Parameters_at(dm->x,i)) {
-    //         double mu = Parameters_value(dm->parameters[0], 0);
-    //         double sigma = Parameters_value(dm->parameters[1], 0);
-    //         double x = Parameter_value(p);
-    //         return -1.0/x - (log(x) - mu)/(sigma*sigma*x);
-    //     }
-    // }
-    return 0;
-}
+// multiple Xs multiple distribution
 
 // multiple Xs multiple distribution
-double DistributionModel_lognormal_dlogP_multi(DistributionModel* dm, const Parameter* p){
-    //TODO: implement
-    // // derivative wrt mu
-    // size_t pdim = Parameters_count(dm->parameters[0]);
-    // for(size_t i = 0; i < pdim; i++){
-    //     if (p == Parameters_at(dm->parameters[0], i)) {
-    //         double mu = Parameters_value(dm->parameters[0], i);
-    //         double sigma = Parameters_value(dm->parameters[1], i);
-    //         return -(mu - log(Parameters_value(dm->x, i)))/(sigma*sigma);
-    //     }
-    //     // derivative wrt sigma
-    //     else if (p == Parameters_at(dm->parameters[1], i)) {
-    //         double mu = Parameters_value(dm->parameters[0], i);
-    //         double sigma = Parameters_value(dm->parameters[1], i);
-    //         return (pow(mu - log(Parameters_value(dm->x, i)), 2.0) - sigma*sigma)/(sigma*sigma*sigma);
-    //     }
-    // }
-    
-    // // derivative wrt x
-    // size_t xdim = Parameters_count(dm->x);
-    // for (int i = 0; i < xdim; i++) {
-    //     if (p == Parameters_at(dm->x,i)) {
-    //         double mu = Parameters_value(dm->parameters[0], i);
-    //         double sigma = Parameters_value(dm->parameters[1], i);
-    //         double x = Parameter_value(p);
-    //         return -1.0/x - (log(x) - mu)/(sigma*sigma*x);
-    //     }
-    // }
-    return 0;
-}
-
-
-double DistributionModel_lognormal_d2logP(DistributionModel* dm, const Parameter* p){
-    //TODO: implement
-    // TODO: derivative wrt mu and sigma
-    // if(Parameters_count(dm->parameters[0]) > 1){
-    //     fprintf(stderr, "derivative wrt mu and sigma not implemented DistributionModel_lognormal_d2logP\n");
-    // }
-    
-    // // derivative wrt x
-    // for (int i = 0; i < Parameters_count(dm->x); i++) {
-    //     if (p == Parameters_at(dm->x,i)) {
-    //         double mu = Parameters_value(dm->parameters[0], 0);
-    //         double sigma = Parameters_value(dm->parameters[1], 0);
-    //         double x = Parameter_value(p);
-    //         return -1.0/(x*x) + (log(x) - mu)/(sigma*sigma*x*x);
-    //     }
-    // }
-    return 0;
-}
-
-// multiple Xs multiple distribution
-double DistributionModel_lognormal_d2logP_multi(DistributionModel* dm, const Parameter* p){
-    //TODO: implement
-    // TODO: derivative wrt mu and sigma
-    // if(Parameters_count(dm->parameters[0]) > 1){
-    //     fprintf(stderr, "derivative wrt mu and sigma not implemented DistributionModel_lognormal_d2logP_multi\n");
-    // }
-    
-    // // derivative wrt x
-    // for (int i = 0; i < Parameters_count(dm->x); i++) {
-    //     if (p == Parameters_at(dm->x,i)) {
-    //         double mu = Parameters_value(dm->parameters[0], i);
-    //         double sigma = Parameters_value(dm->parameters[1], i);
-    //         double x = Parameter_value(p);
-    //         return -1.0/(x*x) + (log(x) - mu)/(sigma*sigma*x*x);
-    //     }
-    // }
-    return 0;
-}
-
 static void DistributionModel_lognormal_sample(DistributionModel* dm){
     const double* mu = Parameter_values(Parameters_at(dm->parameters, 0));
     const double* sigma = Parameter_values(Parameters_at(dm->parameters, 1));
@@ -653,12 +548,7 @@ DistributionModel* new_LogNormalDistributionModel_with_parameters(Parameters* pa
     }
     dm->rgradient = DistributionModel_lognormal_rgradient;
     // dm->logP_with_values = DistributionModel_lognormal_logP_with_values;
-    dm->dlogP = DistributionModel_lognormal_dlogP;
-    dm->d2logP = DistributionModel_lognormal_d2logP;
-    dm->ddlogP = DistributionModel_ddlog_0;
     // if(Parameters_count(parameters[0]) > 1){
-    //     dm->dlogP = DistributionModel_lognormal_dlogP_multi;
-    //     dm->d2logP = DistributionModel_lognormal_d2logP_multi;
     // }
     dm->sample = DistributionModel_lognormal_sample;
     dm->rsample = DistributionModel_lognormal_rsample;

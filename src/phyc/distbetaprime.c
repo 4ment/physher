@@ -73,16 +73,6 @@ double DistributionModel_gradient2_betaprime(DistributionModel* dm, const Parame
     return 0.0;
 }
 
-double DistributionModel_dlog_betaprime(DistributionModel* dm, const Parameter* p){
-    error("DistributionModel_dlog_betaprime not implemented\n");
-    return 0;
-}
-
-double DistributionModel_d2log_betaprime(DistributionModel* dm, const Parameter* p){
-    error("DistributionModel_d2log_betaprime not implemented\n");
-    return 0;
-}
-
 static void DistributionModel_betaprime_sample(DistributionModel* dm){
     const double* alpha = Parameter_values(Parameters_at(dm->parameters, 0));
     const double* beta = Parameter_values(Parameters_at(dm->parameters, 1));
@@ -122,9 +112,6 @@ DistributionModel* new_BetaPrimeDistributionModel_with_parameters(Parameters* pa
     dm->logP = DistributionModel_log_betaprime;
     // dm->logP_with_values = DistributionModel_log_betaprime_with_values;
     dm->gradient2 = DistributionModel_gradient2_betaprime;
-    dm->dlogP = DistributionModel_dlog_betaprime;
-    dm->d2logP = DistributionModel_d2log_betaprime;
-    dm->ddlogP = DistributionModel_ddlog_0;
     dm->sample = DistributionModel_betaprime_sample;
     // dm->sample_evaluate = DistributionModel_betaprime_sample_evaluate;
     dm->shift = 0;

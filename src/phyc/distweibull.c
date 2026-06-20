@@ -148,16 +148,6 @@ double DistributionModel_weibull_gradient2(DistributionModel* dm, const Paramete
     return 0;
 }
 
-double DistributionModel_weibull_dlogP(DistributionModel* dm, const Parameter* p){
-    //TODO: implement
-    return 0;
-}
-
-double DistributionModel_weibull_d2logP(DistributionModel* dm, const Parameter* p){
-    //TODO: implement
-    return 0;
-}
-
 static void DistributionModel_weibull_sample(DistributionModel* dm){
     const double* scale = Parameter_values(Parameters_at(dm->parameters, 0));
     const double* shape = Parameter_values(Parameters_at(dm->parameters, 1));
@@ -289,9 +279,6 @@ DistributionModel* new_WeibullDistributionModel_with_parameters(Parameters* para
     dm->logP = DistributionModel_weibull_logP;
     dm->gradient2 = DistributionModel_weibull_gradient2;
     dm->rgradient = DistributionModel_weibull_rgradient;
-    dm->dlogP = DistributionModel_weibull_dlogP;
-    dm->d2logP = DistributionModel_weibull_d2logP;
-    dm->ddlogP = DistributionModel_ddlog_0;
     dm->sample = DistributionModel_weibull_sample;
     dm->rsample = DistributionModel_weibull_rsample;
     dm->entropy = DistributionModel_weibull_entropy;

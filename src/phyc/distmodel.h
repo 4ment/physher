@@ -89,9 +89,6 @@ struct _DistributionModel{
 	double (*logP)(DistributionModel*);
 	double (*gradient2)(DistributionModel*, const Parameters*);
 	void (*rgradient)(DistributionModel*);
-	double (*dlogP)(DistributionModel*, const Parameter*);
-	double (*d2logP)(DistributionModel*, const Parameter*);
-	double (*ddlogP)(DistributionModel*, const Parameter*, const Parameter*);
 	void (*sample)(DistributionModel*);
 	void (*rsample)(DistributionModel*);
 	double (*entropy)(DistributionModel*);
@@ -125,12 +122,6 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* amodel);
-
-double DistributionModel_dlog_0(DistributionModel* dm, const Parameter* p);
-
-double DistributionModel_d2log_0(DistributionModel* dm, const Parameter* p);
-
-double DistributionModel_ddlog_0(DistributionModel* dm, const Parameter* p1, const Parameter* p2);
 
 void distmodel_get_parameters(json_node* parameters_node, Hashtable* hash, Parameters* parameters);
 

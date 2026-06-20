@@ -102,43 +102,6 @@ double DistributionModel_gradient2_cauchy(DistributionModel* dm, const Parameter
     return 0.0;
 }
 
-double DistributionModel_dlog_cauchy(DistributionModel* dm, const Parameter* p){
-	// for (int i = 0; i < Parameters_count(dm->x); i++) {
-	// 	if (p == Parameters_at(dm->x, i)) {
-    //         double alpha;
-    //         double location;
-    //         if(Parameters_count(dm->parameters[0]) > 1){
-    //             location = Parameters_value(dm->parameters[0], i);
-    //             alpha = Parameters_value(dm->parameters[1], i);
-    //         }
-    //         else{
-    //             location = Parameters_value(dm->parameters[0], 0);
-    //             alpha = Parameters_value(dm->parameters[1], 0);
-    //         }
-    //         double x = Parameter_value(p) - location;
-    //         return -2.0*x/(alpha*alpha*(x*x/alpha/alpha + 1.0));
-	// 	}
-	// }
-	return 0;
-}
-
-double DistributionModel_d2log_cauchy(DistributionModel* dm, const Parameter* p){
-	// for (int i = 0; i < Parameters_count(dm->x); i++) {
-	// 	if (strcmp(Parameter_name(p), Parameters_name(dm->x,i)) == 0) {
-    //         double location = Parameters_value(dm->parameters[0], 0);
-	// 		double alpha = Parameters_value(dm->parameters[1], 0);
-	// 		if(Parameters_count(dm->parameters[0]) > 1){
-    //             location = Parameters_value(dm->parameters[0], i);
-    //             alpha = Parameters_value(dm->parameters[1], i);
-	// 		}
-	// 		double x = Parameter_value(p) - location;
-	// 		double alpha2 = alpha*alpha;
-	// 		return -2.0*(alpha2 - x*x)/(alpha2*alpha2 + 2.0*alpha2*x*x + x*x*x*x);
-	// 	}
-	// }
-	return 0;
-}
-
 static void DistributionModel_cauchy_sample(DistributionModel* dm){
     const double* location = Parameter_values(Parameters_at(dm->parameters, 0));
     const double* alpha = Parameter_values(Parameters_at(dm->parameters, 1));
@@ -178,9 +141,6 @@ DistributionModel* new_CauchyDistributionModel_with_parameters(Parameters* param
 	dm->logP = DistributionModel_log_cauchy;
 	// dm->logP_with_values = DistributionModel_log_cauchy_with_values;
     dm->gradient2 = DistributionModel_gradient2_cauchy;
-	dm->dlogP = DistributionModel_dlog_cauchy;
-	dm->d2logP = DistributionModel_d2log_cauchy;
-	dm->ddlogP = DistributionModel_ddlog_0;
 	dm->sample = DistributionModel_cauchy_sample;
 	// dm->sample_evaluate = DistributionModel_cauchy_sample_evaluate;
     dm->shift = -INFINITY;

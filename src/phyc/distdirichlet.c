@@ -39,10 +39,6 @@ double DistributionModel_flat_dirichlet_gradient2(DistributionModel* dm, const P
     return 0;
 }
 
-double DistributionModel_d2log_flat_dirichlet(DistributionModel* dm, const Parameter* p){
-	return 0.0;
-}
-
 double DistributionModel_log_dirichlet(DistributionModel* dm){
 	if(!dm->need_update) return dm->lp;
     Parameter* alpha = Parameters_at(dm->parameters, 0);
@@ -105,38 +101,7 @@ double DistributionModel_dirichlet_gradient2(DistributionModel* dm, const Parame
 }
 
 // IMPORTANT: The derivative is wrt unconstrained parameter of the simplex
-double DistributionModel_dlog_dirichlet(DistributionModel* dm, const Parameter* p){
-    /*
-    log pdf(X; \alpha) = \sum_i \alpha_i log(x_i) - log B(\alpha)
-    d log pdf(X)/dz_k = \sum_i \alpha_i d log(x_i)/dz_k
-                     &= \sum_i \alpha_i d log(x_i)/dx_i dx_i/dz_k
-                     &= \sum_i \alpha_i/x_i dx_i/dz_k
-    
-    dx_i/dz_k = 0 for i < k
-    */
-   //TODO: implement
-	// for (int i = 0; i < Parameters_count(dm->x); i++) {
-    //     if( p == Parameters_at(dm->x, i)){
-    //         const double* values = dm->simplex->get_values(dm->simplex);
-    //         double dlogp = 0;
-    //         for (size_t j = i; j < Parameters_count(dm->x); j++) {
-    //             dm->simplex->gradient(dm->simplex, i, dm->tempp);
-    //             dlogp += (Parameters_value(dm->parameters[0], j)-1.0)/values[j] * dm->tempp[j];
-    //         }
-    //         return dlogp;
-    //     }
-    // }
-	return 0;
-}
-
 //TODO: implement
-double DistributionModel_d2log_dirichlet(DistributionModel* dm, const Parameter* p){
-	// find corresponding alpha
-	// return -(alpha-1.0)/(Parameter_value(p)*Parameter_value(p));
-	exit(1);
-	return 0;
-}
-
 static void _DistributionModel_error_sample_dirichlet(DistributionModel* dm, double* samples){
     fprintf(stderr, "_DistributionModel_error_sample_dirichlet not implemented\n");
     exit(1);
@@ -152,8 +117,6 @@ DistributionModel* new_FlatDirichletDistributionModel(Parameters* x){
 	dm->type = DISTRIBUTION_DIRICHLET;
 	dm->logP = DistributionModel_log_flat_dirichlet;
     dm->gradient2 = DistributionModel_flat_dirichlet_gradient2;
-	dm->d2logP = DistributionModel_d2log_flat_dirichlet;
-	dm->ddlogP = DistributionModel_ddlog_0;
 	dm->sample = DistributionModel_dirichlet_sample;
     // dm->logP_with_values = DistributionModel_log_flat_dirichlet_with_values;
 	// dm->sample_evaluate = DistributionModel_dirichlet_sample_evaluate;
@@ -170,9 +133,6 @@ DistributionModel* new_DirichletDistributionModel_with_parameters(Parameters* pa
 	dm->type = DISTRIBUTION_DIRICHLET;
 	dm->logP = DistributionModel_log_dirichlet;
     dm->gradient2 = DistributionModel_dirichlet_gradient2;
-	dm->dlogP = DistributionModel_dlog_dirichlet;
-	dm->d2logP = DistributionModel_d2log_dirichlet;
-	dm->ddlogP = DistributionModel_ddlog_0;
 	dm->sample = DistributionModel_dirichlet_sample;
 	// dm->logP_with_values = DistributionModel_log_dirichlet_with_values;
 	// dm->sample_evaluate = DistributionModel_dirichlet_sample_evaluate;

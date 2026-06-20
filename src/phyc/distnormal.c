@@ -163,62 +163,6 @@ double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameter
     return 0;
 }
 
-double DistributionModel_normal_dlogP(DistributionModel* dm, const Parameter* p){
-    //TODO: implement
-    // // derivative wrt x
-    // if (p == dm->x) {
-    //     Parameter* mu = Parameters_at(dm->parameters, 0);
-    //     Parameter* sigma = Parameters_at(dm->parameters, 1);
-    //     size_t dim = Parameter_size(dm->x);
-
-    //     double muValue = -1;
-    //     double sigmaValue = -1
-
-    //     if(Parameter_size(mu) > 1){
-    //         muValue = Parameter_value_at(mu, i);
-    //         sigmaValue = Parameter_value_at(sigma, i);
-    //     }
-    //     else{
-    //         muValue = Parameter_value(mu);
-    //         sigmaValue = Parameter_value(sigma);
-    //     }
-        
-    //     if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
-    //         sigmaValue = sqrt(1.0/sigmaValue);
-    //     }
-    //     return (mu - Parameter_value(p))/sigma/sigma;
-    // }
-    return 0;
-}
-
-double DistributionModel_normal_d2logP(DistributionModel* dm, const Parameter* p){
-    //TODO: implement
-    // // derivative wrt x
-    // if (p == dm->x) {
-    //     Parameter* mu = Parameters_at(dm->parameters, 0);
-    //     Parameter* sigma = Parameters_at(dm->parameters, 1);
-    //     size_t dim = Parameter_size(dm->x);
-
-    //     double muValue = -1;
-    //     double sigmaValue = -1
-
-    //     if(Parameter_size(mu) > 1){
-    //         muValue = Parameter_value_at(mu, i);
-    //         sigmaValue = Parameter_value_at(sigma, i);
-    //     }
-    //     else{
-    //         muValue = Parameter_value(mu);
-    //         sigmaValue = Parameter_value(sigma);
-    //     }
-        
-    //     if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
-    //         sigmaValue = sqrt(1.0/sigmaValue);
-    //     }
-    //     return -1.0/sigma/sigma;
-    // }
-    return 0;
-}
-
 
 void DistributionModel_normal_sample(DistributionModel* dm){
     const double* mu = Parameter_values(Parameters_at(dm->parameters, 0));
@@ -384,9 +328,6 @@ DistributionModel* new_NormalDistributionModel_with_parameters(Parameters* param
     dm->logP = DistributionModel_normal_logP;
     dm->gradient2 = DistributionModel_normal_gradient2;
     dm->rgradient = DistributionModel_normal_rgradient;
-    dm->dlogP = DistributionModel_normal_dlogP;
-    dm->d2logP = DistributionModel_normal_d2logP;
-    dm->ddlogP = DistributionModel_ddlog_0;
     dm->sample = DistributionModel_normal_sample;
     dm->rsample = DistributionModel_normal_rsample;
     dm->entropy = DistributionModel_normal_entropy;
@@ -586,33 +527,6 @@ double DistributionModel_half_normal_gradient2(DistributionModel* dm, const Para
     return 0;
 }
 
-double DistributionModel_half_normal_dlogP(DistributionModel* dm, const Parameter* p){
-    // // derivative wrt x
-    // for (int i = 0; i < Parameters_count(dm->x); i++) {
-    //     if (p == Parameters_at(dm->x,i)) {
-    //         double sigma = Parameters_value(dm->parameters[0], 0);
-    //         if(Parameters_count(dm->parameters[0]) > 1){
-    //             sigma = Parameters_value(dm->parameters[0], i);
-    //         }
-    //         return -Parameters_value(dm->x, 0)/sigma/sigma;
-    //     }
-    // }
-    return 0;
-}
-
-double DistributionModel_half_normal_d2logP(DistributionModel* dm, const Parameter* p){
-    // for (int i = 0; i < Parameters_count(dm->x); i++) {
-    //     if (p == Parameters_at(dm->x,i)) {
-    //         double sigma = Parameters_value(dm->parameters[0], 0);
-    //         if(Parameters_count(dm->parameters[0]) > 1){
-    //             sigma = Parameters_value(dm->parameters[0], i);
-    //         }
-    //         return -1.0/sigma/sigma;
-    //     }
-    // }
-    return 0;
-}
-
 static void DistributionModel_half_normal_sample(DistributionModel* dm){
     fprintf(stderr, "DistributionModel_half_normal_sample not yet implemented\n");
     exit(2);
@@ -624,9 +538,6 @@ DistributionModel* new_HalfNormalDistributionModel_with_parameters(Parameters* p
     dm->parameterization = param;
     dm->logP = DistributionModel_half_normal_logP;
     dm->gradient2 = DistributionModel_half_normal_gradient2;
-    dm->dlogP = DistributionModel_half_normal_dlogP;
-    dm->d2logP = DistributionModel_half_normal_d2logP;
-    dm->ddlogP = DistributionModel_ddlog_0;
     dm->sample = DistributionModel_half_normal_sample;
     dm->shift = 0;
     return dm;

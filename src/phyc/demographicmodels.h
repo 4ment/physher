@@ -50,9 +50,6 @@ typedef struct Coalescent{
 	int n;
 	double (*calculate)( struct Coalescent* );
 	double (*gradient)( struct Coalescent*, const Parameters* );
-	double (*dlogP)( struct Coalescent*, const Parameter* );
-	double (*d2logP)( struct Coalescent*, const Parameter* );
-	double (*ddlogP)( struct Coalescent*, const Parameter*, const Parameter* );
 	void (*update_intervals)( struct Coalescent* );
     bool need_update;
 	bool need_update_gradient;

@@ -145,11 +145,6 @@ double DistributionModel_kumaraswamy_gradient(DistributionModel* dm, const Param
     return 0;
 }
 
-double DistributionModel_dlog_kumaraswamy(DistributionModel* dm, const Parameter* p){
-    //TODO: implement
-    return 0;
-}
-
 // F_X(x) = p(X <= x)
 double DistributionModel_kumaraswamy_inverse_CDF(double p, double a, double b){
 	return pow(1.0 - pow(1.0 - p, 1.0/b), 1.0/a);
@@ -268,13 +263,10 @@ DistributionModel* new_KumaraswamyDistributionModel_with_parameters(Parameters* 
 	// dm->logP_with_values = DistributionModel_log_kumaraswamy_with_values;
 	dm->gradient2 = DistributionModel_kumaraswamy_gradient;
 	dm->rgradient = DistributionModel_kumaraswamy_rgradient;
-	dm->dlogP = DistributionModel_dlog_kumaraswamy;
 	dm->sample = DistributionModel_kumaraswamy_sample;
 	dm->rsample = DistributionModel_kumaraswamy_rsample;
 	// dm->sample_evaluate = DistributionModel_kumaraswamy_sample_evaluate;
 
-	dm->d2logP = DistributionModel_d2log_0;
-	dm->ddlogP = DistributionModel_ddlog_0;
     dm->shift = 0;
     dm->support[0] = 0;
     dm->support[1] = 1;

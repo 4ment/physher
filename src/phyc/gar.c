@@ -95,10 +95,7 @@ DistributionModel* new_GAR_with_parameters(Parameters* parameters, Parameter* x,
 	dm->parameterization = parameterization;
 	dm->logP = DistributionModel_log_gar;
 	dm->gradient2 = DistributionModel_gar_gradient;
-	dm->dlogP = NULL;
 	dm->sample = NULL;
-	dm->d2logP = NULL;
-	dm->ddlogP = NULL;
     dm->shift = INFINITY;
 	return dm;
 }

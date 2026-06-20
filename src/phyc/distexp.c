@@ -193,49 +193,6 @@ double DistributionModel_gradient_exp(DistributionModel* dm, const Parameters* p
 	return 0;
 }
 
-double DistributionModel_dlog_exp(DistributionModel* dm, const Parameter* p){
-	//TODO: implement
-    // if (p == Parameters_at(dm->parameters[0], 0)) {
-    //     double dlogf = Parameters_count(dm->x)/Parameters_value(dm->parameters[0], 0);
-    //     for(int i = 0; i < Parameters_count(dm->x); i++){
-    //         dlogf -= Parameters_value(dm->x, i);
-    //     }
-    //     return dlogf;
-    // }
-	// for (int i = 0; i < Parameters_count(dm->x); i++) {
-	// 	if (p == Parameters_at(dm->x, i)) {
-    //         if(Parameters_count(dm->parameters[0]) == 1){
-    //             return -Parameters_value(dm->parameters[0], 0);
-    //         }
-    //         return -Parameters_value(dm->parameters[0], i);
-	// 	}
-	// }
-	return 0;
-}
-
-double DistributionModel_dlog_exp_mean(DistributionModel* dm, const Parameter* p){
-	//TODO: implement
-    // if (p == Parameters_at(dm->parameters[0], 0)) {
-    //     double mean = Parameters_value(dm->parameters[0], 0);
-    //     double dlogf = -Parameters_count(dm->x)/mean;
-    //     double mean2 = mean;
-    //     for(int i = 0; i < Parameters_count(dm->x); i++){
-    //         dlogf += Parameters_value(dm->x, i)/mean2;
-    //     }
-    //     return dlogf;
-    // }
-    
-	// for (int i = 0; i < Parameters_count(dm->x); i++) {
-	// 	if (p == Parameters_at(dm->x, i)) {
-    //         if(Parameters_count(dm->parameters[0]) == 1){
-    //             return -1.0/Parameters_value(dm->parameters[0], 0);
-    //         }
-    //         return -1.0/Parameters_value(dm->parameters[0], i);
-	// 	}
-	// }
-	return 0;
-}
-
 static void DistributionModel_exp_sample(DistributionModel* dm){
     const double* lambda = Parameter_values(Parameters_at(dm->parameters, 0));
     size_t dimX = Parameters_count(dm->x);
@@ -339,17 +296,13 @@ DistributionModel* new_ExponentialDistributionModel_with_parameters(Parameters* 
     dm->sample = DistributionModel_exp_sample;
 	if(parameterization == DISTRIBUTION_EXPONENTIAL_RATE){
 		// dm->logP_with_values = DistributionModel_log_exp_with_values;
-		dm->dlogP = DistributionModel_dlog_exp;
 		// dm->sample_evaluate = DistributionModel_exp_sample_evaluate;
 	}
 	else{
 		// dm->logP_with_values = DistributionModel_log_exp_with_values_mean;
-		dm->dlogP = DistributionModel_dlog_exp_mean;
 		dm->sample = DistributionModel_exp_sample_mean;
 		// dm->sample_evaluate = DistributionModel_exp_sample_evaluate_mean;
 	}
-	dm->d2logP = DistributionModel_d2log_0;
-	dm->ddlogP = DistributionModel_ddlog_0;
     dm->shift = 0;
     dm->support[0] = 0;
     dm->support[1] = INFINITY;

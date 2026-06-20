@@ -150,21 +150,6 @@ double DistributionModel_ctmc_gradient(DistributionModel *dm, const Parameters* 
 	return 0;
 }
 
-double DistributionModel_dlog_ctmc_scale(DistributionModel* dm, const Parameter* p){
-	fprintf(stderr, "DistributionModel_dlog_ctmc_scale not implemented\n");
-	exit(2);
-}
-
-double DistributionModel_d2log_ctmc_scale(DistributionModel* dm, const Parameter* p){
-	fprintf(stderr, "DistributionModel_d2log_ctmc_scale not implemented\n");
-	exit(2);
-}
-
-double DistributionModel_ddlog_ctmc_scale(DistributionModel* dm, const Parameter* p1, const Parameter* p2){
-	fprintf(stderr, "DistributionModel_ddlog_ctmc_scale not implemented\n");
-	exit(2);
-}
-
 
 static void DistributionModel_ctmc_scale_sample(DistributionModel* dm){
 	fprintf(stderr, "DistributionModel_ctmc_scale_sample not implemented\n");
@@ -177,10 +162,7 @@ DistributionModel* new_CTMCScale_with_parameters(Parameters* x, Tree* tree){
 	dm->parameterization = 0;
 	dm->logP = DistributionModel_log_ctmc_scale;
 	dm->gradient2 = DistributionModel_ctmc_gradient;
-	dm->dlogP = DistributionModel_dlog_ctmc_scale;
 	dm->sample = DistributionModel_ctmc_scale_sample;
-	dm->d2logP = DistributionModel_d2log_ctmc_scale;
-	dm->ddlogP = DistributionModel_ddlog_ctmc_scale;
 	dm->tree = tree;
     dm->shift = 0;
 	return dm;

@@ -58,24 +58,6 @@ static double _multivariate_normal_logP(DistributionModel* dm){
     return dm->lp;
 }
 
-static double _DistributionModel_dlog_mvn(DistributionModel* dm, const Parameter* p){
-    fprintf(stderr, "%s is not implemented (line %d of file %s)\n", __func__, __LINE__, __FILE__);
-    exit(1);
-    return 0.0;
-}
-
-static double _DistributionModel_d2log_mvn(DistributionModel* dm, const Parameter* p){
-    fprintf(stderr, "%s is not implemented (line %d of file %s)\n", __func__, __LINE__, __FILE__);
-    exit(1);
-    return 0.0;
-}
-
-static double _DistributionModel_ddlog_mvn(DistributionModel* dm, const Parameter* p1, const Parameter* p2){
-    fprintf(stderr, "%s is not implemented (line %d of file %s)\n", __func__, __LINE__, __FILE__);
-    exit(1);
-    return 0.0;
-}
-
 // if dst is NULL we assign directly the sampled values to dm->x
 static void _sample_multivariate_normal(DistributionModel* dm){
     _update_gsl_parameters(dm);
@@ -143,9 +125,6 @@ DistributionModel* new_MultivariateNormalDistributionModel_with_parameters(Param
     dm->free = _free_dist_gsl_multivariate_normal;
     dm->logP = _multivariate_normal_logP;
     // dm->logP_with_values = _multivariate_normal_logP_with_values;
-    dm->dlogP = _DistributionModel_dlog_mvn;
-    dm->d2logP = _DistributionModel_d2log_mvn;
-    dm->ddlogP = _DistributionModel_ddlog_mvn;
     dm->sample = _sample_multivariate_normal;
     // dm->sample_evaluate = _multivariate_normal_sample_evaluate;
     dm->need_update = true;

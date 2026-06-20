@@ -32,29 +32,12 @@ double DistributionModel_one_on_x_gradient(DistributionModel* dm, const Paramete
     return 0;
 }
 
-double DistributionModel_dlog_one_on_x(DistributionModel* dm, const Parameter* p) {
-    // if (p == Parameters_at(dm->x, 0)) {
-    //     return -1.0 / Parameters_value(dm->x, 0);
-    // }
-    return 0;
-}
-
-double DistributionModel_d2log_one_on_x(DistributionModel* dm, const Parameter* p) {
-    // if (strcmp(Parameter_name(p), Parameters_name(dm->x, 0)) == 0) {
-    //     return 1.0 / Parameters_value(dm->x, 0) / Parameters_value(dm->x, 0);
-    // }
-    return 0;
-}
-
 DistributionModel* new_OneOnXDistributionModel(Parameters* x) {
     DistributionModel* dm = new_DistributionModel(NULL, x);
     dm->type = DISTRIBUTION_ONE_ON_X;
     dm->logP = DistributionModel_log_one_on_x;
     // dm->logP_with_values = DistributionModel_log_one_on_x_with_values;
-    dm->dlogP = DistributionModel_dlog_one_on_x;
     dm->gradient2 = DistributionModel_one_on_x_gradient;
-    dm->d2logP = DistributionModel_d2log_one_on_x;
-    dm->ddlogP = DistributionModel_ddlog_0;
     return dm;
 }
 

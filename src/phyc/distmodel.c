@@ -26,20 +26,8 @@
 // #include "utilsio.h"
 
 
-double DistributionModel_dlog_0(DistributionModel* dm, const Parameter* p){
-	return 0.0;
-}
-
 double DistributionModel_gradient2_0(DistributionModel* dm, const Parameters* p){
 	return 0;
-}
-
-double DistributionModel_d2log_0(DistributionModel* dm, const Parameter* p){
-	return 0.0;
-}
-
-double DistributionModel_ddlog_0(DistributionModel* dm, const Parameter* p1, const Parameter* p2){
-	return 0.0;
 }
 
 static void _DistributionModel_error_sample(DistributionModel* dm){
@@ -116,9 +104,6 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 
 	clone->logP = dm->logP;
 	clone->gradient2 = dm->gradient2;
-	clone->dlogP = dm->dlogP;
-	clone->d2logP = dm->d2logP;
-	clone->ddlogP = dm->ddlogP;
 	clone->sample = dm->sample;
 	clone->rsample = dm->rsample;
 	clone->clone = dm->clone;
@@ -178,9 +163,6 @@ DistributionModel* new_DistributionModel(Parameters* p, Parameters* x){
 	dm->tree = NULL;
 	dm->logP = NULL;
 	dm->gradient2 = NULL;
-	dm->dlogP = NULL;
-	dm->d2logP = NULL;
-	dm->ddlogP = NULL;
 	dm->sample = _DistributionModel_error_sample;
 	dm->rsample = _DistributionModel_error_sample;
 	dm->entropy = NULL;
@@ -227,9 +209,6 @@ DistributionModel* new_UniformTreeDistribution(Tree* tree){
     dm->tempp = NULL;
 	dm->logP = DistributionModel_log_uniform_tree;
 	dm->gradient2 = DistributionModel_gradient2_0;
-	dm->dlogP = DistributionModel_dlog_0;
-	dm->d2logP = DistributionModel_d2log_0;
-	dm->ddlogP = DistributionModel_ddlog_0;
 	dm->entropy = NULL;
 	dm->gradient_entropy = NULL;
 	dm->need_update = true;
