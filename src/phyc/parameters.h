@@ -26,6 +26,7 @@
 
 #include "mjson.h"
 #include "hashtable.h"
+#include "model.h"
 // #include "transforms.h"
 
 #define PARAMETER_TINY 1.0e-25
@@ -35,66 +36,6 @@
 #define PARAMETER_ONE_MINUS (1-TINY)
 #define PARAMETER_POSITIVE_INFINTY INFINITY
 #define PARAMETER_NEGATIVE_INFINTY (-INFINITY)
-
-typedef enum model_t{
-	MODEL_ALIGNMENT=0,
-	MODEL_BOUNDMODEL,
-	MODEL_BRANCHMODEL,
-	MODEL_COALESCENT,
-	MODEL_COMPOUND,
-	MODEL_DISCRETE_PARAMETER,
-	MODEL_DISTRIBUTION,
-	MODEL_JACOBIAN_TRANSFORM,
-	MODEL_LAPLACE,
-	MODEL_PARAMETERS,
-	MODEL_PARSIMONY,
-	MODEL_SITEMODEL,
-	MODEL_SUBSTITUTION,
-	MODEL_TREE,
-	MODEL_TREE_TRANSFORM,
-	MODEL_TREELIKELIHOOD,
-    MODEL_VARIATIONAL,
-    MODEL_VARIATIONAL_TREELIKELIHOOD
-}model_t;
-
-static const char* model_type_strings[] = {
-	"alignment",
-	"bound",
-	"branchmodel",
-	"coalescent",
-	"compound",
-	"discreteparameter",
-	"distribution",
-	"jacobiantransform",
-	"laplace",
-	"parameters",
-	"parsimony",
-	"sitemodel",
-	"substitutionmodel",
-	"tree",
-	"treetransform",
-	"treelikelihood",
-    "variational",
-    "variationaltreelikelihood"
-};
-
-struct _Constraint;
-typedef struct _Constraint Constraint;
-
-struct _Parameter;
-typedef struct _Parameter Parameter;
-
-struct _Parameters;
-typedef struct _Parameters Parameters;
-
-struct _ListenerList;
-typedef struct _ListenerList ListenerList;
-
-struct _Listeners;
-typedef struct _Listener Listener;
-
-struct _Model;
-typedef struct _Model Model;
 
 struct _Transform;
 typedef struct _Transform Transform;
@@ -292,6 +233,8 @@ Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash);
 
 void free_Parameters( Parameters *ps );
 
+void free_Parameters_weak( Parameters *ps );
+
 Parameters * clone_Parameters( Parameters *p );
 
 void Parameters_set_name2(Parameters* ps, const char* name);
@@ -399,60 +342,6 @@ size_t Parameters_size(const Parameters *ps);
 
 #pragma mark -
 
-struct _ListenerList {
-    Model **models;
-    int count;
-    int capacity;
-    bool enabled;
-    Parameters *parameters;
-    void (*free)(ListenerList *);
-    void (*fire)(ListenerList *, Model *, Parameter *, int);
-    void (*fire_restore)(ListenerList *, Model *, int);
-    void (*add)(ListenerList *, Model *);
-	void (*add_parameter)(ListenerList *, Parameter *);
-    void (*remove)(ListenerList *, Model *);
-    void (*removeAll)(ListenerList *);
-};
-
-model_t check_model(const char* type);
-
-struct _Model {
-	void *obj; // pointer to model
-	char *name;
-	model_t type;
-	void* data;
-	double (*logP)( Model * );
-	double (*full_logP)( Model * );
-	double (*gradient)( Model *, const Parameters*);
-	Model* (*clone)( Model *, Hashtable* );
-	void (*free)( Model * );
-	void (*update)( Model *, Model *, Parameter*, int );
-	void (*handle_restore)( Model *, Model *, int );
-	void (*reset)(Model*);
-	void (*sample)(Model *);
-	void (*rsample)(Model *);
-
-	// if the model is a transform like a simplex this function retrieve/set the
-	// values
-	void (*get)(Model *, double *);
-	void (*set)(Model *, const double *);
-
-    ListenerList *listeners;
-	int ref_count;
-    Parameters *parameters;  // parameters of the model, including from submodels
-
-    void(*store)(Model*);
-	void(*restore)(Model*);
-	void(*accept)(Model*);
-	double lp;
-	double storedLogP;
-	double stored;
-	bool samplable; // model is a distribution that can sampled directly
-	void (*print)(Model*, FILE*);
-    void (*jsonize)(Model*, json_node*);
-	double epsilon; // for finite differences
-};
-
 void *safe_get_reference_parameter(const char *ref, Hashtable *hash,
                                    const char *parent);
 
@@ -461,22 +350,6 @@ bool safe_is_reference(const char *ref, const char *parent);
 #pragma mark -
 
 Parameter * new_ParameterModel( const char *name, const double* value, size_t dim, Constraint *constr, Model* model);
-
-Model * new_Model( model_t type, const char *name, void *obj );
-
-void free_Model( Model *model );
-
-double Model_first_derivative( Model *model, Parameter* parameter, double eps );
-
-void Model_first_derivatives( Model *model, Parameter* parameter, double eps, double* grad );
-
-double Model_second_derivative( Model *model, Parameter* parameter, double* first, double eps );
-
-double Model_mixed_derivative( Model *model, Parameter* p1, Parameter* p2 );
-
-#pragma mark -
-
-ListenerList * new_ListenerList( const unsigned capacity );
 
 #pragma mark -
 

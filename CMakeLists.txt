@@ -252,6 +252,7 @@ IF(DISABLE_GSL)
 		src/phyc/matrix.c
 		src/phyc/mjson.c
 		src/phyc/mstring.c
+		src/phyc/model.c
 		src/phyc/mt19937ar.c # no .h
 		src/phyc/nj.c
 		src/phyc/node.c
