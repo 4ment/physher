@@ -462,7 +462,7 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		Hashtable_add(hash, Parameters_name(ps, 0), Parameters_at(ps, 0));
 		Hashtable_add(hash, Parameters_name(ps, 1), Parameters_at(ps, 1));
 	}
-	else if(strcasecmp(model, "skygrid") == 0 || strcasecmp(model, "piecewise-linear") == 0){
+	else if(strcasecmp(model, "skygrid") == 0 || strcasecmp(model, "skyglide") == 0 || strcasecmp(model, "piecewise-linear") == 0){
 		int gridCount = Parameters_count(ps);
 		
 		double cutoff = get_json_node_value_double(node, "cutoff", -1);
@@ -477,7 +477,7 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 			else
 				c = new_GridCoalescent_with_data(Parameters_at(ps, 0), times, coalescent, intervalCount, gridCount, cutoff);
 		}
-		else if(strcasecmp(model, "piecewise-linear") == 0){
+		else if(strcasecmp(model, "piecewise-linear") == 0 || strcasecmp(model, "skyglide") == 0){
 			if(tree != NULL)
 				c = new_PiecewiseLinearGridCoalescent(tree, Parameters_at(ps, 0), gridCount, cutoff);
 			else
@@ -1534,9 +1534,6 @@ double _coalescent_piecewise_linear_grid_gradient( Coalescent* coal, const Param
 	if ( coal->need_update_intervals ) {
 		coal->update_intervals(coal);
 	}
-	double eps = 1.e-6;
-	// size_t offset = 0;
-	bool useFiniteDifferences = false;
 
 	Node** nodes = Tree_nodes(coal->tree);
 	Parameter* thetaParameter = Parameters_at(coal->p, 0);
@@ -1546,34 +1543,7 @@ double _coalescent_piecewise_linear_grid_gradient( Coalescent* coal, const Param
 	Parameters* reparam = get_reparams(coal->tree);
 	bool compute_grad_theta = thetax != NULL;
 
-	if(compute_grad_theta){
-		// memset(coal->grad, 0, Parameters_count(coal->p)*sizeof(double));
-		if(useFiniteDifferences){
-			double* gradTheta = dvector(thetaSize);
-			for(size_t i = 0; i < Parameter_size(thetaParameter); i++){
-				double value = Parameter_value_at(thetaParameter, i);
-				Parameter_set_value_at(thetaParameter, value+eps, i);
-				double p = coal->calculate(coal);
-				Parameter_set_value_at(thetaParameter, value-eps, i);
-				double m = coal->calculate(coal);
-				// coal->grad[i] = (p-m)/(2.*eps);
-				Parameter_set_value_at(thetaParameter, value, i);
-			}
-			for(size_t i = 0; i < thetaSize; i++){
-				thetaParameter->grad[i] += gradTheta[i];
-			}
-			if(thetaParameter != thetax){
-				thetaParameter->transform->backward(thetaParameter->transform, gradTheta);
-			}
-			free(gradTheta);
-			compute_grad_theta = false;
-		}
-
-		// offset += Parameters_count(coal->p);
-	}
-
 	Parameters* treeModelParameters = new_Parameters(1);
-	bool gradReparameterization = true;
 	for(size_t i = 0; i < Parameters_count(parameters); i++){
 		Parameter* parameter = Parameters_at(parameters, i);
 		// ratios and root_height transformed
@@ -1587,7 +1557,6 @@ double _coalescent_piecewise_linear_grid_gradient( Coalescent* coal, const Param
 		}
 		// heights
 		else if(parameter->model == MODEL_TREE){
-			gradReparameterization = false;
 			Parameter* xx = Parameters_depends(parameters, nodes[parameter->id]->height);
 			if(xx != NULL){
 				Parameters_add(treeModelParameters, xx);
@@ -1596,52 +1565,6 @@ double _coalescent_piecewise_linear_grid_gradient( Coalescent* coal, const Param
 	}
 
 	bool compute_grad_time = Parameters_count(treeModelParameters) > 0;
-
-	if(compute_grad_time){
-		double* heightGradient = dvector(Tree_tip_count(coal->tree)-1);
-		// memset(coal->grad+offset, 0.0, sizeof(double)*(Tree_tip_count(coal->tree)-1));
-		// derivatives wrt to reparameterization
-		if(useFiniteDifferences && gradReparameterization){
-			Parameters* reparams = get_reparams(coal->tree);
-			size_t k = 0;
-			for(size_t i = 0; i < Parameters_count(treeModelParameters); i++){
-				Parameter* paramx = Parameters_at(treeModelParameters, i);
-				Parameter* param = Parameters_at(reparam, i);
-				const double* values = Parameter_values(paramx);
-				for(size_t j = 0; j < Parameter_size(paramx); j++){
-					double value = Parameter_value_at(paramx, i);
-					Parameter_set_value_at(paramx, values[j]+eps, j);
-					double p = coal->calculate(coal);
-					Parameter_set_value_at(paramx, values[j]-eps, j);
-					double m = coal->calculate(coal);
-					// coal->grad[i+offset] = (p-m)/(2.*eps);
-					heightGradient[k++] = (p-m)/(2.*eps);
-					Parameter_set_value_at(paramx, values[j], j);
-				}
-				if(paramx != param){
-					param->transform->backward(param->transform, heightGradient);
-				}
-			}
-			compute_grad_time = false;
-		}
-		else if(useFiniteDifferences){
-			for(size_t i = 0; i < Tree_node_count(coal->tree); i++){
-				if(!Node_isleaf(nodes[i])){
-					double value = Node_height(nodes[i]);
-					Node_set_height(nodes[i], value+eps);
-					double p = coal->calculate(coal);
-					Node_set_height(nodes[i], value-eps);
-					double m = coal->calculate(coal);
-					// coal->grad[Node_class_id(nodes[i]) + offset] = (p-m)/(2.*eps);
-					heightGradient[nodes[i]->class_id] = (p-m)/(2.*eps);
-					Node_set_height(nodes[i], value);
-				}
-			}
-			Tree_height_backward(coal->tree, treeModelParameters, heightGradient);
-			compute_grad_time = false;
-		}
-		free(heightGradient);
-	}
 
 	if ( compute_grad_time || compute_grad_theta ) {
 		double* heightGradient = NULL;
@@ -1663,146 +1586,108 @@ double _coalescent_piecewise_linear_grid_gradient( Coalescent* coal, const Param
 		double popSizeGridEnd = theta[currentGridIndex + 1];
 		double timeGridStart = 0.0;
 		double timeGridEnd = coal->grid[0];
-		double lchoose2;
 		double t = 0;
 		double popSizeCurrent = popSizeGridStart; // can be a grid pop size or any interval
-		Node** nodes = Tree_nodes(coal->tree);
+		double logPopSizeCurrent = log(popSizeCurrent);
 
 		for(size_t i = 0; i < coal->n; i++){
 			t += coal->times[i];
-			if(coal->times[i] != 0.0){
-				lchoose2 = CHOOSE2(coal->lineages[i]);
-				double popSize;
-				double logPopSize;
-				double deltaGrid = timeGridEnd - timeGridStart;
+			if(coal->times[i] == 0.0) continue;
 
-				if (coal->nodes[i]->index >= 0){
-					// after the last grid point we use piecewise constant
-					if(currentGridIndex >= coal->gridCount || popSizeGridEnd == popSizeGridStart){
-						popSize = popSizeGridEnd;
-						logPopSize = log(popSize);
-						if( coal->iscoalescent[i]){
-							coal->logP -= logPopSize;
-							if(compute_grad_theta){
-								thetaGradient[currentGridIndex] -= 1.0/popSize;
-							}
-						}
+			double times = coal->times[i];
+			double lchoose2 = CHOOSE2(coal->lineages[i]);
+			int nodeIdx = coal->nodes[i]->index;
+			// linear popSize interpolation within the current grid segment; piecewise
+			// constant after the last grid point or when the two grid pop sizes are equal
+			bool linear = currentGridIndex < coal->gridCount && popSizeGridEnd != popSizeGridStart;
+			double deltaGrid = timeGridEnd - timeGridStart;
+			double invDeltaGrid = deltaGrid != 0.0 ? 1.0/deltaGrid : 0.0;
+			double slope = (popSizeGridEnd - popSizeGridStart)*invDeltaGrid; // dpopSize/dt
+			double fracEnd = (t - timeGridStart)*invDeltaGrid;              // interp at interval end
+			double fracStart = (t - times - timeGridStart)*invDeltaGrid;    // interp at interval start
+
+			double popSize = (nodeIdx >= 0 && linear)
+				? popSizeGridStart + (popSizeGridEnd - popSizeGridStart)*fracEnd
+				: popSizeGridEnd;
+			double logPopSize = log(popSize);
+			double invPopSize = 1.0/popSize;
+
+			// density term contributed by a coalescent event
+			if(nodeIdx >= 0 && coal->iscoalescent[i]){
+				coal->logP -= logPopSize;
+				if(linear){
+					if(compute_grad_time){
+						heightGradient[nodeIdx] -= slope*invPopSize;
 					}
-					else{
-						popSize = popSizeGridStart + (popSizeGridEnd - popSizeGridStart) * (t - timeGridStart)/deltaGrid;
-						logPopSize = log(popSize);
-
-						if( coal->iscoalescent[i]){
-							coal->logP -= logPopSize;
-							if(compute_grad_time){
-								double dpopSizedt = (popSizeGridEnd - popSizeGridStart)/deltaGrid;
-								heightGradient[coal->nodes[i]->index] -= dpopSizedt/popSize;
-							}
-
-							if(compute_grad_theta){
-								double c = (t - timeGridStart)/deltaGrid;
-								thetaGradient[currentGridIndex] -= (1.0 - c)/popSize;
-								thetaGradient[currentGridIndex + 1] -=  c/popSize;
-							}
-						}
+					if(compute_grad_theta){
+						thetaGradient[currentGridIndex] -= (1.0 - fracEnd)*invPopSize;
+						thetaGradient[currentGridIndex + 1] -= fracEnd*invPopSize;
 					}
 				}
-				else{
-					popSize = popSizeGridEnd;
-					logPopSize = log(popSize);
+				else if(compute_grad_theta){
+					thetaGradient[currentGridIndex] -= invPopSize;
 				}
+			}
 
-				// integral
-				if (currentGridIndex < coal->gridCount && popSizeGridEnd != popSizeGridStart){
-					coal->logP -= lchoose2 * coal->times[i] * (log(popSize) - log(popSizeCurrent))/(popSize - popSizeCurrent);
+			// integral term over the interval [start, end]
+			if(linear){
+				// a = popSizeCurrent (pop size at interval start), b = popSize (at end)
+				double D = popSize - popSizeCurrent;
+				double invD = 1.0/D;
+				double L = logPopSize - logPopSizeCurrent;
+				double g = L*invD;                                   // (log b - log a)/(b - a)
+				coal->logP -= lchoose2 * times * g;
+
+				if(compute_grad_theta || compute_grad_time){
+					double LinvD2 = g*invD;                          // L/D^2
+					double dg_da = LinvD2 - invD/popSizeCurrent;     // dg/da
+					double dg_db = invD*invPopSize - LinvD2;         // dg/db
 
 					if(compute_grad_theta){
-						double gradStart = 0.0;
-						double gradEnd = 0.0;
-						// interval is 2 consecutive grid points or starts with a sampling event at time 0 followed by grid
-						if (coal->nodes[i]->index < 0 && (coal->nodes[i-1]->index < 0 || t - coal->times[i] == 0.0)){
-							double logPopSizeGridEnd = log(popSizeGridEnd);
-							double logPopSizeGridStart = log(popSizeGridStart);
-							gradStart = (popSizeGridStart*(logPopSizeGridEnd + 1.0 - logPopSizeGridStart) - popSizeGridEnd)/(popSizeGridStart*pow(popSizeGridEnd - popSizeGridStart, 2.0));
-							gradEnd = (popSizeGridEnd*(logPopSizeGridStart + 1.0 - logPopSizeGridEnd) - popSizeGridStart)/(popSizeGridEnd*pow(popSizeGridEnd - popSizeGridStart, 2.0));
-						}
-						// interval ends with a grid point
-						else if (coal->nodes[i]->index < 0){
-							double logPopSizeGridEnd = log(popSizeGridEnd);
-							double logPopSizeCurrent = log(popSizeCurrent);
-							double dpopSizeCurrent_dEnd = (t-coal->times[i] - timeGridStart)/deltaGrid;
-							double dpopSizeCurrent_dStart = 1.0 - dpopSizeCurrent_dEnd;
-
-							gradStart = -(dpopSizeCurrent_dStart*(popSizeCurrent*(logPopSizeCurrent - logPopSizeGridEnd - 1.0) + popSizeGridEnd))/(popSizeCurrent*pow(popSizeGridEnd - popSizeCurrent, 2.0));
-							gradEnd = ((popSizeGridEnd - popSizeCurrent)*(1./popSizeGridEnd - dpopSizeCurrent_dEnd/popSizeCurrent) + (dpopSizeCurrent_dEnd - 1.0)*(logPopSizeGridEnd - logPopSizeCurrent))/pow(popSizeGridEnd - popSizeCurrent, 2.0);
-						}
-						// interval starts with a grid point or sampling event at time 0
-						else if (coal->nodes[i-1]->index < 0 || t - coal->times[i] == 0.0){
-							double logPopSizeGridStart = log(popSizeGridStart);
-							double dPopSize_dEnd = (t - timeGridStart)/deltaGrid;
-							double dPopSize_dStart = 1.0 - dPopSize_dEnd;
-
-							gradStart = ((popSize - popSizeGridStart)*(dPopSize_dStart/popSize - 1./popSizeGridStart) + (dPopSize_dStart - 1.0)*(logPopSizeGridStart - logPopSize))/pow(popSize - popSizeGridStart, 2.0);
-							gradEnd = (dPopSize_dEnd*(popSize*(logPopSizeGridStart + 1.0 - logPopSize) - popSizeGridStart))/(popSize*pow(popSize - popSizeGridStart, 2.0));
-						}
-						else{
-							double logPopSizeCurrent = log(popSizeCurrent);
-							double dpopSizeCurrent_dEnd = (t - coal->times[i] - timeGridStart)/deltaGrid;
-							double dpopSizeCurrent_dStart = 1.0 - dpopSizeCurrent_dEnd;
-
-							double dPopSize_dEnd = (t - timeGridStart)/deltaGrid;
-							double dPopSize_dStart = 1.0 - dPopSize_dEnd;
-
-							gradStart = (dPopSize_dStart/popSize - dpopSizeCurrent_dStart/popSizeCurrent)/(popSize - popSizeCurrent) - (dPopSize_dStart - dpopSizeCurrent_dStart)*(logPopSize - logPopSizeCurrent)/pow(popSize - popSizeCurrent, 2.0);
-							gradEnd = (dPopSize_dEnd/popSize - dpopSizeCurrent_dEnd/popSizeCurrent)/(popSize - popSizeCurrent) - (dPopSize_dEnd - dpopSizeCurrent_dEnd)*(logPopSize - logPopSizeCurrent)/pow(popSize - popSizeCurrent, 2.0);
-						}
-						thetaGradient[currentGridIndex] += -lchoose2*coal->times[i]*gradStart;
-						thetaGradient[currentGridIndex+1] += -lchoose2*coal->times[i]*gradEnd;
+						// a and b are linear interpolations of the grid pop sizes:
+						// da/dStart = 1-fracStart, da/dEnd = fracStart, likewise for b
+						double w = -lchoose2*times;
+						thetaGradient[currentGridIndex]   += w*(dg_da*(1.0 - fracStart) + dg_db*(1.0 - fracEnd));
+						thetaGradient[currentGridIndex+1] += w*(dg_da*fracStart + dg_db*fracEnd);
 					}
-
 					if(compute_grad_time){
-						double deltaLogPopSize = logPopSize - log(popSizeCurrent);
-						if(coal->nodes[i]->index >= 0){
-							double dpopSizedt = (popSizeGridEnd - popSizeGridStart)/deltaGrid;
-							double d = -coal->times[i]*dpopSizedt*deltaLogPopSize/pow(popSize - popSizeCurrent, 2);
-							d += coal->times[i]*dpopSizedt/(popSize*(popSize - popSizeCurrent)) + deltaLogPopSize/(popSize - popSizeCurrent);
-							heightGradient[coal->nodes[i]->index] -= lchoose2*d;
+						// end node: d(times)/dt=+1 and db/dt=slope; start node: d(times)/dt=-1, da/dt=slope
+						if(nodeIdx >= 0){
+							heightGradient[nodeIdx] -= lchoose2*(g + times*slope*dg_db);
 						}
-						if(coal->nodes[i-1]->index >= 0){
-							double dpopSizedt = (popSizeGridEnd - popSizeGridStart)/deltaGrid;
-							double d = coal->times[i]*dpopSizedt*deltaLogPopSize/pow(popSize - popSizeCurrent, 2);
-							d += -coal->times[i]*dpopSizedt/(popSizeCurrent*(popSize - popSizeCurrent)) - deltaLogPopSize/(popSize - popSizeCurrent);
-							heightGradient[coal->nodes[i-1]->index] -= lchoose2*d;
+						int prevIdx = coal->nodes[i-1]->index;
+						if(prevIdx >= 0){
+							heightGradient[prevIdx] -= lchoose2*(-g + times*slope*dg_da);
 						}
 					}
 				}
-				else{
-					coal->logP -= lchoose2 * coal->times[i] / popSize;
-					
-					if(compute_grad_theta){
-						thetaGradient[currentGridIndex] += lchoose2 * coal->times[i] / (popSize*popSize);
+			}
+			else{
+				coal->logP -= lchoose2 * times * invPopSize;
+				if(compute_grad_theta){
+					thetaGradient[currentGridIndex] += lchoose2 * times * invPopSize*invPopSize;
+				}
+				if(compute_grad_time){
+					if(nodeIdx >= 0){
+						heightGradient[nodeIdx] -= lchoose2*invPopSize;
 					}
-
-					if(compute_grad_time){
-						if(coal->nodes[i]->index >= 0){
-							heightGradient[coal->nodes[i]->index] -= lchoose2/popSize;
-						}
-						if(coal->nodes[i-1]->index >= 0){
-							heightGradient[coal->nodes[i-1]->index] += lchoose2/popSize;
-						}
+					int prevIdx = coal->nodes[i-1]->index;
+					if(prevIdx >= 0){
+						heightGradient[prevIdx] += lchoose2*invPopSize;
 					}
 				}
+			}
 
-				popSizeCurrent = popSize;
+			popSizeCurrent = popSize;
+			logPopSizeCurrent = logPopSize;
 
-				if (coal->nodes[i]->index < 0) {
-					currentGridIndex++;
-					if(currentGridIndex < coal->gridCount){
-						timeGridStart = timeGridEnd;
-						timeGridEnd = coal->grid[currentGridIndex];
-						popSizeGridStart = popSizeGridEnd;
-						popSizeGridEnd = theta[currentGridIndex + 1];
-					}
+			if(nodeIdx < 0){
+				currentGridIndex++;
+				if(currentGridIndex < coal->gridCount){
+					timeGridStart = timeGridEnd;
+					timeGridEnd = coal->grid[currentGridIndex];
+					popSizeGridStart = popSizeGridEnd;
+					popSizeGridEnd = theta[currentGridIndex + 1];
 				}
 			}
 		}
