@@ -445,6 +445,460 @@ char* test_piecewise_linear() {
     return NULL;
 }*/
 
+// Generic finite-difference check of a coalescent model's gradient wrt the
+// reparameterized node-height ratios, the root height, and the model's
+// population parameters (`extra`). Exercises trees with and without unknown-age
+// leaves (`nratios` = tipCount-2 + number of unknown leaves).
+static char* _fd_coal_model_gradient(Model* model, Model* mtree, Parameters* extra,
+                                     size_t nratios, const char* label) {
+    Tree* tree = mtree->obj;
+    Parameters* reparams = get_reparams(tree);
+    Parameter* ratios = Parameters_at(reparams, 0);
+    Parameter* root = Parameters_at(reparams, 1);
+    mu_assert(Parameter_size(ratios) == nratios, "unexpected number of ratios");
+
+    Parameters* ps = new_Parameters(2);
+    Parameters_add_parameters(ps, reparams);
+    Parameters_add_parameters(ps, extra);
+
+    size_t offset = nratios - (Tree_tip_count(tree) - 2);
+    for (size_t i = 0; i < offset; i++) {
+        mu_assert(Parameter_value_at(ratios, i) > 1.e-3 &&
+                      Parameter_value_at(ratios, i) < 1.0 - 1.e-3,
+                  "unknown-leaf ratio initialized at the boundary");
+    }
+
+    double lp0 = model->logP(model);
+    mu_assert(!isnan(lp0) && !isinf(lp0), "coalescent logP not finite");
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    double g_ratio[16];
+    for (size_t i = 0; i < nratios; i++) g_ratio[i] = ratios->grad[i];
+    double g_root = root->grad[0];
+    double g_extra[32];
+    size_t nextra = 0;
+    for (size_t c = 0; c < Parameters_count(extra); c++) {
+        Parameter* p = Parameters_at(extra, c);
+        for (size_t j = 0; j < Parameter_size(p); j++) g_extra[nextra++] = p->grad[j];
+    }
+
+    double h = 1.e-6;
+    double worst = 0.0;
+
+    for (size_t i = 0; i < nratios; i++) {
+        double v0 = Parameter_value_at(ratios, i);
+        Parameter_set_value_at(ratios, v0 + h, i);
+        double lp = model->logP(model);
+        Parameter_set_value_at(ratios, v0 - h, i);
+        double lm = model->logP(model);
+        Parameter_set_value_at(ratios, v0, i);
+        double fd = (lp - lm) / (2.0 * h);
+        double err = fabs(fd - g_ratio[i]) / (1.0 + fabs(g_ratio[i]));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-4, "coalescent ratio gradient does not match finite difference");
+    }
+
+    {
+        double v0 = Parameter_value(root);
+        double hh = h * (1.0 + fabs(v0));
+        Parameter_set_value(root, v0 + hh);
+        double lp = model->logP(model);
+        Parameter_set_value(root, v0 - hh);
+        double lm = model->logP(model);
+        Parameter_set_value(root, v0);
+        double fd = (lp - lm) / (2.0 * hh);
+        double err = fabs(fd - g_root) / (1.0 + fabs(g_root));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-4, "coalescent root-height gradient does not match finite difference");
+    }
+
+    size_t idx = 0;
+    for (size_t c = 0; c < Parameters_count(extra); c++) {
+        Parameter* p = Parameters_at(extra, c);
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double v0 = Parameter_value_at(p, j);
+            double hh = h * (1.0 + fabs(v0));
+            Parameter_set_value_at(p, v0 + hh, j);
+            double lp = model->logP(model);
+            Parameter_set_value_at(p, v0 - hh, j);
+            double lm = model->logP(model);
+            Parameter_set_value_at(p, v0, j);
+            double fd = (lp - lm) / (2.0 * hh);
+            double err = fabs(fd - g_extra[idx]) / (1.0 + fabs(g_extra[idx]));
+            if (err > worst) worst = err;
+            idx++;
+            mu_assert(err < 1.e-4, "coalescent population gradient does not match finite difference");
+        }
+    }
+
+    printf("  [%s nratios=%zu] worst relative FD error = %.3e\n", label, nratios, worst);
+    free_Parameters(ps);
+    return NULL;
+}
+
+// Exponential coalescent gradient (n0, growth rate, ratios, root height), checked
+// against finite differences with and without an unknown-age leaf.
+// caterpillar tree (distinct internal heights 1.3, 3, 5.5, 8.5) to avoid the
+// tied-height degeneracy that makes finite differences unreliable
+#define COAL_FD_NEWICK "((((a:1.3,b:1.3):1.7,c:3):2.5,d:5.5):3,e:8.5);"
+
+char* test_exponential_proportions_gradient_fd() {
+    char* taxa[5] = {"a", "b", "c", "d", "e"};
+    double dates[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    Model* mtree = new_TimeTreeModel_from_newick(COAL_FD_NEWICK, taxa, dates);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
+    Tree* tree = mtree->obj;
+    Parameters* exp = new_Parameters(2);
+    Parameters_add(exp, new_Parameter("n0", 4.0, new_Constraint(0, INFINITY)));
+    Parameters_add(exp, new_Parameter("growth", 0.1, new_Constraint(-INFINITY, INFINITY)));
+    Coalescent* coal = new_ExponentialCoalescent(tree, exp);
+    Model* model = new_CoalescentModel("coalescent", coal, mtree);
+    char* r = _fd_coal_model_gradient(model, mtree, exp, 3, "exponential");
+    model->free(model);
+    mtree->free(mtree);
+    free_Parameters(exp);
+    return r;
+}
+
+char* test_exponential_proportions_leaf_gradient_fd() {
+    char* taxa[5] = {"a", "b", "c", "d", "e"};
+    double dates[5] = {0.0, 0.0, -1.0, 0.0, 0.0};
+    Model* mtree = new_TimeTreeModel_from_newick(COAL_FD_NEWICK, taxa, dates);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
+    Tree* tree = mtree->obj;
+    Parameters* exp = new_Parameters(2);
+    Parameters_add(exp, new_Parameter("n0", 4.0, new_Constraint(0, INFINITY)));
+    Parameters_add(exp, new_Parameter("growth", 0.1, new_Constraint(-INFINITY, INFINITY)));
+    Coalescent* coal = new_ExponentialCoalescent(tree, exp);
+    Model* model = new_CoalescentModel("coalescent", coal, mtree);
+    char* r = _fd_coal_model_gradient(model, mtree, exp, 4, "exponential-leaf");
+    model->free(model);
+    mtree->free(mtree);
+    free_Parameters(exp);
+    return r;
+}
+
+// (COAL_FD_NEWICK is defined above; its heights also avoid the skygrid grid
+// points at cutoff 9, grid 4 -> 2.25, 4.5, 6.75, 9.)
+
+// Skygrid grid points sit at cutoff*i/(grid-1). For grid=4 the lines are at
+// cutoff/3, 2*cutoff/3 and cutoff; the cutoffs below (10 and 7) keep them off the
+// caterpillar coalescent heights (1.3, 3, 5.5, 8.5) so finite differences are
+// valid. cutoff=10 is OLDER than the root (8.5) -> a trailing empty grid segment;
+// cutoff=7 is YOUNGER than the root -> the oldest popSize covers the tail.
+static char* _fd_skygrid(double cutoff, double* dates, size_t nratios, const char* label) {
+    char* taxa[5] = {"a", "b", "c", "d", "e"};
+    Model* mtree = new_TimeTreeModel_from_newick(COAL_FD_NEWICK, taxa, dates);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
+    Tree* tree = mtree->obj;
+    double thetas[4] = {3., 10., 4., 2.};
+    Parameter* popSizes = new_Parameter2("popSizes", thetas, 4, new_Constraint(0, INFINITY));
+    Parameters* extra = new_Parameters(1);
+    Parameters_add(extra, popSizes);
+    Coalescent* coal = new_GridCoalescent(tree, popSizes, 4, cutoff);
+    Model* model = new_CoalescentModel("coalescent", coal, mtree);
+    char* r = _fd_coal_model_gradient(model, mtree, extra, nratios, label);
+    model->free(model);
+    mtree->free(mtree);
+    free_Parameters(extra);
+    return r;
+}
+
+char* test_skygrid_cutoff_old_gradient_fd() {
+    double dates[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    return _fd_skygrid(10.0, dates, 3, "skygrid-cutoff>root");
+}
+
+char* test_skygrid_cutoff_old_leaf_gradient_fd() {
+    double dates[5] = {0.0, 0.0, -1.0, 0.0, 0.0};
+    return _fd_skygrid(10.0, dates, 4, "skygrid-cutoff>root-leaf");
+}
+
+char* test_skygrid_cutoff_young_gradient_fd() {
+    double dates[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    return _fd_skygrid(7.0, dates, 3, "skygrid-cutoff<root");
+}
+
+char* test_skygrid_cutoff_young_leaf_gradient_fd() {
+    double dates[5] = {0.0, 0.0, -1.0, 0.0, 0.0};
+    return _fd_skygrid(7.0, dates, 4, "skygrid-cutoff<root-leaf");
+}
+
+// Piecewise-linear grid coalescent: shares height_gradient_from_interval_gradient
+// (the grid-point OOB fix), so exercise it the same way as skygrid -- grid points
+// off the coalescent heights, cutoff both older and younger than the root.
+static char* _fd_piecewise(double cutoff, double* dates, size_t nratios,
+                           const char* label) {
+    char* taxa[5] = {"a", "b", "c", "d", "e"};
+    Model* mtree = new_TimeTreeModel_from_newick(COAL_FD_NEWICK, taxa, dates);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
+    Tree* tree = mtree->obj;
+    double thetas[4] = {3., 10., 4., 2.};
+    Parameter* popSizes = new_Parameter2("popSizes", thetas, 4, new_Constraint(0, INFINITY));
+    Parameters* extra = new_Parameters(1);
+    Parameters_add(extra, popSizes);
+    Coalescent* coal = new_PiecewiseLinearGridCoalescent(tree, popSizes, 4, cutoff);
+    Model* model = new_CoalescentModel("coalescent", coal, mtree);
+    char* r = _fd_coal_model_gradient(model, mtree, extra, nratios, label);
+    model->free(model);
+    mtree->free(mtree);
+    free_Parameters(extra);
+    return r;
+}
+
+char* test_piecewise_cutoff_old_gradient_fd() {
+    double dates[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    return _fd_piecewise(10.0, dates, 3, "piecewise-cutoff>root");
+}
+
+char* test_piecewise_cutoff_old_leaf_gradient_fd() {
+    double dates[5] = {0.0, 0.0, -1.0, 0.0, 0.0};
+    return _fd_piecewise(10.0, dates, 4, "piecewise-cutoff>root-leaf");
+}
+
+char* test_piecewise_cutoff_young_gradient_fd() {
+    double dates[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    return _fd_piecewise(7.0, dates, 3, "piecewise-cutoff<root");
+}
+
+char* test_piecewise_cutoff_young_leaf_gradient_fd() {
+    double dates[5] = {0.0, 0.0, -1.0, 0.0, 0.0};
+    return _fd_piecewise(7.0, dates, 4, "piecewise-cutoff<root-leaf");
+}
+
+char* test_skyride_proportions_gradient_fd() {
+    char* taxa[5] = {"a", "b", "c", "d", "e"};
+    double dates[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    Model* mtree = new_TimeTreeModel_from_newick(COAL_FD_NEWICK, taxa, dates);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
+    Tree* tree = mtree->obj;
+    double thetas[4] = {3., 10., 4., 2.};
+    Parameter* popSizes = new_Parameter2("popSizes", thetas, 4, new_Constraint(0, INFINITY));
+    Parameters* extra = new_Parameters(1);
+    Parameters_add(extra, popSizes);
+    Coalescent* coal = new_SkyrideCoalescent(tree, popSizes);
+    Model* model = new_CoalescentModel("coalescent", coal, mtree);
+    char* r = _fd_coal_model_gradient(model, mtree, extra, 3, "skyride");
+    model->free(model);
+    mtree->free(mtree);
+    free_Parameters(extra);
+    return r;
+}
+
+char* test_skyride_proportions_leaf_gradient_fd() {
+    char* taxa[5] = {"a", "b", "c", "d", "e"};
+    double dates[5] = {0.0, 0.0, -1.0, 0.0, 0.0};
+    Model* mtree = new_TimeTreeModel_from_newick(COAL_FD_NEWICK, taxa, dates);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
+    Tree* tree = mtree->obj;
+    double thetas[4] = {3., 10., 4., 2.};
+    Parameter* popSizes = new_Parameter2("popSizes", thetas, 4, new_Constraint(0, INFINITY));
+    Parameters* extra = new_Parameters(1);
+    Parameters_add(extra, popSizes);
+    Coalescent* coal = new_SkyrideCoalescent(tree, popSizes);
+    Model* model = new_CoalescentModel("coalescent", coal, mtree);
+    char* r = _fd_coal_model_gradient(model, mtree, extra, 4, "skyride-leaf");
+    model->free(model);
+    mtree->free(mtree);
+    free_Parameters(extra);
+    return r;
+}
+
+// Verify the constant-coalescent gradient (wrt reparameterized node-height
+// ratios, root height, and theta) against central finite differences, using the
+// PROPORTION transform. `nratios` is tipCount-2 plus the number of unknown-age
+// leaves, so the same routine exercises trees with and without unknown leaves.
+static char* _fd_coalescent_gradient(const char* newick, char** taxa, double* dates,
+                                     size_t nratios) {
+    Model* mtree = new_TimeTreeModel_from_newick(newick, taxa, dates);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
+    Tree* tree = mtree->obj;
+
+    Parameter* N = new_Parameter("theta", 4.0, new_Constraint(0, INFINITY));
+    Coalescent* coal = new_ConstantCoalescent(tree, N);
+    Model* model = new_CoalescentModel("coalescent", coal, mtree);
+
+    Parameters* reparams = get_reparams(tree);
+    Parameter* ratios = Parameters_at(reparams, 0);
+    Parameter* root = Parameters_at(reparams, 1);
+    mu_assert(Parameter_size(ratios) == nratios, "unexpected number of ratios");
+
+    Parameters* ps = new_Parameters(3);
+    Parameters_add(ps, N);
+    Parameters_add_parameters(ps, reparams);
+
+    // unknown-leaf ratios occupy the first `offset` slots and should start
+    // at an interior point (not pinned at the lower bound)
+    size_t offset = nratios - (Tree_tip_count(tree) - 2);
+    for (size_t i = 0; i < offset; i++) {
+        mu_assert(Parameter_value_at(ratios, i) > 1.e-3 &&
+                      Parameter_value_at(ratios, i) < 1.0 - 1.e-3,
+                  "unknown-leaf ratio initialized at the boundary");
+    }
+
+    double lp0 = model->logP(model);
+    mu_assert(!isnan(lp0) && !isinf(lp0), "coalescent logP not finite");
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+    double g_N = N->grad[0];
+    double g_root = root->grad[0];
+    double g_ratio[16];
+    for (size_t i = 0; i < nratios; i++) g_ratio[i] = ratios->grad[i];
+
+    double h = 1.e-6;
+    double worst = 0.0;
+
+    for (size_t i = 0; i < nratios; i++) {
+        double v0 = Parameter_value_at(ratios, i);
+        Parameter_set_value_at(ratios, v0 + h, i);
+        double lp = model->logP(model);
+        Parameter_set_value_at(ratios, v0 - h, i);
+        double lm = model->logP(model);
+        Parameter_set_value_at(ratios, v0, i);
+        double fd = (lp - lm) / (2.0 * h);
+        double err = fabs(fd - g_ratio[i]) / (1.0 + fabs(g_ratio[i]));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-4,
+                  "coalescent ratio gradient does not match finite difference");
+    }
+
+    {
+        double v0 = Parameter_value(root);
+        double hh = h * (1.0 + fabs(v0));
+        Parameter_set_value(root, v0 + hh);
+        double lp = model->logP(model);
+        Parameter_set_value(root, v0 - hh);
+        double lm = model->logP(model);
+        Parameter_set_value(root, v0);
+        double fd = (lp - lm) / (2.0 * hh);
+        double err = fabs(fd - g_root) / (1.0 + fabs(g_root));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-4,
+                  "coalescent root-height gradient does not match finite difference");
+    }
+
+    {
+        double v0 = Parameter_value(N);
+        double hh = h * (1.0 + fabs(v0));
+        Parameter_set_value(N, v0 + hh);
+        double lp = model->logP(model);
+        Parameter_set_value(N, v0 - hh);
+        double lm = model->logP(model);
+        Parameter_set_value(N, v0);
+        double fd = (lp - lm) / (2.0 * hh);
+        double err = fabs(fd - g_N) / (1.0 + fabs(g_N));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-4,
+                  "coalescent theta gradient does not match finite difference");
+    }
+
+    printf("  [coalescent nratios=%zu] worst relative FD error = %.3e\n", nratios, worst);
+
+    model->free(model);
+    mtree->free(mtree);
+    free_Parameter(N);
+    free_Parameters(ps);
+    return NULL;
+}
+
+// Verify the log-det-Jacobian of the height reparameterization and its gradient.
+// The tree model's logP is the log-det-Jacobian; mtree->gradient accumulates its
+// gradient wrt the ratios and root height. Checked against finite differences.
+static char* _fd_logdet_jacobian(const char* newick, char** taxa, double* dates,
+                                 size_t nratios) {
+    Model* mtree = new_TimeTreeModel_from_newick(newick, taxa, dates);
+    TreeModel_set_transform(mtree, TREE_TRANSFORM_PROPORTION);
+    Tree* tree = mtree->obj;
+
+    Parameters* reparams = get_reparams(tree);
+    Parameter* ratios = Parameters_at(reparams, 0);
+    Parameter* root = Parameters_at(reparams, 1);
+    mu_assert(Parameter_size(ratios) == nratios, "unexpected number of ratios");
+
+    size_t offset = nratios - (Tree_tip_count(tree) - 2);
+    for (size_t i = 0; i < offset; i++) {
+        mu_assert(Parameter_value_at(ratios, i) > 1.e-3 &&
+                      Parameter_value_at(ratios, i) < 1.0 - 1.e-3,
+                  "unknown-leaf ratio initialized at the boundary");
+    }
+
+    double lj0 = mtree->logP(mtree);
+    mu_assert(!isnan(lj0) && !isinf(lj0), "log-det-Jacobian not finite");
+
+    Parameters_zero_grad(reparams);
+    mtree->gradient(mtree, reparams);
+    double g_root = root->grad[0];
+    double g_ratio[16];
+    for (size_t i = 0; i < nratios; i++) g_ratio[i] = ratios->grad[i];
+
+    double h = 1.e-6;
+    double worst = 0.0;
+
+    for (size_t i = 0; i < nratios; i++) {
+        double v0 = Parameter_value_at(ratios, i);
+        Parameter_set_value_at(ratios, v0 + h, i);
+        double lp = mtree->logP(mtree);
+        Parameter_set_value_at(ratios, v0 - h, i);
+        double lm = mtree->logP(mtree);
+        Parameter_set_value_at(ratios, v0, i);
+        double fd = (lp - lm) / (2.0 * h);
+        double err = fabs(fd - g_ratio[i]) / (1.0 + fabs(g_ratio[i]));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-4,
+                  "log-det-Jacobian ratio gradient does not match finite difference");
+    }
+
+    {
+        double v0 = Parameter_value(root);
+        double hh = h * (1.0 + fabs(v0));
+        Parameter_set_value(root, v0 + hh);
+        double lp = mtree->logP(mtree);
+        Parameter_set_value(root, v0 - hh);
+        double lm = mtree->logP(mtree);
+        Parameter_set_value(root, v0);
+        double fd = (lp - lm) / (2.0 * hh);
+        double err = fabs(fd - g_root) / (1.0 + fabs(g_root));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-4,
+                  "log-det-Jacobian root-height gradient does not match finite difference");
+    }
+
+    printf("  [logdet-jacobian nratios=%zu] worst relative FD error = %.3e\n", nratios, worst);
+
+    mtree->free(mtree);
+    return NULL;
+}
+
+char* test_logdet_jacobian_gradient_fd() {
+    char* taxa[5] = {"a", "b", "c", "d", "e"};
+    double dates[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    return _fd_logdet_jacobian("((a:4,b:4):4,((c:2,d:2):2,e:4):4);", taxa, dates, 3);
+}
+
+char* test_logdet_jacobian_leaf_gradient_fd() {
+    char* taxa[5] = {"a", "b", "c", "d", "e"};
+    // taxon c is unknown; its parent is an internal node, so c's Jacobian term
+    // log(parent_height) contributes to that internal node's ratio gradient
+    double dates[5] = {0.0, 0.0, -1.0, 0.0, 0.0};
+    return _fd_logdet_jacobian("((a:4,b:4):4,((c:2,d:2):2,e:4):4);", taxa, dates, 4);
+}
+
+char* test_constant_proportions_gradient_fd() {
+    char* taxa[4] = {"a", "b", "c", "d"};
+    double dates[4] = {0.0, 1.0, 2.0, 4.0};
+    return _fd_coalescent_gradient("(((a:2,b:2):4,c:6):6,d:12);", taxa, dates, 2);
+}
+
+char* test_constant_proportions_leaf_gradient_fd() {
+    char* taxa[4] = {"a", "b", "c", "d"};
+    // taxon d has an unknown age: it becomes a free (reparameterized) parameter
+    double dates[4] = {0.0, 1.0, 2.0, -1.0};
+    return _fd_coalescent_gradient("(((a:2,b:2):4,c:6):6,d:12);", taxa, dates, 3);
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_constant_proportions_naive);
@@ -456,6 +910,22 @@ char* all_tests() {
     mu_run_test(test_skygrid);
     mu_run_test(test_piecewise_linear);
     // mu_run_test(test_piecewise_linear2);
+    mu_run_test(test_constant_proportions_gradient_fd);
+    mu_run_test(test_constant_proportions_leaf_gradient_fd);
+    mu_run_test(test_logdet_jacobian_gradient_fd);
+    mu_run_test(test_logdet_jacobian_leaf_gradient_fd);
+    mu_run_test(test_skyride_proportions_gradient_fd);
+    mu_run_test(test_skyride_proportions_leaf_gradient_fd);
+    mu_run_test(test_exponential_proportions_gradient_fd);
+    mu_run_test(test_exponential_proportions_leaf_gradient_fd);
+    mu_run_test(test_skygrid_cutoff_old_gradient_fd);
+    mu_run_test(test_skygrid_cutoff_old_leaf_gradient_fd);
+    mu_run_test(test_skygrid_cutoff_young_gradient_fd);
+    mu_run_test(test_skygrid_cutoff_young_leaf_gradient_fd);
+    mu_run_test(test_piecewise_cutoff_old_gradient_fd);
+    mu_run_test(test_piecewise_cutoff_old_leaf_gradient_fd);
+    mu_run_test(test_piecewise_cutoff_young_gradient_fd);
+    mu_run_test(test_piecewise_cutoff_young_leaf_gradient_fd);
     return NULL;
 }
 

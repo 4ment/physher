@@ -466,6 +466,10 @@ void init_dates2(Tree* atree, const double* dates){
 	for (int j = 0; j < Tree_node_count(atree); j++) {
 		if(Node_isleaf(nodes[j])){
 			double date = dates[nodes[j]->class_id];
+			// unknown ages (date < 0) are free parameters: exclude them from the
+			// date range so they do not pollute min/max, the homochronous flag, or
+			// the root-height offset. Their height is set by the reparameterization.
+			if(date < 0) continue;
 			Node_set_time(nodes[j], date);
 			Node_set_height(nodes[j], date);
 			min = dmin(date, min);
@@ -478,9 +482,18 @@ void init_dates2(Tree* atree, const double* dates){
 		offset = -1;
 		for (int i = 0; i < Tree_node_count(atree); i++) {
 			if(Node_isleaf(nodes[i])){
+				if(dates[nodes[i]->class_id] < 0) continue;
 				Node_set_height(nodes[i], max - Node_height(nodes[i]));
 				offset = dmax(offset-0.000001, Node_height(nodes[i]))+0.000001;
 			}
+		}
+	}
+	// give unknown-age leaves a neutral starting height (most-recent sample time);
+	// the height reparameterization determines their actual value
+	for (int j = 0; j < Tree_node_count(atree); j++) {
+		if(Node_isleaf(nodes[j]) && dates[nodes[j]->class_id] < 0){
+			Node_set_time(nodes[j], max);
+			Node_set_height(nodes[j], 0.0);
 		}
 	}
 	
@@ -609,6 +622,7 @@ Tree * create_Tree( const char *nexus, bool containBL ){
 	atree->preorder = NULL;
 	atree->nodes = NULL;
 	atree->stored_nodes = NULL;
+	atree->unknownLeaves = NULL;
 	atree->nTips = 0;
 	atree->nNodes = 0;
 	atree->rooted = false;
@@ -865,6 +879,7 @@ Tree * new_Tree2( Node *root ){
 	atree->postorder = NULL;
 	atree->preorder = NULL;
     atree->nodes = NULL;
+	atree->unknownLeaves = NULL;
 	atree->nTips = 0;
 	atree->nNodes = 0;
 	atree->rooted = false;
@@ -1694,6 +1709,16 @@ Model* new_TimeTreeModel_from_newick(const char* newick, char** taxa, const doub
 	// parse date dictionary for dated trees
 	// tip heights are intialized
 	tree->unknownLeaves = bvector(Tree_tip_count(tree));
+	if(dates != NULL){
+		Node** dnodes = Tree_get_nodes(tree, PREORDER);
+		for (int j = 0; j < Tree_node_count(tree); j++) {
+			// a negative date flags a leaf whose age is unknown and estimated
+			if(Node_isleaf(dnodes[j]) && dates[dnodes[j]->class_id] < 0){
+				dnodes[j]->height->estimate = true;
+				tree->unknownLeaves[dnodes[j]->class_id] = true;
+			}
+		}
+	}
 	init_dates2(tree, dates);
 	tree->time_mode = true;
 	tree->rooted = true;
@@ -1779,7 +1804,8 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
 	newTree->preorder  = NULL;
     newTree->nodes = NULL;
 	newTree->stored_nodes = NULL;
-	
+	newTree->unknownLeaves = NULL;
+
 	newTree->rooted = tree->rooted;
 	
 	newTree->root = clone_Tree_aux(newTree, node, NULL);
@@ -1797,6 +1823,11 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
 	newTree->needUpdateBranchLengths = tree->needUpdateBranchLengths;
 	
 	init_parameter_arrays(newTree);
+	// copy unknown-leaf flags before building the transform, which reads them
+	if(tree->unknownLeaves != NULL && Tree_tip_count(newTree) == Tree_tip_count(tree)){
+		newTree->unknownLeaves = bvector(Tree_tip_count(newTree));
+		memcpy(newTree->unknownLeaves, tree->unknownLeaves, sizeof(bool)*Tree_tip_count(newTree));
+	}
 	newTree->tt = NULL;
 	if(tree->tt != NULL){
 		newTree->tt = new_HeightTreeTransform(newTree, tree->tt->parameterization);

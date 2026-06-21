@@ -448,6 +448,119 @@ char* test_treelikelihood_time_unconstrained() {
     return NULL;
 }
 
+// Verify the time-tree likelihood gradient (wrt reparameterized node-height
+// ratios, root height, and clock rate) against central finite differences.
+// `nratios` is tipCount-2 plus the number of unknown-age leaves, so the same
+// routine exercises trees with and without unknown leaves.
+static char* _fd_time_gradient(const char* file, size_t nratios) {
+    Hashtable* hash = new_Hashtable_string(10);
+    hashtable_set_key_ownership(hash, false);
+    hashtable_set_value_ownership(hash, false);
+
+    char* content = load_file(file);
+    json_node* json = create_json_tree(content);
+    free(content);
+
+    json_node* child = json->children[0];
+    Model* model = new_TreeLikelihoodModel_from_json(child, hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    Model** models = (Model**)model->data;
+    Model* mtree = models[0];
+    Model* mbm = models[3];
+    Tree* tree = mtree->obj;
+    Tree_update_heights(tree);
+    tlk->include_jacobian = false;
+
+    Parameters* params = get_reparams(tree);
+    Parameter* ratios = Parameters_at(params, 0);
+    Parameter* root = Parameters_at(params, 1);
+    Parameter* rate = Parameters_at(mbm->parameters, 0);
+    Parameters* parameters = new_Parameters(3);
+    Parameters_add_parameters(parameters, params);
+    Parameters_add_parameters(parameters, mbm->parameters);
+
+    mu_assert(Parameter_size(ratios) == nratios, "unexpected number of ratios");
+
+    // unknown-leaf ratios occupy the first `offset` slots; initialize_from_heights
+    // should have started them at an interior value (not pinned at the lower
+    // bound), so the central finite-difference step below stays inside (0,1).
+    size_t offset = nratios - (Tree_tip_count(tree) - 2);
+    for (size_t i = 0; i < offset; i++) {
+        mu_assert(Parameter_value_at(ratios, i) > 1.e-3 &&
+                      Parameter_value_at(ratios, i) < 1.0 - 1.e-3,
+                  "unknown-leaf ratio initialized at the boundary");
+    }
+
+    // analytic gradient -> snapshot before perturbing anything
+    model->logP(model);
+    Parameters_zero_grad(parameters);
+    model->gradient(model, parameters);
+    double* g_ratio = clone_dvector(ratios->grad, nratios);
+    double g_root = root->grad[0];
+    double g_rate = rate->grad[0];
+
+    double h = 1.e-6;
+    double worst = 0.0;
+
+    for (size_t i = 0; i < nratios; i++) {
+        double v0 = Parameter_value_at(ratios, i);
+        Parameter_set_value_at(ratios, v0 + h, i);
+        double lp = model->logP(model);
+        Parameter_set_value_at(ratios, v0 - h, i);
+        double lm = model->logP(model);
+        Parameter_set_value_at(ratios, v0, i);
+        double fd = (lp - lm) / (2.0 * h);
+        double err = fabs(fd - g_ratio[i]) / (1.0 + fabs(g_ratio[i]));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-3, "ratio gradient does not match finite difference");
+    }
+
+    {
+        double v0 = Parameter_value(root);
+        double hh = h * (1.0 + fabs(v0));
+        Parameter_set_value(root, v0 + hh);
+        double lp = model->logP(model);
+        Parameter_set_value(root, v0 - hh);
+        double lm = model->logP(model);
+        Parameter_set_value(root, v0);
+        double fd = (lp - lm) / (2.0 * hh);
+        double err = fabs(fd - g_root) / (1.0 + fabs(g_root));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-3, "root-height gradient does not match finite difference");
+    }
+
+    {
+        double v0 = Parameter_value(rate);
+        double hh = h * (1.0 + fabs(v0));
+        Parameter_set_value(rate, v0 + hh);
+        double lp = model->logP(model);
+        Parameter_set_value(rate, v0 - hh);
+        double lm = model->logP(model);
+        Parameter_set_value(rate, v0);
+        double fd = (lp - lm) / (2.0 * hh);
+        double err = fabs(fd - g_rate) / (1.0 + fabs(g_rate));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-3, "rate gradient does not match finite difference");
+    }
+
+    printf("  [%s] nratios=%zu worst relative FD error = %.3e\n", file, nratios, worst);
+
+    free(g_ratio);
+    free_Parameters(parameters);
+    model->free(model);
+    free_Hashtable(hash);
+    json_free_tree(json);
+    return NULL;
+}
+
+char* test_treelikelihood_time_gradient_fd() {
+    return _fd_time_gradient("jc69-time.json", 67);
+}
+
+char* test_treelikelihood_time_leaf_gradient_fd() {
+    return _fd_time_gradient("jc69-time-leaf.json", 68);
+}
+
 // #include "phyc/distnormal.h"
 // char* test_normal_distribution_issigma(bool issigma) {
 
@@ -506,6 +619,8 @@ char* all_tests() {
     mu_suite_start();
     // mu_run_test(test_treelikelihood_time);
     mu_run_test(test_treelikelihood_time_unconstrained);
+    mu_run_test(test_treelikelihood_time_gradient_fd);
+    mu_run_test(test_treelikelihood_time_leaf_gradient_fd);
 
     return NULL;
 }

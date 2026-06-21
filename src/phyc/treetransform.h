@@ -28,6 +28,10 @@ typedef struct TreeTransform {
     size_t tipCount;
 	tree_transform_t parameterization;
     bool* unknownLeaves;
+    // ratio slot for each unknown-age leaf, indexed by node id; slot == rank in
+    // increasing node-id order. Gives a traversal-independent leaf->slot mapping
+    // (node ids need not follow postorder, e.g. when assigned from a taxa list).
+    size_t* unknownLeafSlot;
     double (*inverse_transform)(struct TreeTransform*, Node*);
     void (*update)(struct TreeTransform*);
     void (*update_lowers)(struct TreeTransform*);
