@@ -116,7 +116,7 @@ struct _Model {
 	void* data;
 	double (*logP)( Model * );
 	double (*full_logP)( Model * );
-	double (*gradient)( Model *, const Parameters*);
+	void (*gradient)( Model *, Parameters*);
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, Parameter*, int );

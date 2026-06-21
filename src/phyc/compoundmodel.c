@@ -54,23 +54,6 @@ double _compoundModel_full_logP(CompoundModel* cm){
 	return logP;
 }
 
-double _compoundModel_gradient(CompoundModel* cm, Parameters* parameters){
-	double logP = 0;
-	if (cm->weights != NULL) {
-		logP = -DBL_MAX;
-		const double* weights = Parameter_values(cm->weights);
-		for(int i = 0; i < cm->count; i++){
-			logP = logaddexp(logP, log(weights[i]) + cm->models[i]->full_logP(cm->models[i]));
-		}
-	}
-	else{
-		for(int i = 0; i < cm->count; i++){
-			logP += cm->models[i]->gradient(cm->models[i], parameters);
-		}
-	}
-	return logP;
-}
-
 static void _compoundModel_add(CompoundModel* cm, Model*model){
 	cm->models = realloc(cm->models, sizeof(Model*)*(cm->count+1));
 	cm->models[cm->count] = model;
@@ -264,18 +247,15 @@ double _compoundModel_full_logP2(Model *self){
 	return self->lp;
 }
 
-double _compoundModel_gradient2(Model* self, const Parameters* ps){
+void _compoundModel_gradient2(Model* self, Parameters* ps){
 	CompoundModel* cm = (CompoundModel*)self->obj;
 
-	// Non-mixture: the caller zeroed the grads and each submodel accumulates
-	// (+=) into the shared p->grad buffers, so the sum over submodels is
-	// already in place when the loop finishes.
 	if (cm->weights == NULL) {
 		double logP = 0;
 		for (size_t i = 0; i < cm->count; i++) {
-			logP += cm->models[i]->gradient(cm->models[i], ps);
+			cm->models[i]->gradient(cm->models[i], ps);
 		}
-		return logP;
+		return;
 	}
 
 	// Mixture: logP = logsumexp_i(log w_i + logP_i). The gradient is the
@@ -361,7 +341,6 @@ double _compoundModel_gradient2(Model* self, const Parameters* ps){
 	free(logPi);
 	free(running);
 	free(correction);
-	return logP;
 }
 
 void _compound_model_sample(Model *self){

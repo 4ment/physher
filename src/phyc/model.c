@@ -30,7 +30,7 @@ static void _dummy_update(Model* self, Model* model, Parameter* parameter, int i
 static void _dummy_restore_update(Model* self, Model* model, int index) {}
 static double _logP(Model *model){return 0;}
 static double _fulllogP(Model *model){return model->logP(model);}
-static double _dummy_gradient(Model *model, const Parameters* ps){
+static void _dummy_gradient(Model *model, Parameters* ps){
     fprintf(stderr, "gradient function not implemented for model %s\n", model->name);
     exit(2);
 }

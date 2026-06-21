@@ -14,15 +14,14 @@ static double _jacobian_model_logP(Model* self) {
     return logP;
 }
 
-static double _jacobian_model_gradient(Model* self, const Parameters* parameters) {
+//TODO: check if it is used and how
+static void _jacobian_model_gradient(Model* self, Parameters* parameters) {
     Parameters* ps = self->obj;
-    double sumGrad = 0;
     for (size_t i = 0; i < Parameters_count(ps); i++) {
         Parameter* p = Parameters_at(ps, i);
         Transform* t = p->transform;
-        sumGrad += t->gradient_log_det_jacobian(t);
+        t->gradient_log_det_jacobian(t);
     }
-    return sumGrad;
 }
 
 static void _jacobian_model_free(Model* self) {

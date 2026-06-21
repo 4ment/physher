@@ -279,9 +279,9 @@ static double _dist_model_logP(Model *self){
 	return self->lp;
 }
 
-static double _dist_model_gradient(Model *self, const Parameters* parameters){
+static void _dist_model_gradient(Model *self, Parameters* parameters){
 	DistributionModel* dm = (DistributionModel*)self->obj;
-	return dm->gradient2(dm, parameters);
+	dm->gradient2(dm, parameters);
 }
 
 static void _dist_model_free( Model *self ){

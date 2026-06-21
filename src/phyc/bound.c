@@ -59,9 +59,9 @@ static double _BoundModel_full_logP(Model* self) {
     return self->lp;
 }
 
-static double _BoundModel_gradient(Model* self, const Parameters* parameters) {
+static void _BoundModel_gradient(Model* self, Parameters* parameters) {
     Bound* bound = self->obj;
-    return bound->gradient(bound, parameters);
+    bound->gradient(bound, parameters);
 }
 
 static void _BoundModel_free(Model* self) {

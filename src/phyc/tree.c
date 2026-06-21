@@ -1242,11 +1242,10 @@ double _treeModel_logP(Model *self){
 	return tree->tt->log_jacobian(tree->tt);
 }
 
-double _treeModel_gradient(Model *self, const Parameters* parameters){
+void _treeModel_gradient(Model *self, Parameters* parameters){
 	Tree* tree = (Tree*)self->obj;
 	Tree_update_heights(tree);
 	tree->tt->log_jacobian_gradient(tree->tt, NULL);
-	return 0;
 }
 
 // TreeModel listen to the height and distance parameters

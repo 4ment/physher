@@ -135,9 +135,9 @@ void Coalescent_gradient(Model *self, int flags, double* gradient){
 	free_Parameters(parameters);
 }
 
-static double _coalescent_model_gradient(Model *self, const Parameters* parameters){
+static void _coalescent_model_gradient(Model *self, Parameters* parameters){
 	Coalescent* coal = (Coalescent*)self->obj;
-	return coal->gradient(coal, parameters);
+	coal->gradient(coal, parameters);
 }
 
 /*double _coalescent_model_dlogP_prepared(Model *self, const Parameter* p){

@@ -250,7 +250,7 @@ void TreeLikelihood_gradient(Model *self, int flags, double* gradient){
 //	return tlk->gradient;
 }
 
-double _treeLikelihood_model_gradient(Model *self, const Parameters* parameters){
+void _treeLikelihood_model_gradient(Model *self, Parameters* parameters){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
 	
 	if(tlk->update_upper){
@@ -260,13 +260,8 @@ double _treeLikelihood_model_gradient(Model *self, const Parameters* parameters)
 		tlk->update_upper = false;
 	}
 	double logP = self->logP(self); // make sure it is updated
-	if (isnan(logP) || isinf(logP)) {
-		return NAN;
-	}
-	
 	update_upper_partials(tlk, Tree_root(tlk->tree), tlk->include_root_freqs);
 	TreeLikelihoodModel_gradient( self, parameters);
-	return logP;
 }
 
 
