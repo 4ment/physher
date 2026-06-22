@@ -283,7 +283,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
     }
 
     fprintf(stderr, "Warning: could not find a valid bracket around x=%g\n", x);
-	printf("%d %f %f\n", index, Parameter_lower(xx), Parameter_upper(xx));
+	printf("%zu %f %f\n", index, Parameter_lower(xx), Parameter_upper(xx));
 }
 
 

@@ -135,15 +135,15 @@ void ReparameterizedTimeTreeModelInterface::GetNodeHeights(double *heights) {
     }
 }
 
-void ReparameterizedTimeTreeModelInterface::GradientTransformJVP(
+void ReparameterizedTimeTreeModelInterface::GradientTransformVJP(
     double *gradient, const double *height_gradient) {
     Tree_update_heights(tree_);
-    Tree_node_transform_jvp(tree_, height_gradient, gradient);
+    Tree_node_transform_vjp(tree_, height_gradient, gradient);
 }
 
-void ReparameterizedTimeTreeModelInterface::GradientTransformJVP(
+void ReparameterizedTimeTreeModelInterface::GradientTransformVJP(
     double *gradient, const double *height_gradient, const double *heights) {
-    Tree_node_transform_jvp_with_heights(tree_, heights, height_gradient, gradient);
+    Tree_node_transform_vjp_with_heights(tree_, heights, height_gradient, gradient);
 }
 
 void ReparameterizedTimeTreeModelInterface::GradientTransformJacobian(

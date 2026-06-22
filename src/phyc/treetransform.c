@@ -55,7 +55,7 @@ double _height_tree_inverse_shift_transform(TreeTransform *tt, Node *node) {
     return Node_height(node) - dmax(Node_height(node->left), Node_height(node->right));
 }
 
-void node_transform_jvp_shift(TreeTransform *tt, const double *height_gradient, double *gradient){
+void node_transform_vjp_shift(TreeTransform *tt, const double *height_gradient, double *gradient){
 	memset(gradient, 0, sizeof(double)*(tt->tipCount-1));
     Node** nodes = Tree_get_nodes(tt->tree, PREORDER);
     size_t nodeCount = Tree_node_count(tt->tree);
@@ -98,7 +98,7 @@ void _node_transform_log_jacobian_gradient_zero(struct TreeTransform *tt, double
 
 static void _shift_backward(TreeTransform* obj, Parameters* parameters, const double* ingrad){
 	double* reparamGradient = dvector(obj->tipCount - 1);
-	obj->jvp(obj, ingrad, reparamGradient);
+	obj->vjp(obj, ingrad, reparamGradient);
     Parameter* shifts = Parameters_at(obj->parameters, 0);
     // accumulate the gradient of constrained parameters
     for(size_t i = 0; i < obj->tipCount - 1; i++){
@@ -178,27 +178,12 @@ void _update_ratios_gradient(Tree* tree, const double* lowers, const double* rat
 }
 
 
-void node_transform_jvp_efficient(TreeTransform *tt, const double *height_gradient, double *gradient){
+void node_transform_vjp_efficient(TreeTransform *tt, const double *height_gradient, double *gradient){
 	memset(gradient, 0.0, sizeof(double)*(tt->tipCount-1));
     const double* ratios = Parameter_values(Parameters_at(tt->parameters, 0));
 	_update_ratios_gradient(tt->tree, tt->lowers, ratios, height_gradient, gradient);
 	gradient[Node_class_id(Tree_root(tt->tree))] = _root_height_gradient(tt->tree, ratios, height_gradient);
 }
-
-void node_transform_jvp2_efficient(TreeTransform *tt, const double *height_gradient){
-    double* gradient = dvector(tt->tipCount-1);
-    node_transform_jvp_efficient(tt, height_gradient, gradient);
-    double* ratiosGrad = Parameters_at(tt->parameters, 0)->grad;
-    double* rootHeightGrad = Parameters_at(tt->parameters, 1)->grad;
-    size_t i = 0;
-    while(i < tt->tipCount - 2){
-        ratiosGrad[i] += gradient[i];
-        i++;
-    }
-    rootHeightGrad[0] += gradient[i];
-    free(gradient);
-}
-
 
 void _node_transform_log_jacobian_gradient_efficient(struct TreeTransform *tt, double *gradient) {
 	size_t nodeCount = Tree_node_count(tt->tree);
@@ -252,7 +237,7 @@ void _node_transform_log_jacobian_gradient_efficient(struct TreeTransform *tt, d
 #pragma region Proportion gradient transform
 // ======================= Proportion gradient =======================
 
-void node_transform_jvp_backprop(TreeTransform *tt, const double *height_gradient, double *gradient){
+void node_transform_vjp_backprop(TreeTransform *tt, const double *height_gradient, double *gradient){
     size_t nodeCount = Tree_node_count(tt->tree);
     Parameter* proportions = Parameters_at(tt->parameters, 0);
     size_t propCount = Parameter_size(proportions);
@@ -357,7 +342,7 @@ static void _proportions_backward(TreeTransform* obj, Parameters* parameters, co
     Parameter* root = Parameters_at(obj->parameters, 1);
     size_t propCount = Parameter_size(ratios);
     double* reparamGradient = dvector(propCount + 1);
-	obj->jvp(obj, ingrad, reparamGradient);
+	obj->vjp(obj, ingrad, reparamGradient);
     // accumulate the gradient of constrained parameters
     size_t i = 0;
     while(i < propCount){
@@ -543,7 +528,7 @@ void product_of_ratios(Node *node, const double *grad, const double *ratios, dou
     }
 }
 
-void node_transform_jvp(TreeTransform *tt, const double *height_gradient, double *gradient) {
+void node_transform_vjp(TreeTransform *tt, const double *height_gradient, double *gradient) {
     size_t nodeCount = Tree_node_count(tt->tree);
     Node **nodes = Tree_get_nodes(tt->tree, POSTORDER);
     const double* ratioValues = Parameter_values(Parameters_at(tt->parameters, 0));
@@ -559,7 +544,7 @@ void node_transform_jvp(TreeTransform *tt, const double *height_gradient, double
     }
 }
 
-void TreeTransform_jvp_with_heights(TreeTransform *tt, const double* heights, const double *height_gradient, double *gradient) {
+void TreeTransform_vjp_with_heights(TreeTransform *tt, const double* heights, const double *height_gradient, double *gradient) {
 	size_t nodeCount = Tree_node_count(tt->tree);
 	Node **nodes = Tree_get_nodes(tt->tree, POSTORDER);
     const double* ratioValues = Parameter_values(Parameters_at(tt->parameters, 0));
@@ -659,19 +644,18 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
     tt->inverse_transform = _height_tree_inverse_transform;
     tt->log_jacobian = _node_transform_log_jacobian;
     tt->dlog_jacobian = _node_transform_dlog_jacobian;
-    tt->jvp2 = NULL;
+
 	if(parameterization == TREE_TRANSFORM_RATIO_NAIVE){
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient;
-		tt->jvp = node_transform_jvp;
+		tt->vjp = node_transform_vjp;
 	}
 	else if(parameterization == TREE_TRANSFORM_RATIO){
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_efficient;
-		tt->jvp = node_transform_jvp_efficient;
-        tt->jvp2 = node_transform_jvp2_efficient;
+		tt->vjp = node_transform_vjp_efficient;
 	}
     else if(parameterization == TREE_TRANSFORM_PROPORTION){
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_backprop;
-		tt->jvp = node_transform_jvp_backprop;
+		tt->vjp = node_transform_vjp_backprop;
 	}
 	else if(parameterization == TREE_TRANSFORM_SHIFT){
         tt->update = _tree_transform_shift_update;
@@ -680,7 +664,7 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
         tt->log_jacobian = _node_transform_log_jacobian_zero;
         tt->dlog_jacobian = _node_transform_dlog_jacobian_zero;
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_zero;
-		tt->jvp = node_transform_jvp_shift;
+		tt->vjp = node_transform_vjp_shift;
 	}
 	else{
 		fprintf(stderr, "Node height reparameterization not recognized\n");
@@ -770,19 +754,17 @@ TreeTransform *new_HeightTreeTransform2(Parameters* parameters, tree_transform_t
     tt->inverse_transform = _height_tree_inverse_transform;
     tt->log_jacobian = _node_transform_log_jacobian;
     tt->dlog_jacobian = _node_transform_dlog_jacobian;
-    tt->jvp2 = NULL;
 	if(parameterization == TREE_TRANSFORM_RATIO_NAIVE){
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient;
-		tt->jvp = node_transform_jvp;
+		tt->vjp = node_transform_vjp;
 	}
 	else if(parameterization == TREE_TRANSFORM_RATIO){
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_efficient;
-		tt->jvp = node_transform_jvp_efficient;
-        tt->jvp2 = node_transform_jvp2_efficient;
+		tt->vjp = node_transform_vjp_efficient;
 	}
     else if(parameterization == TREE_TRANSFORM_PROPORTION){
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_backprop;
-		tt->jvp = node_transform_jvp_backprop;
+		tt->vjp = node_transform_vjp_backprop;
 	}
 	else if(parameterization == TREE_TRANSFORM_SHIFT){
         tt->update = _tree_transform_shift_update;
@@ -791,7 +773,7 @@ TreeTransform *new_HeightTreeTransform2(Parameters* parameters, tree_transform_t
         tt->log_jacobian = _node_transform_log_jacobian_zero;
         tt->dlog_jacobian = _node_transform_dlog_jacobian_zero;
 		tt->log_jacobian_gradient = _node_transform_log_jacobian_gradient_zero;
-		tt->jvp = node_transform_jvp_shift;
+		tt->vjp = node_transform_vjp_shift;
 	}
 	else{
 		fprintf(stderr, "Node height reparameterization not recognized\n");
@@ -847,7 +829,7 @@ Model *clone_HeightTreeTransform(Model *self, Hashtable *hash) {
     ttnew->log_jacobian = tt->log_jacobian;
     ttnew->dlog_jacobian = tt->dlog_jacobian;
     ttnew->log_jacobian_gradient = tt->log_jacobian_gradient;
-    ttnew->jvp = tt->jvp;
+    ttnew->vjp = tt->vjp;
 
     Parameter* ratios = clone_Parameter(Parameters_at(tt->parameters, 0));
     Parameter* rootHeight = clone_Parameter(Parameters_at(tt->parameters, 1));

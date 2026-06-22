@@ -234,7 +234,7 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
         tt->update(tt);
-        tt->jvp(tt, height_gradient, gradient);
+        tt->vjp(tt, height_gradient, gradient);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));

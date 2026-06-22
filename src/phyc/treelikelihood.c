@@ -3360,43 +3360,6 @@ void gradient_heights(SingleTreeLikelihood* tlk, const double* branchLengthGradi
 	}
 }
 
-// void gradient_heights_from_branch_lengths_gradient(SingleTreeLikelihood* tlk, const double* branch_gradient, double* gradient){
-// 	size_t nodeCount = Tree_node_count(tlk->tree);
-// 	Node** nodes = Tree_get_nodes(tlk->tree, PREORDER);
-// 	for(size_t i = 1; i < nodeCount; i++){
-// 		Node* node = nodes[i];
-// 		double nodeGradient = branch_gradient[node->id] * tlk->bm->get(tlk->bm, node);
-// 		if(!Node_isleaf(node)){
-// 			gradient[node->class_id] = -nodeGradient;
-// 		}
-// 		gradient[node->parent->class_id] += nodeGradient;
-// 	}
-// }
-
-
-// // \partial log(L)/\partial r_i &= \partial log(L)/\partial h_i \partial h_i\partial r_i
-// // &= \sum_j \partial log(L)/\partial b_i  \partial b_i/\partial h_i \partial h_i\partial r_i
-// void gradient_ratios(SingleTreeLikelihood* tlk, Parameters* parameters, const double* branchGradient){
-// 	double* heightGradient = dvector(Tree_tip_count(tlk->tree) - 1);
-// 	gradient_heights_from_branch_lengths_gradient(tlk, branchGradient, heightGradient);
-// 	// apply chain rule to get the gradient wrt the ratios
-// 	Tree_node_transform_gradient(tlk->tree, heightGradient);
-// 	// apply chain rule for transforms, most likelily logit and exponential
-// 	for(size_t i = 0; i < Parameters_count(parameters); i++){
-// 		Parameter* parameter = Parameters_at(parameters, i);
-// 		Parameter* xx = Parameters_depends(parameters, parameter);
-// 		if(xx != NULL){
-// 			xx->grad[0] += parameter->grad[0];
-// 		}
-
-// 	}
-
-// 	if(tlk->include_jacobian){
-// 		Tree_node_transform_jacobian_gradient(tlk->tree, NULL);
-// 	}
-// 	free(heightGradient);
-// }
-
 // derivatives are with respect to the constrained values
 
 void central_finite_differences_parameters(Model* model, Parameters* parameters, double epsilon){

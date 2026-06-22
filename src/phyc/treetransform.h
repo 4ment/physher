@@ -36,8 +36,7 @@ typedef struct TreeTransform {
     void (*update)(struct TreeTransform*);
     void (*update_lowers)(struct TreeTransform*);
 	double (*log_jacobian)(struct TreeTransform*);
-    void (*jvp)(struct TreeTransform*, const double*, double*);
-    void (*jvp2)(struct TreeTransform*, const double*);
+    void (*vjp)(struct TreeTransform*, const double*, double*);
     double (*dlog_jacobian)(struct TreeTransform*, Node*);
     void (*log_jacobian_gradient)(struct TreeTransform*, double*);
 } TreeTransform;
@@ -52,7 +51,7 @@ void TreeTransform_initialize_from_heights(TreeTransform* tt);
 
 void TreeTransform_add_tree_model(TreeTransform* tt, Tree* tree);
 
-void TreeTransform_jvp_with_heights(TreeTransform *tt, const double* heights, const double *height_gradient, double *gradient);
+void TreeTransform_vjp_with_heights(TreeTransform *tt, const double* heights, const double *height_gradient, double *gradient);
 
 void TreeTransformModel_add_tree_model(Model* self, Model* tree);
 

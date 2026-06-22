@@ -3105,16 +3105,12 @@ void Tree_set_transform(Tree* tree, int tt){
 	tree->tt = new_HeightTreeTransform(tree, tt);
 }
 
-void Tree_node_transform_jvp(Tree* tree, const double* input, double* output){
-	tree->tt->jvp(tree->tt, input, output);
+void Tree_node_transform_vjp(Tree* tree, const double* input, double* output){
+	tree->tt->vjp(tree->tt, input, output);
 }
 
-void Tree_node_transform_gradient(Tree* tree, const double* height_gradient){
-	tree->tt->jvp2(tree->tt, height_gradient);
-}
-
-void Tree_node_transform_jvp_with_heights(Tree* tree, const double* heights, const double* input, double* output){
-	TreeTransform_jvp_with_heights(tree->tt, heights, input, output);
+void Tree_node_transform_vjp_with_heights(Tree* tree, const double* heights, const double* input, double* output){
+	TreeTransform_vjp_with_heights(tree->tt, heights, input, output);
 }
 
 void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient){

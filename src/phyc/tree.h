@@ -222,9 +222,8 @@ Parameters* Tree_dependencies(Tree* tree, const Parameters* parameters);
 
 Parameters* get_reparams(Tree* tree);
 
-void Tree_node_transform_gradient(Tree* tree, const double* height_gradient);
-void Tree_node_transform_jvp(Tree* tree, const double* input, double* output);
-void Tree_node_transform_jvp_with_heights(Tree* tree, const double* heights, const double* input, double* output);
+void Tree_node_transform_vjp(Tree* tree, const double* input, double* output);
+void Tree_node_transform_vjp_with_heights(Tree* tree, const double* heights, const double* input, double* output);
 void Tree_node_transform_jacobian_gradient(Tree* tree, double* gradient);
 Node* Tree_node_from_parameter(Tree* tree, const Parameter* p);
 void Tree_set_transform(Tree* tree, int tt);

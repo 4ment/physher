@@ -166,9 +166,9 @@ class ReparameterizedTimeTreeModelInterface : public TimeTreeModelInterface {
 
     void GetNodeHeights(double *heights) override;
 
-    void GradientTransformJVP(double *gradient, const double *height_gradient);
+    void GradientTransformVJP(double *gradient, const double *height_gradient);
 
-    void GradientTransformJVP(double *gradient, const double *height_gradient,
+    void GradientTransformVJP(double *gradient, const double *height_gradient,
                               const double *heights);
 
     void GradientTransformJacobian(double *gradient);

@@ -1270,7 +1270,7 @@ void _skyride_calculate_gradient( Coalescent* coal ){
 		if(get_reparams(coal->tree) != NULL && coal->prepared_gradient & GRADIENT_FLAG_TREE_RATIOS){
 			double* height_gradient = dvector(Tree_tip_count(coal->tree)-1);
 			height_gradient_from_interval_gradient(coal, interval_gradient, height_gradient);
-			Tree_node_transform_jvp(coal->tree, height_gradient, coal->grad+offset);
+			Tree_node_transform_vjp(coal->tree, height_gradient, coal->grad+offset);
 			free(height_gradient);
 		}
 		// derivatives wrt to node heights
