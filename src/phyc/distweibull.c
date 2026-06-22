@@ -75,20 +75,24 @@ void DistributionModel_weibull_gradient(DistributionModel* dm, Parameters* param
     Parameter* shapex = Parameters_depends(parameters, shape);
 
     if(scalex != NULL){
+        // Accumulate the gradient wrt the constrained scale in dm->tempp across
+        // all x. A shared scalar scale (mask == 0) folds every element onto
+        // tempp[0], so backward sees the full sum, not just the last element.
+        memset(dm->tempp, 0, Parameter_size(scale) * sizeof(double));
         size_t index = 0;
         for(size_t k = 0; k < Parameters_count(dm->x); k++){
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
-            memset(dm->tempp, 0, dim * sizeof(double));
             for(size_t j = 0; j < dim; j++){
-                double scaleValue = scaleValues[index & mask];
-                double shapeValue = shapeValues[index & mask];
-                size_t idx = j & mask;
+                size_t idx = index & mask;
+                double scaleValue = scaleValues[idx];
+                double shapeValue = shapeValues[idx];
                 double z = (xValues[j] - dm->shift) / scaleValue;
                 double zb = pow(z, shapeValue);
-                dm->tempp[idx] = shapeValue * (zb - 1.0) / scaleValue;
-                scale->grad[idx] += dm->tempp[idx];
+                double g = shapeValue * (zb - 1.0) / scaleValue;
+                dm->tempp[idx] += g;
+                scale->grad[idx] += g;
                 index++;
             }
         }
@@ -98,20 +102,21 @@ void DistributionModel_weibull_gradient(DistributionModel* dm, Parameters* param
     }
 
     if(shapex != NULL){
+        memset(dm->tempp, 0, Parameter_size(shape) * sizeof(double));
         size_t index = 0;
         for(size_t k = 0; k < Parameters_count(dm->x); k++){
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
-            memset(dm->tempp, 0, dim * sizeof(double));
             for(size_t j = 0; j < dim; j++){
-                double scaleValue = scaleValues[index & mask];
-                double shapeValue = shapeValues[index & mask];
-                size_t idx = j & mask;
+                size_t idx = index & mask;
+                double scaleValue = scaleValues[idx];
+                double shapeValue = shapeValues[idx];
                 double z = (xValues[j] - dm->shift) / scaleValue;
                 double zb = pow(z, shapeValue);
-                dm->tempp[idx] = 1.0 / shapeValue + log(z) * (1.0 - zb);
-                shape->grad[idx] += dm->tempp[idx];
+                double g = 1.0 / shapeValue + log(z) * (1.0 - zb);
+                dm->tempp[idx] += g;
+                shape->grad[idx] += g;
                 index++;
             }
         }
@@ -128,13 +133,16 @@ void DistributionModel_weibull_gradient(DistributionModel* dm, Parameters* param
         if (xx != NULL) {
             const double* xValues = Parameter_values(x);
             for(size_t j = 0; j < sizeX; j++){
-                double scaleValue = scaleValues[index & mask];
-                double shapeValue = shapeValues[index & mask];
+                size_t idx = index & mask;
+                double scaleValue = scaleValues[idx];
+                double shapeValue = shapeValues[idx];
                 double xs = xValues[j] - dm->shift;
                 double z = xs / scaleValue;
                 double zb = pow(z, shapeValue);
-                dm->tempp[index] = (shapeValue - 1.0) / xs - shapeValue * zb / xs;
-                x->grad[index] += dm->tempp[index];
+                // x_k owns its own grad/transform: index into them locally (j)
+                // while index & mask tracks the global position for the params.
+                dm->tempp[j] = (shapeValue - 1.0) / xs - shapeValue * zb / xs;
+                x->grad[j] += dm->tempp[j];
                 index++;
             }
             if(x != xx){
@@ -215,15 +223,30 @@ static void DistributionModel_weibull_rgradient(DistributionModel* dm){
         Parameter* x = Parameters_at(dm->x, j);
         size_t dim = Parameter_size(x);
         const double* xValues = Parameter_values(x);
+        size_t base = index;
+        // dL/dscale = dL/dx * dx/dscale,  dx/dscale = (x - shift)/scale = z
         for (size_t i = 0; i < dim; i++) {
-            double scaleValue = scaleValues[index];
-            double shapeValue = shapeValues[index];
-            double z = (xValues[i] - dm->shift) / scaleValue;
-            double dtransdscale = z;
-            double dtransdshape = -(xValues[i] - dm->shift) * log(z) / shapeValue;
-            scale->grad[index] += x->grad[i] * dtransdscale;
-            shape->grad[index] += x->grad[i] * dtransdshape;
+            double z = (xValues[i] - dm->shift) / scaleValues[index];
+            dm->tempp[i] = x->grad[i] * z;
+            scale->grad[index] += dm->tempp[i];
             index++;
+        }
+        // Both scale and shape are positive (constrained): push the reparameterized
+        // gradient to the unconstrained leaf through the transform when present.
+        if (scale->transform != NULL) {
+            scale->transform->backward(scale->transform, dm->tempp);
+        }
+        // dL/dshape = dL/dx * dx/dshape,  dx/dshape = -(x - shift) log(z)/shape
+        index = base;
+        for (size_t i = 0; i < dim; i++) {
+            double xs = xValues[i] - dm->shift;
+            double z = xs / scaleValues[index];
+            dm->tempp[i] = x->grad[i] * (-xs * log(z) / shapeValues[index]);
+            shape->grad[index] += dm->tempp[i];
+            index++;
+        }
+        if (shape->transform != NULL) {
+            shape->transform->backward(shape->transform, dm->tempp);
         }
     }
 }

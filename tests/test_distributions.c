@@ -638,6 +638,188 @@ char* test_lognormal_distribution_prior_mean_stdev() {
     return NULL;
 }
 
+// Exercise a LogNormal distribution whose dm->x holds several Parameters, for
+// both modes and both parameterizations. Analytic gradients (accumulated into the
+// leaves) are checked against finite differences of logP.
+char* test_lognormal_distribution_multi_aux(Parameters* xs, Parameter* mu,
+                                            Parameter* sigma,
+                                            distribution_parameterization param) {
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, mu);
+    Parameters_add(parameters, sigma);
+
+    DistributionModel* dm =
+        new_LogNormalDistributionModel_with_parameters(parameters, xs, param);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    printf("LogP: %f\n", logP);
+
+    Parameters* ps = new_Parameters(2 + Parameters_count(xs));
+    Parameters_add(ps, mu);
+    Parameters_add(ps, sigma);
+    for (size_t k = 0; k < Parameters_count(xs); k++) {
+        Parameters_add(ps, Parameters_at(xs, k));
+    }
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    // Compare every accumulated leaf gradient with its finite difference.
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "multi-x lognormal gradient does not match finite difference");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
+// mode 1: two x parameters of differing sizes share one scalar mu and sigma.
+char* test_lognormal_distribution_multi_prior() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    Parameter* mu = new_Parameter("mu", 0.5, new_Constraint(-INFINITY, INFINITY));
+    Parameter* sigma = new_Parameter("sigma", 0.6, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_lognormal_distribution_multi_aux(xs, mu, sigma,
+                                                 DISTRIBUTION_LOGNORMAL_MU_SIGMA);
+}
+
+// mode 2: two x parameters whose elements each have their own mu and sigma.
+char* test_lognormal_distribution_multi() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    double muValues[] = {0.1, 0.5, 1.0};
+    double sigmaValues[] = {0.5, 0.8, 0.3};
+    Parameter* mu =
+        new_Parameter2("mu", muValues, 3, new_Constraint(-INFINITY, INFINITY));
+    Parameter* sigma =
+        new_Parameter2("sigma", sigmaValues, 3, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_lognormal_distribution_multi_aux(xs, mu, sigma,
+                                                 DISTRIBUTION_LOGNORMAL_MU_SIGMA);
+}
+
+// mode 1 with mu and sigma each carrying an exp-transform: the optimizer
+// differentiates the unconstrained leaves, driving the transform backward() path
+// with a shared scalar hyperparameter over multiple x.
+char* test_lognormal_distribution_multi_prior_transformed() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    Parameter* mu = new_exp_transformed_parameter("mu", log(1.5));        // mu = 1.5
+    Parameter* sigma = new_exp_transformed_parameter("sigma", log(0.6));  // sigma = 0.6
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, mu);
+    Parameters_add(parameters, sigma);
+
+    DistributionModel* dm = new_LogNormalDistributionModel_with_parameters(
+        parameters, xs, DISTRIBUTION_LOGNORMAL_MU_SIGMA);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    printf("LogP (transformed mu/sigma): %f\n", logP);
+
+    // The optimizer sees the unconstrained leaves, so the gradient flows through
+    // the exp transform's backward() into leaf->grad.
+    Parameter* muUnc = mu->transform->parameter;
+    Parameter* sigmaUnc = sigma->transform->parameter;
+    Parameters* ps = new_Parameters(4);
+    Parameters_add(ps, muUnc);
+    Parameters_add(ps, sigmaUnc);
+    Parameters_add(ps, x0);
+    Parameters_add(ps, x1);
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "transformed multi-x lognormal gradient does not match FD");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
+// mean/stdev parameterization, mode 1: two x share one scalar mean and stdev.
+char* test_lognormal_distribution_multi_prior_mean_stdev() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    Parameter* mean = new_Parameter("mean", 2.0, new_Constraint(0, INFINITY));
+    Parameter* stdev = new_Parameter("stdev", 0.5, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_lognormal_distribution_multi_aux(xs, mean, stdev,
+                                                 DISTRIBUTION_LOGNORMAL_MEAN_STDEV);
+}
+
+// mean/stdev parameterization, mode 2: two x whose elements each have their own
+// mean and stdev (exercises the vector branches).
+char* test_lognormal_distribution_multi_mean_stdev() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    double meanValues[] = {1.5, 2.0, 1.0};
+    double stdevValues[] = {0.5, 0.8, 0.3};
+    Parameter* mean = new_Parameter2("mean", meanValues, 3, new_Constraint(0, INFINITY));
+    Parameter* stdev =
+        new_Parameter2("stdev", stdevValues, 3, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_lognormal_distribution_multi_aux(xs, mean, stdev,
+                                                 DISTRIBUTION_LOGNORMAL_MEAN_STDEV);
+}
+
 #pragma endregion
 
 #pragma region Gamma Distribution
@@ -783,6 +965,144 @@ char* test_gamma_distribution_shape_scale_prior() {
                                        &dlogPdbeta, DISTRIBUTION_GAMMA_SHAPE_SCALE);
 }
 
+// Exercise a Gamma distribution whose dm->x holds several Parameters, for both
+// modes. Analytic gradients (accumulated into the leaves) are checked against
+// finite differences of logP.
+char* test_gamma_distribution_multi_aux(Parameters* xs, Parameter* alpha,
+                                        Parameter* beta,
+                                        distribution_parameterization parameterization) {
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, alpha);
+    Parameters_add(parameters, beta);
+
+    DistributionModel* dm = new_GammaDistributionModel_with_parameters(
+        parameters, xs, parameterization);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    printf("LogP: %f\n", logP);
+
+    Parameters* ps = new_Parameters(2 + Parameters_count(xs));
+    Parameters_add(ps, alpha);
+    Parameters_add(ps, beta);
+    for (size_t k = 0; k < Parameters_count(xs); k++) {
+        Parameters_add(ps, Parameters_at(xs, k));
+    }
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "multi-x gamma gradient does not match finite difference");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
+// mode 1: two x parameters of differing sizes share one scalar alpha and beta.
+char* test_gamma_distribution_multi_prior() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    Parameter* alpha = new_Parameter("alpha", 2.0, new_Constraint(0, INFINITY));
+    Parameter* beta = new_Parameter("beta", 1.5, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_gamma_distribution_multi_aux(xs, alpha, beta,
+                                             DISTRIBUTION_GAMMA_SHAPE_RATE);
+}
+
+// mode 2: two x parameters whose elements each have their own alpha and beta.
+char* test_gamma_distribution_multi() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    double alphaValues[] = {2.0, 1.5, 3.0};
+    double betaValues[] = {1.0, 2.0, 1.5};
+    Parameter* alpha =
+        new_Parameter2("alpha", alphaValues, 3, new_Constraint(0, INFINITY));
+    Parameter* beta = new_Parameter2("beta", betaValues, 3, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_gamma_distribution_multi_aux(xs, alpha, beta,
+                                             DISTRIBUTION_GAMMA_SHAPE_SCALE);
+}
+
+// mode 1 with alpha and beta each carrying an exp-transform: the optimizer
+// differentiates the unconstrained leaves, driving the transform backward() path
+// with a shared scalar hyperparameter over multiple x.
+char* test_gamma_distribution_multi_prior_transformed() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    Parameter* alpha = new_exp_transformed_parameter("alpha", log(2.0));
+    Parameter* beta = new_exp_transformed_parameter("beta", log(1.5));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, alpha);
+    Parameters_add(parameters, beta);
+
+    DistributionModel* dm = new_GammaDistributionModel_with_parameters(
+        parameters, xs, DISTRIBUTION_GAMMA_SHAPE_RATE);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    printf("LogP (transformed alpha/beta): %f\n", logP);
+
+    Parameter* alphaUnc = alpha->transform->parameter;
+    Parameter* betaUnc = beta->transform->parameter;
+    Parameters* ps = new_Parameters(4);
+    Parameters_add(ps, alphaUnc);
+    Parameters_add(ps, betaUnc);
+    Parameters_add(ps, x0);
+    Parameters_add(ps, x1);
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "transformed multi-x gamma gradient does not match FD");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
 #pragma endregion
 
 #pragma region Weibull Distribution
@@ -888,6 +1208,142 @@ char* test_weibull_distribution() {
                                          dlogPdshape);
 }
 
+// Exercise a Weibull distribution whose dm->x holds several Parameters, for both
+// modes. Analytic gradients (accumulated into the leaves) are checked against
+// finite differences of logP.
+char* test_weibull_distribution_multi_aux(Parameters* xs, Parameter* scale,
+                                          Parameter* shape) {
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, scale);
+    Parameters_add(parameters, shape);
+
+    DistributionModel* dm =
+        new_WeibullDistributionModel_with_parameters(parameters, xs);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    printf("LogP: %f\n", logP);
+
+    Parameters* ps = new_Parameters(2 + Parameters_count(xs));
+    Parameters_add(ps, scale);
+    Parameters_add(ps, shape);
+    for (size_t k = 0; k < Parameters_count(xs); k++) {
+        Parameters_add(ps, Parameters_at(xs, k));
+    }
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "multi-x weibull gradient does not match finite difference");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
+// mode 1: two x parameters of differing sizes share one scalar scale and shape.
+char* test_weibull_distribution_multi_prior() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    Parameter* scale = new_Parameter("scale", 1.5, new_Constraint(0, INFINITY));
+    Parameter* shape = new_Parameter("shape", 2.0, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_weibull_distribution_multi_aux(xs, scale, shape);
+}
+
+// mode 2: two x parameters whose elements each have their own scale and shape.
+char* test_weibull_distribution_multi() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    double scaleValues[] = {1.0, 2.0, 1.5};
+    double shapeValues[] = {2.0, 1.5, 3.0};
+    Parameter* scale =
+        new_Parameter2("scale", scaleValues, 3, new_Constraint(0, INFINITY));
+    Parameter* shape =
+        new_Parameter2("shape", shapeValues, 3, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_weibull_distribution_multi_aux(xs, scale, shape);
+}
+
+// mode 1 with scale and shape each carrying an exp-transform: the optimizer
+// differentiates the unconstrained leaves, driving the transform backward() path
+// with a shared scalar hyperparameter over multiple x.
+char* test_weibull_distribution_multi_prior_transformed() {
+    double x0v[] = {1.5, 2.0};
+    double x1v[] = {0.8};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(0, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(0, INFINITY));
+
+    Parameter* scale = new_exp_transformed_parameter("scale", log(1.5));
+    Parameter* shape = new_exp_transformed_parameter("shape", log(2.0));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, scale);
+    Parameters_add(parameters, shape);
+
+    DistributionModel* dm =
+        new_WeibullDistributionModel_with_parameters(parameters, xs);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    printf("LogP (transformed scale/shape): %f\n", logP);
+
+    Parameter* scaleUnc = scale->transform->parameter;
+    Parameter* shapeUnc = shape->transform->parameter;
+    Parameters* ps = new_Parameters(4);
+    Parameters_add(ps, scaleUnc);
+    Parameters_add(ps, shapeUnc);
+    Parameters_add(ps, x0);
+    Parameters_add(ps, x1);
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "transformed multi-x weibull gradient does not match FD");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
 #pragma region Kumaraswamy Distribution
 
 char* test_kumaraswamy_distribution_aux(Parameter* x, Parameter* a, Parameter* b,
@@ -991,14 +1447,25 @@ char* all_tests() {
     mu_run_test(test_lognormal_distribution);
     mu_run_test(test_lognormal_distribution_prior);
     mu_run_test(test_lognormal_distribution_prior_mean_stdev);
+    mu_run_test(test_lognormal_distribution_multi);
+    mu_run_test(test_lognormal_distribution_multi_prior);
+    mu_run_test(test_lognormal_distribution_multi_prior_transformed);
+    mu_run_test(test_lognormal_distribution_multi_prior_mean_stdev);
+    mu_run_test(test_lognormal_distribution_multi_mean_stdev);
 
     mu_run_test(test_gamma_distribution_shape_rate);
     mu_run_test(test_gamma_distribution_shape_rate_prior);
     mu_run_test(test_gamma_distribution_shape_scale);
     mu_run_test(test_gamma_distribution_shape_scale_prior);
+    mu_run_test(test_gamma_distribution_multi);
+    mu_run_test(test_gamma_distribution_multi_prior);
+    mu_run_test(test_gamma_distribution_multi_prior_transformed);
 
     mu_run_test(test_weibull_distribution);
     mu_run_test(test_weibull_distribution_prior);
+    mu_run_test(test_weibull_distribution_multi);
+    mu_run_test(test_weibull_distribution_multi_prior);
+    mu_run_test(test_weibull_distribution_multi_prior_transformed);
 
     mu_run_test(test_kumaraswamy_distribution);
     mu_run_test(test_kumaraswamy_distribution_prior);

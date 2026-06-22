@@ -56,7 +56,7 @@ double DistributionModel_log_gamma(DistributionModel* dm){
                 if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
                     betaValue = 1.0/betaValue;
                 }
-                dm->lp += log(gsl_ran_gamma_pdf(values[i] - dm->shift, alpha[i], betaValue));
+                dm->lp += log(gsl_ran_gamma_pdf(values[i] - dm->shift, alpha[index], betaValue));
                 index++;
             }
         }
@@ -76,23 +76,27 @@ void DistributionModel_gamma_gradient(DistributionModel* dm, Parameters* paramet
     Parameter* alphax = Parameters_depends(parameters, alpha);
     Parameter* betax = Parameters_depends(parameters, beta);
     if(alphax != NULL){
+        // A shared scalar alpha (mask == 0) folds every element onto tempp[0] so
+        // backward sees the full sum, not just the last element.
+        memset(dm->tempp, 0, Parameter_size(alpha) * sizeof(double));
         size_t index = 0;
         for(size_t k = 0; k < Parameters_count(dm->x); k++){
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
-            memset(dm->tempp, 0, dim * sizeof(double));
             for(size_t j = 0; j < dim; j++){
-                double alphaValue = alphaValues[index & mask];
-                double betaValue = betaValues[index & mask];
-                size_t idx = j & mask;
+                size_t idx = index & mask;
+                double betaValue = betaValues[idx];
+                double xs = xValues[j] - dm->shift;
+                double g;
                 if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
-                    dm->tempp[idx] = log(xValues[j]) + log(betaValue) - gsl_sf_psi(alphaValue);
+                    g = log(xs) + log(betaValue) - gsl_sf_psi(alphaValues[idx]);
                 }
                 else{
-                    dm->tempp[idx] = log(xValues[j]) - log(betaValue) - gsl_sf_psi(alphaValue);
+                    g = log(xs) - log(betaValue) - gsl_sf_psi(alphaValues[idx]);
                 }
-                alpha->grad[idx] += dm->tempp[idx];
+                dm->tempp[idx] += g;
+                alpha->grad[idx] += g;
                 index++;
             }
         }
@@ -102,23 +106,26 @@ void DistributionModel_gamma_gradient(DistributionModel* dm, Parameters* paramet
     }
 
     if(betax != NULL){
+        memset(dm->tempp, 0, Parameter_size(beta) * sizeof(double));
         size_t index = 0;
         for(size_t k = 0; k < Parameters_count(dm->x); k++){
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
-            memset(dm->tempp, 0, dim * sizeof(double));
             for(size_t j = 0; j < dim; j++){
-                double alphaValue = alphaValues[index & mask];
-                double betaValue = betaValues[index & mask];
-                size_t idx = j & mask;
+                size_t idx = index & mask;
+                double alphaValue = alphaValues[idx];
+                double betaValue = betaValues[idx];
+                double xs = xValues[j] - dm->shift;
+                double g;
                 if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
-                    dm->tempp[idx] = alphaValue/betaValue - xValues[j];
+                    g = alphaValue/betaValue - xs;
                 }
                 else{
-                    dm->tempp[idx] =  (xValues[j] -alphaValue*betaValue)/(betaValue*betaValue);
+                    g = (xs - alphaValue*betaValue)/(betaValue*betaValue);
                 }
-                beta->grad[idx] += dm->tempp[idx];
+                dm->tempp[idx] += g;
+                beta->grad[idx] += g;
                 index++;
             }
         }
@@ -136,13 +143,17 @@ void DistributionModel_gamma_gradient(DistributionModel* dm, Parameters* paramet
         if (xx != NULL) {
             const double* xValues = Parameter_values(x);
             for(size_t j = 0; j < sizeX; j++){
-                double alphaValue = alphaValues[index & mask];
-                double betaValue = betaValues[index & mask];
+                size_t idx = index & mask;
+                double alphaValue = alphaValues[idx];
+                double betaValue = betaValues[idx];
                 if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_SCALE) {
                     betaValue = 1.0/betaValue;
                 }
-                dm->tempp[index] = (alphaValue-1.0)/xValues[j] - betaValue;
-                x->grad[index] += dm->tempp[index];
+                // x_k owns its own grad/transform: index into them locally (j)
+                // while index & mask tracks the global position for the params.
+                double xs = xValues[j] - dm->shift;
+                dm->tempp[j] = (alphaValue-1.0)/xs - betaValue;
+                x->grad[j] += dm->tempp[j];
                 index++;
             }
             if(x != xx){
@@ -183,11 +194,11 @@ static void DistributionModel_gamma_sample(DistributionModel* dm){
             Parameter* x = Parameters_at(dm->x, j);
             size_t dim = Parameter_size(x);
             const double* values = Parameter_values(x);
-            double betaValue = beta[index];
-			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
-				betaValue = 1.0/betaValue;
-			}
             for (size_t i = 0; i < dim; i++) {
+                double betaValue = beta[index];
+                if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
+                    betaValue = 1.0/betaValue;
+                }
                 dm->tempx[i] = gsl_ran_gamma(dm->rng, alpha[index], betaValue);
                 index++;
             }
