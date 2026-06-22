@@ -5,7 +5,9 @@
 //  Copyright © 2018 Mathieu Fourment. All rights reserved.
 //
 
+#include <gsl/gsl_cdf.h>
 #include <gsl/gsl_randist.h>
+#include <gsl/gsl_sf_gamma.h>
 
 #include "minunit.h"
 #include "phyc/distexp.h"
@@ -1103,6 +1105,82 @@ char* test_gamma_distribution_multi_prior_transformed() {
     return NULL;
 }
 
+// Validate the vendored derivative of the regularized lower incomplete gamma
+// P(a, x) wrt a against a central finite difference of GSL's gsl_sf_gamma_inc_P,
+// spanning both evaluation regimes (x < a+1 series and x >= a+1 continued fraction).
+char* test_gamma_p_grad_a() {
+    double as[] = {0.5, 1.0, 2.0, 5.0, 10.0};
+    double xs[] = {0.1, 0.5, 1.0, 3.0, 8.0, 15.0};
+    double h = 1e-6;
+    for (size_t ia = 0; ia < sizeof(as) / sizeof(as[0]); ia++) {
+        for (size_t ix = 0; ix < sizeof(xs) / sizeof(xs[0]); ix++) {
+            double a = as[ia], x = xs[ix];
+            double analytic = gamma_p_grad_a(a, x);
+            double fd = (gsl_sf_gamma_inc_P(a + h, x) - gsl_sf_gamma_inc_P(a - h, x)) /
+                        (2.0 * h);
+            printf("dP/da(a=%.1f, x=%.1f): %g (fd %g)\n", a, x, analytic, fd);
+            mu_assert(fabs(analytic - fd) < 1e-5 * (1.0 + fabs(fd)),
+                      "gamma_p_grad_a does not match finite difference");
+        }
+    }
+    return NULL;
+}
+
+// Validate the implicit reparameterization gradient. For each element the
+// reparameterized sample satisfies P(a, z) = u with z = x/theta and u fixed, so
+// dx/da = theta * d/da Pinv(u; a, 1) and dx/dbeta = -z/beta^2 (rate). These are
+// independent oracles (CDF inversion / closed form) for the rgradient output.
+char* test_gamma_rgradient() {
+    double xVals[] = {1.5, 3.0, 0.5};
+    Parameter* x = new_Parameter2("x", xVals, 3, new_Constraint(0, INFINITY));
+    double aVals[] = {2.0, 1.5, 3.0};
+    double bVals[] = {1.0, 2.0, 1.5};  // rate
+    Parameter* alpha = new_Parameter2("alpha", aVals, 3, new_Constraint(0, INFINITY));
+    Parameter* beta = new_Parameter2("beta", bVals, 3, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(1);
+    Parameters_move(xs, x);
+    Parameters* parameters = new_Parameters(2);
+    Parameters_move(parameters, alpha);
+    Parameters_move(parameters, beta);
+
+    DistributionModel* dm = new_GammaDistributionModel_with_parameters(
+        parameters, xs, DISTRIBUTION_GAMMA_SHAPE_RATE);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double upstream[] = {0.7, -1.3, 0.4};  // downstream dL/dx_i
+    Parameters* ps = new_Parameters(2);
+    Parameters_add(ps, alpha);
+    Parameters_add(ps, beta);
+    Parameters_zero_grad(ps);
+    for (size_t i = 0; i < 3; i++) x->grad[i] = upstream[i];
+
+    dm->rgradient(dm);
+
+    double h = 1e-4;
+    for (size_t i = 0; i < 3; i++) {
+        double a = aVals[i], bta = bVals[i], theta = 1.0 / bta;
+        double z = xVals[i] / theta;
+        double u = gsl_cdf_gamma_P(z, a, 1.0);
+        double dxda = theta *
+                      (gsl_cdf_gamma_Pinv(u, a + h, 1.0) -
+                       gsl_cdf_gamma_Pinv(u, a - h, 1.0)) /
+                      (2.0 * h);
+        double expA = upstream[i] * dxda;
+        double expB = upstream[i] * (-z / (bta * bta));
+        printf("alpha[%zu] %g (inv %g)  beta[%zu] %g (exact %g)\n", i,
+               alpha->grad[i], expA, i, beta->grad[i], expB);
+        mu_assert(fabs(alpha->grad[i] - expA) < 1e-3 * (1.0 + fabs(expA)),
+                  "gamma rgradient dalpha does not match CDF-inversion FD");
+        mu_assert(fabs(beta->grad[i] - expB) < 1e-8 * (1.0 + fabs(expB)),
+                  "gamma rgradient dbeta does not match closed form");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
 #pragma endregion
 
 #pragma region Weibull Distribution
@@ -1460,6 +1538,8 @@ char* all_tests() {
     mu_run_test(test_gamma_distribution_multi);
     mu_run_test(test_gamma_distribution_multi_prior);
     mu_run_test(test_gamma_distribution_multi_prior_transformed);
+    mu_run_test(test_gamma_p_grad_a);
+    mu_run_test(test_gamma_rgradient);
 
     mu_run_test(test_weibull_distribution);
     mu_run_test(test_weibull_distribution_prior);
