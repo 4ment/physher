@@ -13,6 +13,7 @@
 
 #ifndef GSL_DISABLED
 #include <gsl/gsl_randist.h>
+#include <gsl/gsl_sf_psi.h>
 #endif
 
 #include "matrix.h"
@@ -61,54 +62,53 @@ static void DistributionModel_dirichlet_sample(DistributionModel* dm){
     Parameter_set_values(x, dm->tempx);
 }
 
-// static double DistributionModel_dirichlet_sample_evaluate(DistributionModel* dm){
-//     DistributionModel_dirichlet_sample(dm, NULL);
-//     return DistributionModel_log_dirichlet(dm);
-// }
-
 void DistributionModel_dirichlet_gradient(DistributionModel* dm, Parameters* parameters){
-    // TODO: implement gradient wrt alpha
-    for(size_t k = 0; k < Parameters_count(dm->x); k++){
-        Parameter* x = Parameters_at(dm->x, k);
-        Parameter* xx = Parameters_depends(parameters, x);
-        
-        if (xx != NULL) {
-            /*
-            log pdf(X; \alpha) = \sum_i (\alpha_i - 1)log(x_i) - log B(\alpha)
-            d log pdf(X)/dx_k  = \sum_i (\alpha_i - 1) d log(x_i)/dx_k
-                              &= (\alpha_k - 1)/x_k
-            
-            d log pdf(X)/dy_k  = sum_j d log pdf(X)/dx_j dx_j/dy_k
-            
-            dx_i/dy_k = 0 for i < k
-            */
-            size_t dim = Parameter_size(x);
-            const double* xValues = Parameter_values(x);
-            const double* alphaValues = Parameter_values(Parameters_at(dm->parameters, 0));
-            double* grad = dvector(dim);
-            for(size_t i = 0; i < dim; i++){
-                grad[i] = (alphaValues[i] - 1.0)/xValues[i];
-                x->grad[i] += grad[i];
-            }
-            if(xx != x){
-                x->transform->backward(x->transform, grad);
-            }
-            free(grad);
+    // The Dirichlet is multivariate: a single simplex draw x parameterized by the
+    // whole concentration vector alpha (Parameter_size(x) == Parameter_size(alpha)).
+    Parameter* alpha = Parameters_at(dm->parameters, 0);
+    Parameter* x = Parameters_at(dm->x, 0);
+    size_t dim = Parameter_size(x);
+    const double* xValues = Parameter_values(x);
+    const double* alphaValues = Parameter_values(alpha);
+
+    /*
+    log pdf(X; alpha) = sum_i (alpha_i - 1) log(x_i) - log B(alpha)
+    log B(alpha)      = sum_i log Gamma(alpha_i) - log Gamma(alpha_0),  alpha_0 = sum_j alpha_j
+
+    d log pdf/dalpha_k = log(x_k) - d log B/dalpha_k
+                       = log(x_k) - psi(alpha_k) + psi(alpha_0)
+    */
+    Parameter* alphax = Parameters_depends(parameters, alpha);
+    if (alphax != NULL) {
+        double alpha0 = 0.0;
+        for (size_t i = 0; i < dim; i++) alpha0 += alphaValues[i];
+        double psi0 = gsl_sf_psi(alpha0);
+        for (size_t i = 0; i < dim; i++) {
+            dm->tempp[i] = log(xValues[i]) - gsl_sf_psi(alphaValues[i]) + psi0;
+            alpha->grad[i] += dm->tempp[i];
+        }
+        if (alphax != alpha) {
+            alpha->transform->backward(alpha->transform, dm->tempp);
         }
     }
-}
 
-// IMPORTANT: The derivative is wrt unconstrained parameter of the simplex
-//TODO: implement
-static void _DistributionModel_error_sample_dirichlet(DistributionModel* dm, double* samples){
-    fprintf(stderr, "_DistributionModel_error_sample_dirichlet not implemented\n");
-    exit(1);
+    /*
+    d log pdf/dx_k = (alpha_k - 1)/x_k
+    d log pdf/dy_k = sum_j d log pdf/dx_j dx_j/dy_k   (simplex transform backward)
+    */
+    Parameter* xx = Parameters_depends(parameters, x);
+    if (xx != NULL) {
+        double* grad = dvector(dim);
+        for (size_t i = 0; i < dim; i++) {
+            grad[i] = (alphaValues[i] - 1.0)/xValues[i];
+            x->grad[i] += grad[i];
+        }
+        if (xx != x) {
+            x->transform->backward(x->transform, grad);
+        }
+        free(grad);
+    }
 }
-
-// static double _DistributionModel_error_sample_evaluate_dirichlet(DistributionModel* dm){
-//     fprintf(stderr, "_DistributionModel_error_sample_evaluate_dirichlet not implemented\n");
-//     exit(1);
-// }
 
 DistributionModel* new_FlatDirichletDistributionModel(Parameters* x){
 	DistributionModel* dm = new_DistributionModel(NULL, x);
@@ -116,12 +116,6 @@ DistributionModel* new_FlatDirichletDistributionModel(Parameters* x){
 	dm->logP = DistributionModel_log_flat_dirichlet;
     dm->gradient = DistributionModel_flat_dirichlet_gradient;
 	dm->sample = DistributionModel_dirichlet_sample;
-    // dm->logP_with_values = DistributionModel_log_flat_dirichlet_with_values;
-	// dm->sample_evaluate = DistributionModel_dirichlet_sample_evaluate;
-	// dm->tempp = dvector(Parameter_size(x));
-	// for (int i = 0; i < Parameter_size(x); i++) {
-	// 	dm->tempp[i] = 1;
-	// }
     dm->shift = 0;
 	return dm;
 }
@@ -223,7 +217,6 @@ Model* new_DirichletDistributionModel_from_json(json_node* node, Hashtable* hash
     }
     
     dm->parameterization = 0;
-    dm->shift = get_json_node_value_double(node, "shift", dm->shift);
     
     
     Model* model = new_DistributionModel2(id, dm);

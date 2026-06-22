@@ -10,6 +10,7 @@
 #include <gsl/gsl_sf_gamma.h>
 
 #include "minunit.h"
+#include "phyc/distdirichlet.h"
 #include "phyc/distexp.h"
 #include "phyc/distgamma.h"
 #include "phyc/distkumaraswamy.h"
@@ -1508,6 +1509,58 @@ char* test_kumaraswamy_distribution() {
 
 #pragma endregion
 
+#pragma region Dirichlet Distribution
+
+// Check the Dirichlet gradient wrt both the concentration alpha and the simplex x
+// against finite differences of logP. alpha and x are plain (untransformed)
+// parameters so the analytic gradients land directly in their leaves; GSL's
+// dirichlet_lnpdf uses log(x_i) without renormalizing, so its FD matches the
+// ambient gradient component-wise.
+char* test_dirichlet_distribution() {
+    double xVals[] = {0.2, 0.3, 0.5};
+    Parameter* x = new_Parameter2("x", xVals, 3, new_Constraint(0, INFINITY));
+    double aVals[] = {2.0, 3.0, 1.5};
+    Parameter* alpha = new_Parameter2("alpha", aVals, 3, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(1);
+    Parameters_move(xs, x);
+    Parameters* parameters = new_Parameters(1);
+    Parameters_move(parameters, alpha);
+
+    DistributionModel* dm =
+        new_DirichletDistributionModel_with_parameters(parameters, xs);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    double logP2 = gsl_ran_dirichlet_lnpdf(3, aVals, xVals);
+    printf("LogP: %f, LogP2: %f\n", logP, logP2);
+    mu_assert(fabs(logP - logP2) < 1e-10, "dirichlet logP not matching");
+
+    Parameters* ps = new_Parameters(2);
+    Parameters_add(ps, alpha);
+    Parameters_add(ps, x);
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "dirichlet gradient does not match finite difference");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
+#pragma endregion
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_exponential_distribution);
@@ -1549,6 +1602,8 @@ char* all_tests() {
 
     mu_run_test(test_kumaraswamy_distribution);
     mu_run_test(test_kumaraswamy_distribution_prior);
+
+    mu_run_test(test_dirichlet_distribution);
 
     return NULL;
 }
