@@ -119,8 +119,7 @@ static void _broadcast_parameters(Parameters* x, Parameters* parameters,
     }
 }
 
-double DistributionModel_lognormal_gradient2(DistributionModel* dm,
-                                             const Parameters* parameters) {
+void DistributionModel_lognormal_gradient(DistributionModel* dm, Parameters* parameters) {
     Parameter* mu = Parameters_at(dm->parameters, 0);
     Parameter* sigma = Parameters_at(dm->parameters, 1);
     double* muValues = NULL;
@@ -225,11 +224,9 @@ double DistributionModel_lognormal_gradient2(DistributionModel* dm,
         free(muValues);
         free(sigmaValues);
     }
-    return 0;
 }
 
-double DistributionModel_lognormal_mean_stdev_gradient2(DistributionModel* dm,
-                                             const Parameters* parameters) {
+void DistributionModel_lognormal_mean_stdev_gradient(DistributionModel* dm, Parameters* parameters) {
     Parameter* mean = Parameters_at(dm->parameters, 0);
     Parameter* sd = Parameters_at(dm->parameters, 1);
     // double* muValues = NULL;
@@ -371,7 +368,6 @@ double DistributionModel_lognormal_mean_stdev_gradient2(DistributionModel* dm,
     //     free(muValues);
     //     free(sigmaValues);
     // }
-    return 0;
 }
 
 // multiple Xs one distribution
@@ -540,21 +536,17 @@ DistributionModel* new_LogNormalDistributionModel_with_parameters(Parameters* pa
     dm->parameterization = parameterization;
     if(parameterization == DISTRIBUTION_LOGNORMAL_MU_SIGMA){
         dm->logP = DistributionModel_lognormal_logP;
-        dm->gradient2 = DistributionModel_lognormal_gradient2;
+        dm->gradient = DistributionModel_lognormal_gradient;
     }
     else if(parameterization == DISTRIBUTION_LOGNORMAL_MEAN_STDEV){
         dm->logP = DistributionModel_lognormal_mean_stdev_logP;
-        dm->gradient2 = DistributionModel_lognormal_mean_stdev_gradient2;
+        dm->gradient = DistributionModel_lognormal_mean_stdev_gradient;
     }
     dm->rgradient = DistributionModel_lognormal_rgradient;
-    // dm->logP_with_values = DistributionModel_lognormal_logP_with_values;
-    // if(Parameters_count(parameters[0]) > 1){
-    // }
     dm->sample = DistributionModel_lognormal_sample;
     dm->rsample = DistributionModel_lognormal_rsample;
     dm->entropy = DistributionModel_lognormal_entropy;
     dm->gradient_entropy = DistributionModel_lognormal_entropy_gradient;
-    // dm->sample_evaluate = DistributionModel_lognormal_sample_evaluate;
     dm->shift = 0;
     dm->support[0] = 0;
     dm->support[1] = INFINITY;

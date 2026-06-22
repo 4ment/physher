@@ -14,9 +14,6 @@ target_link_libraries(test_coalescent phyc)
 add_executable(test_priors test_priors.c)
 target_link_libraries(test_priors phyc)
 
-# add_executable(test_simplex test_simplex.c)
-# target_link_libraries(test_simplex phyc)
-
 add_executable(test_transforms test_transforms.c)
 target_link_libraries(test_transforms phyc)
 

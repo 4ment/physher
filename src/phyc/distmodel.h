@@ -87,7 +87,7 @@ struct _DistributionModel{
 	double* tempx; // array to pass to multivariate distributions and sampling in general
 	double* tempp;
 	double (*logP)(DistributionModel*);
-	double (*gradient2)(DistributionModel*, const Parameters*);
+	void (*gradient)(DistributionModel*, Parameters*);
 	void (*rgradient)(DistributionModel*);
 	void (*sample)(DistributionModel*);
 	void (*rsample)(DistributionModel*);
@@ -104,11 +104,6 @@ struct _DistributionModel{
 	gsl_rng* rng;
 #endif
 	double shift;
-	
-	int prepared_gradient;
-	double* gradient;
-	size_t gradient_length;
-	bool need_update_gradient;
 	double support[2];
 };
 

@@ -61,7 +61,7 @@ double DistributionModel_log_kumaraswamy(DistributionModel* dm){
 // d/da log f = 1/a + log(x) - (b-1) x^a log(x)/(1 - x^a)
 // d/db log f = 1/b + log(1 - x^a)
 // d/dx log f = (a-1)/x - (b-1) a x^(a-1)/(1 - x^a)
-double DistributionModel_kumaraswamy_gradient(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_kumaraswamy_gradient(DistributionModel* dm, Parameters* parameters){
     Parameter* a = Parameters_at(dm->parameters, 0);
     Parameter* b = Parameters_at(dm->parameters, 1);
 
@@ -142,7 +142,6 @@ double DistributionModel_kumaraswamy_gradient(DistributionModel* dm, const Param
             index += sizeX;
         }
     }
-    return 0;
 }
 
 // F_X(x) = p(X <= x)
@@ -260,8 +259,7 @@ DistributionModel* new_KumaraswamyDistributionModel_with_parameters(Parameters* 
 	dm->parameterization = 0;
 	
 	dm->logP = DistributionModel_log_kumaraswamy;
-	// dm->logP_with_values = DistributionModel_log_kumaraswamy_with_values;
-	dm->gradient2 = DistributionModel_kumaraswamy_gradient;
+	dm->gradient = DistributionModel_kumaraswamy_gradient;
 	dm->rgradient = DistributionModel_kumaraswamy_rgradient;
 	dm->sample = DistributionModel_kumaraswamy_sample;
 	dm->rsample = DistributionModel_kumaraswamy_rsample;

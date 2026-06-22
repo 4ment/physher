@@ -155,7 +155,7 @@ double _elbo_gradient(Bound* self, Parameters* parameters) {
                 
                 // calculate gradient of variational distribution wrt phylogenetic parameters z
                 // z are unconstrained or match the support of the variational distributions
-                dm->gradient2(dm, dm->x);
+                dm->gradient(dm, dm->x);
                 // dm->x->grad contains dQ/dφ
 
                 // calculate gradient of variational distribution wrt variational parameters φ using the chain rule arising from the reparameterization trick

@@ -19,7 +19,7 @@ double DistributionModel_log_one_on_x(DistributionModel* dm) {
     return dm->lp;
 }
 
-double DistributionModel_one_on_x_gradient(DistributionModel* dm, const Parameters* parameters) {
+void DistributionModel_one_on_x_gradient(DistributionModel* dm, Parameters* parameters) {
     Parameter* x = Parameters_at(dm->x, 0);
     Parameter* xx = Parameters_depends(parameters, x);
     if (xx != NULL) {
@@ -29,15 +29,13 @@ double DistributionModel_one_on_x_gradient(DistributionModel* dm, const Paramete
             x->transform->backward(x->transform, &dlogP);
         }
     }
-    return 0;
 }
 
 DistributionModel* new_OneOnXDistributionModel(Parameters* x) {
     DistributionModel* dm = new_DistributionModel(NULL, x);
     dm->type = DISTRIBUTION_ONE_ON_X;
     dm->logP = DistributionModel_log_one_on_x;
-    // dm->logP_with_values = DistributionModel_log_one_on_x_with_values;
-    dm->gradient2 = DistributionModel_one_on_x_gradient;
+    dm->gradient = DistributionModel_one_on_x_gradient;
     return dm;
 }
 

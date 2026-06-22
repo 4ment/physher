@@ -65,7 +65,7 @@ double DistributionModel_log_gamma(DistributionModel* dm){
     return dm->lp;
 }
 
-double DistributionModel_gamma_gradient2(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_gamma_gradient(DistributionModel* dm, Parameters* parameters){
     Parameter* alpha = Parameters_at(dm->parameters, 0);
     Parameter* beta = Parameters_at(dm->parameters, 1);
     
@@ -153,7 +153,6 @@ double DistributionModel_gamma_gradient2(DistributionModel* dm, const Parameters
             index += sizeX;
         }
     }
-    return 0;
 }
 
 static void DistributionModel_gamma_sample(DistributionModel* dm){
@@ -230,13 +229,8 @@ DistributionModel* new_GammaDistributionModel_with_parameters(Parameters* parame
 	DistributionModel* dm = new_DistributionModel(parameters, x);
 	dm->type = DISTRIBUTION_GAMMA;
 	dm->logP = DistributionModel_log_gamma;
-    dm->gradient2 = DistributionModel_gamma_gradient2;
-	// dm->logP_with_values = DistributionModel_log_gamma_with_values;
-    // if(Parameters_count(parameters[0]) > 1){
-    // }
-    // else{
+    dm->gradient = DistributionModel_gamma_gradient;
 	dm->sample = DistributionModel_gamma_sample;
-	// dm->sample_evaluate = DistributionModel_gamma_sample_evaluate;
 	dm->parameterization = parameterization;
     dm->shift = 0;
     dm->support[0] = 0;

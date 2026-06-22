@@ -26,8 +26,7 @@
 // #include "utilsio.h"
 
 
-double DistributionModel_gradient2_0(DistributionModel* dm, const Parameters* p){
-	return 0;
+void DistributionModel_gradient2_0(DistributionModel* dm, Parameters* p){
 }
 
 static void _DistributionModel_error_sample(DistributionModel* dm){
@@ -45,7 +44,6 @@ static void _free_partial_distribution(DistributionModel*dm){
     free_Parameters(dm->parameters);
 	if(dm->tempx != NULL) free(dm->tempx);
 	if(dm->tempp != NULL) free(dm->tempp);
-	if(dm->gradient != NULL) free(dm->gradient);
 	// freeing data is left to the user
 	free(dm);
 }
@@ -103,7 +101,7 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	}
 
 	clone->logP = dm->logP;
-	clone->gradient2 = dm->gradient2;
+	clone->gradient = dm->gradient;
 	clone->sample = dm->sample;
 	clone->rsample = dm->rsample;
 	clone->clone = dm->clone;
@@ -125,13 +123,6 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 	clone->rng = dm->rng;
 #endif
     clone->data = NULL;
-	clone->gradient = NULL;
-	clone->gradient_length = dm->gradient_length;
-	clone->need_update_gradient = dm->need_update_gradient;
-	clone->prepared_gradient = dm->prepared_gradient;
-	if(dm->gradient != NULL){
-		clone->gradient = clone_dvector(dm->gradient, dm->gradient_length);
-	}
 	clone->support[0] = dm->support[0];
 	clone->support[1] = dm->support[1];
 	return clone;
@@ -162,7 +153,7 @@ DistributionModel* new_DistributionModel(Parameters* p, Parameters* x){
 	// dm->simplex = NULL;
 	dm->tree = NULL;
 	dm->logP = NULL;
-	dm->gradient2 = NULL;
+	dm->gradient = NULL;
 	dm->sample = _DistributionModel_error_sample;
 	dm->rsample = _DistributionModel_error_sample;
 	dm->entropy = NULL;
@@ -173,11 +164,6 @@ DistributionModel* new_DistributionModel(Parameters* p, Parameters* x){
 	dm->tempx = dvector(dimX);
 	dm->tempp = dvector(dimX);
 	dm->need_update = true;
-	
-	dm->prepared_gradient = 0;;
-	dm->gradient = NULL;
-	dm->gradient_length = 0;
-	dm->need_update_gradient = true;
 
 	dm->support[0] = -INFINITY;
 	dm->support[1] = INFINITY;
@@ -208,7 +194,7 @@ DistributionModel* new_UniformTreeDistribution(Tree* tree){
     dm->tempx = NULL;
     dm->tempp = NULL;
 	dm->logP = DistributionModel_log_uniform_tree;
-	dm->gradient2 = DistributionModel_gradient2_0;
+	dm->gradient = DistributionModel_gradient2_0;
 	dm->entropy = NULL;
 	dm->gradient_entropy = NULL;
 	dm->need_update = true;
@@ -222,7 +208,6 @@ DistributionModel* new_UniformTreeDistribution(Tree* tree){
 void _dist_model_handle_change( Model *self, Model *model, Parameter* parameter, int index ){
 	DistributionModel* dm = self->obj;
 	dm->need_update = true;
-	dm->need_update_gradient = true;
 	self->listeners->fire( self->listeners, self, parameter, index );
 }
 
@@ -281,7 +266,7 @@ static double _dist_model_logP(Model *self){
 
 static void _dist_model_gradient(Model *self, Parameters* parameters){
 	DistributionModel* dm = (DistributionModel*)self->obj;
-	dm->gradient2(dm, parameters);
+	dm->gradient(dm, parameters);
 }
 
 static void _dist_model_free( Model *self ){

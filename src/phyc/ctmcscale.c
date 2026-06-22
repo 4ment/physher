@@ -77,7 +77,7 @@ void CTMCModel_gradient(Model *self, int flags, double* gradient){
 	}
 
 	Parameters_zero_grad(parameters);
-	dm->gradient2(dm, parameters);
+	dm->gradient(dm, parameters);
 
 	size_t offset = 0;
 	for(size_t i = 0; i < Parameters_count(parameters); i++){
@@ -89,7 +89,7 @@ void CTMCModel_gradient(Model *self, int flags, double* gradient){
 	free_Parameters(parameters);
 }
 
-double DistributionModel_ctmc_gradient(DistributionModel *dm, const Parameters* parameters){
+void DistributionModel_ctmc_gradient(DistributionModel *dm, Parameters* parameters){
 	// only works for strict clock models
 	Parameter* rate = Parameters_at(dm->x, 0);
 	double xValue = Parameter_value(rate);
@@ -146,8 +146,6 @@ double DistributionModel_ctmc_gradient(DistributionModel *dm, const Parameters* 
 		free(heightGradient);
 	}
 	free_Parameters(treeModelParameters);
-
-	return 0;
 }
 
 
@@ -161,7 +159,7 @@ DistributionModel* new_CTMCScale_with_parameters(Parameters* x, Tree* tree){
 	dm->type = DISTRIBUTION_CTMC_SCALE;
 	dm->parameterization = 0;
 	dm->logP = DistributionModel_log_ctmc_scale;
-	dm->gradient2 = DistributionModel_ctmc_gradient;
+	dm->gradient = DistributionModel_ctmc_gradient;
 	dm->sample = DistributionModel_ctmc_scale_sample;
 	dm->tree = tree;
     dm->shift = 0;

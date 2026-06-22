@@ -60,9 +60,8 @@ double DistributionModel_log_beta(DistributionModel* dm){
     return dm->lp;
 }
 
-double DistributionModel_gradient2_beta(DistributionModel* dm, const Parameters* p){
+void DistributionModel_gradient_beta(DistributionModel* dm, Parameters* p){
     error("DistributionModel_gradient2_beta not implemented\n");
-    return 0.0;
 }
 
 static void DistributionModel_beta_sample(DistributionModel* dm){
@@ -134,7 +133,7 @@ DistributionModel* new_BetaDistributionModel_with_parameters(Parameters* paramet
     dm->type = DISTRIBUTION_BETA;
     dm->logP = DistributionModel_log_beta;
     // dm->logP_with_values = DistributionModel_log_beta_with_values;
-    dm->gradient2 = DistributionModel_gradient2_beta;
+    dm->gradient = DistributionModel_gradient_beta;
     dm->sample = DistributionModel_beta_sample;
     // dm->sample_evaluate = DistributionModel_beta_sample_evaluate;
     dm->shift = 0;

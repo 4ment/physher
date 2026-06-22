@@ -63,7 +63,7 @@ double DistributionModel_weibull_logP(DistributionModel* dm){
 // d/dscale log f = b((x/a)^b - 1)/a
 // d/dshape log f = 1/b + log(x/a)(1 - (x/a)^b)
 // d/dx     log f = (b-1)/x - b(x/a)^b/x
-double DistributionModel_weibull_gradient2(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_weibull_gradient(DistributionModel* dm, Parameters* parameters){
     Parameter* scale = Parameters_at(dm->parameters, 0);
     Parameter* shape = Parameters_at(dm->parameters, 1);
 
@@ -145,7 +145,6 @@ double DistributionModel_weibull_gradient2(DistributionModel* dm, const Paramete
             index += sizeX;
         }
     }
-    return 0;
 }
 
 static void DistributionModel_weibull_sample(DistributionModel* dm){
@@ -277,7 +276,7 @@ DistributionModel* new_WeibullDistributionModel_with_parameters(Parameters* para
     dm->type = DISTRIBUTION_WEIBULL;
     dm->parameterization = DISTRIBUTION_WEIBULL_SCALE_SHAPE;
     dm->logP = DistributionModel_weibull_logP;
-    dm->gradient2 = DistributionModel_weibull_gradient2;
+    dm->gradient = DistributionModel_weibull_gradient;
     dm->rgradient = DistributionModel_weibull_rgradient;
     dm->sample = DistributionModel_weibull_sample;
     dm->rsample = DistributionModel_weibull_rsample;

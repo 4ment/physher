@@ -73,7 +73,7 @@ double DistributionModel_normal_logP(DistributionModel* dm){
     return dm->lp;
 }
 
-double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_normal_gradient(DistributionModel* dm, Parameters* parameters){
     Parameter* mu = Parameters_at(dm->parameters, 0);
     Parameter* sigma = Parameters_at(dm->parameters, 1);
     
@@ -87,19 +87,23 @@ double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameter
 
     if(mux != NULL){
         size_t index = 0;
+        // Accumulate the gradient wrt the constrained mu in dm->tempp across all x.
+        // For a shared scalar mu (mask == 0) every element folds into tempp[0], so
+        // backward sees the full sum and not just the last element (mode 1).
+        memset(dm->tempp, 0, Parameter_size(mu) * sizeof(double));
         for(size_t k = 0; k < Parameters_count(dm->x); k++){
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
-            memset(dm->tempp, 0, dim * sizeof(double));
             for(size_t j = 0; j < dim; j++){
                 double sigmaValue = sigmaValues[index & mask];
-                size_t idx = j & mask;
+                size_t idx = index & mask;
                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
                     sigmaValue = sqrt(1.0/sigmaValue);
                 }
-                dm->tempp[idx] = (xValues[j] - muValues[index & mask])/(sigmaValue*sigmaValue);
-                mu->grad[idx] += dm->tempp[idx];
+                double g = (xValues[j] - muValues[index & mask])/(sigmaValue*sigmaValue);
+                dm->tempp[idx] += g;
+                mu->grad[idx] += g;
                 index++;
             }
         }
@@ -110,22 +114,27 @@ double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameter
 
     if(sigmax != NULL){
         size_t index = 0;
+        // Accumulate the gradient wrt the constrained sigma in dm->tempp across all x.
+        // For a shared scalar sigma (mask == 0) every element folds into tempp[0], so
+        // backward sees the full sum and not just the last element (mode 1).
+        memset(dm->tempp, 0, Parameter_size(sigma) * sizeof(double));
         for(size_t k = 0; k < Parameters_count(dm->x); k++){
             Parameter* x = Parameters_at(dm->x, k);
             size_t dim = Parameter_size(x);
             const double* xValues = Parameter_values(x);
-            memset(dm->tempp, 0, dim * sizeof(double));
             for(size_t j = 0; j < dim; j++){
                 double muValue = muValues[index & mask];
                 double sigmaValue = sigmaValues[index & mask];
-                size_t idx = j & mask;
+                size_t idx = index & mask;
+                double g;
                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
-                    dm->tempp[idx] = 1.0/(2.0*sigmaValue) - pow(xValues[j] - muValue, 2.0)/2.0;
+                    g = 1.0/(2.0*sigmaValue) - pow(xValues[j] - muValue, 2.0)/2.0;
                 }
                 else{
-                    dm->tempp[idx] =  (muValue*muValue - sigmaValue*sigmaValue - 2.0*muValue*xValues[j] + xValues[j]*xValues[j])/(sigmaValue*sigmaValue*sigmaValue);
+                    g = (muValue*muValue - sigmaValue*sigmaValue - 2.0*muValue*xValues[j] + xValues[j]*xValues[j])/(sigmaValue*sigmaValue*sigmaValue);
                 }
-                sigma->grad[idx] += dm->tempp[idx];
+                dm->tempp[idx] += g;
+                sigma->grad[idx] += g;
                 index++;
             }
         }
@@ -148,8 +157,10 @@ double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameter
                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
                     sigmaValue = sqrt(1.0/sigmaValue);
                 }
-                dm->tempp[index] = (muValue - xValues[j])/(sigmaValue*sigmaValue);
-                x->grad[index] += dm->tempp[index];
+                // x_k owns its own grad/transform: index into them locally (j) while
+                // index tracks the global position for the mu/sigma lookup.
+                dm->tempp[j] = (muValue - xValues[j])/(sigmaValue*sigmaValue);
+                x->grad[j] += dm->tempp[j];
                 index++;
             }
             if(x != xx){
@@ -160,7 +171,6 @@ double DistributionModel_normal_gradient2(DistributionModel* dm, const Parameter
             index += sizeX;
         }
     }
-    return 0;
 }
 
 
@@ -326,7 +336,7 @@ DistributionModel* new_NormalDistributionModel_with_parameters(Parameters* param
     dm->type = DISTRIBUTION_NORMAL;
     dm->parameterization = parameterization;
     dm->logP = DistributionModel_normal_logP;
-    dm->gradient2 = DistributionModel_normal_gradient2;
+    dm->gradient = DistributionModel_normal_gradient;
     dm->rgradient = DistributionModel_normal_rgradient;
     dm->sample = DistributionModel_normal_sample;
     dm->rsample = DistributionModel_normal_rsample;
@@ -465,7 +475,7 @@ double DistributionModel_half_normal_logP(DistributionModel* dm){
     return dm->lp;
 }
 
-double DistributionModel_half_normal_gradient2(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_half_normal_gradient(DistributionModel* dm, Parameters* parameters){
     Parameter* sigma = Parameters_at(dm->parameters, 0);
 
     const double* sigmaValues = Parameter_values(sigma);
@@ -524,7 +534,6 @@ double DistributionModel_half_normal_gradient2(DistributionModel* dm, const Para
             index += sizeX;
         }
     }
-    return 0;
 }
 
 static void DistributionModel_half_normal_sample(DistributionModel* dm){
@@ -537,7 +546,7 @@ DistributionModel* new_HalfNormalDistributionModel_with_parameters(Parameters* p
     dm->type = DISTRIBUTION_HALFNORMAL;
     dm->parameterization = param;
     dm->logP = DistributionModel_half_normal_logP;
-    dm->gradient2 = DistributionModel_half_normal_gradient2;
+    dm->gradient = DistributionModel_half_normal_gradient;
     dm->sample = DistributionModel_half_normal_sample;
     dm->shift = 0;
     return dm;

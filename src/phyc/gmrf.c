@@ -85,7 +85,7 @@ double DistributionModel_log_gammarf(DistributionModel* dm){
 	return dm->lp;
 }
 
-double DistributionModel_gmrf_gradient(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_gmrf_gradient(DistributionModel* dm, Parameters* parameters){
 	Parameter* xParameter = Parameters_at(dm->x, 0);
 	const double* x = Parameter_values(xParameter);
 	size_t fieldDimension = Parameter_size(xParameter);
@@ -128,10 +128,9 @@ double DistributionModel_gmrf_gradient(DistributionModel* dm, const Parameters* 
 		}
 		free(grad);
 	}
-	return 0;
 }
 
-double DistributionModel_gmrf_time_aware_gradient(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_gmrf_time_aware_gradient(DistributionModel* dm, Parameters* parameters){
 	Coalescent* coal = dm->data;
 	if(coal->need_update_intervals) coal->update_intervals(coal);
 	
@@ -234,7 +233,6 @@ double DistributionModel_gmrf_time_aware_gradient(DistributionModel* dm, const P
 		free(grad);
 	}
 	free(intervals);
-	return 0;
 }
 
 static void DistributionModel_gmrf_sample(DistributionModel* dm){
@@ -250,7 +248,7 @@ DistributionModel* new_GMRF_with_parameters(Parameters* parameters, Parameter* x
 	dm->type = DISTRIBUTION_GMRF;
 	dm->parameterization = parameterization;
 	dm->logP = DistributionModel_log_gmrf;
-	dm->gradient2 = DistributionModel_gmrf_gradient;
+	dm->gradient = DistributionModel_gmrf_gradient;
 	dm->sample = DistributionModel_gmrf_sample;
 	dm->data = coalescent;
     dm->shift = INFINITY;
@@ -284,7 +282,7 @@ Model* new_GMRFModel_from_json(json_node* node, Hashtable* hash){
 		dm = new_GMRF_with_parameters(parameters, x, m->obj, 0);
 		model = new_DistributionModel3(id, dm, m);
 		dm->logP = DistributionModel_log_gmrf_time_aware;
-		dm->gradient2 = DistributionModel_gmrf_time_aware_gradient;
+		dm->gradient = DistributionModel_gmrf_time_aware_gradient;
 		m->listeners->add(m->listeners, model);
 	}
 	else{

@@ -105,7 +105,7 @@ double DistributionModel_log_exp(DistributionModel* dm){
 // 	return logP;
 // }
 
-double DistributionModel_gradient_exp(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_gradient_exp(DistributionModel* dm, Parameters* parameters){
     size_t dimX = Parameters_count(dm->x);
     Parameter* parameter = Parameters_at(dm->parameters, 0); // lambda or mean
 
@@ -190,7 +190,6 @@ double DistributionModel_gradient_exp(DistributionModel* dm, const Parameters* p
             }
         }
     }
-	return 0;
 }
 
 static void DistributionModel_exp_sample(DistributionModel* dm){
@@ -292,16 +291,12 @@ DistributionModel* new_ExponentialDistributionModel_with_parameters(Parameters* 
 	dm->type = DISTRIBUTION_EXPONENTIAL;
 	dm->parameterization = parameterization;
     dm->logP = DistributionModel_log_exp;
-    dm->gradient2 = DistributionModel_gradient_exp;
+    dm->gradient = DistributionModel_gradient_exp;
     dm->sample = DistributionModel_exp_sample;
 	if(parameterization == DISTRIBUTION_EXPONENTIAL_RATE){
-		// dm->logP_with_values = DistributionModel_log_exp_with_values;
-		// dm->sample_evaluate = DistributionModel_exp_sample_evaluate;
 	}
 	else{
-		// dm->logP_with_values = DistributionModel_log_exp_with_values_mean;
 		dm->sample = DistributionModel_exp_sample_mean;
-		// dm->sample_evaluate = DistributionModel_exp_sample_evaluate_mean;
 	}
     dm->shift = 0;
     dm->support[0] = 0;

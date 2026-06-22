@@ -202,6 +202,194 @@ char* test_normal_distribution() {
 
     return test_normal_distribution_aux(x, mu, sigma, dlogPdx, dlogPdmu, dlogPdsigma);
 }
+
+// Central finite-difference of model logP wrt element i of parameter p.
+static double fd_logP_grad(Model* model, Parameter* p, size_t i) {
+    const double h = 1e-5;
+    double v = Parameter_value_at(p, i);
+    Parameter_set_value_at(p, v + h, i);
+    double lpPlus = model->logP(model);
+    Parameter_set_value_at(p, v - h, i);
+    double lpMinus = model->logP(model);
+    Parameter_set_value_at(p, v, i);
+    return (lpPlus - lpMinus) / (2.0 * h);
+}
+
+// Exercise a Normal distribution whose dm->x holds several Parameters (multiple
+// random variables sharing the same distribution), for both modes:
+//   mode 1 (prior):      scalar mu/sigma shared across every x element
+//   mode 2 (variational): mu/sigma sized to the total number of x elements
+// Analytic gradients (accumulated into the leaves) are checked against finite
+// differences of logP.
+char* test_normal_distribution_multi_aux(Parameters* xs, Parameter* mu,
+                                         Parameter* sigma) {
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, mu);
+    Parameters_add(parameters, sigma);
+
+    DistributionModel* dm = new_NormalDistributionModel_with_parameters(
+        parameters, xs, DISTRIBUTION_NORMAL_MEAN_SIGMA);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    // logP must equal the sum of per-element Gaussian densities.
+    double logP = model->logP(model);
+    double logP2 = 0;
+    size_t index = 0;
+    size_t scalar = (Parameter_size(mu) == 1);
+    const double* muValues = Parameter_values(mu);
+    const double* sigmaValues = Parameter_values(sigma);
+    for (size_t k = 0; k < Parameters_count(xs); k++) {
+        Parameter* x = Parameters_at(xs, k);
+        const double* xValues = Parameter_values(x);
+        for (size_t j = 0; j < Parameter_size(x); j++) {
+            size_t idx = scalar ? 0 : index;
+            logP2 += log(gsl_ran_gaussian_pdf(xValues[j] - muValues[idx],
+                                              sigmaValues[idx]));
+            index++;
+        }
+    }
+    mu_assert(fabs(logP - logP2) < 1e-10, "multi-x logP not matching");
+    printf("LogP: %f, LogP2: %f\n", logP, logP2);
+
+    Parameters* ps = new_Parameters(2 + Parameters_count(xs));
+    Parameters_add(ps, mu);
+    Parameters_add(ps, sigma);
+    for (size_t k = 0; k < Parameters_count(xs); k++) {
+        Parameters_add(ps, Parameters_at(xs, k));
+    }
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    // Compare every accumulated leaf gradient with its finite difference.
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "multi-x gradient does not match finite difference");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
+// mode 1: two x parameters of differing sizes share one scalar mu and sigma.
+char* test_normal_distribution_multi_prior() {
+    double x0v[] = {1.5, 2.5};
+    double x1v[] = {2.0};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(-INFINITY, INFINITY));
+
+    Parameter* mu = new_Parameter("mu", 2.0, new_Constraint(-INFINITY, INFINITY));
+    Parameter* sigma = new_Parameter("sigma", 1.0, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_normal_distribution_multi_aux(xs, mu, sigma);
+}
+
+// mode 2: two x parameters whose elements each have their own mu and sigma.
+char* test_normal_distribution_multi() {
+    double x0v[] = {1.5, 2.5};
+    double x1v[] = {2.0};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(-INFINITY, INFINITY));
+
+    double muValues[] = {1.0, 2.0, 3.0};
+    double sigmaValues[] = {1.0, 1.5, 0.8};
+    Parameter* mu =
+        new_Parameter2("mu", muValues, 3, new_Constraint(-INFINITY, INFINITY));
+    Parameter* sigma =
+        new_Parameter2("sigma", sigmaValues, 3, new_Constraint(0, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    return test_normal_distribution_multi_aux(xs, mu, sigma);
+}
+
+// Build a positive parameter x = exp(y) backed by an unconstrained leaf y, wired
+// exactly like new_Parameter_from_json: the constrained parameter carries the
+// transform and listens to its leaf. Returns the constrained parameter; the leaf
+// is reachable via p->transform->parameter.
+static Parameter* new_exp_transformed_parameter(const char* name, double y) {
+    Parameter* leaf = new_Parameter2(name, &y, 1, new_Constraint(-INFINITY, INFINITY));
+    Transform* transform = new_Transform_with_parameter(NULL, 0, INFINITY, leaf);
+    double x;
+    transform->get(transform, &x);
+    Parameter* p = new_Parameter2(name, &x, 1, new_Constraint(0, INFINITY));
+    p->transform = transform;
+    transform->parameter->listeners->add_parameter(transform->parameter->listeners, p);
+    return p;
+}
+
+// mode 1 with mu and sigma each carrying an exp-transform: the distribution holds
+// the constrained mu/sigma, but the optimizer differentiates the unconstrained
+// leaves. This drives the transform backward() path with a shared scalar
+// hyperparameter over multiple x — the case the mode-1 fix targets. Gradients of
+// the unconstrained leaves are checked against finite differences.
+char* test_normal_distribution_multi_prior_transformed() {
+    double x0v[] = {1.5, 2.5};
+    double x1v[] = {2.0};
+    Parameter* x0 = new_Parameter2("x0", x0v, 2, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x1 = new_Parameter2("x1", x1v, 1, new_Constraint(-INFINITY, INFINITY));
+
+    Parameter* mu = new_exp_transformed_parameter("mu", log(1.5));      // mu = 1.5
+    Parameter* sigma = new_exp_transformed_parameter("sigma", log(1.0));  // sigma = 1
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, mu);
+    Parameters_add(parameters, sigma);
+
+    DistributionModel* dm = new_NormalDistributionModel_with_parameters(
+        parameters, xs, DISTRIBUTION_NORMAL_MEAN_SIGMA);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    printf("LogP (transformed mu/sigma): %f\n", logP);
+
+    // The optimizer sees the unconstrained leaves, so the gradient flows through
+    // the exp transform's backward() into leaf->grad.
+    Parameter* muUnc = mu->transform->parameter;
+    Parameter* sigmaUnc = sigma->transform->parameter;
+    Parameters* ps = new_Parameters(4);
+    Parameters_add(ps, muUnc);
+    Parameters_add(ps, sigmaUnc);
+    Parameters_add(ps, x0);
+    Parameters_add(ps, x1);
+
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "transformed multi-x gradient does not match finite difference");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
 #pragma endregion
 
 #pragma region Half Normal Distribution
@@ -793,6 +981,9 @@ char* all_tests() {
 
     mu_run_test(test_normal_distribution);
     mu_run_test(test_normal_distribution_prior);
+    mu_run_test(test_normal_distribution_multi);
+    mu_run_test(test_normal_distribution_multi_prior);
+    mu_run_test(test_normal_distribution_multi_prior_transformed);
 
     mu_run_test(test_half_normal_distribution);
     mu_run_test(test_half_normal_distribution_prior);

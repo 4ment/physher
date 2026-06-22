@@ -63,7 +63,7 @@ double DistributionModel_log_cauchy(DistributionModel* dm){
     return dm->lp;
 }
 
-double DistributionModel_gradient2_cauchy(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_gradient_cauchy(DistributionModel* dm, Parameters* parameters){
     // size_t offset = 0;
     // for(size_t i = 0; i < Parameters_count(parameters); i++){
     //     Parameter* p = Parameters_at(parameters, i);
@@ -99,7 +99,6 @@ double DistributionModel_gradient2_cauchy(DistributionModel* dm, const Parameter
     //         offset += Parameter_size(p);
     //     }
     // }
-    return 0.0;
 }
 
 static void DistributionModel_cauchy_sample(DistributionModel* dm){
@@ -139,10 +138,8 @@ DistributionModel* new_CauchyDistributionModel_with_parameters(Parameters* param
 	DistributionModel* dm = new_DistributionModel(parameters, x);
 	dm->type = DISTRIBUTION_CAUCHY;
 	dm->logP = DistributionModel_log_cauchy;
-	// dm->logP_with_values = DistributionModel_log_cauchy_with_values;
-    dm->gradient2 = DistributionModel_gradient2_cauchy;
+    dm->gradient = DistributionModel_gradient_cauchy;
 	dm->sample = DistributionModel_cauchy_sample;
-	// dm->sample_evaluate = DistributionModel_cauchy_sample_evaluate;
     dm->shift = -INFINITY;
 	return dm;
 }

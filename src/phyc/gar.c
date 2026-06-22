@@ -35,7 +35,7 @@ double DistributionModel_log_gar(DistributionModel* dm){
 	return dm->lp;
 }
 
-double DistributionModel_gar_gradient(DistributionModel* dm, const Parameters* parameters){
+void DistributionModel_gar_gradient(DistributionModel* dm, Parameters* parameters){
 	Parameter* xParameter = Parameters_at(dm->x, 0);
 	const double* x = Parameter_values(xParameter);
 	size_t fieldDimension = Parameter_size(xParameter);
@@ -82,7 +82,6 @@ double DistributionModel_gar_gradient(DistributionModel* dm, const Parameters* p
 		}
 		free(grad);
 	}
-	return 0;
 }
 
 
@@ -94,7 +93,7 @@ DistributionModel* new_GAR_with_parameters(Parameters* parameters, Parameter* x,
 	dm->type = DISTRIBUTION_GAR;
 	dm->parameterization = parameterization;
 	dm->logP = DistributionModel_log_gar;
-	dm->gradient2 = DistributionModel_gar_gradient;
+	dm->gradient = DistributionModel_gar_gradient;
 	dm->sample = NULL;
     dm->shift = INFINITY;
 	return dm;
