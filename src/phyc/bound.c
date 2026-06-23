@@ -64,6 +64,18 @@ static void _BoundModel_gradient(Model* self, Parameters* parameters) {
     bound->gradient(bound, parameters);
 }
 
+static void _BoundModel_handle_change(Model* self, Model* model, Parameter* parameter,
+                                      int index) {
+    // The bound recomputes its objective eagerly (no dirty flag), so there is
+    // nothing to invalidate here; re-fire so any model listening to the bound is
+    // notified that one of its variational/joint dependencies changed.
+    self->listeners->fire(self->listeners, self, parameter, index);
+}
+
+static void _BoundModel_handle_restore(Model* self, Model* model, int index) {
+    self->listeners->fire_restore(self->listeners, self, index);
+}
+
 static void _BoundModel_free(Model* self) {
     if(self->ref_count == 1){
         Bound* bound = self->obj;
@@ -86,7 +98,19 @@ Model* new_BoundModel(const char* name, Bound* bound) {
     model->restore = NULL;
     model->sample = NULL;
     model->samplable = false;
-    // TODO: add listeners to var parameters
+    model->update = _BoundModel_handle_change;
+    model->handle_restore = _BoundModel_handle_restore;
+
+    // Listen to the submodels so changes to the variational parameters (and the
+    // joint's parameters) propagate up to anything listening to the bound. The
+    // variational distribution already listens to its own x parameters, so we
+    // register on the submodels rather than the parameters to avoid double firing.
+    bound->joint->listeners->add(bound->joint->listeners, model);
+    bound->variational->listeners->add(bound->variational->listeners, model);
+
+    // self->parameters must hold every parameter the bound depends on; bound->parameters
+    // are the variational x parameters collected in new_Bound.
+    Parameters_add_parameters_recursively(model->parameters, bound->parameters);
     return model;
 }
 

@@ -15,10 +15,10 @@
 #include "gaussian.h"
 
 void operator_hmc_optimize(Operator* op, double logAlpha){
-	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
+	long count, accepted;
 	bool useAcceptanceRate = true;
-	if(count >= 0 && (!useAcceptanceRate || count >= 10)){
-		double prob = useAcceptanceRate ? op->accepted_count / count : exp(logAlpha);
+	if(operator_tuning_stats(op, &count, &accepted) && (!useAcceptanceRate || count >= 10)){
+		double prob = useAcceptanceRate ? (double)accepted / count : exp(logAlpha);
 		double oldStepSize = op->parameters[0];
 		double newStepSize = log(oldStepSize) + (prob - op->target) / (2 + count);
 		op->parameters[0] = exp(newStepSize);
@@ -39,6 +39,7 @@ bool operator_hmc(Operator* op, double* logHR){
 	for(size_t i = 0; i < dim; i++){
 		momentum0[i] = rnorm();
 	}
+	memcpy(momentum, momentum0, dim*sizeof(double));
 	size_t offset = 0;
 	for(size_t i = 0; i < paramCount; i++){
 		Parameter* p = Parameters_at(op->x, i);
@@ -146,6 +147,12 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	
 	op->rejected_count = 0;
 	op->accepted_count = 0;
+	op->failure_count = 0;
+	op->tuning_delay = get_json_node_value_size_t(node, "delay", 0);
+	op->accepted_at_delay = 0;
+	op->count_at_delay = 0;
+	op->tuning_started = false;
+	op->all = false;
 	op->target = get_json_node_value_double(node, "target", 0.8);
 	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return op;

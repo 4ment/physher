@@ -213,6 +213,11 @@ char* test_treelikelihood_time_unconstrained() {
     printf("logP: %f, expected_logP: %f\n", logP, expected_logP);
     mu_assert(fabs(logP - expected_logP) < 1.e-8, "logP not matching");
 
+    // logP/full_logP must be stored in the model's lp field before returning
+    mu_assert(model->lp == logP, "TreeLikelihoodModel logP not stored in lp");
+    mu_assert(model->full_logP(model) == logP, "TreeLikelihoodModel full_logP not matching");
+    mu_assert(model->lp == logP, "TreeLikelihoodModel full_logP not stored in lp");
+
     int flags = TREELIKELIHOOD_FLAG_TREE_MODEL | TREELIKELIHOOD_FLAG_BRANCH_MODEL;
     double* gradient = dvector(69);
 

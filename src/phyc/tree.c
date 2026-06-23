@@ -1239,7 +1239,8 @@ void _TreeModel_print(Model* mtree, FILE* out){
 double _treeModel_logP(Model *self){
 	Tree* tree = (Tree*)self->obj;
 	Tree_update_heights(tree);
-	return tree->tt->log_jacobian(tree->tt);
+	self->lp = tree->tt->log_jacobian(tree->tt);
+	return self->lp;
 }
 
 void _treeModel_gradient(Model *self, Parameters* parameters){

@@ -29,6 +29,20 @@ char* test_tree_serial() {
                            log(expected_node_heights[6] - expected_bounds[5]);
     mu_assert(fabs(logP - logP_expected) < 1.e-7, "jacobian not matching");
 
+    // logP must be stored in the model's lp field before being returned
+    mu_assert(model->lp == logP, "TreeModel logP not stored in lp");
+    mu_assert(model->full_logP(model) == logP, "TreeModel full_logP not matching");
+    mu_assert(model->lp == logP, "TreeModel full_logP not stored in lp");
+
+    // the TreeTransformModel (model->data) computes the same log-Jacobian and
+    // must likewise store it in its own lp field
+    Model* mtt = (Model*)model->data;
+    double logP_tt = mtt->logP(mtt);
+    mu_assert(fabs(logP_tt - logP_expected) < 1.e-7, "TreeTransform jacobian not matching");
+    mu_assert(mtt->lp == logP_tt, "TreeTransformModel logP not stored in lp");
+    mu_assert(mtt->full_logP(mtt) == logP_tt, "TreeTransformModel full_logP not matching");
+    mu_assert(mtt->lp == logP_tt, "TreeTransformModel full_logP not stored in lp");
+
     double grads[3];
     double expected_grads[3] = {0.0, 1.1428571939468384, 0.3571428656578064};
     Tree_node_transform_jacobian_gradient(tree, grads);

@@ -26,6 +26,12 @@ target_link_libraries(test_tree_likelihood phyc)
 add_executable(test_compound test_compound.c)
 target_link_libraries(test_compound phyc)
 
+add_executable(test_operator test_operator.c)
+target_link_libraries(test_operator phyc)
+
+add_executable(test_mcmc test_mcmc.c)
+target_link_libraries(test_mcmc phyc)
+
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/data
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
@@ -48,12 +54,8 @@ add_test (NAME Test_coalescent
 		COMMAND test_coalescent)
 
 add_test (NAME Test_priors
-WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
-COMMAND test_priors)
-
-# add_test (NAME Test_simplex
-# 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
-# 		COMMAND test_simplex)
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_priors)
 
 add_test (NAME test_transforms
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
@@ -70,6 +72,14 @@ add_test (NAME Test_tree_likelihood
 add_test (NAME Test_compound
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_compound)
+
+add_test (NAME Test_operator
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_operator)
+
+add_test (NAME Test_mcmc
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_mcmc)
 
 
 find_program(VALGRIND "valgrind")

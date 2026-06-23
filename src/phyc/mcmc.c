@@ -88,6 +88,9 @@ void run(MCMC* mcmc){
 		mcmc->operators[i]->rejected_count = 0;
 		mcmc->operators[i]->accepted_count = 0;
 		mcmc->operators[i]->failure_count = 0;
+		mcmc->operators[i]->accepted_at_delay = 0;
+		mcmc->operators[i]->count_at_delay = 0;
+		mcmc->operators[i]->tuning_started = false;
 	}
 	
 	logP = _calculate_logP(mcmc);
@@ -140,6 +143,12 @@ void run(MCMC* mcmc){
 			if(op->optimize != NULL /*&& iter % mcmc->tuning_frequency == 0 && iter >	1000*/){
 				op->optimize(op, alpha);
 			}
+		}
+		// proposal failed (e.g. out of bounds): undo any partial mutation and
+		// count it as a rejection. Operators must not touch rejected_count.
+		else {
+			model->restore(model);
+			op->rejected_count++;
 		}
 		iter++;
 		

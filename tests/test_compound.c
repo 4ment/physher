@@ -97,6 +97,11 @@ char* test_compound_mixture_gradient() {
     printf("logP: %f expected: %f\n", logP, expected);
     mu_assert(fabs(logP - expected) < 1e-9, "mixture logP not matching logsumexp");
 
+    // logP/full_logP must be stored in the model's lp field before returning
+    mu_assert(model->lp == logP, "CompoundModel logP not stored in lp");
+    mu_assert(model->full_logP(model) == logP, "CompoundModel full_logP not matching");
+    mu_assert(model->lp == logP, "CompoundModel full_logP not stored in lp");
+
     Parameters* ps = new_Parameters(6);
     Parameters_add(ps, x);
     Parameters_add(ps, mu0);

@@ -1006,7 +1006,8 @@ static Model* _variational_model_clone(Model* self, Hashtable *hash){
 
 static double _variational_model_logP(Model *self){
 	variational_t* var = (variational_t*)self->obj;
-	return var->elbofn(var);
+	self->lp = var->elbofn(var);
+	return self->lp;
 }
 
 static void _variational_model_gradient(Model *self, const Parameters* parameters, double* grad){

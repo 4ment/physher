@@ -22,6 +22,11 @@ char* test_oneonx() {
     double logP = prior->logP(prior);
     mu_assert(fabs(logP - trueLogP) < .000001, "logP not matching");
 
+    // logP/full_logP must be stored in the model's lp field before returning
+    mu_assert(prior->lp == logP, "DistributionModel logP not stored in lp");
+    mu_assert(prior->full_logP(prior) == logP, "DistributionModel full_logP not matching");
+    mu_assert(prior->lp == logP, "DistributionModel full_logP not stored in lp");
+
     prior->gradient(prior, parameters);
     mu_assert(fabs(x->grad[0] - trueGradient) < .000001, "gradient not matching");
 
@@ -105,6 +110,11 @@ char* test_ctmcscale() {
 
     double logP = prior->logP(prior);
     mu_assert(fabs(logP - trueLogP) < 1.e-8, "logP not matching");
+
+    // logP/full_logP must be stored in the model's lp field before returning
+    mu_assert(prior->lp == logP, "CTMCScaleModel logP not stored in lp");
+    mu_assert(prior->full_logP(prior) == logP, "CTMCScaleModel full_logP not matching");
+    mu_assert(prior->lp == logP, "CTMCScaleModel full_logP not stored in lp");
 
     prior->gradient(prior, parameters);
     mu_assert(fabs(x->grad[0] - trueGradient) < 1.e-8, "x gradient not matching");

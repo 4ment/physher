@@ -339,6 +339,7 @@ Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tre
 		Parameters_at(coalescent->p, i)->listeners->add( Parameters_at(coalescent->p, i)->listeners, model );
 		Parameter_set_model(Parameters_at(coalescent->p, i), MODEL_COALESCENT);
 	}
+	Parameters_add_parameters_recursively(model->parameters, coalescent->p);
 	if(tree != NULL)tree->listeners->add( tree->listeners, model );
 	
 	model->logP = _coalescent_model_logP;

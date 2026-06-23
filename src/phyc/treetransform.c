@@ -990,7 +990,8 @@ static Model *_tree_transform_model_clone(Model *self, Hashtable *hash) {
 
 static double _tree_transform_model_logP(Model *self) {
 	TreeTransform* tt = self->obj;
-	return tt->log_jacobian(tt);
+	self->lp = tt->log_jacobian(tt);
+	return self->lp;
 }
 
 Model *new_TreeTransformModel(const char *name, TreeTransform *tt, Model *tree) {

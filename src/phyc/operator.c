@@ -123,7 +123,6 @@ bool operator_scaler(Operator* op, double* logHR){
 				vv[i] *= s;
 				if ( vv[i] > Parameter_upper(param) || vv[i] < Parameter_lower(param) ) {
 					free(vv);
-					op->rejected_count++;
 					return false;
 				}
 			}
@@ -139,7 +138,6 @@ bool operator_scaler(Operator* op, double* logHR){
 			*logHR = -log(s);
 
 			if ( vv > Parameter_upper(param) || vv < Parameter_lower(param) ) {
-				op->rejected_count++;
 				return false;
 			}
 			Parameter_set_value_at(param, vv, index);
@@ -167,7 +165,6 @@ bool operator_scaler(Operator* op, double* logHR){
 			double newValue = s*Node_height(root);
 			double lower = fmax(Node_height(Node_left(root)), Node_height(Node_right(root)));
 			if(newValue < lower){
-				op->rejected_count++;
 				return false;
 			}
 			Node_set_height(root, newValue);
@@ -285,7 +282,6 @@ bool operator_simplex_exchange(Operator* op, double* logHR){
 	for(size_t i = 0; i < K; i++){
 		if (newValues[i] < 0.0001) {
 			free(newValues);
-			op->rejected_count++;;
 			op->failure_count++;
 			return false;
 		}
@@ -294,7 +290,6 @@ bool operator_simplex_exchange(Operator* op, double* logHR){
 	for (size_t i = 0; i < K; i++) {
 		if (isnan(newValues[i])) {
 			free(newValues);
-			op->rejected_count++;;
 			op->failure_count++;
 			return false;
 		}
@@ -313,7 +308,18 @@ bool operator_beta(Operator* op, double* logHR){
 		return false;
 	}
 	Parameter_set_value_at(param, newValue, 0);
-	*logHR = log(gsl_ran_beta_pdf(v, alpha*newValue+1.0, alpha*(1.0-newValue)+1.0)/gsl_ran_beta_pdf(newValue, alpha*v+1.0, alpha*(1.0-v))+1.0);
+
+	double log_q_forward =
+    log(gsl_ran_beta_pdf(newValue,
+                          alpha*v + 1.0,
+                          alpha*(1.0 - v) + 1.0));
+
+	double log_q_reverse =
+		log(gsl_ran_beta_pdf(v,
+							alpha*newValue + 1.0,
+							alpha*(1.0 - newValue) + 1.0));
+
+	*logHR = log_q_reverse - log_q_forward;
 	return true;
 }
 
@@ -348,7 +354,6 @@ bool operator_dirichlet(Operator* op, double* logHR){
 		free(scaledOld);
 		free(newValues);
 		free(newScaled);
-		op->rejected_count++;
 		op->failure_count++;
 		return false;
 	}
@@ -363,7 +368,6 @@ bool operator_dirichlet(Operator* op, double* logHR){
 			free(scaledOld);
 			free(newValues);
 			free(newScaled);
-			op->rejected_count++;
 			op->failure_count++;
 			return false;
 		}
@@ -421,54 +425,69 @@ bool operator_sNNI(Operator* op, double* logHR){
 	return true;
 }
 
+bool operator_tuning_stats(Operator* op, long* count, long* accepted){
+	long total = (long)(op->accepted_count + op->rejected_count);
+	if(total < (long)op->tuning_delay){
+		return false;
+	}
+	if(!op->tuning_started){
+		op->tuning_started = true;
+		op->accepted_at_delay = op->accepted_count;
+		op->count_at_delay = (size_t)total;
+	}
+	*count = total - (long)op->count_at_delay;
+	*accepted = (long)(op->accepted_count - op->accepted_at_delay);
+	return true;
+}
+
 void operator_scaler_optimize(Operator* op, double alpha){
-	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
-	if(count >= 0){
-		op->parameters[0] = optimizeScaleFactor(op->parameters[0], count+1, alpha, 0.24);
+	long count, accepted;
+	if(operator_tuning_stats(op, &count, &accepted)){
+		op->parameters[0] = optimizeScaleFactor(op->parameters[0], count+1, alpha, op->target);
 	}
 }
 
 void operator_slider_optimize(Operator* op, double alpha){
-	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
-	if(count >= 0){
-		op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.0001, 20, false);
+	long count, accepted;
+	if(operator_tuning_stats(op, &count, &accepted)){
+		op->parameters[0] = tune(accepted, count+1, op->target, op->parameters[0], 0.0001, 20, false);
 	}
 }
 
 void operator_up_down_optimize(Operator* op, double alpha){
-	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
-	if(count >= 0){
-		double scaleFactor = optimizeScaleFactor(op->parameters[0], count+1, alpha, 0.24);
+	long count, accepted;
+	if(operator_tuning_stats(op, &count, &accepted)){
+		double scaleFactor = optimizeScaleFactor(op->parameters[0], count+1, alpha, op->target);
 		op->parameters[0] = fmin(1.0, fmax(0.0, scaleFactor));
 	}
 }
 
 void operator_dirichlet_optimize(Operator* op, double alpha){
-	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
-	if(count >= 0){
-		op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.01, 10000, true);
+	long count, accepted;
+	if(operator_tuning_stats(op, &count, &accepted)){
+		op->parameters[0] = tune(accepted, count+1, op->target, op->parameters[0], 0.01, 10000, true);
 	}
 }
 
 
 void operator_beta_optimize(Operator* op, double alpha){
-	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
-	if(count >= 0){
-		op->parameters[0] = tune(op->accepted_count, op->accepted_count+op->rejected_count, 0.24, op->parameters[0], 0.01, 10000, true);
+	long count, accepted;
+	if(operator_tuning_stats(op, &count, &accepted)){
+		op->parameters[0] = tune(accepted, count+1, op->target, op->parameters[0], 0.01, 10000, true);
 	}
 }
 void operator_exchange_optimize(Operator* op, double alpha){
-	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
-	if(count >= 0){
-		double delta = getDeltaP(count+1, alpha, 0.24) + log(op->parameters[0]);
+	long count, accepted;
+	if(operator_tuning_stats(op, &count, &accepted)){
+		double delta = getDeltaP(count+1, alpha, op->target) + log(op->parameters[0]);
 		op->parameters[0] = exp(delta);
 	}
 }
 
 void operator_discrete_exchange_optimize(Operator* op, double alpha){
-	long count = op->accepted_count+op->rejected_count - op->tuning_delay;
-	if(count >= 0){
-		double delta = getDeltaP(count+1, alpha, 0.24);
+	long count, accepted;
+	if(operator_tuning_stats(op, &count, &accepted)){
+		double delta = getDeltaP(count+1, alpha, op->target);
 		if (delta > DBL_MAX || delta < DBL_MIN) {
 			delta = 0;
 		}
@@ -723,6 +742,9 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	op->rejected_count = 0;
 	op->accepted_count = 0;
 	op->failure_count = 0;
+	op->accepted_at_delay = 0;
+	op->count_at_delay = 0;
+	op->tuning_started = false;
 	op->target = get_json_node_value_double(node, "target", 0.24);
 	return op;
 }

@@ -28,6 +28,9 @@ typedef struct Operator{
 	size_t accepted_count;
 	size_t failure_count;
 	size_t tuning_delay;
+	size_t accepted_at_delay; // accepted_count snapshot when tuning began
+	size_t count_at_delay;    // accepted+rejected snapshot when tuning began
+	bool tuning_started;
 	double target;
 	bool (*propose)(struct Operator*, double*);
 	void (*optimize)(struct Operator*, double);
@@ -35,6 +38,12 @@ typedef struct Operator{
 }Operator;
 
 Operator* new_Operator_from_json(json_node* node, Hashtable* hash);
+
+// Post-delay tuning statistics. Returns false while still inside the tuning
+// delay window. On the first call past the delay it snapshots the baseline
+// counts, so *count and *accepted measure only proposals made since tuning
+// started (an unbiased acceptance ratio is *accepted / *count).
+bool operator_tuning_stats(Operator* op, long* count, long* accepted);
 
 void free_Operator(Operator* op);
 

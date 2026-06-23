@@ -298,6 +298,11 @@ char* test_constant_data() {
     double logP2 = -13.2958368660;
     mu_assert(fabs(logP - logP2) < 0.00001, "logP not matching");
 
+    // logP/full_logP must be stored in the model's lp field before returning
+    mu_assert(model->lp == logP, "CoalescentModel logP not stored in lp");
+    mu_assert(model->full_logP(model) == logP, "CoalescentModel full_logP not matching");
+    mu_assert(model->lp == logP, "CoalescentModel full_logP not stored in lp");
+
     value = 7;
     Parameter_set_value(N, value);
     logP = model->logP(model);
