@@ -45,14 +45,6 @@ void partials_undefined_4( const SingleTreeLikelihood *tlk, const double *partia
 void partials_states_4( const SingleTreeLikelihood *tlk, int idx1, const double *matrices1, double *partials );
 
 
-void update_partials_4_ancestral( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 );
-
-
-void partials_undefined_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, const double *partials1, const double *exps1, const double *partials2, const double *exps2, double *partials3);
-
-void partials_states_and_undefined_noexp_integrate_4( const SingleTreeLikelihood *tlk, int idx1, const double *exps1, const double *partials2, const double *exps2, double *partials3 );
-
-
 #pragma mark -
 #pragma mark OpenMP
 
@@ -79,8 +71,6 @@ void integrate_partials_4_SSE( const SingleTreeLikelihood *tlk, const double *in
 
 void node_log_likelihoods_4_SSE( const SingleTreeLikelihood *tlk, const double *partials, const double *frequencies, double *outLogLikelihoods );
 
-void calculate_branch_likelihood_4_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
-
 void calculate_branch_partials_4_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 #endif
 
@@ -100,8 +90,6 @@ void node_log_likelihoods_4_AVX( const SingleTreeLikelihood *tlk, const double *
 #pragma mark -
 #pragma mark Upper Likelihood
 
-void calculate_branch_likelihood_4(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
-
 void calculate_branch_partials_4(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex);
 
 void update_partials_upper_4( SingleTreeLikelihood *tlk, Node *node );
@@ -113,8 +101,6 @@ void node_log_likelihoods_upper_4( const SingleTreeLikelihood *tlk, Node *node )
 
 #ifdef SSE3_ENABLED
 void update_partials_upper_sse_4( SingleTreeLikelihood *tlk, Node *node );
-
-void node_log_likelihoods_upper_sse_4( const SingleTreeLikelihood *tlk, Node *node );
 #endif
 
 #endif

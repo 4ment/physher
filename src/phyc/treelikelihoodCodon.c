@@ -296,43 +296,60 @@ void integrate_partials_codon( const SingleTreeLikelihood *tlk, const double *in
 }
 
 void update_partials_codon( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
-	
-	if( tlk->partials[partialsIndex1] != NULL ){
-		if(  tlk->partials[partialsIndex2] != NULL ){
+
+	// Single-child propagation (e.g. upper partials at a child of the root):
+	// partialsIndex2 < 0 means there is no second child. Reuse the general
+	// nstate-agnostic kernels (layout-identical to the codon kernels).
+	if( partialsIndex2 < 0 ){
+		if( tlk->partials[0][partialsIndex1] != NULL ){
+			partials_undefined(tlk,
+							   tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+							   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+							   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
+		}
+		else{
+			partials_states(tlk,
+							tlk->mapping[partialsIndex1],
+							tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+							tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
+		}
+	}
+	else if( tlk->partials[0][partialsIndex1] != NULL ){
+		if(  tlk->partials[0][partialsIndex2] != NULL ){
 			partials_undefined_and_undefined_codon(tlk,
-											 tlk->partials[partialsIndex1],
-											 tlk->matrices[matrixIndex1],
-											 tlk->partials[partialsIndex2],
-											 tlk->matrices[matrixIndex2],
-											 tlk->partials[partialsIndex]);
+											 tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+											 tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+											 tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+											 tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+											 tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
 		else {
 			partials_states_and_undefined_codon(tlk,
 										  tlk->mapping[partialsIndex2],
-										  tlk->matrices[matrixIndex2],
-										  tlk->partials[partialsIndex1],
-										  tlk->matrices[matrixIndex1],
-										  tlk->partials[partialsIndex]);
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
-		
+
 	}
 	else{
-		if(  tlk->partials[partialsIndex2] != NULL ){
+		if(  tlk->partials[0][partialsIndex2] != NULL ){
 			partials_states_and_undefined_codon(tlk,
 										  tlk->mapping[partialsIndex1],
-										  tlk->matrices[matrixIndex1],
-										  tlk->partials[partialsIndex2],
-										  tlk->matrices[matrixIndex2],
-										  tlk->partials[partialsIndex]);
-			
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
+
 		}
 		else{
 			partials_states_and_states_codon(tlk,
 									   tlk->mapping[partialsIndex1],
-									   tlk->matrices[matrixIndex1],
+									   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
 									   tlk->mapping[partialsIndex2],
-									   tlk->matrices[matrixIndex2],
-									   tlk->partials[partialsIndex]);
+									   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+									   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
 	}
 	
@@ -1096,49 +1113,49 @@ void partials_states_and_states_codon( const SingleTreeLikelihood *tlk, int idx1
 
 #ifdef _OPENMP
 
-void update_partials_codon_openmp( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
-	
-    if( tlk->mapping[nodeIndex1] == -1 ){
-        if(  tlk->mapping[nodeIndex2] == -1 ){
+void update_partials_codon_openmp( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
+
+    if( tlk->partials[0][partialsIndex1] != NULL ){
+        if(  tlk->partials[0][partialsIndex2] != NULL ){
             partials_undefined_and_undefined_codon_openmp(tlk,
-                                                          tlk->partials[nodeIndex1],
-                                                          tlk->matrices[nodeIndex1],
-                                                          tlk->partials[nodeIndex2],
-                                                          tlk->matrices[nodeIndex2],
-                                                          tlk->partials[nodeIndex3]);
+                                                          tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+                                                          tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+                                                          tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+                                                          tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+                                                          tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
         }
         else {
             partials_states_and_undefined_codon_openmp(tlk,
-                                                       tlk->mapping[nodeIndex2],
-                                                       tlk->matrices[nodeIndex2],
-                                                       tlk->partials[nodeIndex1],
-                                                       tlk->matrices[nodeIndex1],
-                                                       tlk->partials[nodeIndex3]);
+                                                       tlk->mapping[partialsIndex2],
+                                                       tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+                                                       tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+                                                       tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+                                                       tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
         }
-        
+
     }
     else{
-        if(  tlk->mapping[nodeIndex2] == -1 ){
+        if(  tlk->partials[0][partialsIndex2] != NULL ){
             partials_states_and_undefined_codon_openmp(tlk,
-                                                       tlk->mapping[nodeIndex1],
-                                                       tlk->matrices[nodeIndex1],
-                                                       tlk->partials[nodeIndex2],
-                                                       tlk->matrices[nodeIndex2],
-                                                       tlk->partials[nodeIndex3]);
-            
+                                                       tlk->mapping[partialsIndex1],
+                                                       tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+                                                       tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+                                                       tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+                                                       tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
+
         }
         else{
             partials_states_and_states_codon_openmp(tlk,
-                                                    tlk->mapping[nodeIndex1],
-                                                    tlk->matrices[nodeIndex1],
-                                                    tlk->mapping[nodeIndex2],
-                                                    tlk->matrices[nodeIndex2],
-                                                    tlk->partials[nodeIndex3]);
+                                                    tlk->mapping[partialsIndex1],
+                                                    tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+                                                    tlk->mapping[partialsIndex2],
+                                                    tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+                                                    tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
         }
     }
-	
+
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, nodeIndex3, nodeIndex1, nodeIndex2);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
 }
 
@@ -2448,42 +2465,42 @@ void integrate_partials_codon_SSE( const SingleTreeLikelihood *tlk, const double
 
 void update_partials_codon_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
 	
-	if( tlk->partials[partialsIndex1] != NULL ){
-		if(  tlk->partials[partialsIndex2] != NULL ){
+	if( tlk->partials[0][partialsIndex1] != NULL ){
+		if(  tlk->partials[0][partialsIndex2] != NULL ){
 			partials_undefined_and_undefined_codon_SSE(tlk,
-												   tlk->partials[partialsIndex1],
-												   tlk->matrices[matrixIndex1],
-												   tlk->partials[partialsIndex2],
-												   tlk->matrices[matrixIndex2],
-												   tlk->partials[partialsIndex]);
+												   tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+												   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+												   tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+												   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+												   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
 		else {
 			partials_states_and_undefined_codon_SSE(tlk,
 										  tlk->mapping[partialsIndex2],
-										  tlk->matrices[matrixIndex2],
-										  tlk->partials[partialsIndex1],
-										  tlk->matrices[matrixIndex1],
-										  tlk->partials[partialsIndex]);
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
-		
+
 	}
 	else{
-		if(  tlk->partials[partialsIndex2] != NULL ){
+		if(  tlk->partials[0][partialsIndex2] != NULL ){
 			partials_states_and_undefined_codon_SSE(tlk,
 										  tlk->mapping[partialsIndex1],
-										  tlk->matrices[matrixIndex1],
-										  tlk->partials[partialsIndex2],
-										  tlk->matrices[matrixIndex2],
-										  tlk->partials[partialsIndex]);
-			
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+										  tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+										  tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
+
 		}
 		else{
 			partials_states_and_states_codon_SSE(tlk,
 									   tlk->mapping[partialsIndex1],
-									   tlk->matrices[matrixIndex1],
+									   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
 									   tlk->mapping[partialsIndex2],
-									   tlk->matrices[matrixIndex2],
-									   tlk->partials[partialsIndex]);
+									   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+									   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
 	}
 	
@@ -2494,42 +2511,42 @@ void update_partials_codon_SSE( SingleTreeLikelihood *tlk, int partialsIndex, in
 
 void update_partials_codon_odd_SSE( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
 	
-	if( tlk->partials[partialsIndex1] != NULL ){
-		if(  tlk->partials[partialsIndex2] != NULL ){
+	if( tlk->partials[0][partialsIndex1] != NULL ){
+		if(  tlk->partials[0][partialsIndex2] != NULL ){
 			partials_undefined_and_undefined_codon_odd_SSE(tlk,
-													   tlk->partials[partialsIndex1],
-													   tlk->matrices[matrixIndex1],
-													   tlk->partials[partialsIndex2],
-													   tlk->matrices[matrixIndex2],
-													   tlk->partials[partialsIndex]);
+													   tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+													   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+													   tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+													   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+													   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
 		else {
 			partials_states_and_undefined_codon_odd_SSE(tlk,
 													tlk->mapping[partialsIndex2],
-													tlk->matrices[matrixIndex2],
-													tlk->partials[partialsIndex1],
-													tlk->matrices[matrixIndex1],
-													tlk->partials[partialsIndex]);
+													tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+													tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+													tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+													tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
-		
+
 	}
 	else{
-		if(  tlk->partials[partialsIndex2] != NULL ){
+		if(  tlk->partials[0][partialsIndex2] != NULL ){
 			partials_states_and_undefined_codon_odd_SSE(tlk,
 													tlk->mapping[partialsIndex1],
-													tlk->matrices[matrixIndex1],
-													tlk->partials[partialsIndex2],
-													tlk->matrices[matrixIndex2],
-													tlk->partials[partialsIndex]);
-			
+													tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+													tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+													tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+													tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
+
 		}
 		else{
 			partials_states_and_states_codon_odd_SSE(tlk,
 												 tlk->mapping[partialsIndex1],
-												 tlk->matrices[matrixIndex1],
+												 tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
 												 tlk->mapping[partialsIndex2],
-												 tlk->matrices[matrixIndex2],
-												 tlk->partials[partialsIndex]);
+												 tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+												 tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 		}
 	}
 	
@@ -4976,55 +4993,55 @@ void integrate_partials_codon_AVX( const SingleTreeLikelihood *tlk, const double
     //	fprintf(stderr, "integrate %f\n", integrate);
 }
 
-void update_partials_codon_AVX( SingleTreeLikelihood *tlk, int nodeIndex1, int nodeIndex2, int nodeIndex3 ) {
+void update_partials_codon_AVX( SingleTreeLikelihood *tlk, int partialsIndex, int partialsIndex1, int matrixIndex1, int partialsIndex2, int matrixIndex2 ) {
 	if( tlk->integrate_cat ){
-		if( tlk->mapping[nodeIndex1] == -1 ){
-			if(  tlk->mapping[nodeIndex2] == -1 ){
+		if( tlk->partials[0][partialsIndex1] != NULL ){
+			if(  tlk->partials[0][partialsIndex2] != NULL ){
 				partials_undefined_and_undefined_codon_AVX(tlk,
-														   tlk->partials[nodeIndex1],
-														   tlk->matrices[nodeIndex1],
-														   tlk->partials[nodeIndex2],
-														   tlk->matrices[nodeIndex2],
-														   tlk->partials[nodeIndex3]);
+														   tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+														   tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+														   tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+														   tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+														   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 			}
 			else {
 				partials_states_and_undefined_codon_AVX(tlk,
-														tlk->mapping[nodeIndex2],
-														tlk->matrices[nodeIndex2],
-														tlk->partials[nodeIndex1],
-														tlk->matrices[nodeIndex1],
-														tlk->partials[nodeIndex3]);
+														tlk->mapping[partialsIndex2],
+														tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+														tlk->partials[tlk->current_partials_indexes[partialsIndex1]][partialsIndex1],
+														tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+														tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 			}
-			
+
 		}
 		else{
-			if(  tlk->mapping[nodeIndex2] == -1 ){
+			if(  tlk->partials[0][partialsIndex2] != NULL ){
 				partials_states_and_undefined_codon_AVX(tlk,
-														tlk->mapping[nodeIndex1],
-														tlk->matrices[nodeIndex1],
-														tlk->partials[nodeIndex2],
-														tlk->matrices[nodeIndex2],
-														tlk->partials[nodeIndex3]);
-				
+														tlk->mapping[partialsIndex1],
+														tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+														tlk->partials[tlk->current_partials_indexes[partialsIndex2]][partialsIndex2],
+														tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+														tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
+
 			}
 			else{
 				partials_states_and_states_codon_AVX(tlk,
-													 tlk->mapping[nodeIndex1],
-													 tlk->matrices[nodeIndex1],
-													 tlk->mapping[nodeIndex2],
-													 tlk->matrices[nodeIndex2],
-													 tlk->partials[nodeIndex3]);
+													 tlk->mapping[partialsIndex1],
+													 tlk->matrices[tlk->current_matrices_indexes[matrixIndex1]][matrixIndex1],
+													 tlk->mapping[partialsIndex2],
+													 tlk->matrices[tlk->current_matrices_indexes[matrixIndex2]][matrixIndex2],
+													 tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex]);
 			}
 		}
 	}
 	else{
-		
+
 	}
-	
-	
-	
+
+
+
 	if ( tlk->scale ) {
-		SingleTreeLikelihood_scalePartials( tlk, nodeIndex3);
+		SingleTreeLikelihood_scalePartials( tlk, partialsIndex, partialsIndex1, partialsIndex2);
 	}
 }
 
@@ -6424,17 +6441,17 @@ void update_partials_upper_codon( SingleTreeLikelihood *tlk, Node *node ){
 	
     if( Node_isroot(parent) ){
         if( Node_isleaf(sibling) ){
-            _update_upper_partials_root_and_state(tlk, tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
+            _update_upper_partials_root_and_state(tlk, tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)], tlk->mapping[ Node_id(sibling) ], freqs, tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(node)]]][tlk->upper_partial_indexes[Node_id(node)]] );
         }
         else {
-            _update_upper_partials_root_and_undefined(tlk, tlk->partials[ Node_id(sibling) ],  tlk->matrices[ Node_id(sibling) ], freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
+            _update_upper_partials_root_and_undefined(tlk, tlk->partials[tlk->current_partials_indexes[Node_id(sibling)]][Node_id(sibling)],  tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)], freqs, tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(node)]]][tlk->upper_partial_indexes[Node_id(node)]] );
         }
     }
     else if( Node_isleaf(sibling) ){
-        _update_upper_partials_state(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
+        _update_upper_partials_state(tlk, tlk->matrices[tlk->current_matrices_indexes[Node_id(parent)]][Node_id(parent)], tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(parent)]]][tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)], tlk->mapping[ Node_id(sibling) ], tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(node)]]][tlk->upper_partial_indexes[Node_id(node)]]);
     }
     else {
-        _update_upper_partials_undefined(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
+        _update_upper_partials_undefined(tlk, tlk->matrices[tlk->current_matrices_indexes[Node_id(parent)]][Node_id(parent)], tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(parent)]]][tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)], tlk->partials[tlk->current_partials_indexes[Node_id(sibling)]][Node_id(sibling)], tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(node)]]][tlk->upper_partial_indexes[Node_id(node)]]);
     }
 }
 
@@ -6710,10 +6727,10 @@ void node_log_likelihoods_upper_codon( const SingleTreeLikelihood *tlk, Node *no
 	int node_index = Node_id(node);
     
     if ( !Node_isleaf(node) ) {
-        _partial_lower_upper(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->partials[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
+        _partial_lower_upper(tlk, tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[node_index]]][tlk->upper_partial_indexes[node_index]], tlk->partials[tlk->current_partials_indexes[node_index]][node_index], tlk->matrices[tlk->current_matrices_indexes[node_index]][node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
     }
     else {
-        _partial_lower_upper_leaf(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->mapping[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
+        _partial_lower_upper_leaf(tlk, tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[node_index]]][tlk->upper_partial_indexes[node_index]], tlk->mapping[node_index], tlk->matrices[tlk->current_matrices_indexes[node_index]][node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
     }
 }
 
@@ -7317,19 +7334,19 @@ void update_partials_upper_sse_codon( SingleTreeLikelihood *tlk, Node *node ){
     if( Node_isroot(parent) ){
         // The matrix of the sibling is transposed
         if( Node_isleaf(sibling) ){
-            _update_upper_partials_root_and_state_sse_codon(tlk, tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
+            _update_upper_partials_root_and_state_sse_codon(tlk, tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)], tlk->mapping[ Node_id(sibling) ], freqs, tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(node)]]][tlk->upper_partial_indexes[Node_id(node)]] );
         }
         else {
-            _update_upper_partials_root_and_undefined_sse_codon(tlk, tlk->partials[ Node_id(sibling) ],  tlk->matrices[ Node_id(sibling) ],  freqs, tlk->partials[tlk->upper_partial_indexes[Node_id(node)]] );
+            _update_upper_partials_root_and_undefined_sse_codon(tlk, tlk->partials[tlk->current_partials_indexes[Node_id(sibling)]][Node_id(sibling)],  tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)],  freqs, tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(node)]]][tlk->upper_partial_indexes[Node_id(node)]] );
         }
     }
     // The matrix of the sibling is transposed
     // The pparent node cannot be leaf
     else if( Node_isleaf(sibling) ){
-        _update_upper_partials_state_sse_codon(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->mapping[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
+        _update_upper_partials_state_sse_codon(tlk, tlk->matrices[tlk->current_matrices_indexes[Node_id(parent)]][Node_id(parent)], tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(parent)]]][tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)], tlk->mapping[ Node_id(sibling) ], tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(node)]]][tlk->upper_partial_indexes[Node_id(node)]]);
     }
     else {
-        _update_upper_partials_undefined_sse_codon(tlk, tlk->matrices[ Node_id(parent) ], tlk->partials[tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[ Node_id(sibling) ], tlk->partials[ Node_id(sibling) ], tlk->partials[tlk->upper_partial_indexes[Node_id(node)]]);
+        _update_upper_partials_undefined_sse_codon(tlk, tlk->matrices[tlk->current_matrices_indexes[Node_id(parent)]][Node_id(parent)], tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(parent)]]][tlk->upper_partial_indexes[Node_id(parent)]], tlk->matrices[tlk->current_matrices_indexes[Node_id(sibling)]][Node_id(sibling)], tlk->partials[tlk->current_partials_indexes[Node_id(sibling)]][Node_id(sibling)], tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[Node_id(node)]]][tlk->upper_partial_indexes[Node_id(node)]]);
     }
 }
 
@@ -7813,10 +7830,10 @@ void node_log_likelihoods_upper_sse_codon( const SingleTreeLikelihood *tlk, Node
     int node_index = Node_id(node);
     
     if ( !Node_isleaf(node) ) {
-        _partial_lower_upper_sse_codon(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->partials[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
+        _partial_lower_upper_sse_codon(tlk, tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[node_index]]][tlk->upper_partial_indexes[node_index]], tlk->partials[tlk->current_partials_indexes[node_index]][node_index], tlk->matrices[tlk->current_matrices_indexes[node_index]][node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
     }
     else {
-        _partial_lower_upper_leaf_sse_codon(tlk, tlk->partials[tlk->upper_partial_indexes[node_index]], tlk->mapping[node_index], tlk->matrices[node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
+        _partial_lower_upper_leaf_sse_codon(tlk, tlk->partials[tlk->current_partials_indexes[tlk->upper_partial_indexes[node_index]]][tlk->upper_partial_indexes[node_index]], tlk->mapping[node_index], tlk->matrices[tlk->current_matrices_indexes[node_index]][node_index], tlk->sm->get_proportions(tlk->sm), tlk->pattern_lk+tlk->sp->count );
     }
 }
 #endif

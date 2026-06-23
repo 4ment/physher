@@ -1700,31 +1700,6 @@ static void _calculate_branch_likelihood_state_SSE(SingleTreeLikelihood *tlk, do
 	}
 	
 }
-
-void calculate_branch_likelihood_4_SSE(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex){
-	// partialIndex is a taxon so upperPartialsIndex has to be internal
-	// matrices are transposed
-	if( tlk->partials[0][partialsIndex] == NULL ){
-		_calculate_branch_likelihood_state_SSE(tlk, rootPartials,
-											   tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]][upperPartialsIndex],
-											   tlk->mapping[partialsIndex],
-											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
-	}
-	// upperPartialsIndex is a taxon
-	// possible for the child of the root with a leaf sibling
-	else if( tlk->partials[0][upperPartialsIndex] == NULL ){
-		_calculate_branch_likelihood_upper_undefined_SSE(tlk, rootPartials,
-														 tlk->mapping[upperPartialsIndex],
-														 tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
-														 tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
-	}
-	else{
-		_calculate_branch_likelihood_undefined_SSE(tlk, rootPartials,
-												   tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]][upperPartialsIndex],
-												   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
-												   tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
-	}
-}
 	
 static void _calculate_branch_partials_undefined_SSE(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, const double* partials, const double* matrices){
 	memset(rootPartials, 0, sizeof(double)*4*tlk->pattern_count*tlk->cat_count);
@@ -2876,37 +2851,6 @@ static void _calculate_branch_likelihood_state2(SingleTreeLikelihood *tlk, doubl
         }
     }
     
-}
-
-void calculate_branch_likelihood_4(SingleTreeLikelihood *tlk, double* rootPartials, int upperPartialsIndex, int partialsIndex, int matrixIndex){
-    // Sibling is a leaf
-	if( tlk->partials[0][partialsIndex] == NULL ){
-		_calculate_branch_likelihood_state(tlk, rootPartials,
-										   tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]][upperPartialsIndex],
-										   tlk->mapping[partialsIndex],
-										   tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
-    }
-    // upper is coming from the other side of the tree (right node) and right node is a leaf
-    // right node should not be a leaf
-//    else if(upperPartialsIndex < tlk->sp->size){
-//        exit(1);
-//    }
-    // upper is coming from the other side of the tree (right node) and right node is an internal node
-    /*else if(upperPartialsIndex < Tree_node_count(tlk->tree)){
-        _calculate_branch_likelihood_undefined(tlk, rootPartials, tlk->partials[upperPartialsIndex], tlk->partials[partialsIndex], tlk->matrices[matrixIndex]);
-    }*/
-    else if( tlk->partials[0][upperPartialsIndex] == NULL ){
-		_calculate_branch_likelihood_state2(tlk, rootPartials,
-											tlk->mapping[upperPartialsIndex],
-											tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
-											tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
-	}
-	else{
-		_calculate_branch_likelihood_undefined(tlk, rootPartials,
-											   tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]][upperPartialsIndex],
-											   tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
-											   tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex]);
-	}
 }
 
 static void _calculate_branch_partials_undefined(SingleTreeLikelihood *tlk, double* rootPartials, const double* upperPartials, const double* partials, const double* matrices){

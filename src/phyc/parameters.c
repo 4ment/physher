@@ -1315,7 +1315,7 @@ Parameter* Parameters_depends(const Parameters* parameters, const Parameter* x) 
     // check x is in parameters
     for (size_t i = 0; i < Parameters_count(parameters); i++) {
         if (x == Parameters_at(parameters, i)) {
-            return x;
+            return (Parameter*)x;
         }
     }
     // now check if its transformed parameter is in parameters

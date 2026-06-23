@@ -1256,6 +1256,10 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 					fprintf(stderr, "Gauss-Laguerre quadrature does not need proportions to be specified (%s)\n", proportions_node->key);
 					exit(13);
 				}
+				if (invariant) {
+					fprintf(stderr, "Gauss-Laguerre quadrature does not support invariant sites\n");
+					exit(13);
+				}
 			}
 			else if(strcasecmp("median", method) == 0){
 				quad = QUADRATURE_QUANTILE_MEDIAN;
