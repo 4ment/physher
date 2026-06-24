@@ -564,9 +564,6 @@ void Parameter_set_values(Parameter* p, const double* values) {
     if (p->transform != NULL) {
         p->transform->set(p->transform, values);
     }
-	// if (p->model_obj != NULL){
-	// 	p->model_obj->set(p->model_obj, values);
-	// }
     p->listeners->fire(p->listeners, NULL, p, -1);
 }
 
@@ -575,12 +572,6 @@ void Parameter_set_values_quietly(Parameter* p, const double* values) {
     if (p->transform != NULL) {
         p->transform->set(p->transform, values);
     }
-
-	// if(p->model_obj != NULL){
-	// 	p->model_obj->listeners->enabled = false;
-	// 	p->model_obj->set(p->model_obj, values);
-	// 	p->model_obj->listeners->enabled = true;
-	// }
 }
 
 void Parameter_set_value_at(Parameter* p, const double value, size_t index) {
@@ -588,10 +579,6 @@ void Parameter_set_value_at(Parameter* p, const double value, size_t index) {
     if (p->transform != NULL) {
         p->transform->set(p->transform, p->value);
     }
-
-	// if(p->model_obj != NULL){
-	// 	p->model_obj->set(p->model_obj, p->value);
-	// }
     p->listeners->fire(p->listeners, NULL, p, index);
 }
 
@@ -600,11 +587,6 @@ void Parameter_set_value_quietly(Parameter* p, const double value) {
     if (p->transform != NULL) {
         p->transform->set(p->transform, p->value);
     }
-    // if(p->model_obj != NULL){
-    // 	p->model_obj->listeners->enabled = false;
-    // 	p->model_obj->set(p->model_obj, p->value);
-    // 	p->model_obj->listeners->enabled = true;
-    // }
 }
 
 void Parameter_set_value_at_quietly(Parameter* p, const double value, size_t index) {
@@ -612,11 +594,6 @@ void Parameter_set_value_at_quietly(Parameter* p, const double value, size_t ind
     if (p->transform != NULL) {
         p->transform->set(p->transform, p->value);
     }
-    // if(p->model_obj != NULL){
-    // 	p->model_obj->listeners->enabled = false;
-    // 	p->model_obj->set(p->model_obj, p->value);
-    // 	p->model_obj->listeners->enabled = true;
-    // }
 }
 
 // x is already in the constrained space

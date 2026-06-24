@@ -124,20 +124,20 @@ static void _Tree_print_nexus_with_annotation_aux( FILE *pf, Tree *tree, const N
             }
             StringBuffer_chop(buff);
             if(time){
-                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, Node_time_elapsed(n));
+                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, Node_time_elapsed((Node*)n));
             }
             else {
-                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, Node_distance(n));
+                fprintf(pf, "%d:[&%s]%.20f", ++(*count), buff->c, Node_distance((Node*)n));
             }
             //fflush(pf);
             free_StringBuffer(buff);
         }
         else {
             if(time){
-                fprintf(pf, "%d:%.20f", ++(*count), Node_time_elapsed(n));
+                fprintf(pf, "%d:%.20f", ++(*count), Node_time_elapsed((Node*)n));
             }
             else{
-                fprintf(pf, "%d:%.20f", ++(*count), Node_distance(n));
+                fprintf(pf, "%d:%.20f", ++(*count), Node_distance((Node*)n));
             }
         }
 		return;
@@ -206,7 +206,7 @@ static void _Tree_print_nexus_aux( FILE *pf, Tree *tree, const Node *n, int *cou
 	if( !Node_isleaf(n) ) fprintf(pf, "(");
 	else {
 		if(Tree_is_time_mode(tree)){
-        	fprintf(pf, "%d:%f", ++(*count), Node_time_elapsed(n));
+        	fprintf(pf, "%d:%f", ++(*count), Node_time_elapsed((Node*)n));
 		}
 		else{
 			fprintf(pf, "%d:%f", ++(*count), Node_distance(n) );
@@ -389,7 +389,7 @@ char * readNexusFirstTree( const char *infile ){
 char * readNexusTreeAt( const char *infile, const int index ){
 	int count = 0;
 	char str[1000];
-	sprintf(str,"%d-%d", index, index);
+	snprintf(str, 1000, "%d-%d", index, index);
 	char **trees = readNexusTrees( infile, &count, str, 1 );
 	if ( count == 1 ) {
 		char *tree = trees[0];

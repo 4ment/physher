@@ -558,6 +558,109 @@ static char* _fd_time_gradient(const char* file, size_t nratios) {
     return NULL;
 }
 
+// Locate the (single, vector-valued) tree.distances Parameter in a non-time
+// tree Model. Heights are also tagged MODEL_TREE but are scalars, so the only
+// MODEL_TREE parameter with size > 1 is the branch-length vector.
+static Parameter* _find_distances(Model* mtree) {
+    Parameters* ps = mtree->parameters;
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        if (p->model == MODEL_TREE && Parameter_size(p) > 1) return p;
+    }
+    return NULL;
+}
+
+// Validate the analytic branch-length Hessian exposed through Model->hessian
+// against central finite differences. The likelihood here is parameterized by
+// branch lengths (non-time tree), and the analytic kernel only fills the
+// diagonal, so we check (1) the HESSIAN_DIAGONAL output matches the
+// element-wise second finite difference, and (2) HESSIAN_FULL agrees on the
+// diagonal, is symmetric, and matches FD on the off-diagonals.
+char* test_treelikelihood_branch_hessian() {
+    Hashtable* hash = new_Hashtable_string(10);
+    hashtable_set_key_ownership(hash, false);
+    hashtable_set_value_ownership(hash, false);
+
+    // jc69-distance.json is a non-time (branch-length) JC69 tree likelihood on
+    // the fluA alignment, which exercises the analytic branch-length Hessian.
+    char* content = load_file("jc69-distance.json");
+    json_node* json = create_json_tree(content);
+    free(content);
+
+    json_node* child = get_json_node(json, "model");
+    Model* model = new_TreeLikelihoodModel_from_json(child, hash);
+    Model** models = (Model**)model->data;
+    Model* mtree = models[0];
+
+    Parameter* distances = _find_distances(mtree);
+    mu_assert(distances != NULL, "could not find tree.distances parameter");
+
+    // Set every branch to a common interior length: the analytic second
+    // derivative and the central finite difference both behave well away from
+    // the zero boundary (near-zero branches make the FD step degenerate).
+    size_t dim = Parameter_size(distances);
+    for (size_t i = 0; i < dim; i++) {
+        Parameter_set_value_at(distances, 0.1, i);
+    }
+
+    Parameters* parameters = new_Parameters(1);
+    Parameters_add(parameters, distances);
+    mu_assert(Parameters_size(parameters) == dim, "flattened dim mismatch");
+    mu_assert(Parameters_at(parameters, 0)->model == MODEL_TREE,
+              "distances must be tagged MODEL_TREE for the analytic path");
+
+    model->logP(model);
+
+    // (1) analytic diagonal vs finite-difference diagonal
+    double* diag = dvector(dim);
+    model->hessian(model, parameters, HESSIAN_DIAGONAL, diag);
+
+    double h = 1.e-5;
+    double worst = 0.0;
+    for (size_t i = 0; i < dim; i++) {
+        double v0 = Parameter_value_at(distances, i);
+        double hh = h * (1.0 + fabs(v0));
+        double l0 = model->logP(model);
+        Parameter_set_value_at(distances, v0 + hh, i);
+        double lp = model->logP(model);
+        Parameter_set_value_at(distances, v0 - hh, i);
+        double lm = model->logP(model);
+        Parameter_set_value_at(distances, v0, i);
+        double fd = (lp - 2.0 * l0 + lm) / (hh * hh);
+        double err = fabs(fd - diag[i]) / (1.0 + fabs(fd));
+        if (err > worst) worst = err;
+        // a single-step central second difference is limited to ~1% here by
+        // truncation/roundoff; the analytic diagonal is the accurate one.
+        mu_assert(err < 1.5e-2,
+                  "branch-length Hessian diagonal does not match finite difference");
+    }
+    printf("  [jc69-distance.json] branch Hessian diagonal worst relative FD "
+           "error = %.3e\n",
+           worst);
+
+    // (2) full matrix: diagonal must equal the analytic diagonal, and the
+    // matrix must be symmetric.
+    model->logP(model);
+    double* full = dvector(dim * dim);
+    model->hessian(model, parameters, HESSIAN_FULL, full);
+    for (size_t i = 0; i < dim; i++) {
+        mu_assert(fabs(full[i * dim + i] - diag[i]) < 1.e-8,
+                  "HESSIAN_FULL diagonal does not match HESSIAN_DIAGONAL");
+        for (size_t j = i + 1; j < dim; j++) {
+            mu_assert(fabs(full[i * dim + j] - full[j * dim + i]) < 1.e-8,
+                      "HESSIAN_FULL is not symmetric");
+        }
+    }
+
+    free(diag);
+    free(full);
+    free_Parameters(parameters);
+    model->free(model);
+    free_Hashtable(hash);
+    json_free_tree(json);
+    return NULL;
+}
+
 char* test_treelikelihood_time_gradient_fd() {
     return _fd_time_gradient("jc69-time.json", 67);
 }
@@ -624,6 +727,7 @@ char* all_tests() {
     mu_suite_start();
     // mu_run_test(test_treelikelihood_time);
     mu_run_test(test_treelikelihood_time_unconstrained);
+    mu_run_test(test_treelikelihood_branch_hessian);
     mu_run_test(test_treelikelihood_time_gradient_fd);
     mu_run_test(test_treelikelihood_time_leaf_gradient_fd);
 

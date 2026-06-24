@@ -63,8 +63,7 @@ Node * new_Node( Node *parent, const char *nodename, const int counter ){
 	
 	char name[50];
 	if( nodename == NULL ){
-		strcpy(name, "node");
-		sprintf(name+4, "%d", counter);
+		snprintf(name, 50, "node%d", counter);
 		n->name = String_clone(name);
 	}
 	else{
@@ -347,8 +346,8 @@ void Node_set_name( Node *node, const char *name ){
 }
 
 void Node_rename( Node *n, const int newPos ){
-	char name[50] = "node";
-	sprintf(name+4, "%d", newPos);
+	char name[50];
+	snprintf(name, 50, "node%d", newPos);
 	if( strlen(n->name ) != strlen(name)  ){
 		n->name = (char *)realloc(n->name, (strlen(name)+1)*sizeof(char));
 		assert(n->name);

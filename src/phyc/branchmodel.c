@@ -818,9 +818,9 @@ void LocalClock_set_number_of_clocks( BranchModel *bm, const int nLocalClocks ){
 		}
 	}
 	else{
-		char name[50] = "rate";
+		char name[50];
 		for (int i = count; i < nLocalClocks; i++) {
-			sprintf(name+4, "%d", (i+1) );
+			snprintf(name, 50, "rate%d", (i+1) );
 			double rate = Parameters_value(bm->rates, count);
 			Parameter *p = new_Parameter_with_postfix(name, LOCAL_POSTFIX, rate, Parameters_constraint(bm->rates, 0)); // getting the common constraint from Parameters not Parameter
 			Parameters_move(bm->rates, p);
@@ -1160,11 +1160,11 @@ void DiscreteClock_set_number_of_rate_classes( BranchModel *bm, const int nClass
 		}
 	}
 	else{
-		char name[50] = "rate";
+		char name[50];
 		double rate = Parameters_value(bm->rates, count-1);
 		//fprintf(stderr, "Add rates before %d after %d\n",count,n);
 		for (int i = count; i < nClasses; i++) {
-			sprintf(name+4, "%d", i );
+			snprintf(name, 50, "rate%d", i );
 			Parameters_move(bm->rates, new_Parameter_with_postfix(name, DISCRETE_POSTFIX, rate, Parameters_constraint(bm->rates, -1)));
 		}
 		//fprintf(stderr, "Real number %d\n", Parameters_count(bm->rates)-1);

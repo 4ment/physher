@@ -148,7 +148,7 @@ void ReparameterizedTimeTreeModelInterface::GradientTransformVJP(
 
 void ReparameterizedTimeTreeModelInterface::GradientTransformJacobian(
     double *gradient) {
-    memset(gradient, 0.0, sizeof(double) * (tipCount_ - 1));
+    memset(gradient, 0, sizeof(double) * (tipCount_ - 1));
     Tree_update_heights(tree_);
     Tree_node_transform_jacobian_gradient(tree_, gradient);
 }
@@ -163,12 +163,12 @@ void BranchModelInterface::SetParameters(const double *parameters) {
     Parameters_set_values(branchModel_->rates, parameters);
 }
 void BranchModelInterface::GetParameters(double *parameters) {
-    for (size_t i = 0; i < Parameters_count(branchModel_->rates); i++) {
-        parameters[i] = Parameters_value(branchModel_->rates, i);
-    }
+    Parameter* param = Parameters_at(branchModel_->rates, 0);
+    memcpy(parameters, Parameter_values(param), sizeof(double)*Parameter_size(param));
 }
 void BranchModelInterface::SetRates(const double *rates) {
-    Parameters_set_values(branchModel_->rates, rates);
+    Parameter* param = Parameters_at(branchModel_->rates, 0);
+    Parameter_set_values(param, rates);
 }
 
 StrictClockModelInterface::StrictClockModelInterface(double rate,
@@ -445,7 +445,7 @@ DiscretizedSiteModelInterface::DiscretizedSiteModelInterface(
 
     model_ = new_SiteModel2("sitemodel", siteModel_);
     free_Parameters(params);
-    parameterCount_ = Parameters_count(siteModel_->rates) + siteModel_->mu != nullptr;
+    parameterCount_ = Parameters_size(siteModel_->rates) + siteModel_->mu != nullptr;
     if (propInvSimplex != nullptr) {
         parameterCount_++;
     }

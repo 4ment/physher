@@ -904,7 +904,7 @@ StringBuffer * StringBuffer_append_format( StringBuffer *buffer, const char *for
                 
 				if( specifier == 'd' || specifier == 'i' ){
 					int var = va_arg(ap,  int);
-					sprintf(buf, buffer2->c, var);
+					snprintf(buf, 150, buffer2->c, var);
 					buffer = StringBuffer_append_string( buffer, buf );
 				}
 				else if( specifier == 's' ){
@@ -919,12 +919,12 @@ StringBuffer * StringBuffer_append_format( StringBuffer *buffer, const char *for
 				}
 				else if( specifier == 'f' || specifier == 'e' || specifier == 'E' ){
 					double var = va_arg(ap, double);
-					sprintf(buf, buffer2->c, var);
+					snprintf(buf, 150, buffer2->c, var);
 					buffer = StringBuffer_append_string( buffer, buf );
 				}
 				else if( specifier == 'u' ){
 					unsigned int var = va_arg(ap, unsigned int);
-					sprintf(buf, buffer2->c, var);
+					snprintf(buf, 150, buffer2->c, var);
 					buffer = StringBuffer_append_string( buffer, buf );
 				}
 				else if( specifier == 'l' ){
@@ -933,12 +933,12 @@ StringBuffer * StringBuffer_append_format( StringBuffer *buffer, const char *for
 					
 					if( *cp == 'u' ){
 						unsigned long var = va_arg(ap, unsigned long);
-						sprintf(buf, buffer2->c, var);
+						snprintf(buf, 150, buffer2->c, var);
 						buffer = StringBuffer_append_string( buffer, buf );
 					}
 					else if( cp[1] == 'd' || specifier == 'i' ){
 						long int var = va_arg(ap, long int);
-						sprintf(buf, buffer2->c, var);
+						snprintf(buf, 150, buffer2->c, var);
 						buffer = StringBuffer_append_string( buffer, buf );
 					}
 					else {
@@ -952,7 +952,7 @@ StringBuffer * StringBuffer_append_format( StringBuffer *buffer, const char *for
 					
 					if( *cp == 'u' ){
 						size_t var = va_arg(ap, size_t);
-						sprintf(buf, buffer2->c, var);
+						snprintf(buf, 150, buffer2->c, var);
 						buffer = StringBuffer_append_string( buffer, buf );
 					}
 					else {

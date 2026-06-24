@@ -109,6 +109,19 @@ ListenerList * new_ListenerList( const unsigned capacity );
 #pragma mark -
 #pragma mark Model
 
+// Layout requested from a Model's hessian function. The matrix is taken over
+// the flattened scalar elements of the Parameters argument (each Parameter
+// expanded by Parameter_size, in list order). dim = that total element count.
+//  - HESSIAN_DIAGONAL: out has dim entries,   out[k]        = d2 logP / dx_k^2
+//  - HESSIAN_FULL:     out has dim*dim entries (row-major, symmetric),
+//                      out[i*dim + j] = d2 logP / dx_i dx_j
+// Derivatives are in the natural (constrained) parameter space; any transform
+// to unconstrained space is the caller's responsibility.
+typedef enum {
+	HESSIAN_DIAGONAL = 0,
+	HESSIAN_FULL = 1,
+} hessian_mode_t;
+
 struct _Model {
 	void *obj; // pointer to model
 	char *name;
@@ -117,6 +130,7 @@ struct _Model {
 	double (*logP)( Model * );
 	double (*full_logP)( Model * );
 	void (*gradient)( Model *, Parameters*);
+	void (*hessian)( Model *, const Parameters*, hessian_mode_t, double*);
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, Parameter*, int );
@@ -157,6 +171,12 @@ void Model_first_derivatives( Model *model, Parameter* parameter, double eps, do
 double Model_second_derivative( Model *model, Parameter* parameter, double* first, double eps );
 
 double Model_mixed_derivative( Model *model, Parameter* p1, Parameter* p2 );
+
+// Generic finite-difference Hessian over the flattened elements of `parameters`,
+// in natural parameter space. Installed as the default Model->hessian. `out` must
+// hold dim entries (HESSIAN_DIAGONAL) or dim*dim entries (HESSIAN_FULL).
+void Model_hessian_fd( Model *model, const Parameters *parameters,
+                       hessian_mode_t mode, double *out );
 
 #pragma mark -
 #pragma mark CatParameterModel

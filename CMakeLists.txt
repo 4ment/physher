@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.13)
 
 SET(DEFAULT_SSE_LEVEL "sse3")
 
@@ -35,6 +35,8 @@ OPTION(USE_PTHREAD_SUPPORT "Use PThread if available." ON)
 
 OPTION(LIBRARY_ONLY "Compile library only." OFF)
 OPTION(DISABLE_GSL "Compile without GSL." OFF)
+
+OPTION(ENABLE_ASAN "Enable AddressSanitizer." OFF)
 
 
 #####################################################################
@@ -218,6 +220,11 @@ configure_file (
 
 # add_compile_definitions("-std=gnu99")
 
+if(ENABLE_ASAN AND CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
 link_libraries(m)
 
 IF(DISABLE_GSL)
@@ -266,7 +273,6 @@ IF(DISABLE_GSL)
 		src/phyc/sitepattern.c
 		src/phyc/solve.c
 		src/phyc/statistics.c
-		src/phyc/sitemodel.c
 		src/phyc/substmodel.c
 		src/phyc/transforms.c
 		src/phyc/tree.c
@@ -351,15 +357,10 @@ IF(NOT DISABLE_GSL)
 	target_link_libraries(phyc GSL::gsl GSL::gslcblas)
 ENDIF()
 
-IF(NOT NO_LIBRARY)
-	add_executable(physher src/physher.c ${SRC_FILES})
-	target_link_libraries(physher GSL::gsl GSL::gslcblas)
-	install(TARGETS physher RUNTIME DESTINATION bin)
-ELSEIF(NOT LIBRARY_ONLY AND NOT DISABLE_GSL)
+IF(NOT LIBRARY_ONLY)
 	add_executable(physher src/physher.c)
+	set_property(TARGET physher PROPERTY C_STANDARD 99)
 	target_link_libraries(physher phyc)
-
-	
 	install(TARGETS physher RUNTIME DESTINATION bin)
 ENDIF()
 

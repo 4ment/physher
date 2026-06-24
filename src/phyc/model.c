@@ -18,6 +18,7 @@
 #include "model.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -64,6 +65,7 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->logP = _logP;
 	model->full_logP = _fulllogP;
 	model->gradient = _dummy_gradient;
+	model->hessian = Model_hessian_fd;
 	model->update = _dummy_update;
 	model->handle_restore = _dummy_restore_update;
 	model->free = free_Model;
@@ -297,6 +299,74 @@ void Model_first_derivatives( Model *model, Parameter* parameter, double eps, do
 		Parameter_set_value_at(parameter, v, i);
 
 		grad[i] = (pp - mm)/(2.0*e);
+	}
+}
+
+// Map a flattened element index to its owning Parameter and local index.
+static Parameter* _flat_parameter( const Parameters *parameters, size_t k, size_t *local ){
+	for(size_t i = 0; i < Parameters_count(parameters); i++){
+		Parameter* p = Parameters_at((Parameters*)parameters, i);
+		size_t sz = Parameter_size(p);
+		if(k < sz){ *local = k; return p; }
+		k -= sz;
+	}
+	*local = 0;
+	return NULL;
+}
+
+void Model_hessian_fd( Model *model, const Parameters *parameters,
+                       hessian_mode_t mode, double *out ){
+	const double eps = model->epsilon > 0.0 ? model->epsilon : 1.0e-4;
+	size_t dim = Parameters_size(parameters);
+	double lnl = model->logP(model);
+
+	for(size_t k = 0; k < dim; k++){
+		size_t lk;
+		Parameter* pk = _flat_parameter(parameters, k, &lk);
+		double vk = Parameter_value_at(pk, lk);
+		double ek = eps * (vk != 0.0 ? fabs(vk) : 1.0);
+
+		// diagonal: central second difference
+		Parameter_set_value_at(pk, vk + ek, lk);
+		double pp = model->logP(model);
+		Parameter_set_value_at(pk, vk - ek, lk);
+		double mm = model->logP(model);
+		Parameter_set_value_at(pk, vk, lk);
+
+		double dkk = (pp + mm - 2.0*lnl)/(ek*ek);
+		if(mode == HESSIAN_DIAGONAL){
+			out[k] = dkk;
+			continue;
+		}
+		out[k*dim + k] = dkk;
+
+		// off-diagonal: central mixed difference, mirror to lower triangle
+		for(size_t l = k+1; l < dim; l++){
+			size_t ll;
+			Parameter* pl = _flat_parameter(parameters, l, &ll);
+			double vl = Parameter_value_at(pl, ll);
+			double el = eps * (vl != 0.0 ? fabs(vl) : 1.0);
+
+			Parameter_set_value_at(pk, vk + ek, lk);
+			Parameter_set_value_at(pl, vl + el, ll);
+			double ppe = model->logP(model);
+
+			Parameter_set_value_at(pl, vl - el, ll);
+			double pme = model->logP(model);
+
+			Parameter_set_value_at(pk, vk - ek, lk);
+			double mme = model->logP(model);
+
+			Parameter_set_value_at(pl, vl + el, ll);
+			double mpe = model->logP(model);
+
+			Parameter_set_value_at(pk, vk, lk);
+			Parameter_set_value_at(pl, vl, ll);
+
+			double dkl = (ppe + mme - pme - mpe)/(4.0*ek*el);
+			out[k*dim + l] = dkl;
+			out[l*dim + k] = dkl;
+		}
 	}
 }
 

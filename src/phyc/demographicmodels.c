@@ -464,7 +464,7 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		Hashtable_add(hash, Parameters_name(ps, 1), Parameters_at(ps, 1));
 	}
 	else if(strcasecmp(model, "skygrid") == 0 || strcasecmp(model, "skyglide") == 0 || strcasecmp(model, "piecewise-linear") == 0){
-		int gridCount = Parameters_count(ps);
+		int gridCount = Parameter_size(Parameters_at(ps, 0));
 		
 		double cutoff = get_json_node_value_double(node, "cutoff", -1);
 		if(cutoff <= 0){
@@ -687,7 +687,10 @@ void height_gradient_from_interval_gradient(Coalescent* coal, const double* inte
 		if(index < 0) continue;
 		size_t nodeId = index;
 		height_gradient[nodeId] += interval_gradient[i];
-		if (rootID != nodeId)
+		// a node starts the next interval (-= interval_gradient[i+1]) unless it
+		// ends the final interval: the root, or — if HMC has driven the heights
+		// into a degenerate ordering — whatever node lands at the last position.
+		if (rootID != nodeId && i + 1 < coal->n)
 			height_gradient[nodeId] -= interval_gradient[i+1];
 	}
 }

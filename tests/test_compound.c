@@ -234,9 +234,9 @@ char* test_compound_mixture_gradient_simplex() {
     CompoundModel* cm = new_CompoundModel();
     for (size_t i = 0; i < K; i++) {
         char name[16];
-        sprintf(name, "mu%zu", i);
+        snprintf(name, 16, "mu%zu", i);
         mu[i] = new_Parameter(name, muVals[i], new_Constraint(-INFINITY, INFINITY));
-        sprintf(name, "sigma%zu", i);
+        snprintf(name, 16, "sigma%zu", i);
         sigma[i] = new_Parameter(name, sigVals[i], new_Constraint(0, INFINITY));
 
         Parameters* xs = new_Parameters(1);

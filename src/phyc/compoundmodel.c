@@ -366,11 +366,33 @@ void _compound_model_rsample(Model *self){
 // 	return self->lp;
 // }
 
+// For a summed compound (logP = sum_i logP_i) the Hessian is the sum of the
+// submodel Hessians, so each submodel's own (analytic or FD) hessian is used
+// and accumulated. The mixture case (weighted) has extra rank-1 terms and is
+// left to finite differences.
+void _compoundModel_hessian(Model* self, const Parameters* parameters, hessian_mode_t mode, double* out){
+	CompoundModel* cm = (CompoundModel*)self->obj;
+	if(cm->weights != NULL){
+		Model_hessian_fd(self, parameters, mode, out);
+		return;
+	}
+	size_t dim = Parameters_size(parameters);
+	size_t n = (mode == HESSIAN_FULL) ? dim*dim : dim;
+	memset(out, 0, sizeof(double)*n);
+	double* tmp = dvector(n);
+	for(size_t i = 0; i < cm->count; i++){
+		cm->models[i]->hessian(cm->models[i], parameters, mode, tmp);
+		for(size_t k = 0; k < n; k++) out[k] += tmp[k];
+	}
+	free(tmp);
+}
+
 Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 	Model *model = new_Model(MODEL_COMPOUND, name, cm);
 	model->logP = _compoundModel_logP2;
 	model->full_logP = _compoundModel_full_logP2;
 	model->gradient = _compoundModel_gradient2;
+	model->hessian = _compoundModel_hessian;
 	model->free = _compound_model_free;
 	model->clone = _compound_model_clone;
 	model->store = _compoundModel_store;

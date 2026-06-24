@@ -179,11 +179,24 @@ void run(MCMC* mcmc){
 	}
 	
 	if( mcmc->verbose > 0){
+		int name_width = 8;// strlen("Operator")
+		for (int i = 0; i < mcmc->operator_count; i++) {
+			int len = (int)strlen(mcmc->operators[i]->name);
+			if (len > name_width) name_width = len;
+		}
+		printf("\n%-*s  %8s  %10s  %8s  %8s  %8s\n", name_width, "Operator",
+			   "Accept", "Tuning", "Accepted", "Attempts", "Failures");
 		for (int i = 0; i < mcmc->operator_count; i++) {
 			Operator* op = mcmc->operators[i];
-			printf("Acceptance ratio %s: %f", op->name, ((double)op->accepted_count/(op->accepted_count+op->rejected_count)));
-			if(op->parameters != NULL) printf(" %f", op->parameters[0]);
-			printf(" (failures: %zu; attempts: %zu)\n", op->failure_count, op->accepted_count+op->rejected_count);
+			size_t attempts = op->accepted_count + op->rejected_count;
+			printf("%-*s  %8.4f  ", name_width, op->name,
+				   attempts > 0 ? (double)op->accepted_count / attempts : 0.0);
+			if (op->parameters != NULL)
+				printf("%10.4f", op->parameters[0]);
+			else
+				printf("%10s", "-");
+			printf("  %8zu  %8zu  %8zu\n", op->accepted_count, attempts,
+				   op->failure_count);
 		}
 	}
 	free(weights);

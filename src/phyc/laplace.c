@@ -75,6 +75,30 @@ static double _func_gamma_fixed_mode( Parameters *params, double *grad, void *da
 	return sum;
 }
 
+// Map a flattened element index to its owning Parameter and local index, so a
+// single vector Parameter (e.g. all branch lengths / all ratios) is treated as
+// one entry per scalar element rather than collapsing onto element 0.
+static Parameter* laplace_element(Parameters* ps, size_t e, size_t* local){
+	for(size_t i = 0; i < Parameters_count(ps); i++){
+		Parameter* p = Parameters_at(ps, i);
+		size_t sz = Parameter_size(p);
+		if(e < sz){ *local = e; return p; }
+		e -= sz;
+	}
+	*local = 0;
+	return NULL;
+}
+
+// Flattened first derivatives of `model` over every scalar element of `ps`.
+static void laplace_first_derivatives(Model* model, Parameters* ps, double eps, double* grad){
+	size_t k = 0;
+	for(size_t i = 0; i < Parameters_count(ps); i++){
+		Parameter* p = Parameters_at(ps, i);
+		Model_first_derivatives(model, p, eps, grad + k);
+		k += Parameter_size(p);
+	}
+}
+
 // Parameters are modeled with a beta distribution B(alpha,beta)
 // Bounds of the parameters are (0,1)
 // Shoud check out the Kumaraswamy distribution
@@ -95,16 +119,21 @@ double calculate_laplace_beta(Laplace* laplace){
 	double* alphas = NULL;
 	double* betas = NULL;
 
+	size_t dim = Parameters_size(laplace->parameters);
 	if(refdist != NULL){
 		dm = refdist->obj;
-		alphas = malloc(sizeof(double)*Parameters_count(dm->x));
-		betas = malloc(sizeof(double)*Parameters_count(dm->x));
+		alphas = malloc(sizeof(double)*dim);
+		betas = malloc(sizeof(double)*dim);
 	}
+	double* d2logP_all = dvector(dim);
 	double logP = posterior->logP(posterior);
-	
-	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
-		double map = Parameters_value(laplace->parameters, i);
-		double d2logP = Model_second_derivative(posterior, Parameters_at(laplace->parameters, i), NULL, 1e-5);
+	posterior->hessian(posterior, laplace->parameters, HESSIAN_DIAGONAL, d2logP_all);
+
+	for (size_t i = 0; i < dim; i++) {
+		size_t local;
+		Parameter* param = laplace_element(laplace->parameters, i, &local);
+		double map = Parameter_value_at(param, local);
+		double d2logP = d2logP_all[i];
 		double a = map*map/(1.0 - map)/(1.0 - map);
 		double b = 1.0 - map*map*d2logP;
 		double c = 1.0 - map;
@@ -112,23 +141,23 @@ double calculate_laplace_beta(Laplace* laplace){
 		double x = (b*c + d)/map;
 		double beta = (a*c - x*map)/(a*c - map);
 		double alpha = (beta - 1.0)*a + b;
-		
+
 		// should handle small values B(alpha, 1) (exponential shape)
 		// should handle large values B(1, Beta) (mirror-image exponential shape)
 		// check that we don't get alpha <= 1 or beta <= 1
-		
+
 		if (map < 1.e-6) {
-			
+
 		}
 		else if (1.0-map < 1.e-6) {
-			
+
 		}
 		if (alpha <= 1 || beta <=1 ) {
-			
+
 		}
-		
+
 		logP -= log(gsl_ran_beta_pdf(map, alpha, beta));
-		
+
 		if(dm != NULL){
 			alphas[i] = alpha;
 			betas[i] = beta;
@@ -141,6 +170,7 @@ double calculate_laplace_beta(Laplace* laplace){
 	}
 	free(alphas);
 	free(betas);
+	free(d2logP_all);
 
 	return logP;
 }
@@ -159,15 +189,18 @@ double calculate_laplace_beta2(Laplace* laplace, DistributionModel* dm){
 	Model* posterior = laplace->model;
 	double logP = 0;//posterior->logP(posterior);
 	Parameters* parameters = dm->x;
-	double* alphas = malloc(sizeof(double)*Parameters_count(dm->x));
-	double* betas = malloc(sizeof(double)*Parameters_count(dm->x));
-	
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameter* parameter = Parameters_at(parameters, i);
-		printf("beta %s\n",parameter->name);
-		double map = Parameter_value(parameter);
-		double dlogP;// = posterior->dlogP(laplace->model, parameter);
-		double d2logP = Model_second_derivative(posterior, parameter, &dlogP, 1e-5);// posterior->d2logP(laplace->model, parameter);
+	size_t dim = Parameters_size(parameters);
+	double* alphas = malloc(sizeof(double)*dim);
+	double* betas = malloc(sizeof(double)*dim);
+	double* d2logP_all = dvector(dim);
+	posterior->logP(posterior); // initialize
+	posterior->hessian(posterior, parameters, HESSIAN_DIAGONAL, d2logP_all);
+
+	for (size_t i = 0; i < dim; i++) {
+		size_t local;
+		Parameter* parameter = laplace_element(parameters, i, &local);
+		double map = Parameter_value_at(parameter, local);
+		double d2logP = d2logP_all[i];
 		double a = map*map/(1.0 - map)/(1.0 - map);
 		double b = 1.0 - map*map*d2logP;
 		double c = 1.0 - map;
@@ -175,31 +208,31 @@ double calculate_laplace_beta2(Laplace* laplace, DistributionModel* dm){
 		double x = (b*c + d)/map;
 		double beta = (a*c - x*map)/(a*c - map);
 		double alpha = (beta - 1.0)*a + b;
-		
+
 		// should handle small values B(alpha, 1) (exponential shape)
 		// should handle large values B(1, Beta) (mirror-image exponential shape)
 		// check that we don't get alpha <= 1 or beta <= 1
-		
+
 		if (map < 1.e-6) {
-			
+
 		}
 		else if (1.0-map < 1.e-6) {
-			
+
 		}
 		if (alpha <= 1 || beta <=1 ) {
-			
+
 		}
-		
+
 		logP -= log(gsl_ran_beta_pdf(map, alpha, beta));
-		
+
 		alphas[i] = alpha;
 		betas[i] = beta;
-//		printf("map: %f dlogP: %f d2logP: %f [%f,%f]\n",map, dlogP, d2logP, alpha, beta);
 	}
-	
+
 	Parameter_set_values(Parameters_at(dm->parameters, 0), alphas);
 	Parameter_set_values(Parameters_at(dm->parameters, 1), betas);
-	
+
+	free(d2logP_all);
 	free(alphas);
 	free(betas);
 
@@ -216,39 +249,46 @@ double calculate_laplace_gamma(Laplace* laplace){
 	double* alphas = NULL;
 	double* betas = NULL;
 
+	size_t dim = Parameters_size(laplace->parameters);
 	if(refdist != NULL){
 		dm = refdist->obj;
-		alphas = malloc(sizeof(double)*Parameters_count(dm->x));
-		betas = malloc(sizeof(double)*Parameters_count(dm->x));
+		alphas = malloc(sizeof(double)*dim);
+		betas = malloc(sizeof(double)*dim);
 	}
-	
+
 	int N = 10;
 	double* x = calloc(N, sizeof(double));
 	double* y = calloc(N, sizeof(double));
 	double* yy = calloc(N, sizeof(double));
-	
+	double* d2logP_all = dvector(dim);
+	double* dlogP_all = dvector(dim);
+
 	double logP = posterior->logP(posterior);
-	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
-		double map = Parameters_value(laplace->parameters, i);
-		double d2logP = Model_second_derivative(laplace->model, Parameters_at(laplace->parameters, i), NULL, 1e-5);
+	posterior->hessian(posterior, laplace->parameters, HESSIAN_DIAGONAL, d2logP_all);
+	laplace_first_derivatives(posterior, laplace->parameters, 1e-5, dlogP_all);
+	for (size_t i = 0; i < dim; i++) {
+		size_t local;
+		Parameter* param = laplace_element(laplace->parameters, i, &local);
+		double map = Parameter_value_at(param, local);
+		double d2logP = d2logP_all[i];
 		double rate = map * -d2logP;
 		double shape = rate*map + 1;
-		
+
 		// Very small branch -> exponential shape
 		if (map < 1.e-6 || d2logP >= 0) {
-			double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
+			double dlogP = dlogP_all[i];
 			shape = 1;
 			rate = fabs(dlogP);
-			
+
 			log_spaced_spaced_vector2(x, map, 0.5, N);
-			
+
 			for (size_t j = 1; j < N; j++) {
-				Parameters_set_value(laplace->parameters, i, x[j]);
+				Parameter_set_value_at(param, x[j], local);
 				y[j] = laplace->model->logP(laplace->model);
 			}
-			Parameters_set_value(laplace->parameters, i, map);
+			Parameter_set_value_at(param, map, local);
 			y[0] = laplace->model->logP(laplace->model);
-			
+
 			double maxY = y[0];
 			for (int j = 0; j < N; j++) {
 				y[j] -= maxY;
@@ -258,16 +298,16 @@ double calculate_laplace_gamma(Laplace* laplace){
 			double guess = 1.0 - 0.001;
 			Parameters* ps = new_Parameters(1);
 			Parameters_move(ps, new_Parameter("", guess, new_Constraint(lower, upper)));
-			
+
 			struct laplace_data_t data = {rate, x, y, yy, N};
 			double fx = _func_gamma_fixed_shape(ps, NULL, &data);
-			
+
 			Parameters_set_value(ps, 0, lower);
 			double fa = _func_gamma_fixed_shape(ps, NULL, &data);
 			Parameters_set_value(ps, 0, upper);
 			double fb = _func_gamma_fixed_shape(ps, NULL, &data);
 			Parameters_set_value(ps, 0, guess);
-			
+
 			if(fa > fx && fx < fb){
 				Optimizer* opt = new_Optimizer(OPT_BRENT);
 				opt_set_data(opt, &data);
@@ -284,31 +324,31 @@ double calculate_laplace_gamma(Laplace* laplace){
 		}
 		// Small branch with a maximum and spurious large variance
 		else if(shape/(rate*rate) > 0.1 && map < 0.0001){
-			double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
+			double dlogP = dlogP_all[i];
 			shape = 1;
 			rate = fabs(dlogP);
-			
+
 			log_spaced_spaced_vector2(x, map, 0.5, N);
-			
+
 			for (size_t j = 1; j < N; j++) {
-				Parameters_set_value(laplace->parameters, i, x[j]);
+				Parameter_set_value_at(param, x[j], local);
 				y[j] = laplace->model->logP(laplace->model);
 			}
-			Parameters_set_value(laplace->parameters, i, map);
+			Parameter_set_value_at(param, map, local);
 			y[0] = laplace->model->logP(laplace->model);
-			
+
 			double maxY = y[0];
 			for (int j = 0; j < N; j++) {
 				y[j] -= maxY;
 			}
-			
+
 			double guess = 1.0 + 0.001;
 			Parameters* ps = new_Parameters(1);
 			Parameters_move(ps, new_Parameter("", guess, new_Constraint(1, 100)));
-			
+
 			struct laplace_data_t data = {map, x, y, yy, N};
 			double fx = _func_gamma_fixed_mode(ps, NULL, &data);
-			
+
 			Parameters_set_value(ps, 0, 1);
 			double fa = _func_gamma_fixed_mode(ps, NULL, &data);
 			Parameters_set_value(ps, 0, 100);
@@ -322,17 +362,17 @@ double calculate_laplace_gamma(Laplace* laplace){
 				opt_set_parameters(opt, ps);
 				double min;
 				opt_optimize(opt, ps, &min);
-				
+
 				shape = Parameters_value(ps, 0);
 				rate = (shape - 1)/map;
-				
+
 				free_Optimizer(opt);
 			}
 			free_Parameters(ps);
 		}
 
 		logP -= log(gsl_ran_gamma_pdf(map, shape, 1.0/rate));
-		
+
 		if(dm != NULL){
 			if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_SCALE) {
 				rate = 1.0/rate;
@@ -341,7 +381,7 @@ double calculate_laplace_gamma(Laplace* laplace){
 			betas[i] = rate;
 		}
 	}
-	
+
 	if(dm != NULL){
 		Parameter_set_values(Parameters_at(dm->parameters, 0), alphas);
 		Parameter_set_values(Parameters_at(dm->parameters, 1), betas);
@@ -350,9 +390,11 @@ double calculate_laplace_gamma(Laplace* laplace){
 	free(x);
 	free(y);
 	free(yy);
+	free(d2logP_all);
+	free(dlogP_all);
 	free(alphas);
 	free(betas);
-	
+
 	printf("Gamma Laplace: %f\n", logP);
 	return logP;
 }
@@ -362,40 +404,45 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 	// alpha = shape = rate * m + 1
 	Model* posterior = laplace->model;
 	Parameters* parameters = dm->x;
-	double* alphas = malloc(sizeof(double)*Parameters_count(dm->x));
-	double* betas = malloc(sizeof(double)*Parameters_count(dm->x));
-	
+	size_t dim = Parameters_size(parameters);
+	double* alphas = malloc(sizeof(double)*dim);
+	double* betas = malloc(sizeof(double)*dim);
+
 	int N = 10;
 	double* x = calloc(N, sizeof(double));
 	double* y = calloc(N, sizeof(double));
 	double* yy = calloc(N, sizeof(double));
-	
+	double* d2logP_all = dvector(dim);
+	double* dlogP_all = dvector(dim);
+
 	double logP = 0;
 	posterior->logP(posterior);// initialize
-	
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameter* parameter = Parameters_at(parameters, i);
-		printf("gamma %s\n",parameter->name);
-		double map_orig = Parameter_value(parameter);
+	posterior->hessian(posterior, parameters, HESSIAN_DIAGONAL, d2logP_all);
+	laplace_first_derivatives(posterior, parameters, 1e-5, dlogP_all);
+
+	for (size_t i = 0; i < dim; i++) {
+		size_t local;
+		Parameter* parameter = laplace_element(parameters, i, &local);
+		double map_orig = Parameter_value_at(parameter, local);
 		double map = map_orig - dm->shift;
-		double dlogP;
-		double d2logP = Model_second_derivative(posterior, parameter, &dlogP, 1e-5);
+		double dlogP = dlogP_all[i];
+		double d2logP = d2logP_all[i];
 		double rate = map * -d2logP;
 		double shape = rate*map + 1;
 		
 		// Very small branch -> exponential shape
 		if (map < 1.e-6 || d2logP >= 0) {
-			double dlogP = Model_first_derivative(posterior, parameter, 1e-5);
+			dlogP = dlogP_all[i];
 			shape = 1;
 			rate = fabs(dlogP);
-			
+
 			log_spaced_spaced_vector2(x, map, 0.5, N);
-			
+
 			for (size_t j = 1; j < N; j++) {
-				Parameter_set_value(parameter, x[j] + dm->shift);
+				Parameter_set_value_at(parameter, x[j] + dm->shift, local);
 				y[j] = posterior->logP(posterior);
 			}
-			Parameter_set_value(parameter, map_orig);
+			Parameter_set_value_at(parameter, map_orig, local);
 			y[0] = posterior->logP(posterior);
 			
 			double maxY = y[0];
@@ -433,17 +480,17 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 		}
 		// Small branch with a maximum and spurious large variance
 		else if(shape/(rate*rate) > 0.1 && map < 0.0001){
-			dlogP = Model_first_derivative(posterior, parameter, 1e-5);
+			dlogP = dlogP_all[i];
 			shape = 1;
 			rate = fabs(dlogP);
-			
+
 			log_spaced_spaced_vector2(x, map, 0.5, N);
-			
+
 			for (size_t j = 1; j < N; j++) {
-				Parameter_set_value(parameter, x[j] + dm->shift);
+				Parameter_set_value_at(parameter, x[j] + dm->shift, local);
 				y[j] = posterior->logP(posterior);
 			}
-			Parameter_set_value(parameter, map_orig);
+			Parameter_set_value_at(parameter, map_orig, local);
 			y[0] = posterior->logP(posterior);
 			
 			double maxY = y[0];
@@ -491,15 +538,16 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 
 	Parameter_set_values(Parameters_at(dm->parameters, 0), alphas);
 	Parameter_set_values(Parameters_at(dm->parameters, 1), betas);
-	
+
 	free(alphas);
 	free(betas);
+	free(d2logP_all);
+	free(dlogP_all);
 
-	
 	free(x);
 	free(y);
 	free(yy);
-	
+
 	printf("Gamma Laplace: %f\n", logP);
 	return logP;
 }
@@ -510,8 +558,10 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
     if(refdist != NULL){
         dm = refdist->obj;
     }
-    
-	size_t paramCount = Parameters_count(laplace->parameters);
+
+	// dim is the number of flattened scalar elements: a single vector Parameter
+	// (e.g. all branch lengths) contributes Parameter_size entries, not one.
+	size_t paramCount = Parameters_size(laplace->parameters);
 	gsl_matrix* H = gsl_matrix_alloc(paramCount, paramCount);
 	gsl_vector* mu = gsl_vector_alloc(paramCount);
 	gsl_matrix * L = gsl_matrix_alloc (paramCount, paramCount);
@@ -521,33 +571,45 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
 	double logP = laplace->model->logP(laplace->model);
 	double epsilon = 0.0001;
 
-	for (int i = 0; i < paramCount; i++) {
-		double mapi = Parameters_value(laplace->parameters, i);
-		if (mapi < 1.0e-6) {
-			mapi += epsilon;
+	// Gather the flattened MAP values, first derivatives, and the natural-space
+	// Hessian. The Laplace approximation is built in log space, so the chain rule
+	// is applied below: with y = log(x),
+	//   d2/dy_i^2     = x_i f'_i        + x_i^2 f''_ii
+	//   d2/dy_i dy_j  =                   x_i x_j f''_ij   (i != j)
+	double* map = dvector(paramCount);
+	double* grad = dvector(paramCount);
+	double* Hnat = dvector(paramCount * paramCount);
+
+	size_t k = 0;
+	for (size_t p = 0; p < Parameters_count(laplace->parameters); p++) {
+		Parameter* param = Parameters_at(laplace->parameters, p);
+		Model_first_derivatives(laplace->model, param, 1e-5, grad + k);
+		for (size_t e = 0; e < Parameter_size(param); e++) {
+			double v = Parameter_value_at(param, e);
+			if (v < 1.0e-6) v += epsilon;
+			map[k++] = v;
 		}
-		double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
-		double d2logP = Model_second_derivative(laplace->model, Parameters_at(laplace->parameters, i), NULL, 1e-5);
-		double Hii = dlogP*mapi + d2logP*mapi*mapi;
-		//printf("%f %f %f %f\n",mapi,dlogP,d2logP, Hii);
+	}
+
+	laplace->model->hessian(laplace->model, laplace->parameters, HESSIAN_FULL, Hnat);
+
+	for (size_t i = 0; i < paramCount; i++) {
+		double mapi = map[i];
+		double Hii = grad[i]*mapi + Hnat[i*paramCount + i]*mapi*mapi;
 		gsl_matrix_set(H, i, i, Hii);
 		gsl_vector_set(mu, i, log(mapi));
-		
-		for (int j = i+1; j < paramCount; j++) {
-			double mapj = Parameters_value(laplace->parameters, j);
-			if (mapj < 1.0e-6) {
-				mapj += epsilon;
-			}
-			double didj = Model_mixed_derivative(laplace->model, Parameters_at(laplace->parameters, i), Parameters_at(laplace->parameters, j));
-//			printf("%f %f %f\n", didj, Parameters_value(laplace->parameters, i), Parameters_value(laplace->parameters, j));
-			double Hij = didj * mapi * mapj;
+
+		for (size_t j = i+1; j < paramCount; j++) {
+			double Hij = Hnat[i*paramCount + j] * mapi * map[j];
 			gsl_matrix_set(H, i, j, Hij);
 			gsl_matrix_set(H, j, i, Hij);
 		}
 	}
+	free(grad);
+	free(Hnat);
 	int signum;
 	gsl_linalg_LU_decomp (H, perm, &signum);
-	
+
 	gsl_linalg_LU_invert (H, perm, L);
 	for (int i = 0; i < paramCount; i++) {
 		for (int j = 0; j < paramCount; j++) {
@@ -560,20 +622,16 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
 	gsl_ran_multivariate_gaussian_log_pdf(mu, mu, L, &logQ, work);
 	
 	for (size_t i = 0; i < paramCount; i++) {
-		double val = Parameters_value(laplace->parameters, i);
-		if (val < 1.0e-6) {
-			val += epsilon;
-		}
-		logQ -= log(val);
-//		printf("%f %e\n", log(Parameters_value(laplace->parameters, i)), Parameters_value(laplace->parameters, i));
+		// log-density of the Jacobian of x = exp(y): -sum log(x_i)
+		logQ -= log(map[i]);
 	}
-	
+
     if(refdist != NULL){
 		Parameter* mu = Parameters_at(dm->parameters, 0);
 		Parameter* sigma = Parameters_at(dm->parameters, 1);
 		size_t row = 0;
 		for (size_t i = 0; i < paramCount; i++) {
-            dm->tempx[i] = Parameters_value(laplace->parameters, i);
+            dm->tempx[i] = map[i];
 		}
         if(paramCount*paramCount == Parameter_size(sigma)){
             for (size_t i = 0; i < paramCount; i++) {
@@ -593,6 +651,7 @@ double calculate_laplace_multivariate_normal(Laplace* laplace){
     }
 	printf("Multivariatenormal Laplace: %f logQ: %f %d\n", logP - logQ, logQ, gsl_ran_multivariate_gaussian_log_pdf(mu, mu, L, &logQ, work));
 
+	free(map);
 	gsl_vector_free(work);
 	gsl_matrix_free(H);
 	gsl_matrix_free(L);
@@ -610,22 +669,29 @@ double calculate_laplace_lognormal(Laplace* laplace){
 	double* mus = NULL;
 	double* sigmas = NULL;
 
+	size_t dim = Parameters_size(laplace->parameters);
     if(refdist != NULL){
         dm = refdist->obj;
-		mus = malloc(sizeof(double)*Parameters_count(dm->x));
-		sigmas = malloc(sizeof(double)*Parameters_count(dm->x));
+		mus = malloc(sizeof(double)*dim);
+		sigmas = malloc(sizeof(double)*dim);
     }
-    
+
+	double* d2logP_all = dvector(dim);
+	double* dlogP_all = dvector(dim);
 	double logP = posterior->logP(posterior);
+	posterior->hessian(posterior, laplace->parameters, HESSIAN_DIAGONAL, d2logP_all);
+	laplace_first_derivatives(posterior, laplace->parameters, 1e-5, dlogP_all);
 	int N = 10;
 	double* x = calloc(N, sizeof(double));
 	double* y = calloc(N, sizeof(double));
 	double* yy = calloc(N, sizeof(double));
-	
-	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
-		double map = Parameters_value(laplace->parameters, i);
-		double d2logP = Model_second_derivative(laplace->model, Parameters_at(laplace->parameters, i), NULL, 1e-5);
-		
+
+	for (size_t i = 0; i < dim; i++) {
+		size_t local;
+		Parameter* param = laplace_element(laplace->parameters, i, &local);
+		double map = Parameter_value_at(param, local);
+		double d2logP = d2logP_all[i];
+
 		double sigma = sqrt(-1.0/(d2logP*map*map));
 		double mu = log(map) + sigma*sigma;
 		if (map < 1.e-6 || d2logP >= 0 || mu > 5) {
@@ -633,17 +699,17 @@ double calculate_laplace_lognormal(Laplace* laplace){
 			double shape = rate*map + 1;
 			// Very small branch -> exponential shape
 			if (map < 1.e-6 || d2logP >= 0) {
-				double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
+				double dlogP = dlogP_all[i];
 				shape = 1;
 				rate = fabs(dlogP);
 				
 				log_spaced_spaced_vector2(x, map, 0.5, N);
 				
 				for (size_t j = 1; j < N; j++) {
-					Parameters_set_value(laplace->parameters, i, x[j]);
+					Parameter_set_value_at(param, x[j], local);
 					y[j] = laplace->model->logP(laplace->model);
 				}
-				Parameters_set_value(laplace->parameters, i, map);
+				Parameter_set_value_at(param, map, local);
 				y[0] = laplace->model->logP(laplace->model);
 				
 				double maxY = y[0];
@@ -681,17 +747,17 @@ double calculate_laplace_lognormal(Laplace* laplace){
 			}
 			// Small branch with a maximum and spurious large variance
 			else if(shape/(rate*rate) > 0.1 && map < 0.0001){
-				double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
+				double dlogP = dlogP_all[i];
 				shape = 1;
 				rate = fabs(dlogP);
 				
 				log_spaced_spaced_vector2(x, map, 0.5, N);
 				
 				for (size_t j = 1; j < N; j++) {
-					Parameters_set_value(laplace->parameters, i, x[j]);
+					Parameter_set_value_at(param, x[j], local);
 					y[j] = laplace->model->logP(laplace->model);
 				}
-				Parameters_set_value(laplace->parameters, i, map);
+				Parameter_set_value_at(param, map, local);
 				y[0] = laplace->model->logP(laplace->model);
 				
 				double maxY = y[0];
@@ -744,11 +810,13 @@ double calculate_laplace_lognormal(Laplace* laplace){
 	}
 	free(mus);
 	free(sigmas);
-	
+	free(d2logP_all);
+	free(dlogP_all);
+
 	free(x);
 	free(y);
 	free(yy);
-	
+
 	printf("Lognormal Laplace: %f\n", logP);
 	return logP;
 }
@@ -759,19 +827,25 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 	//	mu    = log(m)+sigma^2
 	Model* posterior = laplace->model;
 	Parameters* parameters = dm->x;
+	size_t dim = Parameters_size(parameters);
 	double logP = 0;
 	posterior->logP(posterior);
 	int N = 10;
 	double* x = calloc(N, sizeof(double));
 	double* y = calloc(N, sizeof(double));
 	double* yy = calloc(N, sizeof(double));
-	double* mus = malloc(sizeof(double)*Parameters_count(dm->x));
-	double* sigmas = malloc(sizeof(double)*Parameters_count(dm->x));
-	
-	for (int i = 0; i < Parameters_count(parameters); i++) {
-		Parameter* parameter = Parameters_at(parameters, i);
-		double map = Parameter_value(parameter);
-		double d2logP = Model_second_derivative(posterior, parameter, NULL, 1e-5);
+	double* mus = malloc(sizeof(double)*dim);
+	double* sigmas = malloc(sizeof(double)*dim);
+	double* d2logP_all = dvector(dim);
+	double* dlogP_all = dvector(dim);
+	posterior->hessian(posterior, parameters, HESSIAN_DIAGONAL, d2logP_all);
+	laplace_first_derivatives(posterior, parameters, 1e-5, dlogP_all);
+
+	for (size_t i = 0; i < dim; i++) {
+		size_t local;
+		Parameter* parameter = laplace_element(parameters, i, &local);
+		double map = Parameter_value_at(parameter, local);
+		double d2logP = d2logP_all[i];
 
 		double sigma = sqrt(-1.0/(d2logP*map*map));
 		double mu = log(map) + sigma*sigma;
@@ -780,17 +854,17 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 			double shape = rate*map + 1;
 			// Very small branch -> exponential shape
 			if (map < 1.e-6 || d2logP >= 0) {
-				double dlogP = Model_first_derivative(posterior, parameter, 1e-5);
+				double dlogP = dlogP_all[i];
 				shape = 1;
 				rate = fabs(dlogP);
 				
 				log_spaced_spaced_vector2(x, map, 0.5, N);
 				
 				for (size_t j = 1; j < N; j++) {
-					Parameter_set_value(parameter, x[j]);
+					Parameter_set_value_at(parameter, x[j], local);
 					y[j] = posterior->logP(posterior);
 				}
-				Parameter_set_value(parameter, map);
+				Parameter_set_value_at(parameter, map, local);
 				y[0] = posterior->logP(posterior);
 				
 				double maxY = y[0];
@@ -828,17 +902,17 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 			}
 			// Small branch with a maximum and spurious large variance
 			else if(shape/(rate*rate) > 0.1 && map < 0.0001){
-				double dlogP = Model_first_derivative(posterior, parameter, 1e-5);
+				double dlogP = dlogP_all[i];
 				shape = 1;
 				rate = fabs(dlogP);
 				
 				log_spaced_spaced_vector2(x, map, 0.5, N);
 				
 				for (size_t j = 1; j < N; j++) {
-					Parameter_set_value(parameter, x[j]);
+					Parameter_set_value_at(parameter, x[j], local);
 					y[j] = posterior->logP(posterior);
 				}
-				Parameter_set_value(parameter, map);
+				Parameter_set_value_at(parameter, map, local);
 				y[0] = posterior->logP(posterior);
 				
 				double maxY = y[0];
@@ -889,10 +963,12 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 
 	free(mus);
 	free(sigmas);
+	free(d2logP_all);
+	free(dlogP_all);
 	free(x);
 	free(y);
 	free(yy);
-	
+
 	printf("Lognormal Laplace: %f\n", logP);
 	return logP;
 }
@@ -921,20 +997,27 @@ double calculate_laplace_betaprime(Laplace* laplace){
     DistributionModel* dm = NULL;double* alphas = NULL;
 	double* betas = NULL;
 
+	size_t dim = Parameters_size(laplace->parameters);
     if(refdist != NULL){
         dm = refdist->obj;
-		alphas = malloc(sizeof(double)*Parameters_count(dm->x));
-		betas = malloc(sizeof(double)*Parameters_count(dm->x));
+		alphas = malloc(sizeof(double)*dim);
+		betas = malloc(sizeof(double)*dim);
     }
+	double* d2logP_all = dvector(dim);
+	double* dlogP_all = dvector(dim);
 	double logP = posterior->logP(posterior);
-	for (int i = 0; i < Parameters_count(laplace->parameters); i++) {
-		double map = Parameters_value(laplace->parameters, i);
-		double d2logP = Model_second_derivative(laplace->model, Parameters_at(laplace->parameters, i), NULL, 1e-5);
+	posterior->hessian(posterior, laplace->parameters, HESSIAN_DIAGONAL, d2logP_all);
+	laplace_first_derivatives(posterior, laplace->parameters, 1e-5, dlogP_all);
+	for (size_t i = 0; i < dim; i++) {
+		size_t local;
+		Parameter* param = laplace_element(laplace->parameters, i, &local);
+		double map = Parameter_value_at(param, local);
+		double d2logP = d2logP_all[i];
 		double alpha = 1.0 - d2logP*(map*map)*(map + 1.0);
 		double beta = -d2logP*map*(map + 1.0) - 1.0;
 
         if (beta < 0) {
-			double dlogP = Model_first_derivative(laplace->model, Parameters_at(laplace->parameters, i), 1e-5);
+			double dlogP = dlogP_all[i];
 			beta = fabs(dlogP) - 1;
 			alpha = 1;
 
@@ -943,7 +1026,7 @@ double calculate_laplace_betaprime(Laplace* laplace){
 				double y[10];
 				double sumY = 0;
 				for (int j = 0; j < 10; j++) {
-					Parameters_set_value(laplace->parameters, i, x[j]);
+					Parameter_set_value_at(param, x[j], local);
 					y[j] = laplace->model->logP(laplace->model);
 					sumY += y[j];
 				}
@@ -965,7 +1048,7 @@ double calculate_laplace_betaprime(Laplace* laplace){
 
 				beta = Parameters_value(ps, 0);
 				alpha = map*(beta+1) + 1;
-				Parameters_set_value(laplace->parameters, i, map);
+				Parameter_set_value_at(param, map, local);
 
 				free_Optimizer(opt);
 				free_Parameters(ps);
@@ -973,19 +1056,21 @@ double calculate_laplace_betaprime(Laplace* laplace){
 			}
 		}
 		logP -= dlogbetaprime(map, alpha, beta);
-        
+
         if(dm != NULL){
             alphas[i] = alpha;
 			betas[i] = beta;
         }
 	}
-	
+
 	if(dm != NULL){
 		Parameter_set_values(Parameters_at(dm->parameters, 0), alphas);
 		Parameter_set_values(Parameters_at(dm->parameters, 1), betas);
 	}
 	free(alphas);
 	free(betas);
+	free(d2logP_all);
+	free(dlogP_all);
 
 	printf("Beta' Laplace: %f\n", logP);
 	return logP;

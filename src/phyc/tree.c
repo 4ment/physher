@@ -1345,7 +1345,6 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		"parameters", // distance parameters
 		"proportions", // reparameterization parameters
 		"ratios", // reparameterization parameters
-		"reparam", // reparametrization
 		"root_height",
 		"shifts",
 		"taxa",
@@ -1490,12 +1489,11 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 					ratios_node = get_json_node(node, "ratios");
 				}
 				json_node* shifts_node = get_json_node(node, "shifts");
-				json_node* reparam_node = get_json_node(node, "reparam");
-				if (ratios_node != NULL || shifts_node != NULL || reparam_node != NULL){
+				if (ratios_node != NULL || shifts_node != NULL){
 					json_node* transformNode = create_json_node_object(NULL, "transform");
 					add_json_node_string(transformNode, "id", "treetransform");
 					add_json_node_string(transformNode, "type", "treetransform");
-					if(ratios_node != NULL|| reparam_node != NULL){
+					if(ratios_node != NULL){
 						if(ratios_node != NULL && ratios_node->node_type == MJSON_STRING){
 							char* ratiosName = get_json_node_value_string(node, "ratios");
 							json_node* fakeRatiosNode = create_json_node_object(transformNode, "ratios");

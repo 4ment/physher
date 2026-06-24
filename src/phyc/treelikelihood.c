@@ -66,6 +66,7 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node );
 
 void TreeLikelihood_calculate_gradient( Model *model, int flags, double* grads );
 void TreeLikelihoodModel_gradient( Model *model, const Parameters* parameters);
+void _treeLikelihood_model_hessian( Model *self, const Parameters* parameters, hessian_mode_t mode, double* out);
 
 void allocate_storage(SingleTreeLikelihood* tlk, size_t index);
 
@@ -179,6 +180,14 @@ static void _singleTreeLikelihood_restore(Model* self){
 		}
 		self->lp = self->storedLogP;
 		tlk->lk = tlk->stored_lk;
+		// The current/stored partials form a 2-slot ping-pong that only preserves
+		// the pre-proposal state when a node is recomputed at most once per
+		// proposal. HMC evaluates the likelihood many times per proposal, so the
+		// stored slot is overwritten mid-trajectory and the index swap above can
+		// restore garbage (e.g. NaN partials from a divergent leapfrog step).
+		// Branch lengths/heights are restored correctly by the submodels, so force
+		// a full recomputation of partials from them on the next evaluation.
+		SingleTreeLikelihood_update_all_nodes(tlk);
 		self->stored = false;
 	}
 }
@@ -369,6 +378,7 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	model->logP = _singleTreeLikelihood_logP;
 	model->full_logP = _singleTreeLikelihood_full_logP;
 	model->gradient = _treeLikelihood_model_gradient;
+	model->hessian = _treeLikelihood_model_hessian;
 	model->update = _treelikelihood_handle_change;
 	model->free = _treeLikelihood_model_free;
 	model->clone = _treeLikelihood_model_clone;
@@ -1983,8 +1993,80 @@ double d2lnldt2_uppper( SingleTreeLikelihood *tlk, Node *node, const double* pat
 		//((tlk->pattern_lk[i] * lks[i] - (dfi[Node_id(n)][i]*dfi[Node_id(n)][i])) / (lks[i]*lks[i])) * tlk->sp->weights[i];
 		d2lnl += ((pattern_d2lnl[k]*pattern_likelihoods[k] - pattern_dlikelihoods[k]*pattern_dlikelihoods[k]) / (pattern_likelihoods[k]*pattern_likelihoods[k])) * tlk->sp->weights[k];
 	}
-	
+
 	return d2lnl;
+}
+
+// Analytic diagonal of the Hessian of the log-likelihood wrt branch lengths,
+// indexed by node id (node_diag length == Tree_node_count). The root and the
+// root's right child (its branch is merged into the left child under the
+// distance parameterization) get 0, matching the gradient convention.
+static void _treelikelihood_branch_hessian_diagonal(SingleTreeLikelihood* tlk, double* node_diag){
+	size_t patternCount = tlk->sp->count;
+	double* pattern_likelihoods = tlk->pattern_lk + patternCount;
+	for(size_t i = 0; i < patternCount; i++){
+		pattern_likelihoods[i] = exp(tlk->pattern_lk[i]);
+	}
+	double* pattern_dlik = dvector(patternCount);
+	size_t nodeCount = Tree_node_count(tlk->tree);
+	Node** nodes = Tree_nodes(tlk->tree);
+	Node* root = Tree_root(tlk->tree);
+	for(size_t i = 0; i < nodeCount; i++){
+		Node* node = nodes[i];
+		if(Node_isroot(node) || Node_right(root) == node){
+			node_diag[node->id] = 0.0;
+			continue;
+		}
+		calculate_dldt_uppper(tlk, node, pattern_dlik);
+		node_diag[node->id] = d2lnldt2_uppper(tlk, node, pattern_likelihoods, pattern_dlik);
+	}
+	free(pattern_dlik);
+}
+
+// Hessian over the flattened elements of `parameters`, in natural parameter
+// space. The branch-length diagonal is computed analytically; everything else
+// (time trees, non-branch parameters, full-matrix off-diagonals) falls back to
+// finite differences.
+void _treeLikelihood_model_hessian( Model *self, const Parameters* parameters, hessian_mode_t mode, double* out){
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
+
+	// Only the non-time branch-length parameterization is handled analytically;
+	// for anything else defer entirely to finite differences.
+	bool analytic = !Tree_is_time_mode(tlk->tree)
+		&& Parameters_count(parameters) == 1
+		&& Parameters_at((Parameters*)parameters, 0)->model == MODEL_TREE;
+	if(!analytic){
+		Model_hessian_fd(self, parameters, mode, out);
+		return;
+	}
+
+	size_t dim = Parameters_size(parameters);
+
+	// off-diagonals are not yet available analytically
+	if(mode == HESSIAN_FULL){
+		Model_hessian_fd(self, parameters, mode, out);
+	}
+
+	// refresh likelihood and upper partials, then fill the diagonal analytically
+	self->logP(self);
+	if(tlk->update_upper){
+		if(Tree_is_time_mode(tlk->tree)) Tree_update_heights(tlk->tree);
+		tlk->update_upper = false;
+	}
+	update_upper_partials(tlk, Tree_root(tlk->tree), tlk->include_root_freqs);
+
+	size_t nodeCount = Tree_node_count(tlk->tree);
+	double* node_diag = dvector(nodeCount);
+	_treelikelihood_branch_hessian_diagonal(tlk, node_diag);
+
+	// element index of the distance parameter maps to node id
+	for(size_t e = 0; e < dim; e++){
+		double d = (e < nodeCount) ? node_diag[e] : 0.0;
+		if(mode == HESSIAN_DIAGONAL) out[e] = d;
+		else out[e*dim + e] = d;
+	}
+
+	free(node_diag);
 }
 
 void gradient_substitution_model_aux(SingleTreeLikelihood *tlk, Parameter* parameter, size_t index, const double* pattern_likelihoods, double* pattern_dlnl){
