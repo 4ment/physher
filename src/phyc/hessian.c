@@ -48,11 +48,11 @@ void _free_Hessian(Hessian* hessian){
 }
 
 Hessian* new_Hessian_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"model",
-		"parameters"
+	static const json_field schema[] = {
+	    {"model", JSON_REQUIRED, JSON_STRING},
+	    {"parameters", JSON_REQUIRED, JSON_ARRAY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* ref = get_json_node_value_string(node, "model");
 	Hessian* hessian = malloc(sizeof(Hessian));

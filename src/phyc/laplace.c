@@ -1153,12 +1153,12 @@ void _free_Laplace(Laplace* laplace){
 }
 
 Laplace* new_Laplace_from_json2(json_node* node, Hashtable* hash){
-    char* allowed[] = {
-        "distribution",
-        "model",
-        "x"
+    static const json_field schema[] = {
+        {"distribution", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+        {"model", JSON_REQUIRED, JSON_STRING},
+        {"x", JSON_REQUIRED, JSON_ANY},
     };
-    json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
     
     char* id = get_json_node_value_string(node, "id");
     char* ref_model = get_json_node_value_string(node, "model");
@@ -1234,14 +1234,14 @@ Laplace* new_Laplace_from_json(json_node* node, Hashtable* hash){
         return new_Laplace_from_json2(node, hash);
     }
 
-	char* allowed[] = {
-		"distribution",
-		"empirical",
-		"model",
-		"parameters",
-		"ref"
+	static const json_field schema[] = {
+	    {"distribution", JSON_OPTIONAL, JSON_ANY},
+	    {"empirical", JSON_OPTIONAL, JSON_ANY},
+	    {"model", JSON_OPTIONAL, JSON_ANY},
+	    {"parameters", JSON_OPTIONAL, JSON_ANY},
+	    {"ref", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* ref_model = get_json_node_value_string(node, "model");
 	char* dist_string = get_json_node_value_string(node, "distribution");

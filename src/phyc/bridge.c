@@ -241,14 +241,14 @@ static void _free_BridgeSampling(BridgeSampling* bs){
 }
 
 BridgeSampling* new_BridgeSampling_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"burnin",
-		"file",
-		"model",
-		"treelikelihood",
-		"x"
+	static const json_field schema[] = {
+	    {"burnin", JSON_OPTIONAL, JSON_NUMBER},
+	    {"file", JSON_OPTIONAL, JSON_STRING},
+	    {"model", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+	    {"treelikelihood", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+	    {"x", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	BridgeSampling* bs = malloc(sizeof(BridgeSampling));
 	bs->burnin = get_json_node_value_double(node, "burnin", 0);
@@ -256,7 +256,9 @@ BridgeSampling* new_BridgeSampling_from_json(json_node* node, Hashtable* hash){
 	char* lfile = get_json_node_value_string(node, "file");
 	json_node* model_node = get_json_node(node, "model");
 	bs->x = new_Parameters(1);
-	get_parameters_references2(node, hash, bs->x, "x");
+	Parameter* x = new_Parameter_from_json(node, hash);
+	Parameters_move(bs->x, x);
+	Hashtable_add(hash, Parameter_name(x), x);
 	
 	bs->file = String_clone(lfile);
 	

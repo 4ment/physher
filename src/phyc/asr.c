@@ -254,13 +254,13 @@ void estimate_GTR(SingleTreeLikelihood* tlk){
 }
 
 void asr_calculator_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"algorithm",
-		"file",
-		"model",
-		"verbosity"
+	static const json_field schema[] = {
+	    {"algorithm", JSON_OPTIONAL, JSON_STRING},
+	    {"file", JSON_OPTIONAL, JSON_STRING},
+	    {"model", JSON_OPTIONAL, JSON_STRING},
+	    {"verbosity", JSON_OPTIONAL, JSON_NUMBER},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* algorithm = get_json_node_value_string(node, "algorithm");
 	char* ref = get_json_node_value_string(node, "model");

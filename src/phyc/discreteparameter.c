@@ -136,12 +136,11 @@ Model * new_DiscreteParameterModel( const char* name, DiscreteParameter *dp ){
 }
 
 Model* new_DiscreteParameterModel_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"dimension",
-		"values"
+	static const json_field schema[] = {
+		{"dimension", JSON_OPTIONAL, JSON_NUMBER},
+		{"values", JSON_OPTIONAL, JSON_ARRAY_OR_NUMBER},
 	};
-	
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	json_node* values = get_json_node(node, "values");
 	int dim = get_json_node_value_int(node, "dimension", 0);

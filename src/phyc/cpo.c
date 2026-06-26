@@ -81,11 +81,11 @@ void _free_cpo(CPO* cpo){
 
 
 CPO* new_CPO_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"burnin",
-		"filename"
+	static const json_field schema[] = {
+	    {"burnin", JSON_OPTIONAL, JSON_NUMBER},
+	    {"filename", JSON_OPTIONAL, JSON_STRING},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* filename = get_json_node_value_string(node, "filename");
 	CPO* cpo = malloc(sizeof(CPO));

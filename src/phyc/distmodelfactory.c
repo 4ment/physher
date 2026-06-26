@@ -31,9 +31,19 @@
 #include "utilsio.h"
 
 Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash) {
-    char* allowed[] = {"burnin",     "distribution",     "file",      "from", "margin",
-                       "parameters", "parameterization", "posterior", "tree", "x"};
-    json_check_allowed(node, allowed, sizeof(allowed) / sizeof(allowed[0]));
+    static const json_field schema[] = {
+        {"burnin", JSON_OPTIONAL, JSON_NUMBER},
+        {"distribution", JSON_REQUIRED, JSON_STRING},
+        {"file", JSON_OPTIONAL, JSON_STRING},
+        {"from", JSON_OPTIONAL, JSON_ANY},
+        {"margin", JSON_OPTIONAL, JSON_ANY},
+        {"parameters", JSON_OPTIONAL, JSON_OBJECT_T},
+        {"parameterization", JSON_OPTIONAL, JSON_STRING},
+        {"posterior", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+        {"tree", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+        {"x", JSON_OPTIONAL, JSON_ANY},
+    };
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 
     char* d_string = get_json_node_value_string(node, "distribution");
 

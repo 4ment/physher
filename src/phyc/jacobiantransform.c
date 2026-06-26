@@ -74,8 +74,10 @@ Model* new_JacobianTransformModel(const char* id, Parameters* parameters) {
 }
 
 Model* new_JacobianTransformModel_from_json(json_node* node, Hashtable* hash) {
-    char* allowed[] = {"parameters"};
-    json_check_allowed(node, allowed, sizeof(allowed) / sizeof(allowed[0]));
+    static const json_field schema[] = {
+        {"parameters", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+    };
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
     json_node* parametersNode = get_json_node(node, "parameters");
     Parameters* parameters = new_Parameters(1);
     grab_parameters(parametersNode, hash, parameters);

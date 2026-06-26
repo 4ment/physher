@@ -286,17 +286,15 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model*
 }
 
 Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
-	char* allowed[] = {
-		"indicators",
-		"location",
-		"model",
-        "parameters",
-		"rate",
-		"scale",
-		"tree",
-		
+	static const json_field schema[] = {
+		{"indicators", JSON_OPTIONAL, JSON_ANY},
+		{"location", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"model", JSON_REQUIRED, JSON_STRING},
+		{"rate", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+		{"scale", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"tree", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* model = get_json_node_value_string(node, "model");
 	BranchModel* bm = NULL;

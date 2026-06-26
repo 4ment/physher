@@ -82,15 +82,15 @@ void _free_ImportanceSampler(ImportanceSampler* mvb){
 }
 
 ImportanceSampler* new_ImportanceSampler_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"distribution",
-		"model",
-		"normalize",
-		"parameters",
-		"samples",
-		"weights",
+	static const json_field schema[] = {
+	    {"distribution", JSON_OPTIONAL, JSON_ANY},
+	    {"model", JSON_REQUIRED, JSON_STRING},
+	    {"normalize", JSON_OPTIONAL, JSON_BOOL},
+	    {"parameters", JSON_OPTIONAL, JSON_ANY},
+	    {"samples", JSON_OPTIONAL, JSON_NUMBER},
+	    {"weights", JSON_OPTIONAL, JSON_ARRAY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* ref = get_json_node_value_string(node, "model");
 	json_node* dist_node = get_json_node(node, "distribution");

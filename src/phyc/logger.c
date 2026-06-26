@@ -118,15 +118,15 @@ void get_references(json_node* node, Hashtable* hash, struct Logger* logger){
 }
 
 struct Logger* new_logger_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"file",
-		"format",
-		"internal",
-		"models",
-		"parameters",
-		"tree"
+	static const json_field schema[] = {
+	    {"file", JSON_OPTIONAL, JSON_STRING},
+	    {"format", JSON_OPTIONAL, JSON_STRING},
+	    {"internal", JSON_OPTIONAL, JSON_BOOL},
+	    {"models", JSON_OPTIONAL, JSON_ANY},
+	    {"parameters", JSON_OPTIONAL, JSON_ANY},
+	    {"tree", JSON_OPTIONAL, JSON_BOOL},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	struct Logger* logger = malloc(sizeof(struct Logger));
 	logger->parameters = new_Parameters(1);
@@ -247,12 +247,12 @@ static void _free_Logger(struct Dumper* dumper){
 }
 
 struct Dumper* new_Dumper_from_json(json_node* node, Hashtable* hash){
-    char* allowed[] = {
-        "file",
-        "models",
-        "parameters",
+    static const json_field schema[] = {
+        {"file", JSON_OPTIONAL, JSON_ANY},
+        {"models", JSON_OPTIONAL, JSON_ANY},
+        {"parameters", JSON_OPTIONAL, JSON_ANY},
     };
-    json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
     
     struct Dumper* dumper = malloc(sizeof(struct Dumper));
     dumper->parameters = NULL;

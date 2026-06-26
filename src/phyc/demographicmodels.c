@@ -378,16 +378,18 @@ Model* new_CoalescentModel(const char* name, Coalescent* coalescent, Model* tree
 }
 
 Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"cutoff",
-		"data",
-		"groups",
-		"model",
-		"parameters",
-		"tree"
+	static const json_field schema[] = {
+		{"cutoff", JSON_OPTIONAL, JSON_NUMBER},
+		{"data", JSON_OPTIONAL, JSON_ANY},
+		{"groups", JSON_OPTIONAL, JSON_ANY},
+		{"growth", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"model", JSON_REQUIRED, JSON_STRING},
+		{"theta", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+		{"tree", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
-	
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
+	json_validate_xor(node, "data", "tree", NULL);
+
 	char* model = get_json_node_value_string(node, "model");
 	Coalescent* c = NULL;
 	
@@ -425,25 +427,20 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 			coalescent[i] = atoi(coal_node->children[i]->value);
 		}
 	}
-	
-	json_node* parameters_node = get_json_node(node, "parameters");
-    Parameters* ps = new_Parameters(parameters_node->child_count);
+
+    Parameters* ps = new_Parameters(1);
     
-    for (int i = 0; i < parameters_node->child_count; i++) {
-        json_node* p_node = parameters_node->children[i];
-        json_node* dim_node = get_json_node(p_node, "dimension");
-        if (dim_node != NULL) {
-            Parameters* multi_parameter = new_MultiParameter_from_json(p_node, hash);
-            Parameters_add_parameters(ps, multi_parameter);
-            Hashtable_add(hash, Parameters_name2(multi_parameter), multi_parameter);
-        }
-        else{
-            Parameter* parameter = new_Parameter_from_json(p_node, hash);
-            Parameters_move(ps, parameter);
-            Hashtable_add(hash, Parameter_name(parameter), parameter);
-        }
-        
-    }
+	json_node* theta_node = get_json_node(node, "theta");
+	Parameter* parameter = new_Parameter_from_json(theta_node, hash);
+	Parameters_move(ps, parameter);
+	Hashtable_add(hash, Parameter_name(parameter), parameter);
+
+	json_node* growth_node = get_json_node(node, "growth");
+    if(growth_node != NULL){
+		Parameter* parameter = new_Parameter_from_json(growth_node, hash);
+		Parameters_move(ps, parameter);
+		Hashtable_add(hash, Parameter_name(parameter), parameter);
+	}
 	
 	if(strcasecmp(model, "constant") == 0){
 		if(tree != NULL)
@@ -453,9 +450,6 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		Hashtable_add(hash, Parameters_name(ps, 0), Parameters_at(ps, 0));
 	}
 	else if(strcasecmp(model, "exponential") == 0){
-		if (strcasecmp(parameters_node->children[0]->key, "n0") != 0) {
-			Parameters_swap_index(ps, 0, 1);
-		}
 		if(tree != NULL)
 			c = new_ExponentialCoalescent(tree, ps);
 		else
@@ -519,13 +513,6 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 	}
 	
 	free_Parameters(ps);
-	
-	// add Paramters to hash
-	char* id_ps = get_json_node_value_string(parameters_node, "id");
-	if(id_ps != NULL){
-		Parameters_set_name2(c->p, id_ps);
-		Hashtable_add(hash, id_ps, c->p);
-	}
 	
 	char* id = get_json_node_value_string(node, "id");
 	Model* mc = new_CoalescentModel2(id, c, mtree, mdp);

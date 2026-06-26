@@ -419,11 +419,11 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 }
 
 Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
-	char* allowed[] = {
-		"distributions",
-		"weights"
+	static const json_field schema[] = {
+		{"distributions", JSON_REQUIRED, JSON_ARRAY},
+		{"weights", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	CompoundModel* cm = new_CompoundModel();
 	json_node* distributions_node = get_json_node(node, "distributions");

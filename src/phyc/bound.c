@@ -115,9 +115,14 @@ Model* new_BoundModel(const char* name, Bound* bound) {
 }
 
 Model* new_AbstractBoundModel_from_json(json_node* node, Hashtable* hash) {
-    char* allowed[] = {"bound", "entropy",  // use entropy or not
-                       "joint", "samples", "variational"};
-    json_check_allowed(node, allowed, sizeof(allowed) / sizeof(allowed[0]));
+    static const json_field schema[] = {
+        {"bound", JSON_REQUIRED, JSON_STRING},
+        {"entropy", JSON_OPTIONAL, JSON_BOOL},
+        {"joint", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+        {"samples", JSON_OPTIONAL, JSON_ARRAY_OR_NUMBER},
+        {"variational", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+    };
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 
     const char* id = get_json_node_value_string(node, "id");
 
