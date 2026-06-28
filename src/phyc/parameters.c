@@ -282,11 +282,16 @@ Parameter * new_ParameterModel( const char *name, const double* value, size_t di
 }
 
 Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash) {
-    char* allowed[] = {"dimension", "flower", "fupper", "lower", "upper",
-                       "value",   // deprecated, use x instead
-                       "values",  // deprecated, use x instead
-                       "x"};
-    json_check_allowed(node, allowed, sizeof(allowed) / sizeof(allowed[0]));
+    static const json_field schema[] = {
+        {"dimension", JSON_OPTIONAL, JSON_NUMBER},
+        {"flower", JSON_OPTIONAL, JSON_ANY},
+        {"fupper", JSON_OPTIONAL, JSON_ANY}, // number or string (i.e. infinity)
+        {"lower", JSON_OPTIONAL, JSON_ANY},
+        {"upper", JSON_OPTIONAL, JSON_ANY},
+        {"value", JSON_FORBIDDEN, JSON_ANY},
+        {"values", JSON_FORBIDDEN, JSON_ANY},
+        {"x", JSON_REQUIRED, JSON_ANY}, // number, array of numbers, object (transform)
+    };
 
     if (node->node_type == MJSON_STRING) {
         char* ref = (char*)node->value;
@@ -295,16 +300,12 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash) {
         return p;
     }
 
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
+
     size_t dim = get_json_node_value_size_t(node, "dimension", 0);
     size_t size = 0;
     double* values = NULL;
-    json_node* value_node = get_json_node(node, "value");
-    if (value_node == NULL) {
-        value_node = get_json_node(node, "values");
-    }
-    if (value_node == NULL) {
-        value_node = get_json_node(node, "x");
-    }
+    json_node* value_node = get_json_node(node, "x");
     char* type = get_json_node_value_string(node, "type");
     char* id = get_json_node_value_string(node, "id");
 
@@ -385,15 +386,16 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash) {
 }
 
 Parameters* new_MultiParameter_from_json(json_node* node, Hashtable* hash){
-    char* allowed[] = {
-        "dimension",
-        "flower",
-        "fupper",
-        "lower",
-        "upper",
-        "values"
+    static const json_field schema[] = {
+        {"dimension", JSON_OPTIONAL, JSON_NUMBER},
+        {"flower", JSON_OPTIONAL, JSON_ANY},
+        {"fupper", JSON_OPTIONAL, JSON_ANY},
+        {"lower", JSON_OPTIONAL, JSON_ANY},
+        {"upper", JSON_OPTIONAL, JSON_ANY},
+        {"values", JSON_FORBIDDEN, JSON_ANY},
+        {"x", JSON_OPTIONAL, JSON_ANY},
     };
-    json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
     
     if (node->node_type == MJSON_STRING) {
         char* ref = (char*)node->value;
@@ -419,7 +421,7 @@ Parameters* new_MultiParameter_from_json(json_node* node, Hashtable* hash){
         upper = atof((char*)upper_node->value);
         
     }
-    json_node* values = get_json_node(node, "values");
+    json_node* values = get_json_node(node, "x");
     size_t K = values->child_count;
     if (dim == 0) {
         dim = K;
@@ -507,10 +509,10 @@ json_node* Parameter_to_json(Parameter* parameter, json_node* parent){
     add_json_node_string(jnode, "id", parameter->name);
     add_json_node_string(jnode, "type", "parameter");
 	if(parameter->dim == 1){
-    	add_json_node_double(jnode, "value", parameter->value[0]);
+    	add_json_node_double(jnode, "x", parameter->value[0]);
 	}
 	else{
-		add_json_node_array_double(jnode, "value", parameter->value, parameter->dim);
+		add_json_node_array_double(jnode, "x", parameter->value, parameter->dim);
 	}
     if(!isinf(parameter->cnstr->lower))
         add_json_node_double(jnode, "lower", parameter->cnstr->lower);
@@ -535,7 +537,7 @@ json_node* Parameters_to_json(Parameters* parameters, json_node* parent){
     for (int i = 0; i < Parameters_count(parameters); i++) {
         values[i] = Parameters_value(parameters, i);
     }
-    add_json_node_array_double(jnode, "values", values, Parameters_count(parameters));
+    add_json_node_array_double(jnode, "x", values, Parameters_count(parameters));
     free(values);
     return jnode;
 }
@@ -1383,7 +1385,7 @@ void get_multi_parameter_from_node(json_node* node, Parameters* parameters){
         upper = atof((char*)upper_node->value);
         
     }
-    json_node* values = get_json_node(node, "values");
+    json_node* values = get_json_node(node, "x");
     size_t K = values->child_count;
     if (dim == 0) {
         dim = K;

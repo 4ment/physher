@@ -42,8 +42,12 @@ void _free_Sampler(Sampler* sampler) {
 }
 
 Sampler* new_Sampler_from_json(json_node* node, Hashtable* hash) {
-    char* allowed[] = {"model", "loggers", "samples"};
-    json_check_allowed(node, allowed, sizeof(allowed) / sizeof(allowed[0]));
+    static const json_field schema[] = {
+        {"model", JSON_REQUIRED, JSON_STRING},
+        {"loggers", JSON_REQUIRED, JSON_ARRAY},
+        {"samples", JSON_OPTIONAL, JSON_NUMBER},
+    };
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 
     char* ref = get_json_node_value_string(node, "model");
     json_node* loggers_node = get_json_node(node, "loggers");

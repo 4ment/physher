@@ -557,7 +557,7 @@ double _computeDerivative(LineFunction *lf, double x, size_t *numFun ){
 	*numFun += 2;
 	double h = SQRT_EPS*(fabs(x) + 1.0);
     
-    double fxplus = LineFunction_evaluate( lf, dmin(x+h,lf->upper));
+    double fxplus = LineFunction_evaluate( lf, fmin(x+h,lf->upper));
     double fxminus = LineFunction_evaluate( lf, x-h);
     
     //printf("_computeDerivative %e h %e d %e\n",x,h,(fxplus - fxminus)/(2.0*h));

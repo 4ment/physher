@@ -59,8 +59,7 @@ typedef enum model_t{
 	MODEL_TREE,
 	MODEL_TREE_TRANSFORM,
 	MODEL_TREELIKELIHOOD,
-    MODEL_VARIATIONAL,
-    MODEL_VARIATIONAL_TREELIKELIHOOD
+    MODEL_VARIATIONAL
 }model_t;
 
 static const char* model_type_strings[] = {
@@ -80,8 +79,7 @@ static const char* model_type_strings[] = {
 	"tree",
 	"treetransform",
 	"treelikelihood",
-    "variational",
-    "variationaltreelikelihood"
+    "variational"
 };
 
 model_t check_model(const char* type);

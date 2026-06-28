@@ -44,7 +44,8 @@ Node * new_EmptyNode(){
 	
 	n->distance = NULL;
 	n->height   = NULL;
-	
+	n->bl       = 0;
+
 	n->postorder_idx = 0;
 	n->preorder_idx  = 0;
 	

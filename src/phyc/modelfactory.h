@@ -1,9 +1,9 @@
-// #ifndef MODELFACTORY_H
-// #define MODELFACTORY_H
+#ifndef MODELFACTORY_H
+#define MODELFACTORY_H
 
-// #include "parameters.h"
-// #include "hashtable.h"
+#include "model.h"
+#include "hashtable.h"
 
-// Model* model_factory(const char* type, Hashtable* hash);
+Model* model_factory_from_json(json_node* node, Hashtable* hash);
 
-// #endif // MODELFACTORY_H
+#endif // MODELFACTORY_H

@@ -31,10 +31,10 @@
 //	t = sqrt(a*b/(SQR(a+b)*(a+b+1.0)));
 //	if (x > a/(a+b)) { //Set how far to integrate into the tail:
 //		if (x >= 1.0) return 1.0;
-//		xu = dmin(1., dmax(mu + 10.*t, x + 5.0*t));
+//		xu = fmin(1., fmax(mu + 10.*t, x + 5.0*t));
 //	} else {
 //		if (x <= 0.0) return 0.0;
-//		xu = dmax(0., dmin(mu - 10.*t, x - 5.0*t));
+//		xu = fmax(0., fmin(mu - 10.*t, x - 5.0*t));
 //	}
 //	sum = 0;
 //	for (int j = 0; j < 18; j++) { // Gauss-Legendre.
@@ -129,7 +129,7 @@ double invbetai(double p, double a, double b) {
 		err = betai(a,b,x) - p;
 		t = exp(a1*log(x)+b1*log(1.-x) + afac);
 		u = err/t; Halley:
-		x -= (t = u/(1.-0.5*dmin(1.,u*(a1/x - b1/(1.-x)))));
+		x -= (t = u/(1.-0.5*fmin(1.,u*(a1/x - b1/(1.-x)))));
 
 		if (x <= 0.) x = 0.5*(x + t);
 		if (x >= 1.) x = 0.5*(x + t + 1.); if (fabs(t) < EPS*x && j > 0) break;

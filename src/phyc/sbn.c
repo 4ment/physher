@@ -379,10 +379,10 @@ void free_SBN(SBN* sbn){
 }
 	
 SBN* new_SBN_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"trees"
+	static const json_field schema[] = {
+	    {"trees", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 
 	char* filepath = get_json_node_value_string(node, "trees");
 	return build(filepath);

@@ -166,7 +166,7 @@ double * lm_tree( Tree *tree, bool forward, bool use_correlation ){
     else{
         double max = 0.0;
 		for ( int i = 0; i < Tree_tip_count(tree); i++ ) {
-			max = dmax(max, tips[i]->time);
+			max = fmax(max, tips[i]->time);
 		}
         
         for ( int i = 0; i < Tree_tip_count(tree); i++ ) {
@@ -383,7 +383,7 @@ double * lm_tree_cluster( Tree *tree, bool forward, int k ){
     else{
         double max = 0.0;
 		for ( int i = 0; i < Tree_tip_count(tree); i++ ) {
-			max = dmax(max, tips[i]->time);
+			max = fmax(max, tips[i]->time);
 		}
         
         for ( int i = 0; i < Tree_tip_count(tree); i++ ) {

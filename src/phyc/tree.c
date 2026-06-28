@@ -163,7 +163,7 @@ void _parse_description( Node *node, const char *newick, int *i,  bool containBL
 	}
 	
 	if ( containBL ) {
-		node->bl = dmax(BL_MIN, d);
+		node->bl = fmax(BL_MIN, d);
 		if( height != -INFINITY ){
 			Node_set_height(node, height);
 		}
@@ -430,8 +430,8 @@ void init_dates(Tree* atree, json_node* dates_node){
 			if(strcmp(taxon, nodes[j]->name) == 0){
 				Node_set_time(nodes[j], date);
 				Node_set_height(nodes[j], date);
-				min = dmin(date, min);
-				max = dmax(date, max);
+				min = fmin(date, min);
+				max = fmax(date, max);
 				if (date != 0) atree->homochronous = false;
 				break;
 			}
@@ -447,7 +447,7 @@ void init_dates(Tree* atree, json_node* dates_node){
 		for (int i = 0; i < Tree_node_count(atree); i++) {
 			if(Node_isleaf(nodes[i])){
 				Node_set_height(nodes[i], max - Node_height(nodes[i]));
-				offset = dmax(offset-0.000001, Node_height(nodes[i]))+0.000001;
+				offset = fmax(offset-0.000001, Node_height(nodes[i]))+0.000001;
 			}
 		}
 	}
@@ -472,8 +472,8 @@ void init_dates2(Tree* atree, const double* dates){
 			if(date < 0) continue;
 			Node_set_time(nodes[j], date);
 			Node_set_height(nodes[j], date);
-			min = dmin(date, min);
-			max = dmax(date, max);
+			min = fmin(date, min);
+			max = fmax(date, max);
 			if (date != 0) atree->homochronous = false;
 		}
 	}
@@ -484,7 +484,7 @@ void init_dates2(Tree* atree, const double* dates){
 			if(Node_isleaf(nodes[i])){
 				if(dates[nodes[i]->class_id] < 0) continue;
 				Node_set_height(nodes[i], max - Node_height(nodes[i]));
-				offset = dmax(offset-0.000001, Node_height(nodes[i]))+0.000001;
+				offset = fmax(offset-0.000001, Node_height(nodes[i]))+0.000001;
 			}
 		}
 	}
@@ -513,8 +513,8 @@ void init_leaf_heights_from_times(Tree* atree){
 	for (int i = 0; i < Tree_node_count(atree); i++) {
 		if(Node_isleaf(nodes[i])){
 			double date = Node_time(nodes[i]);
-			min = dmin(date, min);
-			max = dmax(date, max);
+			min = fmin(date, min);
+			max = fmax(date, max);
 			if (date != 0.0) atree->homochronous = false;
 		}
 			
@@ -525,7 +525,7 @@ void init_leaf_heights_from_times(Tree* atree){
 		for (int i = 0; i < Tree_node_count(atree); i++) {
 			if(Node_isleaf(nodes[i])){
 				Node_set_height(nodes[i], max - Node_time(nodes[i]));
-				offset = dmax(offset-0.000001, Node_height(nodes[i]))+0.000001;
+				offset = fmax(offset-0.000001, Node_height(nodes[i]))+0.000001;
 			}
 		}
 	}
@@ -588,7 +588,7 @@ void init_heights_from_bls(Tree* atree){
 			if( !Node_isleaf(node) ){
 				double left = Node_height(Node_left(node)) + dclamp(Node_left(node)->bl, 1.e-6, INFINITY);
 				double right = Node_height(Node_right(node)) + dclamp(Node_right(node)->bl, 1.e-6, INFINITY);
-				Node_set_height(node, dmax(left, right));
+				Node_set_height(node, fmax(left, right));
 			}
 			else{
 				Node_set_height(nodes[i], 0);
@@ -603,7 +603,7 @@ void init_heights_from_bls(Tree* atree){
 			if( !Node_isleaf(node) ){
 				double left = Node_height(Node_left(node)) + dclamp(Node_left(node)->bl, 1.e-6, INFINITY);
 				double right = Node_height(Node_right(node)) + dclamp(Node_right(node)->bl, 1.e-6, INFINITY);
-				Node_set_height(node, dmax(left, right));
+				Node_set_height(node, fmax(left, right));
 			}
 		}
 		Tree_constraint_heights(atree);
@@ -872,7 +872,7 @@ Tree * new_Tree( const char *nexus, Parameter* branchLengths, bool containBL ){
 	return tree;
 }
 
-Tree * new_Tree2( Node *root ){
+Tree * new_Tree2( Node *root, Parameter* branchLengths ){
 	Tree *atree = (Tree *)malloc(sizeof(Tree));
 	assert(atree);
 	atree->root = root;
@@ -901,9 +901,30 @@ Tree * new_Tree2( Node *root ){
 	Tree_update_topology(atree);
 	
 	init_indices(atree);
-    
+
     init_parameter_arrays(atree);
-	
+
+	// Distance-matrix builders (NJ/UPGMA) leave each node's freshly computed
+	// branch length in the scratch bl field. Wire every node to the shared
+	// distances vector (supplied by the caller, e.g. from a JSON branch_lengths
+	// node, or allocated here otherwise), then fold the bl values in (the branch
+	// to the right of the root is merged into the left, as for the unrooted
+	// newick path) so the tree behaves like one built with explicit branch
+	// lengths.
+	if(branchLengths == NULL){
+		branchLengths = new_Parameter_full("", BL_DEFAULT, Tree_node_count(atree) - 2, new_Constraint(0.0, INFINITY));
+		Constraint_set_flower(branchLengths->cnstr, BL_MIN);
+		Constraint_set_fupper(branchLengths->cnstr, BL_MAX);
+	}
+	atree->distances = branchLengths;
+	Parameter_set_model(atree->distances, MODEL_TREE);
+	for(size_t i = 0; i < Tree_node_count(atree); i++){
+		Node* n = Tree_node(atree, i);
+		n->distance = atree->distances;
+		n->distance->refCount++;
+	}
+	Tree_init_branch_lengths(atree);
+
 	return atree;
 }
 
@@ -919,8 +940,8 @@ void Tree_init_heights ( Tree *atree ) {
 		for ( int i = 0; i < Tree_node_count(atree); i++) {
 			Node* node = nodes[i];
 			if( !Node_isleaf(node) ){
-				double max_children = dmax( Node_height(Node_left(node)), Node_height(Node_right(node)));
-				double max_children_d = dmax( Node_distance(Node_left(node)), Node_distance(Node_right(node)));
+				double max_children = fmax( Node_height(Node_left(node)), Node_height(Node_right(node)));
+				double max_children_d = fmax( Node_distance(Node_left(node)), Node_distance(Node_right(node)));
 				
 				Node_set_height(node, max_children+ max_children_d);
 			}
@@ -947,7 +968,7 @@ void Tree_init_heights ( Tree *atree ) {
 	for ( int i = 0; i < Tree_node_count(atree); i++) {	
 		if ( Node_isleaf(nodes[i]) ){
 			if( nodes[i]->time == 0.0 ) need_conv = false;
-			youngest = dmax(youngest, Node_time(nodes[i]));
+			youngest = fmax(youngest, Node_time(nodes[i]));
 		}				
 	}
 	
@@ -1334,29 +1355,29 @@ size_t parse_taxa_dates(json_node* node, char*** ptaxa, double** pdates){
 }
 
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"branch_lengths",
-		"dates",
-		"init",
-		"file",
-		"heights", // height parameters
-		"keep_branch_lengths",
-		"newick",
-		"parameters", // distance parameters
-		"proportions", // reparameterization parameters
-		"ratios", // reparameterization parameters
-		"root_height",
-		"shifts",
-		"taxa",
-		"time",
-		"transform"
+	static const json_field schema[] = {
+		{"branch_lengths", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"dates", JSON_FORBIDDEN, JSON_ANY},
+		{"initializer", JSON_OPTIONAL, JSON_OBJECT_T},
+		{"file", JSON_OPTIONAL, JSON_STRING},
+		{"heights", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},          // height parameters
+		{"keep_branch_lengths", JSON_OPTIONAL, JSON_BOOL},
+		{"newick", JSON_OPTIONAL, JSON_STRING},
+		{"parameters", JSON_FORBIDDEN, JSON_ANY},                  // deprecated
+		{"proportions", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},     // reparameterization parameters
+		{"ratios", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},          // reparameterization parameters
+		{"root_height", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"shifts", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"taxa", JSON_OPTIONAL, JSON_OBJECT_T},
+		{"time", JSON_OPTIONAL, JSON_BOOL},
+		{"transform", JSON_FORBIDDEN, JSON_ANY}, // deprecated
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
+	json_validate_xor(node, "heights", "branch_lengths", "ratios", "proportions", "shifts", NULL);
 	
 	json_node* newick_node = get_json_node(node, "newick");
 	json_node* file_node = get_json_node(node, "file");
 	json_node* init_node = get_json_node(node, "init");
-	json_node* dates_node = get_json_node(node, "dates");
 	json_node* transform_node = get_json_node(node, "transform");
 	json_node* taxaNode = get_json_node(node, "taxa");
 	bool time_tree = get_json_node_value_bool(node, "time", false);
@@ -1380,16 +1401,24 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		
 		if(branchLengthsNode->node_type == MJSON_OBJECT){
 			branchLengths = new_Parameter_from_json(branchLengthsNode, hash);
-			Constraint_set_flower(branchLengths->cnstr, BL_MIN);
-			Constraint_set_fupper(branchLengths->cnstr, BL_MAX);
 		}
 		else{
 			char* ref = (char*)branchLengthsNode->value;
 			branchLengths = Hashtable_get(hash, ref+1);
 			branchLengths->refCount++;
-			Constraint_set_flower(branchLengths->cnstr, BL_MIN);
-			Constraint_set_fupper(branchLengths->cnstr, BL_MAX);
 		}
+		// Branch lengths are non-negative. Pin both the hard bounds (used by the
+		// optimizer's bracketing, see find_bracket) and the soft fitting bounds to
+		// [BL_MIN, BL_MAX]; without a finite hard lower bound the line search walks
+		// into negative branch lengths and the likelihood goes to NaN.
+		if(Constraint_lower(branchLengths->cnstr) < BL_MIN){
+			Constraint_set_lower(branchLengths->cnstr, BL_MIN);
+		}
+		if(Constraint_upper(branchLengths->cnstr) > BL_MAX){
+			Constraint_set_upper(branchLengths->cnstr, BL_MAX);
+		}
+		Constraint_set_flower(branchLengths->cnstr, BL_MIN);
+		Constraint_set_fupper(branchLengths->cnstr, BL_MAX);
 	}
 	// it's a time tree (not reparametrized)
 	else if(heightsNode != NULL){
@@ -1457,13 +1486,6 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 				}	
 			}
 			init_dates2(tree, dates);
-			tree->time_mode = true;
-			tree->rooted = true;
-		}
-		// parse date dictionary for dated trees
-		// tip heights are intialized
-		else if (dates_node != NULL) {
-			init_dates(tree, dates_node);
 			tree->time_mode = true;
 			tree->rooted = true;
 		}
@@ -1572,7 +1594,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	else if (init_node != NULL) {
 		char* algorithm = get_json_node_value_string(init_node, "algorithm");
 		if (strcasecmp(algorithm, "nj") == 0) {
-			tree = create_NJ_from_json(init_node, hash);
+			tree = create_NJ_from_json(init_node, hash, branchLengths);
 		}
 		else if (strcasecmp(algorithm, "upgma") == 0) {
 			tree = create_UPGMA_from_json(init_node, hash);
@@ -1580,17 +1602,10 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		else{
 			exit(2);
 		}
-		// parse date dictionary for dated trees
-		// tip heights are intialized
-		if (dates_node != NULL) {
-			init_dates(tree, dates_node);
-			tree->time_mode = true;
-			tree->rooted = true;
-		}
-		else{
-			tree->time_mode = time_tree;
-			tree->rooted = time_tree;
-		}
+	
+		tree->time_mode = time_tree;
+		tree->rooted = time_tree;
+
         if(mtt == NULL && time_tree && tree->tt->update_lowers != NULL)
 			tree->tt->update_lowers(tree->tt);
         
@@ -2437,13 +2452,13 @@ void Tree_init_heights_heterochronous( Tree *tree, const double rate, bool conve
 			n = Node_parent(n);
 		}
 		distances[i] = tot_bl;
-		max = dmax(max, tot_bl);
+		max = fmax(max, tot_bl);
 		if ( Node_isleaf(nodes[i]) ){
             if ( convert ) {
-                youngest = dmax(youngest, Node_time(nodes[i]));
+                youngest = fmax(youngest, Node_time(nodes[i]));
             }
             else {
-                youngest = dmin(youngest, Node_time(nodes[i]));
+                youngest = fmin(youngest, Node_time(nodes[i]));
             }
 			
 		}
@@ -2468,7 +2483,7 @@ void Tree_init_heights_heterochronous( Tree *tree, const double rate, bool conve
 			if ( nodes[i]->height == NULL ) nodes[i]->height = new_Parameter_with_postfix(nodes[i]->name, POSTFIX_HEIGHT, ((max - distances[i])/rate), new_Constraint(0, 0));
 			Node_set_height(nodes[i],((max - distances[i])/rate));
 			
-			double max_children = dmax( Node_height(Node_left(nodes[i])), Node_height(Node_right(nodes[i])));
+			double max_children = fmax( Node_height(Node_left(nodes[i])), Node_height(Node_right(nodes[i])));
 			if( nodes[i]->height->value[0] < max_children ){
 				nodes[i]->height->value[0] = max_children + 0.001;
 			}
@@ -2571,8 +2586,8 @@ static void _init_height_homochronous( const Node *thenode, Node *node, double m
 		
 		if ( thenode != node ){
 			//Parameter_set_value(node->height, (Node_height(thenode) * (max-distances[node->postorder_idx])/max) );
-			double max_children = dmax( Node_height(Node_left(node)), Node_height(Node_right(node)));
-            double max_children_d = dmax( Node_distance(Node_left(node)), Node_distance(Node_right(node)));
+			double max_children = fmax( Node_height(Node_left(node)), Node_height(Node_right(node)));
+            double max_children_d = fmax( Node_distance(Node_left(node)), Node_distance(Node_right(node)));
             
             Node_set_height(node, max_children+ max_children_d/max);
             
@@ -2598,8 +2613,8 @@ static void _init_height_homochronous2( const Node *thenode, Node *node, double 
 		
 		if ( thenode != node ){
 			//Parameter_set_value(node->height, (Node_height(thenode) * (max-distances[node->postorder_idx])/max) );
-			double max_children = dmax( Node_height(Node_left(node)), Node_height(Node_right(node)));
-            double min_children_d = dmin( Node_distance(Node_left(node)), Node_distance(Node_right(node)));
+			double max_children = fmax(Node_height(Node_left(node)), Node_height(Node_right(node)));
+            double min_children_d = fmin(Node_distance(Node_left(node)), Node_distance(Node_right(node)));
             double scaler = Node_height(thenode) * rate/ maxd ;
             
             Node_set_height(node, max_children+ min_children_d*scaler/rate);
@@ -2646,7 +2661,7 @@ void Tree_init_heights_homochronous( Tree *tree, const double rate ){
 			tot_bl += Node_distance(n);
 			n = Node_parent(n);
 		}
-		max_r = dmax( tot_bl, max_r );
+		max_r = fmax( tot_bl, max_r );
 		distances[i] = tot_bl;
 	}
 	
@@ -2656,7 +2671,7 @@ void Tree_init_heights_homochronous( Tree *tree, const double rate ){
 			double max = 0;
 			for ( int j = i-1; j >= 0; j-- ) {
 				if ( Node_isancestor( nodes[j], nodes[i]) ) {
-					max = dmax( distances[j], max );
+					max = fmax( distances[j], max );
 				}
 				else break;
 			}
@@ -2672,7 +2687,7 @@ void Tree_init_heights_homochronous( Tree *tree, const double rate ){
 				if ( Node_isleaf(nodes[j]) || set[j] ) continue;
 				if ( Node_isancestor( nodes[j], nodes[i]) ) {
 					Parameter_set_value(nodes[j]->height, (Node_height(nodes[i]) * (max-distances[j])/max) );
-					double max_children = dmax( Node_height(Node_left(nodes[j])), Node_height(Node_right(nodes[j])));
+					double max_children = fmax( Node_height(Node_left(nodes[j])), Node_height(Node_right(nodes[j])));
 					if( nodes[j]->height->value[0] < max_children ){
 						nodes[j]->height->value[0] = max_children + 0.001;
 					}
@@ -2704,7 +2719,7 @@ void Tree_init_heights_homochronous( Tree *tree, const double rate ){
 			if ( set[i] || Node_isleaf(nodes[i]) ) continue;
 //			Parameter_set_value(nodes[i]->height, ((max_r - d_r[i])/rate) );
 //			//Parameter_set_value(nodes[j]->height, (Node_height(nodes[i]) * distances[i]/max_r) );
-//			double max_children = dmax( Node_height(Node_left(nodes[i])), Node_height(Node_right(nodes[i])));
+//			double max_children = fmax( Node_height(Node_left(nodes[i])), Node_height(Node_right(nodes[i])));
 //			if( nodes[i]->height->value < max_children ){
 //				nodes[i]->height->value = max_children + 0.001;
 //			}
@@ -2752,14 +2767,14 @@ void summarize_calibrations( Tree *tree ){
 						fprintf(stderr, "Lower rate = %f\n", r );
 						rate += r;
 						count++;
-						max = dmax(max, r);
+						max = fmax(max, r);
 					}
 					if ( Constraint_upper_fixed(cnstr) ) {
 						double r = (d/Constraint_fupper(cnstr));
 						fprintf(stderr, "Upper rate = %f\n", r );
 						rate += r;
 						count++;
-						min = dmin(min, r);
+						min = fmin(min, r);
 					}
 					
 				}
@@ -2972,7 +2987,7 @@ void Tree_check_constraint_heights( Tree *tree ){
 
 void update_constraint_height_neighbors( Node *node ){
 	if( node->parent != NULL){
-		Parameter_set_lower(node->parent->height, dmax(node->parent->left->height->value[0], Parameter_value( Node_right(Node_parent(node))->height) ) );
+		Parameter_set_lower(node->parent->height, fmax(node->parent->left->height->value[0], Parameter_value( Node_right(Node_parent(node))->height) ) );
 	}
 	if( !Node_isleaf(Node_left(node)) ) Parameter_set_upper( Node_left(node)->height, Parameter_value(node->height) );
 	if( !Node_isleaf(Node_right(node)) ) Parameter_set_upper( Node_right(node)->height, Parameter_value(node->height) );
@@ -3046,7 +3061,7 @@ void Tree_scale_heights( Node *node, const double scaler ){
 		}
 		else if( scaler < 1 ){
 			double height = Node_height( node );
-			double max_height_son = dmax( Node_height( Node_left(node)), Node_height( Node_right(node) ) );
+			double max_height_son = fmax( Node_height( Node_left(node)), Node_height( Node_right(node) ) );
 			double bl = (height  - max_height_son)*scaler + max_height_son;
 			Node_set_height(node, bl);
 		}

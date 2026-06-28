@@ -25,7 +25,7 @@
         "frequencies": {
           "id": "freqs",
           "type": "Simplex",
-          "values": [
+          "x": [
             0.25,
             0.25,
             0.25,
@@ -37,7 +37,13 @@
     "tree": {
       "id": "tree",
       "type": "tree",
-      "parameters": "tree.distances",
+      "branch_lengths": {
+          "id": "tree.distances",
+          "type": "parameter",
+          "x": 0.1,
+          "dimension": 135,
+          "lower": 0.0
+      },
       "file": "fluA-rooted.nxs"
     }
   },

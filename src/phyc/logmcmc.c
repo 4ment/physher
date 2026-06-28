@@ -203,18 +203,18 @@ void _free_Log(Log* logger){
 }
 
 Log* new_Log_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"append",
-		"cpo",
-		"every",
-		"file",
-		"force",
-		"format",
-		"header",
-		"models",
-		"x"
+	static const json_field schema[] = {
+	    {"append", JSON_OPTIONAL, JSON_ANY},
+	    {"cpo", JSON_OPTIONAL, JSON_ANY},
+	    {"every", JSON_OPTIONAL, JSON_ANY},
+	    {"file", JSON_OPTIONAL, JSON_ANY},
+	    {"force", JSON_OPTIONAL, JSON_ANY},
+	    {"format", JSON_OPTIONAL, JSON_ANY},
+	    {"header", JSON_OPTIONAL, JSON_ANY},
+	    {"models", JSON_OPTIONAL, JSON_ANY},
+	    {"x", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	Log* logger = malloc(sizeof(Log));
 	logger->x = new_Parameters(1);

@@ -41,7 +41,7 @@ void tree_transform_shift_update_heights(Node *node, const double *parameters) {
         tree_transform_shift_update_heights(node->left, parameters);
         tree_transform_shift_update_heights(node->right, parameters);
         double shift = parameters[Node_class_id(node)];
-        double height = dmax(Node_height(node->left), Node_height(node->right));
+        double height = fmax(Node_height(node->left), Node_height(node->right));
         Node_set_height_quietly(node, height + shift);
     }
 }
@@ -52,7 +52,7 @@ void _tree_transform_shift_update(TreeTransform *tt) {
 }
 
 double _height_tree_inverse_shift_transform(TreeTransform *tt, Node *node) {
-    return Node_height(node) - dmax(Node_height(node->left), Node_height(node->right));
+    return Node_height(node) - fmax(Node_height(node->left), Node_height(node->right));
 }
 
 void node_transform_vjp_shift(TreeTransform *tt, const double *height_gradient, double *gradient){
@@ -401,7 +401,7 @@ void tree_transform_collect_lowers(Node *node, TreeTransform *tt, double *lowers
     if (!Node_isleaf(node)) {
         tree_transform_collect_lowers(node->left, tt, lowers);
         tree_transform_collect_lowers(node->right, tt, lowers);
-        lowers[Node_id(node)] = dmax(lowers[Node_id(Node_left(node))], lowers[Node_id(Node_right(node))]);
+        lowers[Node_id(node)] = fmax(lowers[Node_id(Node_left(node))], lowers[Node_id(Node_right(node))]);
         if (Node_isroot(node)) {
             Parameter* rootHeight = Parameters_at(tt->parameters, 1);
             Parameter_set_lower(rootHeight, lowers[Node_id(node)]);
@@ -1023,14 +1023,14 @@ void TreeTransformModel_add_tree_model(Model* self, Model* tree){
 }
 
 Model* new_TreeTransformModel_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-        "proportions",
-		"ratios",
-		"root_height",
-		"shifts",
-		"transform"
+	static const json_field schema[] = {
+	    {"proportions", JSON_OPTIONAL, JSON_ANY},
+	    {"ratios", JSON_OPTIONAL, JSON_ANY},
+	    {"root_height", JSON_OPTIONAL, JSON_ANY},
+	    {"shifts", JSON_OPTIONAL, JSON_ANY},
+	    {"transform", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 
     char* id = get_json_node_value_string(node, "id");
     char* transform_desc = get_json_node_value_string(node, "transform");

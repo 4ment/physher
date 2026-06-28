@@ -59,7 +59,7 @@ void _cpo_calculate(struct CPO* cpo){
 		double sum = -DBL_MAX;
 		double min = Vector_at(vecs[0], i);
 		for (int j = 1; j < count; j++) {
-			min = dmin(Vector_at(vecs[j], i), min);
+			min = fmin(Vector_at(vecs[j], i), min);
 		}
 		for (int j = 0; j < count; j++) {
 			sum = logaddexp(sum, min-Vector_at(vecs[j], i));

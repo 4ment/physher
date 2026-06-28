@@ -112,18 +112,18 @@ void TopologyOptimizer_set_nthreads( TopologyOptimizer *opt, int nthreads ){
 
 
 TopologyOptimizer* new_TopologyOptimizer_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"algorithm",
-		"criterion",
-		"failures",
-		"model",
-		"move",
-		"radius",
-		"treelikelihood",
-		"threads",
-		"verbosity"
+	static const json_field schema[] = {
+	    {"algorithm", JSON_OPTIONAL, JSON_ANY},
+	    {"criterion", JSON_OPTIONAL, JSON_ANY},
+	    {"failures", JSON_OPTIONAL, JSON_ANY},
+	    {"model", JSON_OPTIONAL, JSON_ANY},
+	    {"move", JSON_OPTIONAL, JSON_ANY},
+	    {"radius", JSON_OPTIONAL, JSON_ANY},
+	    {"treelikelihood", JSON_OPTIONAL, JSON_ANY},
+	    {"threads", JSON_OPTIONAL, JSON_ANY},
+	    {"verbosity", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* algorithm_string = get_json_node_value_string(node, "move");
 	char* criterion = get_json_node_value_string(node, "criterion");

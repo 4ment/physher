@@ -646,19 +646,16 @@ static void _inverse_transform_softplus(double* x, const double* y, size_t dim,
 }
 
 static void _get(Transform* self, double* x) {
-    // bottom-up update
-    if (self->parameter->transform != NULL) {
-        double* y = Parameter_values(self->parameter->transform->parameter);
-        self->parameter->transform->get(self->parameter->transform, y);
-    }
+    // bottom-up (postorder) update: Parameter_values refreshes y from any deeper
+    // parameter in the transform chain before we map it to x.
     const double* y = Parameter_values(self->parameter);
     self->inverse_transform(x, y, Parameter_size(self->parameter), self->lower,
                             self->upper);
 }
 
 static void _set(Transform* self, const double* x) {
-    // top-bottom update
-    double* y = Parameter_values(self->parameter);
+    // top-down (preorder) update: write y = f(x), then push y down the chain.
+    double* y = self->parameter->value;
     self->transform(x, y, Parameter_size(self->parameter), self->lower, self->upper);
     if (self->parameter->transform != NULL) {
         self->parameter->transform->set(self->parameter->transform, y);
@@ -736,7 +733,7 @@ Transform* new_Transform_with_parameter(const char* type, double lower, double u
             _inverse_transform_gradient_log_jacobian_bounded;
         transform->dim = Parameter_size(parameter);
     } else {
-        fprintf(stderr, "Transform %s not implemented\n", transform);
+        fprintf(stderr, "Transform with constraint [%f, %f] for parameter %s not implemented\n", lower, upper, Parameter_name(parameter));
         exit(1);
     }
 

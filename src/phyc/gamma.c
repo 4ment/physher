@@ -199,7 +199,7 @@ double invgammp( const double p, const double a) {
 	double eps = 1.e-8; //Accuracy is the square of EPS.
 	double gln = gammln(a);
 	if (a <= 0.) return NAN; //error("a must be pos in invgammap"); 
-	if (p >= 1.) return dmax(100.,a + 100.*sqrt(a)); 
+	if (p >= 1.) return fmax(100.,a + 100.*sqrt(a)); 
 	if (p <= 0.) return 0.0; 
 	if (a > 1.) {
 		lna1=log(a1);
@@ -208,7 +208,7 @@ double invgammp( const double p, const double a) {
 		t = sqrt(-2.*log(pp)); 
 		x = (2.30753+t*0.27061)/(1.+t*(0.99229+t*0.04481)) - t;
 		if (p < 0.5) x = -x;
-		x = dmax(1.e-3, a*pow(1.-1./(9.*a)-x/(3.*sqrt(a)),3));
+		x = fmax(1.e-3, a*pow(1.-1./(9.*a)-x/(3.*sqrt(a)),3));
 	} 
 	else { t = 1.0 - a*(0.253+a*0.12); 
 		if (p < t) x = pow(p/t,1./a);
@@ -220,7 +220,7 @@ double invgammp( const double p, const double a) {
 		if (a > 1.) t = afac*exp(-(x-a1)+a1*(log(x)-lna1)); 
 		else t = exp(-x+a1*log(x)-gln);
 		u = err/t;
-		x -= (t = u/(1.-0.5*dmin(1.,u*((a-1.)/x - 1))));//	Halley’s method. 
+		x -= (t = u/(1.-0.5*fmin(1.,u*((a-1.)/x - 1))));//	Halley’s method. 
 		if (x <= 0.) x = 0.5*(x + t);	//Halve old value if x tries to go negative.
 		if (fabs(t) < eps*x ) break;
 	}

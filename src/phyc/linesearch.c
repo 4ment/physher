@@ -245,7 +245,7 @@ opt_result lnsrch( Parameters* parameters, double *x,  opt_func func, void *data
 	
 	test = 0.0;	//Compute λmin.
 	for ( i = 0; i < n; i++ ) {					
-		temp = fabs(p[i])/dmax(fabs(xold[i]), 1.0); 
+		temp = fabs(p[i])/fmax(fabs(xold[i]), 1.0); 
 		if (temp > test) test = temp;
 	} 
 	alamin = TOLX/test;
@@ -312,7 +312,7 @@ opt_result lnsrch( Parameters* parameters, double *x,  opt_func func, void *data
 		}
 		alam2 = alam;
 		f2    = *fmin;
-		alam  = dmax(tmplam,0.1*alam); //λ ≥ 0.1λ1
+		alam  = fmax(tmplam,0.1*alam); //λ ≥ 0.1λ1
 	}
 	Parameters_restore_value(parameters, xold);
 	free(xold);

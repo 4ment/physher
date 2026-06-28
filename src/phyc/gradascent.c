@@ -96,7 +96,7 @@ opt_result optimize_stochastic_gradient_adapt(Parameters* parameters, opt_func f
 	for (size_t i = 0; i < Parameters_count(parameters); i++) {
 		Parameter_store(Parameters_at(parameters, i));
 	}
-	nthreads = dmin(nthreads, eta_count);
+	nthreads = fmin(nthreads, eta_count);
 	
 	if (nthreads == 1) {
 		

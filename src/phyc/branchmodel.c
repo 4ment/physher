@@ -1518,8 +1518,8 @@ double BranchModel_mean_rate( BranchModel *bm, double *min, double *max ){
 	double meanRate = 0;
 	for ( int i = 0; i < Parameters_count(bm->rates); i++ ) {
 		meanRate += Parameters_value(bm->rates, i);
-		*max = dmax(*max, Parameters_value(bm->rates, i));
-		*min = dmin(*min, Parameters_value(bm->rates, i));
+		*max = fmax(*max, Parameters_value(bm->rates, i));
+		*min = fmin(*min, Parameters_value(bm->rates, i));
 	}
 	return meanRate/Parameters_count(bm->rates);
 }

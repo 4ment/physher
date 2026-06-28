@@ -52,7 +52,7 @@ void argsparser_help(args_parser* args, int level){
     int max = 0;
     for(int j = 0; j < args->option_count; j++){
         if(args->options[j].long_name != NULL){
-            max = dmax(max, strlen(args->options[j].long_name));
+            max = fmax(max, strlen(args->options[j].long_name));
         }
     }
     
@@ -60,7 +60,7 @@ void argsparser_help(args_parser* args, int level){
     if(level > 0){
         for(int j = 0; j < args->option_count; j++){
             if(args->options[j].config_name != NULL){
-                max2 = dmax(max2, strlen(args->options[j].config_name));
+                max2 = fmax(max2, strlen(args->options[j].config_name));
             }
         }
     }
@@ -112,7 +112,7 @@ void argsparser2_help(args_parser2* args){
 	int max = 0;
 	for(int j = 0; j < args->option_count; j++){
 		if(args->options[j].long_name != NULL){
-			max = dmax(max, strlen(args->options[j].long_name));
+			max = fmax(max, strlen(args->options[j].long_name));
 		}
 	}
 	

@@ -5,6 +5,9 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../src")
 # add_executable(test_clone test_clone.c)
 # target_link_libraries(test_clone phyc)
 
+add_executable(test_json test_json.c)
+target_link_libraries(test_json phyc)
+
 add_executable(test_distributions test_distributions.c)
 target_link_libraries(test_distributions phyc)
 
@@ -33,8 +36,12 @@ add_executable(test_mcmc test_mcmc.c)
 target_link_libraries(test_mcmc phyc)
 
 
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/data
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+# Refresh test fixtures on every build (not just at configure time) so that
+# added/edited files under data/ are picked up by an existing build tree.
+add_custom_target(test_data ALL
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/data ${CMAKE_CURRENT_BINARY_DIR}/data
+  COMMENT "Copying test data fixtures")
   
 #file(GLOB JSON_FILES ${CMAKE_CURRENT_BINARY_DIR}/data/*.json)
 #EXECUTE_PROCESS(
@@ -44,6 +51,10 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/data
 # add_test (NAME Test_clone
 # 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 # 		COMMAND test_clone)
+
+add_test (NAME Test_json
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_json)
 
 add_test (NAME Test_distributions
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"

@@ -30,13 +30,13 @@ void _free_MC(MC* mc){
 }
 
 MC* new_MonteCarlo_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"likelihood",
-		"parameters",
-		"prior",
-		"samples"
+	static const json_field schema[] = {
+	    {"likelihood", JSON_REQUIRED, JSON_ANY},
+	    {"parameters", JSON_REQUIRED, JSON_ANY},
+	    {"prior", JSON_REQUIRED, JSON_ANY},
+	    {"samples", JSON_OPTIONAL, JSON_NUMBER},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	MC* mc = malloc(sizeof(MC));
 	char* ref_lk = get_json_node_value_string(node, "likelihood");

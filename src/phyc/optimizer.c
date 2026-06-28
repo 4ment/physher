@@ -812,29 +812,29 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		return opt;
 	}
 	
-	char* allowed[] = {
-		"algorithm",
-		"alpha",
-		"checkpoint",
-		"checkpoint_frequency",
-		"eta",
-		"frequency_check",
-		"list",
-		"logger",
-		"max",
-		"maximize",
-		"min",
-		"model",
-		"parameters",
-		"precision",
-		"rounds",
-		"threads",
-		"tol",
-		"treelikelihood",
-		"update",
-		"verbosity"
+	static const json_field schema[] = {
+	    {"algorithm", JSON_REQUIRED, JSON_STRING},
+	    {"alpha", JSON_OPTIONAL, JSON_NUMBER},
+	    {"checkpoint", JSON_OPTIONAL, JSON_ANY},
+	    {"checkpoint_frequency", JSON_OPTIONAL, JSON_NUMBER},
+	    {"eta", JSON_OPTIONAL, JSON_NUMBER},
+	    {"frequency_check", JSON_OPTIONAL, JSON_NUMBER},
+	    {"list", JSON_OPTIONAL, JSON_ANY},
+	    {"logger", JSON_OPTIONAL, JSON_OBJECT_T},
+	    {"max", JSON_OPTIONAL, JSON_ANY},
+	    {"maximize", JSON_OPTIONAL, JSON_ANY},
+	    {"min", JSON_OPTIONAL, JSON_ANY},
+	    {"model", JSON_OPTIONAL, JSON_ANY},
+	    {"parameters", JSON_OPTIONAL, JSON_ANY},
+	    {"precision", JSON_OPTIONAL, JSON_NUMBER},
+	    {"rounds", JSON_OPTIONAL, JSON_ANY},
+	    {"threads", JSON_OPTIONAL, JSON_NUMBER},
+	    {"tol", JSON_OPTIONAL, JSON_NUMBER},
+	    {"treelikelihood", JSON_OPTIONAL, JSON_STRING},
+	    {"update", JSON_OPTIONAL, JSON_STRING},
+	    {"verbosity", JSON_OPTIONAL, JSON_NUMBER},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	const char* idNode = get_json_node_value_string(node, "id");
 	size_t max = get_json_node_value_size_t(node, "max", 1000);

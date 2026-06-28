@@ -175,20 +175,18 @@ bool operator_hmc(Operator* op, double* logHR){
 }
 
 Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"algorithm",
-		"coalescent",
-		"delay",
-		"model",
-		"parameters",
-		"stepsize",
-		"steps",
-		"target",
-		"tree",
-		"weight",
-		"x"
+	static const json_field schema[] = {
+	    {"algorithm", JSON_REQUIRED, JSON_STRING},
+	    {"delay", JSON_OPTIONAL, JSON_NUMBER},
+	    {"model", JSON_OPTIONAL, JSON_STRING},
+	    {"parameters", JSON_OPTIONAL, JSON_ANY},
+	    {"stepsize", JSON_OPTIONAL, JSON_NUMBER},
+	    {"steps", JSON_OPTIONAL, JSON_NUMBER},
+	    {"target", JSON_OPTIONAL, JSON_NUMBER},
+	    {"weight", JSON_OPTIONAL, JSON_NUMBER},
+	    {"x", JSON_REQUIRED, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	Operator* op = malloc(sizeof(Operator));
 	const char* id_string = get_json_node_value_string(node, "id");

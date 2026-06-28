@@ -187,6 +187,7 @@ static void _singleTreeLikelihood_restore(Model* self){
 		// restore garbage (e.g. NaN partials from a divergent leapfrog step).
 		// Branch lengths/heights are restored correctly by the submodels, so force
 		// a full recomputation of partials from them on the next evaluation.
+		//FIXME: This defeats the purpose of storing/restoring some partials
 		SingleTreeLikelihood_update_all_nodes(tlk);
 		self->stored = false;
 	}
@@ -401,19 +402,19 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 }
 
 Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
-	char* allowed[] = {
-		"branchmodel",
-		"include_jacobian",
-		"reparameterized", // deprecated. use include_jacobian
-		"root_frequencies",
-		"sitemodel",
-		"sitepattern",
-		"sse",
-		"substitutionmodel",
-		"tipstates",
-		"tree"
+	static const json_field schema[] = {
+		{"branchmodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"include_jacobian", JSON_OPTIONAL, JSON_BOOL},
+		{"reparameterized", JSON_OPTIONAL, JSON_BOOL},  // deprecated alias of include_jacobian
+		{"root_frequencies", JSON_OPTIONAL, JSON_BOOL},
+		{"sitemodel", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+		{"sitepattern", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+		{"sse", JSON_OPTIONAL, JSON_BOOL},
+		{"substitutionmodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"tipstates", JSON_OPTIONAL, JSON_BOOL},
+		{"tree", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	json_node* patterns_node = get_json_node(node, "sitepattern");
 	json_node* tree_node = get_json_node(node, "tree");

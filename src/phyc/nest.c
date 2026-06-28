@@ -180,18 +180,18 @@ void nest_run(NEST* nest){
 }
 
 NEST* new_NEST_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"burnin",
-		"length",
-		"likelihood",
-		"N",
-		"operators",
-		"precision",
-		"prior",
-		"steps",
-		"x"
+	static const json_field schema[] = {
+	    {"burnin", JSON_OPTIONAL, JSON_NUMBER},
+	    {"length", JSON_OPTIONAL, JSON_NUMBER},
+	    {"likelihood", JSON_REQUIRED, JSON_STRING},
+	    {"N", JSON_OPTIONAL, JSON_NUMBER},
+	    {"operators", JSON_OPTIONAL, JSON_ARRAY},
+	    {"precision", JSON_OPTIONAL, JSON_NUMBER},
+	    {"prior", JSON_REQUIRED, JSON_STRING},
+	    {"steps", JSON_OPTIONAL, JSON_NUMBER},
+	    {"x", JSON_REQUIRED, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	NEST* nest = malloc(sizeof(NEST));
 	

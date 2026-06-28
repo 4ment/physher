@@ -77,8 +77,8 @@ void bracket2( Parameters *ps, double *ax, double *bx, double *cx, opt_func f, v
 		
 		//if( q == r ) q+= DBL_EPSILON;
 		
-		u = (*bx)-((*bx-*cx)*q - (*bx-*ax)*r)/ (2.0*sign(dmax(fabs(q-r),TINY),q-r));
-		//fprintf(stderr, "bracket.c: u=%f - %f %f %f %f %f fa=%f fb=%f fc=%f -%f %f\n",u, *cx,q,*bx,*ax,r, fa, fb,fc,   ((*bx)-((*bx-*cx)*q - (*bx-*ax)*r)), (2.0*sign(dmax(fabs(q-r),TINY),q-r)) );
+		u = (*bx)-((*bx-*cx)*q - (*bx-*ax)*r)/ (2.0*sign(fmax(fabs(q-r),TINY),q-r));
+		//fprintf(stderr, "bracket.c: u=%f - %f %f %f %f %f fa=%f fb=%f fc=%f -%f %f\n",u, *cx,q,*bx,*ax,r, fa, fb,fc,   ((*bx)-((*bx-*cx)*q - (*bx-*ax)*r)), (2.0*sign(fmax(fabs(q-r),TINY),q-r)) );
 		u = check_value(p->cnstr, u);
 		
 		

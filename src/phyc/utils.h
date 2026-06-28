@@ -50,10 +50,6 @@ double logDoubleFactorial(int n);
 
 double dclamp(double value, double min, double max);
 
-double dmax( double a, double b);
-
-double dmin( double a, double b);
-
 double dmax_vector( const double *array, size_t n );
 
 double dmin_vector( const double *array, size_t n );

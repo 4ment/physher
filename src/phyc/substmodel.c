@@ -83,6 +83,7 @@ static void _substitution_model_restore(Model* self) {
 		if (subst->simplex != NULL) {
 			Parameter_restore(subst->simplex);
 		}
+		subst->need_update = true;
 		self->stored = false;
 	}
 }
@@ -275,9 +276,16 @@ Model* new_SubstitutionModel2(const char* name, SubstitutionModel* sm) {
 }
 
 Model* new_SubstitutionModel_from_json(json_node* node, Hashtable* hash) {
-    char* allowed[] = {"datatype",  "frequencies", "init",     "model",
-                       "normalize", "rates",       "structure"};
-    json_check_allowed(node, allowed, sizeof(allowed) / sizeof(allowed[0]));
+    static const json_field schema[] = {
+        {"datatype", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+        {"frequencies", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+        {"init", JSON_OPTIONAL, JSON_OBJECT_T},
+        {"model", JSON_REQUIRED, JSON_ANY},
+        {"normalize", JSON_OPTIONAL, JSON_BOOL},
+        {"rates", JSON_OPTIONAL, JSON_ANY},
+        {"structure", JSON_OPTIONAL, JSON_ANY},
+    };
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 
     json_node* model_node = get_json_node(node, "model");
     json_node* freqs_node = get_json_node(node, "frequencies");
@@ -305,7 +313,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable* hash) {
     Parameter* frequencies = NULL;
     if (freqs_node != NULL) {
         if (freqs_node->node_type == MJSON_OBJECT) {
-            char* frequenciesType = get_json_node_value_string(freqs_node, "type");
+            // char* frequenciesType = get_json_node_value_string(freqs_node, "type");
             frequencies = new_Parameter_from_json(freqs_node, hash);
             Hashtable_add(hash, Parameter_name(frequencies), frequencies);
             Parameter_set_model(frequencies, MODEL_SUBSTITUTION);

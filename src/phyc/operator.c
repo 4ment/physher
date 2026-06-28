@@ -301,13 +301,15 @@ bool operator_simplex_exchange(Operator* op, double* logHR){
 
 bool operator_beta(Operator* op, double* logHR){
 	Parameter* param = Parameters_at(op->x, 0);
+	size_t dim = Parameter_size(param);
 	double alpha = op->parameters[0];
-	double v = Parameter_value_at(param, 0);
+	long idx = gsl_rng_uniform_int(op->rng, dim);
+	double v = Parameter_value_at(param, idx);
 	double newValue = gsl_ran_beta(op->rng, alpha*v+1.0, alpha*(1.0-v)+1.0);
 	if (newValue == 1.0 || newValue == 0.0) {
 		return false;
 	}
-	Parameter_set_value_at(param, newValue, 0);
+	Parameter_set_value_at(param, newValue, idx);
 
 	double log_q_forward =
     log(gsl_ran_beta_pdf(newValue,
@@ -507,20 +509,20 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		return new_HMCOperator_from_json(node, hash);
 	}
 	
-	char* allowed[] = {
-		"algorithm",
-		"all",
-		"coalescent",
-		"delay",
-		"parameters",
-		"target",
-		"tree",
-		"weight",
-		"x",
-		"up",
-		"down"
+	static const json_field schema[] = {
+	    {"algorithm", JSON_REQUIRED, JSON_STRING},
+	    {"all", JSON_OPTIONAL, JSON_BOOL},
+	    {"coalescent", JSON_OPTIONAL, JSON_STRING},
+	    {"delay", JSON_OPTIONAL, JSON_NUMBER},
+	    {"parameters", JSON_OPTIONAL, JSON_ANY},
+	    {"target", JSON_OPTIONAL, JSON_NUMBER},
+	    {"tree", JSON_OPTIONAL, JSON_ANY},
+	    {"weight", JSON_OPTIONAL, JSON_NUMBER},
+	    {"x", JSON_OPTIONAL, JSON_ANY},
+	    {"up", JSON_OPTIONAL, JSON_ANY},
+	    {"down", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	json_node* p_node = get_json_node(node, "parameters");
 	
@@ -646,11 +648,8 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		op->parameters[0] = get_json_node_value_double(node, "parameters", 10);
 	}
 	else if (strcasecmp(algorithm_string, "dirichlet") == 0) {
-		char* ref = get_json_node_value_string(node, "x");
-		op->model_count = 1;
-		op->models = malloc(op->model_count*sizeof(Model*));
-		op->models[0] = Hashtable_get(hash, ref+1);
-		op->models[0]->ref_count++;
+		op->x = new_Parameters(1);
+		get_parameters_references2(node, hash, op->x, "x");
 		op->propose = operator_dirichlet;
 		op->optimize = operator_dirichlet_optimize;
 		op->parameters = dvector(1);

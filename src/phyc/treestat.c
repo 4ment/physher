@@ -91,8 +91,8 @@ double TreeStat_mean_rate( const Tree *tree, double *min, double *max ){
 	double meanRate = 0;
 	for ( int i = 0; i < Tree_node_count(tree)-1; i++ ) {
 		meanRate += Node_get_double_from_info( nodes[i], "rate=" );
-		*max = dmax( *max, Node_get_double_from_info( nodes[i], "rate=") );
-		*min = dmin( *min, Node_get_double_from_info( nodes[i], "rate=") );
+		*max = fmax( *max, Node_get_double_from_info( nodes[i], "rate=") );
+		*min = fmin( *min, Node_get_double_from_info( nodes[i], "rate=") );
 	}
 	return meanRate/Tree_node_count(tree)-1;
 }

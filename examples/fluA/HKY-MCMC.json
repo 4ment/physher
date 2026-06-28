@@ -11,81 +11,516 @@
           "id": "tree",
           "type": "tree",
           "time": true,
-          "parameters": "tree.distances",
-          "heights": "tree.heights",
-          "reparam": "tree.scalers",
-          "ratios": "tree.ratios",
-          "root_height": "tree.root_height",
-          "dates": {
-            "A_Belgium_2_1981": 1981,
-            "A_ChristHospital_231_1982": 1982,
-            "A_Philippines_2_1982": 1982,
-            "A_Baylor1B_1983": 1983,
-            "A_Oita_3_1983": 1983,
-            "A_Texas_12764_1983": 1983,
-            "A_Alaska_8_1984": 1984,
-            "A_Caen_1_1984": 1984,
-            "A_Texas_17988_1984": 1984,
-            "A_Colorado_2_1987": 1987,
-            "A_Guangdong_9_1987": 1987,
-            "A_Guizhou_1_1987": 1987,
-            "A_LosAngeles_1987": 1987,
-            "A_Qingdao_10_1987": 1987,
-            "A_Shanghai_11_1987": 1987,
-            "A_Sichuan_2_1987": 1987,
-            "A_Sydney_1_1987": 1987,
-            "A_Tokyo_1275_1987": 1987,
-            "A_Victoria_7_1987": 1987,
-            "A_Alaska_9_1992": 1992,
-            "A_Beijing_32_1992": 1992,
-            "A_California_271_1992": 1992,
-            "A_Finland_205_1992": 1992,
-            "A_Harbin_15_1992": 1992,
-            "A_Hawaii_3_1992": 1992,
-            "A_Indonesia_3946_1992": 1992,
-            "A_Perth_1_1992": 1992,
-            "A_Qingdao_53_1992": 1992,
-            "A_Sapporo_304_1992": 1992,
-            "A_SouthAustralia_36_1992": 1992,
-            "A_Tianjin_33_1992": 1992,
-            "A_Umea_1_1992": 1992,
-            "A_Victoria_29_1992": 1992,
-            "A_Wellington_66_1992": 1992,
-            "A_Aichi_69_1994": 1994,
-            "A_Akita_1_1994": 1994,
-            "A_Argentina_3779_1994": 1994,
-            "A_England_67_1994": 1994,
-            "A_France_1109_1994": 1994,
-            "A_HongKong_1_1994": 1994,
-            "A_Johannesburg_33_1994": 1994,
-            "A_Mexico_3255_1994": 1994,
-            "A_Pennsylvania_7_1994": 1994,
-            "A_Romania_160_1994": 1994,
-            "A_Santiago_7198_1994": 1994,
-            "A_Shangdong_5_1994": 1994,
-            "A_Singapore_7_1994": 1994,
-            "A_Thailand_75_1994": 1994,
-            "A_Vermont_3_1994": 1994,
-            "A_Athens_1_1998": 1998,
-            "A_Christchurch_45_1998": 1998,
-            "A_Cordoba_V185_1998": 1998,
-            "A_Greece_103_1998": 1998,
-            "A_JOHANNESBURG_3_1998": 1998,
-            "A_MALMO_1_1998": 1998,
-            "A_Nagasaki_76_1998": 1998,
-            "A_Neuquen_V541_1998": 1998,
-            "A_PERTH_24_1998": 1998,
-            "A_Pusan_68_1998": 1998,
-            "A_Seoul_37_1998": 1998,
-            "A_Switzerland_7729_1998": 1998,
-            "A_Tucuman_V425_1998": 1998,
-            "A_Ushuaia_R127_1998": 1998,
-            "A_Waikato_12_1998": 1998,
-            "A_Czechoslovakia_4_1986": 1986,
-            "A_Leningrad_360_1986": 1986,
-            "A_Memphis_6_1986": 1986,
-            "A_Wellington_4_1985": 1985,
-            "A_Tonga_23_1985": 1985
+          "root_height": {
+            "id": "tree.root_height",
+            "type": "parameter",
+            "lower": 0,
+            "x": {
+              "id": "root.height.unconstrained",
+              "type": "parameter",
+              "x": 2.0
+            }
+          },
+          "proportions": {
+            "id": "ratios",
+            "type": "parameter",
+            "lower": 0,
+            "upper": 1,
+            "x": {
+              "id": "ratios.unconstrained",
+              "type": "parameter",
+              "dimension": 67,
+              "x": 0.0
+            }
+          },
+                    "taxa":{
+            "id": "taxa",
+            "type": "Taxa",
+            "taxa": [
+              {
+                "id": "A_Belgium_2_1981",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1981.0
+                }
+              },
+              {
+                "id": "A_ChristHospital_231_1982",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1982.0
+                }
+              },
+              {
+                "id": "A_Philippines_2_1982",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1982.0
+                }
+              },
+              {
+                "id": "A_Baylor1B_1983",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1983.0
+                }
+              },
+              {
+                "id": "A_Oita_3_1983",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1983.0
+                }
+              },
+              {
+                "id": "A_Texas_12764_1983",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1983.0
+                }
+              },
+              {
+                "id": "A_Alaska_8_1984",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1984.0
+                }
+              },
+              {
+                "id": "A_Caen_1_1984",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1984.0
+                }
+              },
+              {
+                "id": "A_Texas_17988_1984",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1984.0
+                }
+              },
+              {
+                "id": "A_Colorado_2_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_Guangdong_9_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_Guizhou_1_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_LosAngeles_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_Qingdao_10_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_Shanghai_11_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_Sichuan_2_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_Sydney_1_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_Tokyo_1275_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_Victoria_7_1987",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1987.0
+                }
+              },
+              {
+                "id": "A_Alaska_9_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Beijing_32_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_California_271_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Finland_205_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Harbin_15_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Hawaii_3_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Indonesia_3946_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Perth_1_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Qingdao_53_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Sapporo_304_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_SouthAustralia_36_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Tianjin_33_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Umea_1_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Victoria_29_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Wellington_66_1992",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1992.0
+                }
+              },
+              {
+                "id": "A_Aichi_69_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Akita_1_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Argentina_3779_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_England_67_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_France_1109_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_HongKong_1_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Johannesburg_33_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Mexico_3255_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Pennsylvania_7_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Romania_160_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Santiago_7198_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Shangdong_5_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Singapore_7_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Thailand_75_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Vermont_3_1994",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1994.0
+                }
+              },
+              {
+                "id": "A_Athens_1_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Christchurch_45_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Cordoba_V185_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Greece_103_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_JOHANNESBURG_3_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_MALMO_1_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Nagasaki_76_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Neuquen_V541_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_PERTH_24_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Pusan_68_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Seoul_37_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Switzerland_7729_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Tucuman_V425_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Ushuaia_R127_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Waikato_12_1998",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1998.0
+                }
+              },
+              {
+                "id": "A_Czechoslovakia_4_1986",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1986.0
+                }
+              },
+              {
+                "id": "A_Leningrad_360_1986",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1986.0
+                }
+              },
+              {
+                "id": "A_Memphis_6_1986",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1986.0
+                }
+              },
+              {
+                "id": "A_Wellington_4_1985",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1985.0
+                }
+              },
+              {
+                "id": "A_Tonga_23_1985",
+                "type": "Taxon",
+                "attributes": {
+                  "date": 1985.0
+                }
+              }
+            ]
           },
           "file": "fluA-rooted.nxs"
         },
@@ -100,19 +535,14 @@
           "frequencies": {
             "id": "frequencies",
             "type": "simplex",
-            "values": [
-              0.25,
-              0.25,
-              0.25,
-              0.25
-            ]
+            "x": [0.25, 0.25, 0.25, 0.25]
           },
           "datatype": "nucleotide",
           "rates": {
             "kappa": {
               "id": "kappa",
               "type": "parameter",
-              "value": 1.0,
+              "x": 1.0,
               "lower": 0
             }
           }
@@ -135,7 +565,7 @@
           "rate": {
             "id": "rate",
             "type": "parameter",
-            "value": 0.003,
+            "x": 0.003,
             "lower": 0.0
           }
         }
@@ -144,14 +574,12 @@
         "id": "coalescent",
         "type": "coalescent",
         "model": "constant",
-        "parameters": {
-          "n0": {
+        "theta": {
             "id": "n0",
             "type": "parameter",
-            "value": 3,
+            "x": 3,
             "lower": 0.0,
             "upper": "infinity"
-          }
         },
         "tree": "&tree"
       },
@@ -182,12 +610,12 @@
           "mu": {
             "id": "mean.kappa",
             "type": "parameter",
-            "value": 1
+            "x": 1
           },
           "sigma": {
             "id": "sigma.kappa",
             "type": "parameter",
-            "value": 1.25,
+            "x": 1.25,
             "lower": 0.0
           }
         },
@@ -225,12 +653,12 @@
           "every": 1000,
           "models": [
             "&joint",
-            "&treelikelihood",
-            "$frequencies"
+            "&treelikelihood"
           ],
           "x": [
             "&tree.root_height",
             "&kappa",
+            "&frequencies",
             "&rate",
             "&n0"
           ]
@@ -245,10 +673,10 @@
       ],
       "operators": [
         {
-          "id": "scaler",
+          "id": "op.beta.ratios",
           "type": "operator",
           "algorithm": "beta",
-          "x": "%tree.ratios",
+          "x": "&ratios",
           "weight": 1
         },
         {
@@ -269,7 +697,7 @@
           "id": "dirichlet",
           "type": "operator",
           "algorithm": "dirichlet",
-          "x": "$frequencies",
+          "x": "&frequencies",
           "weight": 1
         },
         {

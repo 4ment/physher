@@ -24,15 +24,20 @@
 			"frequencies":{
 				"id":"freqs",
 				"type":"Simplex",
-				"values":[0.25,0.25,0.25,0.25] 
+				"x":[0.25,0.25,0.25,0.25] 
 			}
 		}	
 	},
 	"tree":{
 		"id":"tree",
 		"type":"tree",
-		"parameters":"tree.distances",
-		"init":{
+		"branch_lengths":{
+			"id": "tree.distances",
+			"type": "parameter",
+			"dimension": 17,
+			"x": 0.1 
+		},
+		"initializer":{
 			"id":"nj",
 			"algorithm":"nj",
 			"model":"jc69",
@@ -61,7 +66,8 @@
 	{
 		"id": "log",
 		"type": "logger",
-		"tree": "&tree"
+		"tree": true,
+		"models": "&tree"
 	}
 ]
 }

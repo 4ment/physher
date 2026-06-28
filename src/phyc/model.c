@@ -415,10 +415,10 @@ Model * new_CatParameterModel( const char* name, Parameters *parameters ){
 }
 
 Parameter* new_CatParameter_from_json(json_node*node, Hashtable*hash){
-	char* allowed[] = {
-		"parameters"
+	static const json_field schema[] = {
+	    {"parameters", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 
     char* id = get_json_node_value_string(node, "id");
 	json_node* parameters_node = get_json_node(node, "parameters");

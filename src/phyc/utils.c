@@ -64,15 +64,7 @@ double logDoubleFactorial(int n){
 #pragma mark double
 
 double dclamp(double value, double min, double max){
-	return dmin(dmax(min, value), max);
-}
-
-double dmax( double a, double b){
-	return ( a > b ? a : b);
-}
-
-double dmin( double a, double b){
-	return ( a < b ? a : b);
+	return fmin(fmax(min, value), max);
 }
 
 double dmin_vector( const double *array, size_t n ){

@@ -43,12 +43,12 @@ double ** SingleTreeLikelihood_posterior_sites( SingleTreeLikelihood *tlk ){
 }
 
 void posteriors_sites_calculator_from_json(json_node* node, Hashtable* hash){
-	char* allowed [] = {
-		"file",
-		"model",
-		"verbosity"
+	static const json_field schema[] = {
+	    {"file", JSON_REQUIRED, JSON_STRING},
+	    {"model", JSON_REQUIRED, JSON_STRING},
+	    {"verbosity", JSON_OPTIONAL, JSON_NUMBER},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* ref = get_json_node_value_string(node, "model");
 	Model* mtlk = Hashtable_get(hash, ref+1);

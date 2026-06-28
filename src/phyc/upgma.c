@@ -59,10 +59,10 @@ Tree * new_UPGMA( const char **taxa, size_t dim, double **matrix ){
         Node_set_parent(inode, node);
         Node_set_parent(jnode, node);
         
-        double l = dmax(0.0, matrix[ alias[imin] ][ alias[jmin] ]*0.5);
+        double l = fmax(0.0, matrix[ alias[imin] ][ alias[jmin] ]*0.5);
         
-        Node_set_distance(inode, l-h[alias[imin]]);
-        Node_set_distance(jnode, l-h[alias[jmin]]);
+        inode->bl = l-h[alias[imin]];
+        jnode->bl = l-h[alias[jmin]];
         
         nodes[alias[imin]] = node;
         counts[alias[imin]] += counts[alias[jmin]];
@@ -96,16 +96,16 @@ Tree * new_UPGMA( const char **taxa, size_t dim, double **matrix ){
     Node_set_parent(inode, node);
     Node_set_parent(jnode, node);
     
-    double l = dmax(0.0, matrix[ alias[0] ][ alias[1] ]*0.5);
+    double l = fmax(0.0, matrix[ alias[0] ][ alias[1] ]*0.5);
     
-    Node_set_distance(inode, l-h[ alias[0] ]);
-    Node_set_distance(jnode, l-h[ alias[1] ]);
+    inode->bl = l-h[ alias[0] ];
+    jnode->bl = l-h[ alias[1] ];
     
     free(counts);
     free(nodes);
     free(alias);
     free(h);
-	Tree* tree = new_Tree2(node);
+	Tree* tree = new_Tree2(node, NULL);
 	Tree_set_rooted(tree, true);
     return tree;
 }
@@ -183,8 +183,8 @@ Tree * new_UPGMA_float( const Sequences *sequences, float **_matrix ){
         
         float l = fmaxf(0.0, _matrix[ alias[imin] ][ alias[jmin] ]*0.5);
         
-        Node_set_distance(inode, l-h[alias[imin]]);
-        Node_set_distance(jnode, l-h[alias[jmin]]);
+        inode->bl = l-h[alias[imin]];
+        jnode->bl = l-h[alias[jmin]];
         
         nodes[alias[imin]] = node;
         counts[alias[imin]] += counts[alias[jmin]];
@@ -220,14 +220,14 @@ Tree * new_UPGMA_float( const Sequences *sequences, float **_matrix ){
     
     float l = fmaxf(0.0, _matrix[ alias[0] ][ alias[1] ]*0.5);
     
-    Node_set_distance(inode, l-h[ alias[0] ]);
-    Node_set_distance(jnode, l-h[ alias[1] ]);
+    inode->bl = l-h[ alias[0] ];
+    jnode->bl = l-h[ alias[1] ];
     
     free(counts);
     free(nodes);
     free(alias);
     free(h);
-	Tree* tree = new_Tree2(node);
+	Tree* tree = new_Tree2(node, NULL);
 	Tree_set_rooted(tree, true);
 	return tree;
 }

@@ -581,18 +581,15 @@
             "id": "coalescent",
             "type": "coalescent",
             "model": "constant",
-            "parameters": {
-              "n0": {
-                "id": "n0",
+            "theta": {
+              "id": "n0",
+              "type": "parameter",
+              "x": {
+                "id": "n0.unconstrained",
                 "type": "parameter",
-                "_x": 3,
-                "x": {
-                  "id": "n0.unconstrained",
-                  "type": "parameter",
-                  "x": 2
-                },
-                "lower": 0
-              }
+                "x": 2
+              },
+              "lower": 0
             },
             "tree": "&tree"
           },

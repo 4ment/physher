@@ -8,6 +8,8 @@
 
 #include "mjson.h"
 
+#include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -422,9 +424,9 @@ json_node* create_json_tree(const char* json){
 	current->node_type = MJSON_OBJECT;
 	size_t len = strlen(json);
 	StringBuffer* buffer = new_StringBuffer(100);
-	size_t i = 1;
+	size_t i = 0;
 	size_t lineNbr = 0;
-	while (json[i] != '{') {
+	while (i < len && json[i] != '{') {
 		if(json[i] == '\n')
 			lineNbr++;
 		i++;
@@ -711,6 +713,258 @@ void json_free_tree(json_node* node){
 	if(node->child_count > 0)free(node->children);
 	if(node->value!= NULL) free(node->value);
 	free(node);
+}
+
+// --- required getters: die instead of silently returning a default --------
+
+char* get_json_node_value_string_required(json_node* node, const char* key) {
+	json_node* n = get_json_node(node, key);
+	if (n == NULL) json_die(node, "required key \"%s\" is missing", key);
+	if (n->node_type != MJSON_STRING) {
+		json_die(node, "value for key \"%s\" must be a string", key);
+	}
+	return (char*)n->value;
+}
+
+double get_json_node_value_double_required(json_node* node, const char* key) {
+	json_node* n = get_json_node(node, key);
+	if (n == NULL) json_die(node, "required key \"%s\" is missing", key);
+	if (n->node_type != MJSON_PRIMITIVE) {
+		json_die(node, "value for key \"%s\" must be a number", key);
+	}
+	return atof((char*)n->value);
+}
+
+int get_json_node_value_int_required(json_node* node, const char* key) {
+	json_node* n = get_json_node(node, key);
+	if (n == NULL) json_die(node, "required key \"%s\" is missing", key);
+	if (n->node_type != MJSON_PRIMITIVE) {
+		json_die(node, "value for key \"%s\" must be a number", key);
+	}
+	return atoi((char*)n->value);
+}
+
+size_t get_json_node_value_size_t_required(json_node* node, const char* key) {
+	json_node* n = get_json_node(node, key);
+	if (n == NULL) json_die(node, "required key \"%s\" is missing", key);
+	if (n->node_type != MJSON_PRIMITIVE) {
+		json_die(node, "value for key \"%s\" must be a number", key);
+	}
+	size_t v = 0;
+	sscanf((char*)n->value, "%zu", &v);
+	return v;
+}
+
+bool get_json_node_value_bool_required(json_node* node, const char* key) {
+	json_node* n = get_json_node(node, key);
+	if (n == NULL) json_die(node, "required key \"%s\" is missing", key);
+	if (n->node_type != MJSON_PRIMITIVE) {
+		json_die(node, "value for key \"%s\" must be a boolean", key);
+	}
+	return atoi((char*)n->value);
+}
+
+// --- schema validation -----------------------------------------------------
+
+// Locate the "id"/"type" children (case-insensitive); -1 if absent.
+static void json_find_id_type(json_node* node, int* id, int* type) {
+	*id = -1;
+	*type = -1;
+	for (int i = 0; i < node->child_count; i++) {
+		if (strcasecmp(node->children[i]->key, "id") == 0) *id = i;
+		else if (strcasecmp(node->children[i]->key, "type") == 0) *type = i;
+	}
+}
+
+void json_die(json_node* node, const char* fmt, ...) {
+	int id = -1, type = -1;
+	json_find_id_type(node, &id, &type);
+	fprintf(stderr, "physher: error in node");
+	if (id != -1) fprintf(stderr, " \"%s\"", (char*)node->children[id]->value);
+	if (type != -1) {
+		fprintf(stderr, " (type \"%s\")", (char*)node->children[type]->value);
+	}
+	fprintf(stderr, ":\n  ");
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	fprintf(stderr, "\n");
+	exit(12);
+}
+
+// Levenshtein distance, used to suggest a likely-intended key on typos.
+static int json_edit_distance(const char* a, const char* b) {
+	size_t la = strlen(a), lb = strlen(b);
+	int* prev = malloc((lb + 1) * sizeof(int));
+	int* cur = malloc((lb + 1) * sizeof(int));
+	for (size_t j = 0; j <= lb; j++) prev[j] = (int)j;
+	for (size_t i = 1; i <= la; i++) {
+		cur[0] = (int)i;
+		for (size_t j = 1; j <= lb; j++) {
+			int cost = (tolower(a[i - 1]) == tolower(b[j - 1])) ? 0 : 1;
+			int del = prev[j] + 1;
+			int ins = cur[j - 1] + 1;
+			int sub = prev[j - 1] + cost;
+			int m = del < ins ? del : ins;
+			cur[j] = m < sub ? m : sub;
+		}
+		int* tmp = prev; prev = cur; cur = tmp;
+	}
+	int d = prev[lb];
+	free(prev);
+	free(cur);
+	return d;
+}
+
+// True if the node type satisfies the declared field type.
+static bool json_type_matches(json_node_t got, json_field_type want) {
+	switch (want) {
+		case JSON_ANY: return true;
+		case JSON_STRING: return got == MJSON_STRING;
+		case JSON_NUMBER:
+		case JSON_BOOL: return got == MJSON_PRIMITIVE;
+		case JSON_OBJECT_T: return got == MJSON_OBJECT;
+		case JSON_ARRAY: return got == MJSON_ARRAY;
+		case JSON_ARRAY_OR_NUMBER:
+			return got == MJSON_ARRAY || got == MJSON_PRIMITIVE;
+		case JSON_OBJECT_OR_STRING:
+			return got == MJSON_OBJECT || got == MJSON_STRING;
+	}
+	return true;
+}
+
+static const char* json_type_name(json_field_type want) {
+	switch (want) {
+		case JSON_STRING: return "a string";
+		case JSON_NUMBER: return "a number";
+		case JSON_BOOL: return "a boolean";
+		case JSON_OBJECT_T: return "an object";
+		case JSON_ARRAY: return "an array";
+		case JSON_ARRAY_OR_NUMBER: return "an array or a number";
+		case JSON_OBJECT_OR_STRING: return "an object or a string reference";
+		default: return "valid";
+	}
+}
+
+void json_validate(json_node* node, const json_field* schema, size_t n) {
+	int id = -1, type = -1;
+	json_find_id_type(node, &id, &type);
+	if (node->node_type == MJSON_OBJECT && (id == -1 || type == -1)) {
+		json_die(node, "object is missing an \"id\" or \"type\"");
+	}
+
+	// Check every present key against the schema.
+	for (int i = 0; i < node->child_count; i++) {
+		const char* key = node->children[i]->key;
+		if (key[0] == '_' || i == id || i == type) continue;
+
+		const json_field* match = NULL;
+		for (size_t j = 0; j < n; j++) {
+			if (strcasecmp(key, schema[j].key) == 0) {
+				match = &schema[j];
+				break;
+			}
+		}
+
+		if (match == NULL) {
+			// Suggest the closest schema key for typos.
+			const char* best = NULL;
+			int best_d = 0;
+			for (size_t j = 0; j < n; j++) {
+				int d = json_edit_distance(key, schema[j].key);
+				if (best == NULL || d < best_d) { best = schema[j].key; best_d = d; }
+			}
+			if (best != NULL && best_d <= 2) {
+				json_die(node, "unknown key \"%s\" — did you mean \"%s\"?", key, best);
+			}
+			json_die(node, "unknown key \"%s\"", key);
+		}
+
+		if (match->req == JSON_FORBIDDEN) {
+			if (match->hint != NULL) {
+				json_die(node, "key \"%s\" is no longer allowed — %s", key,
+				         match->hint);
+			}
+			json_die(node, "key \"%s\" is no longer allowed", key);
+		}
+
+		if (!json_type_matches(node->children[i]->node_type, match->type)) {
+			json_die(node, "value for key \"%s\" must be %s", key,
+			         json_type_name(match->type));
+		}
+	}
+
+	// Ensure every required key is present.
+	for (size_t j = 0; j < n; j++) {
+		if (schema[j].req != JSON_REQUIRED) continue;
+		if (get_json_node(node, schema[j].key) == NULL) {
+			json_die(node, "required key \"%s\" is missing", schema[j].key);
+		}
+	}
+}
+
+void json_validate_xor(json_node* node, ...) {
+	va_list ap;
+	const char* key;
+
+	// First pass: count how many keys are present (and how many in total).
+	size_t found = 0, total = 0;
+	va_start(ap, node);
+	while ((key = va_arg(ap, const char*)) != NULL) {
+		total++;
+		if (get_json_node(node, key) != NULL) found++;
+	}
+	va_end(ap);
+	if (found == 1) return;
+
+	// Second pass: build a "a", "b" or "c" list for the diagnostic.
+	StringBuffer* buf = new_StringBuffer(64);
+	size_t j = 0;
+	va_start(ap, node);
+	while ((key = va_arg(ap, const char*)) != NULL) {
+		if (j > 0) StringBuffer_append_string(buf, j + 1 == total ? " or " : ", ");
+		StringBuffer_append_format(buf, "\"%s\"", key);
+		j++;
+	}
+	va_end(ap);
+
+	if (found == 0) {
+		json_die(node, "exactly one of %s must be defined", buf->c);
+	} else {
+		json_die(node, "%s are mutually exclusive; define exactly one", buf->c);
+	}
+	free_StringBuffer(buf);  // unreachable: json_die exits
+}
+
+void json_validate_co_required(json_node* node, ...) {
+	va_list ap;
+	const char* key;
+
+	// First pass: count how many keys are present (and how many in total).
+	size_t found = 0, total = 0;
+	va_start(ap, node);
+	while ((key = va_arg(ap, const char*)) != NULL) {
+		total++;
+		if (get_json_node(node, key) != NULL) found++;
+	}
+	va_end(ap);
+	// Co-required group: valid when all are present, or none are.
+	if (found == 0 || found == total) return;
+
+	// Second pass: build a "a", "b" or "c" list for the diagnostic.
+	StringBuffer* buf = new_StringBuffer(64);
+	size_t j = 0;
+	va_start(ap, node);
+	while ((key = va_arg(ap, const char*)) != NULL) {
+		if (j > 0) StringBuffer_append_string(buf, j + 1 == total ? " or " : ", ");
+		StringBuffer_append_format(buf, "\"%s\"", key);
+		j++;
+	}
+	va_end(ap);
+
+	json_die(node, "%s must be defined together; define all or none", buf->c);
+	free_StringBuffer(buf);  // unreachable: json_die exits
 }
 
 void json_check_allowed(json_node* node, char** allowed, int length){

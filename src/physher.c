@@ -25,16 +25,12 @@
 
 #include "phyc/PhyCConfig.h"
 
-#include "phyc/parsimony.h"
-#include "phyc/treelikelihood.h"
 #include "phyc/random.h"
 #include "phyc/args.h"
 #include "phyc/filereader.h"
-#include "phyc/compoundmodel.h"
-#include "phyc/distmodelfactory.h"
+#include "phyc/modelfactory.h"
 #include "phyc/mjson.h"
 #include "phyc/logger.h"
-#include "phyc/boundfactory.h"
 #include "phyc/mcmc.h"
 #include "phyc/mmcmc.h"
 #include "phyc/hessian.h"
@@ -47,7 +43,6 @@
 #include "phyc/predictive.h"
 #include "phyc/mc.h"
 #include "phyc/physim.h"
-#include "phyc/demographicmodels.h"
 #include "phyc/asr.h"
 #include "phyc/ppsites.h"
 #include "phyc/cat.h"
@@ -177,30 +172,8 @@ int main(int argc, const char* argv[]){
 				}
 				exit(2);
 			}
-			
-			if (model_type == MODEL_COMPOUND) {
-				models[index] = new_CompoundModel_from_json(child, hash2);
-			}
-			else if(model_type == MODEL_BOUNDMODEL){
-				models[index] = new_BoundModel_from_json(child, hash2);
-			}
-			else if(model_type == MODEL_DISTRIBUTION){
-				models[index] = new_DistributionModel_from_json(child, hash2);
-			}
-			else if(model_type == MODEL_TREELIKELIHOOD){
-				models[index] = new_TreeLikelihoodModel_from_json(child, hash2);
-			}
-			else if(model_type == MODEL_PARSIMONY){
-				models[index] = new_ParsimonyModel_from_json(child, hash2);
-			}
-			else if(model_type == MODEL_TREE){
-				models[index] = new_TreeModel_from_json(child, hash2);
-			}
-			else if(model_type == MODEL_COALESCENT){
-				models[index] = new_CoalescentModel_from_json(child, hash2);
-			} else if (model_type == MODEL_ALIGNMENT) {
-				models[index] = new_Alignment_from_json(child, hash2);
-			}
+
+			models[index] = model_factory_from_json(child, hash2);
 
 			Hashtable_add(hash2, id, models[index]);
 			index++;

@@ -479,13 +479,14 @@ void Sequences_save_phylip( const Sequences *sequences, const char *filename ){
 }
 
 Sequences* new_Sequences_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"datatype",
-		"file",
-		"sequences"
+	static const json_field schema[] = {
+	    {"datatype", JSON_OPTIONAL, JSON_ANY},
+	    {"file", JSON_OPTIONAL, JSON_ANY},
+	    {"sequences", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
-	
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
+	json_validate_xor(node, "file", "sequences", NULL);
+
 	json_node* file_node = get_json_node(node, "file");
 	json_node* sequences_node = get_json_node(node, "sequences");
 	json_node* datatype_node = get_json_node(node, "datatype");

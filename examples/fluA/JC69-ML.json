@@ -25,7 +25,7 @@
           "frequencies": {
             "id": "freqs",
             "type": "simplex",
-            "values": [
+            "x": [
               0.25,
               0.25,
               0.25,
@@ -40,7 +40,7 @@
         "branch_lengths": {
           "id": "tree.distances",
           "type": "parameter",
-          "value": 0.1,
+          "x": 0.1,
           "dimension": 135,
           "lower": 0.0
         },

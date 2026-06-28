@@ -66,6 +66,74 @@ void json_tree_print(json_node* node);
 void json_tree_fprint(json_node* node, FILE* file);
 void json_free_tree(json_node* node);
 
+char* get_json_node_value_string_required(json_node* node, const char* key);
+double get_json_node_value_double_required(json_node* node, const char* key);
+int get_json_node_value_int_required(json_node* node, const char* key);
+size_t get_json_node_value_size_t_required(json_node* node, const char* key);
+bool get_json_node_value_bool_required(json_node* node, const char* key);
+
 void json_check_allowed(json_node* node, char** allowed, int length);
 void json_check_required(json_node* node, char** required, int length);
+
+// Whether a key may, must, or must not appear in a node.
+typedef enum {
+    JSON_OPTIONAL = 0,  // may be present (default)
+    JSON_REQUIRED,      // must be present; missing => peaceful exit
+    JSON_FORBIDDEN,     // must not be present (e.g. removed/renamed keys)
+} json_field_req;
+
+// Expected JSON type of a field's value. JSON_ANY skips the type check.
+// JSON_OBJECT_OR_STRING accepts either an inline object or a string
+// id-reference, the common "reference or definition" pattern in physher.
+typedef enum {
+    JSON_ANY = 0,
+    JSON_STRING,
+    JSON_NUMBER,
+    JSON_BOOL,
+    JSON_OBJECT_T,
+    JSON_ARRAY,
+    JSON_ARRAY_OR_NUMBER,
+    JSON_OBJECT_OR_STRING,
+} json_field_type;
+
+// One row of a node's schema. Designated/partial init is intended, e.g.
+//   {"epsilon", JSON_OPTIONAL, JSON_NUMBER}
+//   {"model", JSON_REQUIRED, JSON_OBJECT_OR_STRING}
+//   {"substitutionmodel", JSON_FORBIDDEN, JSON_ANY, "renamed to 'model'"}
+// "id" and "type" are implicitly allowed/required on object nodes and must not
+// be listed. Keys starting with '_' are treated as comments and ignored.
+typedef struct {
+    const char* key;
+    json_field_req req;
+    json_field_type type;
+    const char* hint;  // optional extra context shown on error; may be NULL
+} json_field;
+
+// Report a configuration error against `node` (printing its id/type when
+// available) and exit cleanly. Single chokepoint for all validation failures.
+void json_die(json_node* node, const char* fmt, ...);
+
+// Validate `node` against `schema` (n rows): enforces id/type presence on
+// object nodes, rejects unknown keys (with a "did you mean" suggestion),
+// rejects JSON_FORBIDDEN keys, requires JSON_REQUIRED keys, and checks value
+// types where a concrete json_field_type is given. Replaces json_check_allowed
+// and json_check_required. Dies via json_die on the first violation.
+void json_validate(json_node* node, const json_field* schema, size_t n);
+
+// Enforce that exactly one of the given keys is defined on `node` — the
+// "either/or, but not both, and not neither" pattern. The key list is variadic
+// and NULL-terminated, e.g.
+//   json_validate_xor(node, "heights", "branch_lengths", NULL);
+// Dies via json_die if none or more than one is present. The keys should still
+// be declared (as JSON_OPTIONAL) in the node's schema so json_validate accepts
+// them; this adds the exclusivity rule.
+void json_validate_xor(json_node* node, ...);
+
+// Enforce that the given keys are co-required — the "all together, or none at
+// all" pattern. The key list is variadic and NULL-terminated, e.g.
+//   json_validate_co_required(node, "mu", "sigma", NULL);
+// Dies via json_die if some (but not all) of the keys are present. The keys
+// should still be declared (as JSON_OPTIONAL) in the node's schema so
+// json_validate accepts them; this adds the grouping rule.
+void json_validate_co_required(json_node* node, ...);
 #endif /* mjson_h */

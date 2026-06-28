@@ -935,16 +935,16 @@ DataType* get_datatype(json_node* datatype_node, Hashtable* hash){
 }
 
 SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"alignment",
-		"datatype",
-		"every",
-		"length",
-		"partials",
-		"start",
-		"verbose"
+	static const json_field schema[] = {
+	    {"alignment", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+	    {"datatype", JSON_OPTIONAL, JSON_ANY},
+	    {"every", JSON_OPTIONAL, JSON_NUMBER},
+	    {"length", JSON_OPTIONAL, JSON_NUMBER},
+	    {"partials", JSON_OPTIONAL, JSON_ANY},
+	    {"start", JSON_OPTIONAL, JSON_NUMBER},
+	    {"verbose", JSON_OPTIONAL, JSON_NUMBER},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	json_node* alignment_node = get_json_node(node, "alignment");
 	json_node* partials_node = get_json_node(node, "partials");

@@ -17,28 +17,13 @@
       "sitemodel":{
         "id":"sitemodel",
         "type":"sitemodel",
-        "distribution":{
-          "distribution": "gamma",
-          "catgeories": 4,
-          "parameters":{
-            "id": "alpha",
-            "type": "parameter",
-            "value": 0.1,
-            "lower":0
-          },
-          "_proportions":{
-            "id": "proportions",
-            "type": "parameter",
-            "value": {
-              "id": "proportions.reparm",
-              "type": "Simplex",
-              "parameter": {
-                "id": "p0",
-                "type": "parameter",
-                "value": 0.0
-              }
-            }
-          }
+        "distribution": "gamma",
+        "categories": 4,
+        "shape":{
+          "id": "alpha",
+          "type": "parameter",
+          "x": 0.1,
+          "lower":0
         }
       },
         "substitutionmodel":{
@@ -49,19 +34,20 @@
           "frequencies":{
             "id":"freqs",
             "type":"Simplex",
-            "values":[
-              0.25,
-              0.25,
-              0.25,
-              0.25
-            ],
-            "parameter": "freqs2"
+            "x":{
+              "id": "freqs2",
+              "type": "parameter",
+              "x": [0.0, 0.0, 0.0]
+            }
           },
           "rates":{
             "id":"rates",
             "type":"Simplex",
-            "dimension": 6,
-            "parameter": "rates2"
+            "x":{
+              "id": "rates2",
+              "type": "parameter",
+              "x": [0.0, 0.0, 0.0, 0.0, 0.0]
+            }
           },
           "_init":{
             "sitepattern":"&patterns"
@@ -70,18 +56,18 @@
       "tree":{
         "id":"tree",
         "type":"tree",
-        "parameters":"tree.distances",
+        "branch_lengths":{
+          "id": "tree.distances",
+          "type": "parameter",
+          "x": 0.1,
+          "dimension": 135,
+          "lower": 0
+        },
         "file":"fluA-rooted.nxs"
       }
     },
     "physher":[
-      {
-        "id":"log",
-        "type":"logger",
-        "parameters":[
-          "&alpha", "&rates", "&freqs", "&rates2", "&freqs2"
-        ]
-      },
+
       {
         "id":"mlopt",
         "type":"optimizer",

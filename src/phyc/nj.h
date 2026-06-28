@@ -21,14 +21,8 @@
 #include "sequence.h"
 #include "tree.h"
 
+struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix, Parameter* branchLengths );
 
-struct _Tree * new_NJ_float( const char **taxa, size_t dim, float **matrix );
-
-
-struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix );
-
-struct _Tree * new_NJ2( const char **taxa, size_t dim, double **_matrix );
-
-struct _Tree* create_NJ_from_json( json_node* node, Hashtable* hash );
+struct _Tree* create_NJ_from_json( json_node* node, Hashtable* hash, Parameter* branchLengths );
 
 #endif

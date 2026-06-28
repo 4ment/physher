@@ -132,8 +132,8 @@ int TreeLog_define_range( const char *filename, int *start, int *end, double alp
             
 			// first batch of models
 			if( nRate == nRate_start ){
-				IC_best_previous = dmin(IC_best_previous, IC);
-				lnl_best_previous = dmax(lnl_best_previous, lnl);
+				IC_best_previous = fmin(IC_best_previous, IC);
+				lnl_best_previous = fmax(lnl_best_previous, lnl);
 				index_previous = 0;
 			}
 			// second batch of models
@@ -142,8 +142,8 @@ int TreeLog_define_range( const char *filename, int *start, int *end, double alp
 				if ( IC_best_current == INFINITY ) {
 					index_current = index;
 				}
-				IC_best_current = dmin(IC_best_current, IC);
-				lnl_best_current = dmax(lnl_best_current, lnl);
+				IC_best_current = fmin(IC_best_current, IC);
+				lnl_best_current = fmax(lnl_best_current, lnl);
                 
 				nRate_current = nRate;
 			}
@@ -182,8 +182,8 @@ int TreeLog_define_range( const char *filename, int *start, int *end, double alp
 			}
 			// same model
 			else {
-				IC_best_current  = dmin(IC_best_current, IC);
-				lnl_best_current = dmax(lnl_best_current, lnl);
+				IC_best_current  = fmin(IC_best_current, IC);
+				lnl_best_current = fmax(lnl_best_current, lnl);
 			}
 			
 			index++;

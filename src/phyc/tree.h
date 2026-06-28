@@ -50,7 +50,7 @@ void TreeModel_set_transform(Model* model, unsigned transform);
 
 Tree * new_Tree( const char *nexus, Parameter* branchLengths, bool containBL );
 
-Tree * new_Tree2( Node *root );
+Tree * new_Tree2( Node *root, Parameter* branchLengths );
 
 void Tree_init_heights ( Tree *atree );
 void init_leaf_heights_from_times(Tree* atree);

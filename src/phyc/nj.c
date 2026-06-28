@@ -32,22 +32,6 @@
 
 static Node * cluster( Node **nodes, double **matrix, int nTips );
 
-struct _Tree * new_NJ2( const char **taxa, size_t dim, double **matrix ){
-    assert(dim > 3);
-    Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
-    assert(nodes);
-    
-    int i = 0;
-    for ( ; i < dim; i++ ) {
-        nodes[i] = new_Node(NULL, taxa[i], i);
-    }
-    
-    Node *root = cluster(nodes, matrix, dim);
-    free(nodes);
-    
-    return new_Tree2(root);
-}
-
 
 // i row index
 // j column index
@@ -111,14 +95,14 @@ void joinThem( Node **nodes, double **matrix, int i, int j, int NN){
     double left_bl = (matrix[i][j]*0.5) + ((matrix[i][i] - matrix[j][j])/(2*(NN-2)));
     
     if( left_bl < 0 ){
-        Node_set_distance(nodes[i], matrix[i][j]);
-        Node_set_distance(nodes[j], BL_MIN);
+        nodes[i]->bl = matrix[i][j];
+        nodes[j]->bl = BL_MIN;
     } else{
-        Node_set_distance(nodes[i], left_bl);
-        Node_set_distance(nodes[j], matrix[i][j] - left_bl);
+        nodes[i]->bl = left_bl;
+        nodes[j]->bl = matrix[i][j] - left_bl;
         if( matrix[i][j] - left_bl < 0 ){
-            Node_set_distance(nodes[j], BL_MIN);
-            Node_set_distance(nodes[i], matrix[i][j]);
+            nodes[j]->bl = BL_MIN;
+            nodes[i]->bl = matrix[i][j];
         }
     }
     
@@ -150,8 +134,8 @@ Node * last_join( Node **nodes, double **matrix, int N){
     Node_set_parent(nodes[mini], node);
     Node_set_parent(nodes[minj], node);
     
-    Node_set_distance(nodes[mini], matrix[mini][minj] * 0.5);
-    Node_set_distance(nodes[minj], matrix[mini][minj] - Node_distance(nodes[mini]));    
+    nodes[mini]->bl = matrix[mini][minj] * 0.5;
+    nodes[minj]->bl = matrix[mini][minj] - nodes[mini]->bl;
     
     nodes[mini]= node;
     nodes[minj] = NULL;
@@ -228,7 +212,7 @@ void findMinIndexes( double **matrix, int ncluster, double *r, int *alias, int *
     }
 }
 
-struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix ){
+struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix, Parameter* branchLengths ){
     Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
     assert(nodes);
     int *alias = ivector(dim);
@@ -269,8 +253,8 @@ struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix ){
         double il = (matrix[ alias[imin] ][ alias[jmin] ] + (r[imin] - r[jmin])/(ncluster-2))*0.5;
         double jl = matrix[ alias[imin] ][ alias[jmin] ]-il;
         
-        Node_set_distance(inode, dmax(0.0, il));
-        Node_set_distance(jnode, dmax(0.0, jl));
+        inode->bl = fmax(0.0, il);
+        jnode->bl = fmax(0.0, jl);
         
         nodes[alias[imin]] = node;
         nodes[alias[jmin]] = NULL;
@@ -303,128 +287,21 @@ struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix ){
     Node_set_parent(inode, node);
     Node_set_parent(jnode, node);
     
-    double l = dmax(0.0, matrix[ alias[0] ][ alias[1] ]*0.5);
-    
-    Node_set_distance(inode, l);
-    Node_set_distance(jnode, l);
-    
+    double l = fmax(0.0, matrix[ alias[0] ][ alias[1] ]*0.5);
+
+    inode->bl = l;
+    jnode->bl = l;
+
     free(nodes);
     free(alias);
     free(r);
-    
-    return new_Tree2(node);
+
+    return new_Tree2(node, branchLengths);
 }
 
-void findMinIndexes_float( float **matrix, int ncluster, float *r, int *alias, int *imin, int *jmin){
-    int i,j;
-    float sij;
-    float min = INFINITY;
-    *imin = 0;
-    *jmin = 0;
-    float denom = 1.0/(ncluster-2);
-    for( i = 0; i < ncluster; i++ ){
-        for( j = i+1; j < ncluster; j++ ){
-            sij = matrix[ alias[i] ][ alias[j] ] - (r[i] + r[j] ) * denom;
-            
-            if( sij < min ){
-                *imin = i;
-                *jmin = j;
-                min  = sij;
-            }
-        }
-    }
-}
-
-struct _Tree * new_NJ_float( const char **taxa, size_t dim, float **matrix ){
-    Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
-    assert(nodes);
-    int *alias = ivector(dim);
-    float *r = fvector(dim);
-    
-    int imin=0;
-    int jmin=0;
-    
-    int i = 0;
-    for ( ; i < dim; i++ ) {
-        nodes[i] = new_Node(NULL, taxa[i], i);
-        alias[i] = i;
-    }
-    int ncluster = dim;
-    
-    while( ncluster > 2 ){
-        // calculate net divergence
-        for ( int i = 0; i < ncluster; i++ ) {
-            r[i] = 0;
-            for ( int j = 0; j < ncluster; j++ ) {
-                r[i] += matrix[ alias[i] ][ alias[j] ];
-            }
-        }
-        
-        findMinIndexes_float(matrix, ncluster, r,alias, &imin, &jmin);
-        
-        Node *node = new_Node(NULL, NULL, ncluster);
-        
-        Node *inode = nodes[alias[imin]];
-        Node *jnode = nodes[alias[jmin]];
-        
-        Node_addChild(node, inode);
-        Node_addChild(node, jnode);
-        
-        Node_set_parent(inode, node);
-        Node_set_parent(jnode, node);
-        
-        float il = (matrix[ alias[imin] ][ alias[jmin] ] + (r[imin] - r[jmin])/(ncluster-2))*0.5;
-        float jl = matrix[ alias[imin] ][ alias[jmin] ]-il;
-        
-        Node_set_distance(inode, fmaxf(0.0, il));
-        Node_set_distance(jnode, fmaxf(0.0, jl));
-        
-        nodes[alias[imin]] = node;
-        nodes[alias[jmin]] = NULL;
-        
-        int k = 0;
-        for ( ; k < imin; k++) {
-            matrix[alias[k]][alias[imin]] = matrix[alias[imin]][alias[k]] = (matrix[ alias[k] ][ alias[imin] ] + matrix[ alias[k] ][ alias[jmin] ] - matrix[ alias[imin] ][ alias[jmin] ]) * 0.5;
-        }
-        for ( k++; k < jmin; k++) {
-            matrix[alias[k]][alias[imin]] = matrix[alias[imin]][alias[k]] = (matrix[ alias[k] ][ alias[imin] ] + matrix[ alias[k] ][ alias[jmin] ] - matrix[ alias[imin] ][ alias[jmin] ]) * 0.5;
-        }
-        for ( k++; k < ncluster; k++) {
-            matrix[alias[k]][alias[imin]] = matrix[alias[imin]][alias[k]] = (matrix[ alias[k] ][ alias[imin] ] + matrix[ alias[k] ][ alias[jmin] ] - matrix[ alias[imin] ][ alias[jmin] ]) * 0.5;
-        }
-        
-        if( ncluster-jmin-1 != 0 ){
-            memmove(&alias[jmin], &alias[jmin+1], sizeof(int)*(ncluster-jmin-1));
-        }
-        ncluster--;
-    }
-    
-    Node *node = new_Node(NULL, NULL, ncluster);
-    
-    Node *inode = nodes[ alias[0] ];
-    Node *jnode = nodes[ alias[1] ];
-    
-    Node_addChild(node, inode);
-    Node_addChild(node, jnode);
-    
-    Node_set_parent(inode, node);
-    Node_set_parent(jnode, node);
-    
-    float l = fmaxf(0.0, matrix[ alias[0] ][ alias[1] ]*0.5);
-    
-    Node_set_distance(inode, l);
-    Node_set_distance(jnode, l);
-    
-    free(nodes);
-    free(alias);
-    free(r);
-    
-    return new_Tree2(node);
-}
-
-Tree* create_NJ_from_json( json_node* node, Hashtable* hash ){
+Tree* create_NJ_from_json( json_node* node, Hashtable* hash, Parameter* branchLengths ){
 	Matrix* matrix = create_DistanceMatrix_from_json(node, hash);
-	Tree* tree = new_NJ((const char**)matrix->rowNames, matrix->nrow, matrix->matrix);
+	Tree* tree = new_NJ((const char**)matrix->rowNames, matrix->nrow, matrix->matrix, branchLengths);
 	free_Matrix(matrix);
 	return tree;
 }

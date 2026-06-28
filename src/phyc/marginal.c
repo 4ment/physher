@@ -140,7 +140,7 @@ double log_bf_stepping_stone(const Vector** values, const Vector** values1, size
 		double logmaxll = -INFINITY;
 		for (int j = 0; j < size; j++) {
 			diffll[j] = v1[j] - v[j];
-			logmaxll = dmax(logmaxll, diffll[j]);
+			logmaxll = fmax(logmaxll, diffll[j]);
 		}
 		double temp = 0;
 		for (int j = 0; j < size; j++) {
@@ -533,17 +533,17 @@ static void _free_MarginaLikelihood(MarginaLikelihood* margl){
 }
 
 MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"algorithm",
-		"burnin",
-		"distribution",
-		"file",
-		"reference",
-		"steps",
-		"temperatures",
-		"treelikelihood"
+	static const json_field schema[] = {
+	    {"algorithm", JSON_OPTIONAL, JSON_ANY},
+	    {"burnin", JSON_OPTIONAL, JSON_ANY},
+	    {"distribution", JSON_OPTIONAL, JSON_ANY},
+	    {"file", JSON_OPTIONAL, JSON_ANY},
+	    {"reference", JSON_OPTIONAL, JSON_ANY},
+	    {"steps", JSON_OPTIONAL, JSON_ANY},
+	    {"temperatures", JSON_OPTIONAL, JSON_ANY},
+	    {"treelikelihood", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	MarginaLikelihood* margl = malloc(sizeof(MarginaLikelihood));
 	json_node* temp_node = get_json_node(node, "temperatures");

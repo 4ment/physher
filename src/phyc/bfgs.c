@@ -92,7 +92,7 @@ opt_result dfpmin_optimize( Parameters *p, opt_func f, opt_grad_func grad_f, voi
 		}
 	}
 
-	stpmax = STPMX * dmax(sqrt(sum),(double)n);
+	stpmax = STPMX * fmax(sqrt(sum),(double)n);
 
 	// Main loop over the iterations.
 	for ( its = 0; its < maxeval; its++ ) {
@@ -118,7 +118,7 @@ opt_result dfpmin_optimize( Parameters *p, opt_func f, opt_grad_func grad_f, voi
 		// Test for convergence on the relative step size.
 		test = 0.0;
 		for ( i = 0; i < n; i++ ) {
-			temp = fabs(xi[i])/dmax(fabs(pnew[i]), 1.0);
+			temp = fabs(xi[i])/fmax(fabs(pnew[i]), 1.0);
 			if (temp > test) test = temp;
 		}
 		if (test < TOLX) {
@@ -154,10 +154,10 @@ opt_result dfpmin_optimize( Parameters *p, opt_func f, opt_grad_func grad_f, voi
 		// Test for convergence on the projected (zero) gradient. Only free
 		// coordinates count; a frozen one already satisfies the KKT conditions.
 		test = 0.0;
-		den = dmax(*fmin,1.);
+		den = fmax(*fmin,1.);
 		for ( i = 0; i < n; i++ ) {
 			if ( !active[i] ) continue;
-			temp = fabs(g[i])*dmax(fabs(pnew[i]), 1.)/den;
+			temp = fabs(g[i])*fmax(fabs(pnew[i]), 1.)/den;
 			if (temp > test) test = temp;
 		}
 		if (test < gtol) {

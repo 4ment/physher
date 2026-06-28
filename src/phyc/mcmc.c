@@ -220,19 +220,19 @@ void _free_MCMC(MCMC* mcmc){
 }
 
 MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"bf",
-		"interruptible",
-		"generalized",
-		"length",
-		"log",
-		"model",
-		"operators",
-		"temperature",
-		"tuningfrequency",
-		"verbose"
+	static const json_field schema[] = {
+	    {"bf", JSON_OPTIONAL, JSON_BOOL},
+	    {"interruptible", JSON_OPTIONAL, JSON_BOOL},
+	    {"generalized", JSON_OPTIONAL, JSON_BOOL},
+	    {"length", JSON_OPTIONAL, JSON_NUMBER},
+	    {"log", JSON_OPTIONAL, JSON_STRING},
+	    {"model", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+	    {"operators", JSON_REQUIRED, JSON_ARRAY},
+	    {"temperature", JSON_OPTIONAL, JSON_NUMBER},
+	    {"tuningfrequency", JSON_OPTIONAL, JSON_NUMBER},
+	    {"verbose", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	MCMC* mcmc = malloc(sizeof(MCMC));
 	json_node* model_node = get_json_node(node, "model");

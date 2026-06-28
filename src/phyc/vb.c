@@ -105,18 +105,18 @@ variational_block_t* clone_VariationalBlock(variational_block_t* block, Hashtabl
 
 variational_block_t* new_VariationalBlock_from_json(json_node* node, Hashtable* hash){
     variational_block_t* var = malloc(sizeof(variational_block_t));
-    char* allowed[] = {
-        "derivative",
-        "distribution",
-        "initialize",
-        "entropy", // use entropy or not
-        "eps",
-        "parameters",
-        "simplices",
-        "tree",
-        "x"
+    static const json_field schema[] = {
+        {"derivative", JSON_OPTIONAL, JSON_ANY},
+        {"distribution", JSON_OPTIONAL, JSON_ANY},
+        {"initialize", JSON_OPTIONAL, JSON_ANY},
+        {"entropy", JSON_OPTIONAL, JSON_ANY},
+        {"eps", JSON_OPTIONAL, JSON_ANY},
+        {"parameters", JSON_OPTIONAL, JSON_ANY},
+        {"simplices", JSON_OPTIONAL, JSON_ANY},
+        {"tree", JSON_OPTIONAL, JSON_ANY},
+        {"x", JSON_OPTIONAL, JSON_ANY},
     };
-    json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
     
     const char* id = get_json_node_value_string(node, "id");
     const char* derivative_string = get_json_node_value_string(node, "derivative");
@@ -468,23 +468,23 @@ void variational_load(variational_t* var, const char* filename){
 }
 
 Model* new_Variational_from_json2(json_node* node, Hashtable* hash){
-    char* allowed[] = {
-        "distributions",
-        "divergence",
-        "elbosamples",
-        "elbomulti",
-        "gradsamples",
-        "init",
-        "log",
-        "log_samples",
-        "parameters",
-        "posterior",
-        "simplices",
-        "tree",
-        "var",
-        "var_parameters"
+    static const json_field schema[] = {
+        {"distributions", JSON_OPTIONAL, JSON_ANY},
+        {"divergence", JSON_OPTIONAL, JSON_ANY},
+        {"elbosamples", JSON_OPTIONAL, JSON_ANY},
+        {"elbomulti", JSON_OPTIONAL, JSON_ANY},
+        {"gradsamples", JSON_OPTIONAL, JSON_ANY},
+        {"init", JSON_OPTIONAL, JSON_ANY},
+        {"log", JSON_OPTIONAL, JSON_ANY},
+        {"log_samples", JSON_OPTIONAL, JSON_ANY},
+        {"parameters", JSON_OPTIONAL, JSON_ANY},
+        {"posterior", JSON_OPTIONAL, JSON_ANY},
+        {"simplices", JSON_OPTIONAL, JSON_ANY},
+        {"tree", JSON_OPTIONAL, JSON_ANY},
+        {"var", JSON_OPTIONAL, JSON_ANY},
+        {"var_parameters", JSON_OPTIONAL, JSON_ANY},
     };
-    json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+    json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
     
     const char* posterior_string = get_json_node_value_string(node, "posterior");
     const char* id = get_json_node_value_string(node, "id");
@@ -575,22 +575,22 @@ Model* new_Variational_from_json(json_node* node, Hashtable* hash){
         return new_Variational_from_json2(node, hash);
     }
     
-	char* allowed[] = {
-		"backward",
-		"distribution",
-		"elbosamples",
-		"elbomulti",
-		"gradsamples",
-		"log",
-		"log_samples",
-		"parameters",
-		"posterior",
-		"simplices",
-		"tree",
-		"var",
-		"var_parameters"
+	static const json_field schema[] = {
+	    {"backward", JSON_OPTIONAL, JSON_ANY},
+	    {"distribution", JSON_OPTIONAL, JSON_ANY},
+	    {"elbosamples", JSON_OPTIONAL, JSON_ANY},
+	    {"elbomulti", JSON_OPTIONAL, JSON_ANY},
+	    {"gradsamples", JSON_OPTIONAL, JSON_ANY},
+	    {"log", JSON_OPTIONAL, JSON_ANY},
+	    {"log_samples", JSON_OPTIONAL, JSON_ANY},
+	    {"parameters", JSON_OPTIONAL, JSON_ANY},
+	    {"posterior", JSON_OPTIONAL, JSON_ANY},
+	    {"simplices", JSON_OPTIONAL, JSON_ANY},
+	    {"tree", JSON_OPTIONAL, JSON_ANY},
+	    {"var", JSON_OPTIONAL, JSON_ANY},
+	    {"var_parameters", JSON_OPTIONAL, JSON_ANY},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	const char* posterior_string = get_json_node_value_string(node, "posterior");
 	const char* var_string = get_json_node_value_string(node, "var");

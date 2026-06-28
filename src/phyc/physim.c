@@ -298,22 +298,22 @@ char * Node_get_string_from_info2( const Node *node, const char *str ){
 }
 
 void SimulateSequences_from_json(json_node* node, Hashtable* hash){
-	char* allowed[] = {
-		"branchmodel",
-		"datatype",
-		"distribution",
-		"format",
-		"internal",
-		"length",
-		"output",
-		"scaler",
-        "seed",
-		"sitemodel",
-        "substitutionmodel",
-		"tree",
-		"verbosity"
+	static const json_field schema[] = {
+	    {"branchmodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+	    {"datatype", JSON_OPTIONAL, JSON_ANY},
+	    {"distribution", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+	    {"format", JSON_OPTIONAL, JSON_STRING},
+	    {"internal", JSON_OPTIONAL, JSON_BOOL},
+	    {"length", JSON_OPTIONAL, JSON_NUMBER},
+	    {"output", JSON_OPTIONAL, JSON_ANY},
+	    {"scaler", JSON_OPTIONAL, JSON_NUMBER},
+	    {"seed", JSON_OPTIONAL, JSON_NUMBER},
+	    {"sitemodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+	    {"substitutionmodel", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+	    {"tree", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+	    {"verbosity", JSON_OPTIONAL, JSON_NUMBER},
 	};
-	json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
     char* output = get_json_node_value_string(node, "output");
     char* format = get_json_node_value_string(node, "format");
@@ -397,15 +397,21 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     }
     
     DataType* datatype = NULL;
-    if(datatype_node->node_type == MJSON_STRING && (strcasecmp((char*)datatype_node->value, "nucleotide") == 0 ||
-                                                    strcasecmp((char*)datatype_node->value, "codon") == 0 || strcasecmp((char*)datatype_node->value, "aa") == 0)){
-        datatype = new_DataType_from_json(datatype_node, hash);
+    if(datatype_node->node_type == MJSON_STRING){
+        char* ref = (char*)datatype_node->value;
+        if(ref[0] == '&'){
+            datatype = Hashtable_get(hash, ref + 1);
+            datatype->ref_count++;
+        }
+        // nucleotide, aa, codon
+        else if(strcasecmp(ref, "nucleotide") == 0 || strcasecmp(ref, "codon") == 0 || strcasecmp(ref, "aa") == 0){
+            datatype = new_DataType_from_json(datatype_node, hash);
+        }
+        else{
+            fprintf(stderr, "Cannot recognize datatype `%s'", ref);
+        }
     }
-    else if (datatype_node->node_type == MJSON_STRING && Hashtable_exists(hash, (char*)datatype_node->value)) {
-        datatype = Hashtable_get(hash, (char*)datatype_node->value);
-        datatype->ref_count++;
-    }
-    else{
+    else {
         datatype = new_DataType_from_json(datatype_node, hash);
         Hashtable_add(hash, datatype->name, datatype);
     }

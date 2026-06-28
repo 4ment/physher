@@ -89,7 +89,7 @@ ModelAveraged * model_averaging( ModelToAverage **models, unsigned nModels, doub
 	
 	// Minimum IC
 	for ( ; i < nModels; i++) {
-		minv = dmin(models[i]->IC, minv);
+		minv = fmin(models[i]->IC, minv);
 	}
 	
 	fprintf(stderr, ". Minimum IC %f\n",minv);
@@ -128,8 +128,8 @@ ModelAveraged * model_averaging( ModelToAverage **models, unsigned nModels, doub
 		for ( int p = 0; p < p95; p++) {
 			double model_value   = models[p]->params[i]   * models[p]->weight / cumWeight;
 			value += model_value;			
-			value_max = dmax(value_max, models[p]->params[i]);
-			value_min = dmin(value_min, models[p]->params[i]);
+			value_max = fmax(value_max, models[p]->params[i]);
+			value_min = fmin(value_min, models[p]->params[i]);
 		}
 		
 		modelAveraged->mean[i] = value;

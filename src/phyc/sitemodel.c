@@ -1163,18 +1163,27 @@ void free_SiteModel( SiteModel *sm ){
 }
 
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
-	char* allowed[] = {
-		"distribution",
-		"epsilon",
-		"invariant",
-		"model",
-		"mu",
-		"proportions",
-		"rates",
-		"sitepattern",
-		"substitutionmodel" // allowed for backward compatibility
+	static const json_field schema[] = {
+		{"a", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},        // Kumaraswamy a
+		{"alpha", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},    // Beta alpha
+		{"b", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},        // Kumaraswamy b
+		{"beta", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},     // Beta beta
+		{"categories", JSON_OPTIONAL, JSON_NUMBER},
+		{"distribution", JSON_OPTIONAL, JSON_STRING},
+		{"epsilon", JSON_OPTIONAL, JSON_NUMBER},
+		{"invariant", JSON_OPTIONAL, JSON_BOOL},
+		{"model", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"mu", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"parameters", JSON_OPTIONAL, JSON_ANY},
+		{"proportions", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"quadrature", JSON_OPTIONAL, JSON_STRING},
+		{"rates", JSON_OPTIONAL, JSON_ANY},
+		{"scale", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},    // lognormal scale
+		{"shape", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},    // gamma/Weibull shape
+		{"sitepattern", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"substitutionmodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},  // legacy alias of "model"
 	};
-	//json_check_allowed(node, allowed, sizeof(allowed)/sizeof(allowed[0]));
+	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* id = get_json_node_value_string(node, "id");
 	json_node* distribution_node = get_json_node(node, "distribution");
