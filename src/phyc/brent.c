@@ -253,6 +253,22 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
     if (fb < fa && fb < fc)
         return;
 
+    // Expanding towards an infinite bound, the objective may keep decreasing
+    // yet flatten onto an asymptote (bounded below as x -> +/-inf). There is
+    // then no interior minimum to bracket -- the infimum is at the unreachable
+    // bound. Without a guard the expansion marches off to +/-1e40, emits a
+    // "could not find a valid bracket" warning, and leaves the parameter pegged
+    // at a value from which the outer optimiser cannot recover (the local slope
+    // there is numerically zero). One way this arises is a free coordinate that
+    // maps onto a constrained quantity collapsing to its boundary, but it is a
+    // generic property of the objective and does not assume any transform.
+    // We detect the flattening and pin a boundary-style bracket at the current
+    // best finite point, which is at the asymptote to within flat_tol and stays
+    // in a region where the parameter remains recoverable. MAX_REACH is a hard
+    // backstop on how far past the start we are willing to travel.
+    const double MAX_REACH = 60.0;
+    const double flat_tol = 1e-9 * fmax(1.0, fabs(fb));
+
     // --- 5️⃣ Expand towards decreasing direction ---
     if (fc < fb) {
         for (int i = 0; i < max_iter; ++i) {
@@ -265,6 +281,11 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 			Parameter_set_value_at(xx, *c, index);
             fc = f(NULL, NULL, data);
             if (fb < fa && fb < fc) return;
+            if (isinf(upper) && (fb - fc <= flat_tol || *b > x + MAX_REACH)) {
+                // Asymptotic minimum against the +inf bound: pin at best point.
+                *c = *b;  // [interior(higher), best, best], fa > fb
+                return;
+            }
             if (*c >= upper) return;
         }
     } else {
@@ -278,12 +299,17 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 			Parameter_set_value_at(xx, *a, index);
             fa = f(NULL, NULL, data);
             if (fb < fa && fb < fc) return;
+            if (isinf(lower) && (fb - fa <= flat_tol || *b < x - MAX_REACH)) {
+                // Asymptotic minimum against the -inf bound: pin at best point.
+                *a = *b;  // [best, best, interior(higher)], fc > fb
+                return;
+            }
             if (*a <= lower) return;
         }
     }
 
-    fprintf(stderr, "Warning: could not find a valid bracket around x=%g\n", x);
-	printf("%zu %f %f\n", index, Parameter_lower(xx), Parameter_upper(xx));
+    fprintf(stderr, "Warning: could not find a valid bracket around x=%g [%g, %g]\n",
+            x, Parameter_lower(xx), Parameter_upper(xx));
 }
 
 
