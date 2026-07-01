@@ -109,12 +109,6 @@ static void _site_model_accept(Model* self){
 	}
 }
 
-static void _site_model_handle_restore( Model *self, Model *model, int index ){
-	SiteModel *sm = (SiteModel*)self->obj;
-	sm->need_update = true;// one of the sitemodel parameters
-	self->listeners->fire_restore( self->listeners, self, index );
-}
-
 static void _site_model_free( Model *self ){
 #ifdef DEBUG_REF_COUNTING
 	printf("Free site model: %d\n", self->ref_count);
@@ -213,7 +207,6 @@ Model * new_SiteModel2( const char* name, SiteModel *sm ){
 	}
 	
 	model->update = _site_model_handle_change;
-	model->handle_restore = _site_model_handle_restore;
 	model->store = _site_model_store;
 	model->restore = _site_model_restore;
 	model->accept = _site_model_accept;

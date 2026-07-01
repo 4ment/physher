@@ -91,7 +91,6 @@ struct _Parameter{
 	// Model* model_obj;
 	Transform *transform;
 	void (*update)(Parameter *, Model *, Parameter *, int);
-	void (*handle_restore)(Parameter *, Model *, int);
 };
 
 

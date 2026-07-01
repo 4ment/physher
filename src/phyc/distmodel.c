@@ -211,10 +211,6 @@ void _dist_model_handle_change( Model *self, Model *model, Parameter* parameter,
 	self->listeners->fire( self->listeners, self, parameter, index );
 }
 
-void _dist_model_handle_restore( Model *self, Model *model, int index ){
-	self->listeners->fire_restore( self->listeners, self, index );
-}
-
 static void _dist_model_store(Model* self){
 	if(!self->stored){
 		self->storedLogP = self->lp;
@@ -371,7 +367,6 @@ Model* new_DistributionModel2(const char* name, DistributionModel* dm){
 	model->restore = _dist_model_restore;
 	model->accept = _dist_model_accept;
 	model->update = _dist_model_handle_change;
-	model->handle_restore = _dist_model_handle_restore;
 	model->sample = _dist_model_sample;
 	model->rsample = _dist_model_rsample;
 	model->samplable = false;

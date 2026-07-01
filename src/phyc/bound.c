@@ -72,9 +72,6 @@ static void _BoundModel_handle_change(Model* self, Model* model, Parameter* para
     self->listeners->fire(self->listeners, self, parameter, index);
 }
 
-static void _BoundModel_handle_restore(Model* self, Model* model, int index) {
-    self->listeners->fire_restore(self->listeners, self, index);
-}
 
 static void _BoundModel_free(Model* self) {
     if(self->ref_count == 1){
@@ -99,7 +96,6 @@ Model* new_BoundModel(const char* name, Bound* bound) {
     model->sample = NULL;
     model->samplable = false;
     model->update = _BoundModel_handle_change;
-    model->handle_restore = _BoundModel_handle_restore;
 
     // Listen to the submodels so changes to the variational parameters (and the
     // joint's parameters) propagate up to anything listening to the bound. The

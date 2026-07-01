@@ -55,6 +55,7 @@ static void _coalescent_model_store(Model* self){
 		// FIXME: coalescent->nodes is not stored/restored
 		if(self->data != NULL){
 			Model** models = self->data;
+			models[0]->store(models[0]); // tree (redundant when another owner stores it; latch makes it free)
 			if(models[1] != NULL) models[1]->store(models[1]);
 		}
 		self->storedLogP = self->lp;
@@ -73,6 +74,7 @@ static void _coalescent_model_restore(Model* self){
 
 		if(self->data != NULL){
 			Model** models = self->data;
+			models[0]->restore(models[0]); // tree
 			if(models[1] != NULL) models[1]->restore(models[1]);
 		}
 		self->lp = self->storedLogP;
@@ -88,6 +90,7 @@ static void _coalescent_model_accept(Model* self){
 
 		if(self->data != NULL){
 			Model** models = self->data;
+			models[0]->accept(models[0]); // tree
 			if(models[1] != NULL) models[1]->accept(models[1]);
 		}
 		self->stored = false;
@@ -324,15 +327,6 @@ static void _coalescent_model_handle_change( Model *self, Model *model, Paramete
 	self->listeners->fire( self->listeners, self, parameter, index );
 }
 
-static void _coalescent_model_handle_restore( Model *self, Model *model, int index ){
-	Coalescent *c = (Coalescent*)self->obj;
-	memcpy(c->iscoalescent, c->stored_iscoalescent, c->n*sizeof(bool));
-	memcpy(c->times, c->stored_times, c->n*sizeof(double));
-	memcpy(c->lineages, c->stored_lineages, c->n*sizeof(int));
-	c->logP = c->stored_logP;
-	self->listeners->fire_restore( self->listeners, self, index );
-}
-
 Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tree, Model* groups){
 	Model* model = new_Model(MODEL_COALESCENT, name, coalescent);
 	for ( int i = 0; i < Parameters_count(coalescent->p); i++ ) {
@@ -353,7 +347,6 @@ Model* new_CoalescentModel2(const char* name, Coalescent* coalescent, Model* tre
 	model->sample = _coalescent_model_sample;
 	
 	model->update = _coalescent_model_handle_change;
-	model->handle_restore = _coalescent_model_handle_restore;
 
 	model->data = NULL;
 	if(tree != NULL || groups != NULL){

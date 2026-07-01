@@ -28,7 +28,6 @@
 #include "parameters.h"
 
 static void _dummy_update(Model* self, Model* model, Parameter* parameter, int index) {}
-static void _dummy_restore_update(Model* self, Model* model, int index) {}
 static double _logP(Model *model){return 0;}
 static double _fulllogP(Model *model){return model->logP(model);}
 static void _dummy_gradient(Model *model, Parameters* ps){
@@ -67,7 +66,6 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->gradient = _dummy_gradient;
 	model->hessian = Model_hessian_fd;
 	model->update = _dummy_update;
-	model->handle_restore = _dummy_restore_update;
 	model->free = free_Model;
 	model->data = NULL;
 	model->listeners = new_ListenerList(1);
@@ -138,17 +136,6 @@ static void _ListenerList_fire(ListenerList* listeners, Model* model,
     }
 }
 
-static void _ListenerList_fire_restore( ListenerList *listeners, Model* model, int index){
-    if (listeners->enabled == false) return;
-    for (int i = 0; i < listeners->count; i++) {
-        listeners->models[i]->handle_restore(listeners->models[i], model, index);
-    }
-    for (size_t i = 0; i < Parameters_count(listeners->parameters); i++) {
-        Parameter* p = Parameters_at(listeners->parameters, i);
-        p->handle_restore(p, model, index);
-    }
-}
-
 static void _ListenerList_remove( ListenerList *listeners, Model* model ){
 	int i = 0;
 	for ( ; i < listeners->count; i++ ) {
@@ -203,7 +190,6 @@ ListenerList * new_ListenerList( const unsigned capacity ){
 	listeners->removeAll = _ListenerList_remove_all;
 	listeners->add_parameter = _ListenerList_add_parameter;
 	listeners->fire = _ListenerList_fire;
-	listeners->fire_restore = _ListenerList_fire_restore;
 	listeners->enabled = true;
 	return listeners;
 }

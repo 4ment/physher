@@ -135,12 +135,6 @@ static void _branchmodel_handle_change(Model *self, Model *model, Parameter *par
     bm->need_update = true;
 }
 
-static void _branch_model_handle_restore( Model *self, Model *model, int index ){
-	BranchModel* bm = (BranchModel*)self->obj;
-	bm->need_update = true;
-	self->listeners->fire_restore( self->listeners, self, index );
-}
-
 static void _branch_model_store(Model* self){
 	if(!self->stored){
 		Model* mtree = ((Model**)self->data)[0];
@@ -163,7 +157,6 @@ static void _branch_model_restore(Model* self){
 		BranchModel* bm = (BranchModel*)self->obj;
 		bm->need_update = true;
 		Parameters_restore(bm->rates);
-		// p->listeners->fire_restore(p->listeners, NULL, p->id);
 
 		if(bm->ssvs != NULL){
 			Model* mdp = ((Model**)self->data)[1];
@@ -268,7 +261,6 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model*
 		bm->ssvs->listeners->add(bm->ssvs->listeners, model);
 	}
 	model->update = _branchmodel_handle_change;
-	model->handle_restore = _branch_model_handle_restore;
 	model->store = _branch_model_store;
 	model->restore = _branch_model_restore;
 	model->accept = _branch_model_accept;

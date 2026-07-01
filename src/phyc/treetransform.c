@@ -955,21 +955,6 @@ static void _tree_transform_model_accept(Model *self) {
     }
 }
 
-void _tree_transform_model_handle_restore(Model *self, Model *model, int index) {
-    TreeTransform *tt = (TreeTransform *)self->obj;
-    size_t offset = Parameter_size(Parameters_at(tt->parameters, 0)) - (tt->tipCount - 2);
-    if(offset > 0 && index >= 0){
-        if((size_t)index < offset){
-            self->listeners->fire_restore(self->listeners, self, Node_id(_tree_transform_unknown_leaf(tt, index)));
-        }
-        else{
-            self->listeners->fire_restore(self->listeners, self, tt->tipCount + (index - offset));
-        }
-        return;
-    }
-    self->listeners->fire_restore(self->listeners, self, tt->tipCount + index);
-}
-
 static void _tree_transform_model_free(Model *self) {
     if (self->ref_count == 1) {
         TreeTransform *tt = (TreeTransform *)self->obj;
@@ -1005,8 +990,7 @@ Model *new_TreeTransformModel(const char *name, TreeTransform *tt, Model *tree) 
     model->restore = _tree_transform_model_restore;
     model->accept = _tree_transform_model_accept;
     model->update = _tree_transform_model_handle_change;
-    model->handle_restore = _tree_transform_model_handle_restore;
-	
+
 	model->logP = _tree_transform_model_logP;
 
     model->data = tree;//never used could also create a leak with circular references

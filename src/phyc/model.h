@@ -95,7 +95,6 @@ struct _ListenerList {
     Parameters *parameters;
     void (*free)(ListenerList *);
     void (*fire)(ListenerList *, Model *, Parameter *, int);
-    void (*fire_restore)(ListenerList *, Model *, int);
     void (*add)(ListenerList *, Model *);
 	void (*add_parameter)(ListenerList *, Parameter *);
     void (*remove)(ListenerList *, Model *);
@@ -132,7 +131,6 @@ struct _Model {
 	Model* (*clone)( Model *, Hashtable* );
 	void (*free)( Model * );
 	void (*update)( Model *, Model *, Parameter*, int );
-	void (*handle_restore)( Model *, Model *, int );
 	void (*reset)(Model*);
 	void (*sample)(Model *);
 	void (*rsample)(Model *);

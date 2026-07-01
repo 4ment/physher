@@ -176,7 +176,6 @@ void _parameter_handle_update(Parameter* self, Model* model, Parameter* paramete
                               int index) {
     Parameter_fire(self, index);
 }
-void _parameter_handle_restore(Parameter* self, Model* model, int index) {}
 
 // Owns the constraint by default
 Parameter * new_Parameter( const char *name, const double value, Constraint *constr ){
@@ -205,7 +204,6 @@ Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, 
 		strcpy(p->name+name_len+1, postfix);
 	}
 	p->update = _parameter_handle_update;
-	p->handle_restore = _parameter_handle_restore;
 	p->value = clone_dvector(value, dim);
 	p->stored_value = clone_dvector(value, dim);
 	p->stored = false;
@@ -229,7 +227,6 @@ Parameter * new_Parameter_full( const char *name, double value, size_t dim, Cons
 	p->name = String_clone(name);
 	assert(p->name);
 	p->update = _parameter_handle_update;
-	p->handle_restore = _parameter_handle_restore;
 	p->value = dvector(dim);
 	p->stored_value = dvector(dim);
 	for(size_t i = 0; i < dim; i++){
@@ -257,7 +254,6 @@ Parameter * new_ParameterModel( const char *name, const double* value, size_t di
 	
 	p->name = String_clone(name);
 	p->update = _parameter_handle_update;
-	p->handle_restore = _parameter_handle_restore;
 	assert(p->name);
 	if(value != NULL){
 		p->value = clone_dvector(value, dim);
@@ -744,7 +740,6 @@ void Parameter_restore(Parameter* p) {
     // if (memcmp(p->stored_value, p->value, sizeof(double) * p->dim) != 0) {
 	if(p->stored){
         memcpy(p->value, p->stored_value, sizeof(double) * p->dim);
-        // p->listeners->fire_restore(p->listeners, NULL, p->id);
         if (p->transform != NULL) {
             Parameter_restore(p->transform->parameter);
         }

@@ -124,18 +124,6 @@ void _treelikelihood_handle_change( Model *self, Model *model, Parameter* parame
 	}
 }
 
-void _treelikelihood_handle_restore( Model *self, Model *model, int index ){
-// parameters are restored of evry model is restored but models can be dirty
-//	((SingleTreeLikelihood*)self->obj)->update = true;
-	SingleTreeLikelihood* tlk = self->obj;
-	memcpy(tlk->current_matrices_indexes, tlk->stored_matrices_indexes, sizeof(unsigned)*Tree_node_count(tlk->tree)*2);
-	memcpy(tlk->current_partials_indexes, tlk->stored_partials_indexes, sizeof(unsigned)*Tree_node_count(tlk->tree)*2);
-	tlk->lk = tlk->stored_lk;
-	self->listeners->fire_restore( self->listeners, self, index );
-	fprintf(stderr, "Restoring treelikelihood disabled\n");
-	exit(2);
-}
-
 static void _singleTreeLikelihood_store(Model* self){
 	if(!self->stored){
 		SingleTreeLikelihood* tlk = self->obj;
@@ -374,7 +362,6 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	m->listeners->add( m->listeners, model );
 	if(bm != NULL)bm->listeners->add( bm->listeners, model );
 	sm->listeners->add( sm->listeners, model );
-	model->handle_restore = _treelikelihood_handle_restore;
 	
 	model->logP = _singleTreeLikelihood_logP;
 	model->full_logP = _singleTreeLikelihood_full_logP;

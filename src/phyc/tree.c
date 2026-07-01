@@ -308,7 +308,6 @@ void Tree_save(Tree* tree){
 	Parameter_store(tree->distances);
 }
 
-// Tree_restore does not trigger a restore event through fire_restore
 // This function is used by nniopt to test nnis
 void Tree_revert(Tree* tree){
 	//FIMXE: this is not working because of distances being a single parameter
@@ -1183,10 +1182,6 @@ static void _tree_model_accept(Model* self){
 	}
 }
 
-void _tree_handle_restore( Model *self, Model *model, int index ){
-	self->listeners->fire_restore( self->listeners, self, index );
-}
-
 static void _tree_model_free( Model *self ){
 #ifdef DEBUG_REF_COUNTING
 	printf("Free tree model: %d\n", self->ref_count);
@@ -1302,7 +1297,6 @@ Model * new_TreeModel2( const char* name, Tree *tree, Model* modelTransform ){
 	
 	free_StringBuffer(buffer);
 	model->update = _tree_handle_change;
-	model->handle_restore = _tree_handle_restore;
 	model->store = _tree_model_store;
 	model->restore = _tree_model_restore;
 	model->accept = _tree_model_accept;

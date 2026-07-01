@@ -107,13 +107,6 @@ static void _substitution_model_accept(Model* self) {
 	}
 }
 
-static void _substitution_model_handle_restore( Model *self, Model *model, int index ){
-	SubstitutionModel* m = (SubstitutionModel*)self->obj;
-	m->need_update = true;
-	m->dQ_need_update = true;
-	self->listeners->fire_restore( self->listeners, self, index );
-}
-
 static void _substitution_model_free( Model *self ){
 #ifdef DEBUG_REF_COUNTING
 	printf("Free substitution model: %d\n", self->ref_count);
@@ -260,7 +253,6 @@ Model * new_SubstitutionModel3( const char* name, SubstitutionModel *sm, Model* 
 	}
 	
 	model->update = _substitution_model_handle_change;
-	model->handle_restore = _substitution_model_handle_restore;
 	model->store = _substitution_model_store;
 	model->restore = _substitution_model_restore;
 	model->accept = _substitution_model_accept;
