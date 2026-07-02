@@ -91,8 +91,8 @@ Model* new_BoundModel(const char* name, Bound* bound) {
     model->gradient = _BoundModel_gradient;
     model->free = _BoundModel_free;
     model->clone = NULL;
-    model->store = NULL;
-    model->restore = NULL;
+    // store/restore/accept keep the safe no-op dummies from new_Model: this is a
+    // variational-only model that never participates in MCMC state rollback.
     model->sample = NULL;
     model->samplable = false;
     model->update = _BoundModel_handle_change;

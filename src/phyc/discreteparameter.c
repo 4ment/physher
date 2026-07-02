@@ -82,15 +82,23 @@ static void _discrete_parameter_model_handle_change(Model* self, Model* model,
 }
 
 static void _discrete_parameter_model_store(Model* self){
-	DiscreteParameter* dp = (DiscreteParameter*)self->obj;
-	memcpy(dp->stored_values, dp->values, dp->length*sizeof(unsigned));
+	if(!self->stored){
+		DiscreteParameter* dp = (DiscreteParameter*)self->obj;
+		memcpy(dp->stored_values, dp->values, dp->length*sizeof(unsigned));
+		self->stored = true;
+	}
 }
 
 static void _discrete_parameter_model_restore(Model* self){
-	DiscreteParameter* dp = (DiscreteParameter*)self->obj;
-	if (memcmp(dp->values, dp->stored_values, dp->length*sizeof(unsigned)) != 0) {
+	if(self->stored){
+		DiscreteParameter* dp = (DiscreteParameter*)self->obj;
 		memcpy(dp->values, dp->stored_values, dp->length*sizeof(unsigned));
+		self->stored = false;
 	}
+}
+
+static void _discrete_parameter_model_accept(Model* self){
+	self->stored = false;
 }
 
 static void _discrete_parameter_model_free( Model *self ){
@@ -121,6 +129,7 @@ Model * new_DiscreteParameterModel( const char* name, DiscreteParameter *dp ){
 	model->update = _discrete_parameter_model_handle_change;
 	model->store = _discrete_parameter_model_store;
 	model->restore = _discrete_parameter_model_restore;
+	model->accept = _discrete_parameter_model_accept;
 	model->free = _discrete_parameter_model_free;
 	model->clone = _discrete_parameter_model_clone;
 	

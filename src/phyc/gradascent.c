@@ -330,16 +330,17 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 		double beta1p = pow(beta1, stop->iter);
 		double beta2p = pow(beta2, stop->iter);
 
-		size_t i = 0;
-		for(i = 0; i < Parameters_count(parameters); i++){
-			Parameter* p = Parameters_at(parameters, i);
+		bool has_nan = false;
+		for(size_t k = 0; k < Parameters_count(parameters) && !has_nan; k++){
+			Parameter* p = Parameters_at(parameters, k);
 			for(size_t j = 0; j < Parameter_size(p); j++){
 				if(isnan(p->grad[j])){
+					has_nan = true;
 					break;
 				}
 			}
 		}
-		if(i == dim){
+		if(!has_nan){
 			failure_count = 0;
 		}
 		else if(failure_count < max_failures){
@@ -348,11 +349,12 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 			continue;
 		}
 
-		i = 0;
+		size_t i = 0;
 		for(size_t k = 0; k < Parameters_count(parameters); k++){
 			Parameter* p = Parameters_at(parameters, k);
 			if (Parameter_estimate(p)) {
 				const double* v = Parameter_values(p);
+				bool log_space = p->cnstr != NULL && Constraint_lower(p->cnstr) == 0.0;
 				for (size_t j = 0; j < Parameter_size(p); j++) {
 					double grad = maximize ? -p->grad[j] : p->grad[j];
 					mean_grad[i] = beta1*mean_grad[i] + (1.0 - beta1)*grad;
@@ -360,7 +362,7 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 					double hat_mean_grad = mean_grad[i]/(1.0 - beta1p);
 					double hat_var_grad = var_grad[i]/(1.0 - beta2p);
 
-					if (Constraint_lower(p->cnstr) == 0.0) {
+					if (log_space) {
 						temp[j] = exp(log(v[j]) - eta_scaled * hat_mean_grad/(sqrt(hat_var_grad) + eps));
 					}
 					else{
@@ -431,7 +433,7 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 }
 
 opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer){
-	size_t dim = Parameters_count(parameters);
+	size_t dim = Parameters_size(parameters);
 	double tau = 1;
 	double pre_factor  = 0.9;
 	double post_factor = 0.1;
@@ -449,6 +451,7 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 	}
 	double* grads = calloc(dim, sizeof(double));
 	double *history_grad_squared = calloc(dim, sizeof(double));
+	double* temp = calloc(dim, sizeof(double));
 	
 	opt_result result = OPT_SUCCESS;
 	
@@ -472,25 +475,35 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 		
 		// Update step-size
 		if (stop->iter == 1) {
-			for (int i = 0; i < dim; i++) {
+			for (size_t i = 0; i < dim; i++) {
 				history_grad_squared[i] = grads[i]*grads[i];
 			}
 		} else {
-			for (int i = 0; i < dim; i++) {
+			for (size_t i = 0; i < dim; i++) {
 				history_grad_squared[i] = pre_factor * history_grad_squared[i] + post_factor * grads[i]*grads[i];
 			}
 		}
 		// ascent
-		for (int i = 0; i < dim; i++) {
-			if (Parameters_estimate(parameters, i)) {
-                double v = Parameters_value(parameters, i);
-                if (Parameters_constraint(parameters, i) != NULL && Parameters_lower(parameters, i) == 0) {
-                    v = exp(log(v) + eta_scaled * grads[i] / (tau + sqrt(history_grad_squared[i])));
-                }
-                else{
-                    v += eta_scaled * grads[i] / (tau + sqrt(history_grad_squared[i]));
-                }
-				Parameters_set_value(parameters, i, v);
+		size_t index = 0;
+		for (size_t k = 0; k < Parameters_count(parameters); k++) {
+			Parameter* p = Parameters_at(parameters, k);
+			if (Parameter_estimate(p)) {
+				const double* v = Parameter_values(p);
+				bool log_space = p->cnstr != NULL && Parameter_lower(p) == 0;
+				for (size_t j = 0; j < Parameter_size(p); j++) {
+					double step = eta_scaled * grads[index] / (tau + sqrt(history_grad_squared[index]));
+					if (log_space) {
+						temp[j] = exp(log(v[j]) + step);
+					}
+					else{
+						temp[j] = v[j] + step;
+					}
+					index++;
+				}
+				Parameter_set_values(p, temp);
+			}
+			else{
+				index += Parameter_size(p);
 			}
 		}
 		
@@ -533,6 +546,7 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 		}
 	}
 	free(grads);
+	free(temp);
 	if(elbos != NULL) free(elbos);
 	free(history_grad_squared);
 	if(eval_elbo == 0){
