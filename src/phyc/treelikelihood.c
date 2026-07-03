@@ -392,7 +392,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	static const json_field schema[] = {
 		{"branchmodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
 		{"include_jacobian", JSON_OPTIONAL, JSON_BOOL},
-		{"reparameterized", JSON_OPTIONAL, JSON_BOOL},  // deprecated alias of include_jacobian
+		{"reparameterized", JSON_FORBIDDEN, JSON_BOOL},  // deprecated alias of include_jacobian
 		{"root_frequencies", JSON_OPTIONAL, JSON_BOOL},
 		{"sitemodel", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
 		{"sitepattern", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
@@ -482,7 +482,6 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 		}
 		bm = mbm->obj;
 		if(get_reparams(mtree->obj) != NULL){
-			include_jacobian = get_json_node_value_bool(node, "reparameterized", false);
 			include_jacobian |= get_json_node_value_bool(node, "include_jacobian", false);
 		}
 	}

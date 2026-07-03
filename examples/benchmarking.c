@@ -20,18 +20,19 @@ double mseconds(struct timespec start, struct timespec end) {
            (end.tv_nsec - start.tv_nsec) / 1000000.;
 }
 
+// Order must match the tree_transform_t enum in treetransform.h:
+// NAIVE=0, RATIO=1, SHIFT=2, PROPORTION=3
 char* transformations[4] ={
     "naive",
     "ratios",
-    "proportions",
-    "shifts"
+    "shifts",
+    "proportions"
 };
 
 char* json_jc69_strict =
     "{ \
 	\"id\":\"treelikelihood\", \
 	\"type\": \"treelikelihood\", \
-	\"reparameterized\": true, \
 	\"sse\":true, \
 	\"tipstates\": false, \
 	\"sitepattern\": \"&patterns\", \
@@ -153,7 +154,6 @@ void test_height_transform_jacobian(size_t iter, const char* newick,
     TreeModel_set_transform(mtree, reparameterization);
     Model* mtt = mtree->data;
     TreeTransform* tt = mtt->obj;
-    Parameters* reparams = get_reparams(tree);
     tt->update(tt);  // update once
 
     double logP;
@@ -213,7 +213,6 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
     TreeModel_set_transform(mtree, reparameterization);
     Model* mtt = mtree->data;
     TreeTransform* tt = mtt->obj;
-    Parameters* reparams = get_reparams(tree);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (size_t i = 0; i < iter; i++) {
@@ -225,9 +224,12 @@ void test_height_transform(size_t iter, const char* newick, int reparameterizati
         fprintf(csv, "transform-%s,evaluation,off,%f,\n", transformations[reparameterization],
                 mseconds(start, end) / 1000.);
 
+    // Output gradient is indexed by internal-node class id (range 0..tips-2).
     double* gradient = malloc((Tree_tip_count(tree) - 1) * sizeof(double));
-    double* height_gradient = malloc((Tree_tip_count(tree) - 1) * sizeof(double));
-    for (size_t i = 0; i < Tree_tip_count(tree) - 1; i++) {
+    // Input height gradient is indexed by global node id (range 0..node_count-1),
+    // so it must be sized by the total node count, not the internal-node count.
+    double* height_gradient = malloc(Tree_node_count(tree) * sizeof(double));
+    for (size_t i = 0; i < Tree_node_count(tree); i++) {
         height_gradient[i] = 1.0;
     }
 
@@ -374,6 +376,7 @@ void test_skyglide(size_t iter, const char* newick, FILE* csv, bool debug,
 
     model->free(model);
     mtree->free(mtree);
+    free_Parameters(parameters);
 }
 
 // Calculate the log tree likelihood of a time tree (log det Jacbian term is
@@ -403,11 +406,10 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
     init_heights_from_distances(tree);
 
     Model* mtree = new_TreeModel("tree", tree);
-    TreeModel_set_transform(mtree, TREE_TRANSFORM_RATIO);
+    TreeModel_set_transform(mtree, reparameterization);
     Hashtable_add(hash2, "tree", mtree);
 
     Model* mlike = new_TreeLikelihoodModel_from_json(json, hash2);
-    SingleTreeLikelihood* tlk = mlike->obj;
     Model* mtt = mtree->data;  // node height transform
     mtree->free(mtree);
 
@@ -421,6 +423,10 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu evaluations: %f ms (%f)\n", iter, mseconds(start, end), logP);
+    if (csv != NULL)
+        fprintf(csv, "treelikelihood-time-%s,evaluation,off,%f,%f\n",
+                transformations[reparameterization], mseconds(start, end) / 1000.,
+                logP);
 
     if (debug) {
         printf("logP %f\n", logP);
@@ -437,6 +443,9 @@ void test_tree_likelihood_time(size_t iter, char* fasta_file, const char* newick
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     printf("  %zu gradient evaluations: %f ms\n", iter, mseconds(start, end));
+    if (csv != NULL)
+        fprintf(csv, "treelikelihood-time-%s,gradient,off,%f,\n",
+                transformations[reparameterization], mseconds(start, end) / 1000.);
 
     if (debug) {
         Parameters_zero_grad(ps);
@@ -601,7 +610,7 @@ int main(int argc, char* argv[]) {
     printf("naive:\n");
     test_height_transform_jacobian(iter, newick, TREE_TRANSFORM_RATIO_NAIVE, csv,
                                    debug);
-    printf("efficient:\n");
+    printf("ratios:\n");
     test_height_transform_jacobian(iter, newick, TREE_TRANSFORM_RATIO, csv, debug);
     printf("proportions:\n");
     test_height_transform_jacobian(iter, newick, TREE_TRANSFORM_PROPORTION, csv, debug);
@@ -609,7 +618,7 @@ int main(int argc, char* argv[]) {
     printf("Height transform:\n");
     printf("naive:\n");
     test_height_transform(iter, newick, TREE_TRANSFORM_RATIO_NAIVE, csv, debug);
-    printf("efficient:\n");
+    printf("ratios:\n");
     test_height_transform(iter, newick, TREE_TRANSFORM_RATIO, csv, debug);
     printf("proportions:\n");
     test_height_transform(iter, newick, TREE_TRANSFORM_PROPORTION, csv, debug);
@@ -631,8 +640,11 @@ int main(int argc, char* argv[]) {
                                   csv, debug);
 
     printf("Tree likelihood time tree:\n");
-    test_tree_likelihood_time(iter, fasta_file, newick, 0, csv, debug);
-    test_tree_likelihood_time(iter, fasta_file, newick, 1, csv, debug);
+    printf("naive:\n");
+    test_tree_likelihood_time(iter, fasta_file, newick, TREE_TRANSFORM_RATIO_NAIVE, csv,
+                              debug);
+    printf("ratios:\n");
+    test_tree_likelihood_time(iter, fasta_file, newick, TREE_TRANSFORM_RATIO, csv, debug);
 
     free(newick);
     if (csv != NULL) {

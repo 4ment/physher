@@ -671,6 +671,32 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
 		exit(2);
 	}
 
+    // The shift parameterization has a distinct layout: a single parameter with one
+    // slot per internal node (indexed by class id, root included) holding
+    // height - max(child heights). There is no separate root-height parameter, so it
+    // must not share the ratio/proportion construction below (which splits the root
+    // out and would size the parameter one slot too small: tipCount-2 vs tipCount-1).
+    if (parameterization == TREE_TRANSFORM_SHIFT) {
+        size_t shiftCount = tt->tipCount - 1;
+        double *shift_values = dvector(shiftCount);
+        Node **shiftNodes = Tree_get_nodes(tree, PREORDER);
+        for (int i = 0; i < Tree_node_count(tree); i++) {
+            Node *node = shiftNodes[i];
+            if (!Node_isleaf(node)) {
+                shift_values[Node_class_id(node)] = tt->inverse_transform(tt, node);
+            }
+        }
+        Parameter *shifts = new_Parameter_with_postfix2("shifts", "", shift_values,
+                                                        shiftCount,
+                                                        new_Constraint(0, INFINITY));
+        Parameter_set_model(shifts, MODEL_TREE_TRANSFORM);
+        Parameters_move(tt->parameters, shifts);
+        free(shift_values);
+        // shift updates derive heights from child heights, not from lowers, and there
+        // is no root-height parameter for tree_transform_collect_lowers to constrain.
+        return tt;
+    }
+
     Node **nodes = Tree_get_nodes(tree, PREORDER);
 
     // Unknown leaf ages become free parameters reparameterized like internal nodes.
