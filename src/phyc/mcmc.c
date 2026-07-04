@@ -1,10 +1,5 @@
-//
-//  mcmc.c
-//  physher
-//
-//  Created by Mathieu Fourment on 2/12/2017.
-//  Copyright © 2017 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "mcmc.h"
 

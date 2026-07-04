@@ -1,10 +1,5 @@
-//
-//  PhyCConfig.h.in.h
-//  PhyC
-//
-//  Created by Mathieu Fourment on 18/12/12.
-//  Copyright (c) 2012 __MyCompanyName__. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifndef PhyC_PhyCConfig_h_in
 #define PhyC_PhyCConfig_h_in

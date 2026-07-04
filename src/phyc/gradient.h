@@ -1,3 +1,6 @@
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 #ifndef gradient_h
 #define gradient_h
 

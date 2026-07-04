@@ -1,9 +1,6 @@
-//
-//  test_coalescent.c
-//  physher
-//  Created by Mathieu Fourment on 25/04/2020.
-//  Copyright © 2020 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 #include <assert.h>
 #include <ctype.h>
 #include <gsl/gsl_deriv.h>

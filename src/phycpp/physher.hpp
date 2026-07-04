@@ -1,5 +1,5 @@
-// Copyright 2016-2022 Mathieu Fourment.
-// physher is free software under the GPLv2; see LICENSE file for details.
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 

@@ -1,10 +1,5 @@
-//
-//  klpq.h
-//  physher
-//
-//  Created by Mathieu Fourment on 8/03/2018.
-//  Copyright © 2018 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifndef klpq_h
 #define klpq_h

@@ -1,10 +1,5 @@
-//
-//  is.h
-//  physher
-//
-//  Created by Mathieu Fourment on 19/12/2017.
-//  Copyright © 2017 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifndef is_h
 #define is_h

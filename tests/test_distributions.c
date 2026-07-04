@@ -1,9 +1,5 @@
-//
-//  test_distributions.c
-//  physher
-//  Created by Mathieu Fourment on 13/03/2018.
-//  Copyright © 2018 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <gsl/gsl_cdf.h>
 #include <gsl/gsl_randist.h>

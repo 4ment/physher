@@ -1,10 +1,5 @@
-//
-//  distexp.h
-//  physher
-//
-//  Created by Mathieu Fourment on 15/03/2019.
-//  Copyright © 2019 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifndef distexp_h
 #define distexp_h

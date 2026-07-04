@@ -1,10 +1,5 @@
-//
-//  gar.c
-//  physher
-//
-//  Created by Mathieu Fourment on 3/11/2025.
-//  Copyright © 2025 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "gar.h"
 

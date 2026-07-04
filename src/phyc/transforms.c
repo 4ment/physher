@@ -1,10 +1,5 @@
-//
-//  transforms.c
-//  viphy
-//
-//  Created by Mathieu Fourment on 4/05/2017.
-//  Copyright © 2017 University of Technology Sydney. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "transforms.h"
 

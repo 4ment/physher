@@ -1,10 +1,5 @@
-//
-//  distweibull.h
-//  physher
-//
-//  Created by mathieu on 20/6/26.
-//  Copyright © 2026 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifndef distweibull_h
 #define distweibull_h

@@ -1,10 +1,5 @@
-//
-//  sampler.c
-//  physher
-//
-//  Created by Mathieu Fourment.
-//  Copyright © 2022 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "sampler.h"
 

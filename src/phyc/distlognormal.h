@@ -1,10 +1,5 @@
-//
-//  distlognormal.h
-//  physher
-//
-//  Created by mathieu on 17/4/20.
-//  Copyright © 2020 Mathieu Fourment. All rights reserved.
-//
+// Copyright (C) 2010-2026 Mathieu Fourment
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #ifndef distlognormal_h
 #define distlognormal_h
