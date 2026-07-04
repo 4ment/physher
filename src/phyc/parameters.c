@@ -1351,6 +1351,32 @@ void get_parameters_slice(const char* ref, Parameters* parameters, Hashtable* ha
 	free(copy);
 }
 
+// Resolve a reference token into `parameters`. The token carries a sigil and an
+// optional trailing slice:
+//   &name       -> the single Parameter registered under `name`
+//   %name       -> splice in every member of the Parameters bundle `name`
+//   &name[i]    -> the single member Parameter at index i of the bundle `name`
+//   %name[a:b]  -> the selected members of the bundle `name`
+// For a sliced reference the sigil is irrelevant: both pull member(s) from the
+// bundle, so `&` simply signals "I expect a single element" at the call site.
+void get_parameter_reference(const char* ref, Hashtable* hash, Parameters* parameters){
+	if (ref[strlen(ref) - 1] == ']') {
+		get_parameters_slice(ref + 1, parameters, hash);
+	}
+	else if (ref[0] == '&') {
+		Parameter* p = Hashtable_get(hash, ref + 1);
+		Parameters_add(parameters, p);
+	}
+	else if (ref[0] == '%') {
+		Parameters* ps = Hashtable_get(hash, ref + 1);
+		Parameters_add_parameters(parameters, ps);
+	}
+	else {
+		fprintf(stderr, "Reference '%s' must start with '&' (Parameter) or '%%' (Parameters)\n", ref);
+		exit(1);
+	}
+}
+
 void get_multi_parameter_from_node(json_node* node, Parameters* parameters){
     size_t dim = get_json_node_value_size_t(node, "dimension", 0);
     json_node* lower_node = get_json_node(node, "lower");
@@ -1400,20 +1426,8 @@ void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* para
 			char* ref = (char*)child->value;
 			// it's a ref
 			if (child->node_type == MJSON_STRING) {
-				if (ref[0] == '&') {
-					Parameter* p = Hashtable_get(hash, ref+1);
-					Parameters_add(parameters, p);
-					
-				}
-				// tree
-				else if (ref[0] == '%') {
-					// slicing
-					if (ref[strlen(ref)-1] == ']') {
-						get_parameters_slice(ref+1, parameters, hash);					}
-					else{
-						Parameters* ps = Hashtable_get(hash, ref+1);
-						Parameters_add_parameters(parameters, ps);
-					}
+				get_parameter_reference(ref, hash, parameters);
+				if (ref[0] == '%') {
 					Parameters_set_name2(parameters, ref+1);
 				}
 			}
@@ -1430,19 +1444,8 @@ void get_parameters_from_node(json_node* node, Hashtable* hash, Parameters* para
 	// it's a ref
 	else if(node->node_type == MJSON_STRING){
 		char* ref = (char*)node->value;
-		if (ref[0] == '&') {
-			Parameter* p = Hashtable_get(hash, ref+1);
-			Parameters_add(parameters, p);
-		}
-		else if (ref[0] == '%') {
-			// slicing
-			if (ref[strlen(ref)-1] == ']') {
-				get_parameters_slice(ref+1, parameters, hash);
-			}
-			else{
-				Parameters* ps = Hashtable_get(hash, ref+1);
-				Parameters_add_parameters(parameters, ps);
-			}
+		get_parameter_reference(ref, hash, parameters);
+		if (ref[0] == '%') {
 			Parameters_set_name2(parameters, ref+1);
 		}
 	}
@@ -1513,12 +1516,7 @@ void  grab_parameters(json_node* node, Hashtable* hash, Parameters* parameters){
         json_node* p_node = nodes[i];
 		if(p_node->node_type == MJSON_STRING){
 			char* ref = (char*)p_node->value;
-			if(ref[0] == '&'){
-				Parameters_add(parameters, Hashtable_get(hash, ref+1));
-			}
-			else if(ref[0] == '%'){
-				Parameters_add_parameters(parameters, Hashtable_get(hash, ref+1));
-			}
+			get_parameter_reference(ref, hash, parameters);
 		}
 		else if(p_node->node_type == MJSON_ARRAY){
 			for (size_t j = 0; j < p_node->child_count; j++) {

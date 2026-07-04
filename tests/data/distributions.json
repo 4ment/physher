@@ -27,7 +27,7 @@
 	"parameters":{
 		"concentration":{"id":"concentration", "type":"parameter", "dimension": 3, "values":[10,1,2]}
 	},
-	"x":"$simplex3"
+	"x":"&simplex3"
 },
 "gamma":{
 	"id":"gamma",
@@ -107,7 +107,7 @@
 	"distribution": "multivariatenormal",
 	"parameters":{
 		"mu":{"id":"multivariatenormal2.mu", "type":"parameter", "dimension": 2, "values": [0.5, 0.1]},
-		"L":{"id":"multivariatenormal2.sigma", "type":"parameter", "dimension": 3, "values": [1,2,3]}
+		"L":{"id":"multivariatenormal2.L", "type":"parameter", "dimension": 3, "values": [1,2,3]}
 	},
 	"x":"%positive2x"
 },

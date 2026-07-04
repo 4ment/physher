@@ -395,13 +395,8 @@ void distmodel_get_parameters(json_node* parameters_node, Hashtable* hash, Param
         // it is a reference
         if(p_node->node_type == MJSON_STRING){
             char* ref = p_node->value;
-            if(ref[0] == '&'){
-                Parameter* p = Hashtable_get(hash, ref+1);
-                Parameters_add(parameters, p);
-            }
-            else if (ref[0] == '%'){
-                Parameters* ps = Hashtable_get(hash, ref+1);
-                Parameters_add_parameters(parameters, ps);
+            if(ref[0] == '&' || ref[0] == '%'){
+                get_parameter_reference(ref, hash, parameters);
             }
             else{
                 fprintf(stderr, "Distribution only accepts Parameter, Parameters or a list of them\n");
@@ -427,20 +422,7 @@ void distmodel_get_parameters(json_node* parameters_node, Hashtable* hash, Param
 }
 
 void distmodel_get_ref(const char* ref, Hashtable* hash, Parameters* parameters){
-	if (ref[0] == '&') {
-		Parameter* p = Hashtable_get(hash, ref+1);
-		Parameters_add(parameters, p);
-	}
-	else if (ref[0] == '%') {
-		// slicing
-		if (ref[strlen(ref)-1] == ']') {
-			get_parameters_slice(ref+1, parameters, hash);
-		}
-		else{
-			Parameters* ps = Hashtable_get(hash, ref+1);
-			Parameters_add_parameters(parameters, ps);
-		}
-	}
+	get_parameter_reference(ref, hash, parameters);
 	// simplex
 	// else if (ref[0] == '$') {
 	// 	Model* msimplex = Hashtable_get(hash, ref+1);

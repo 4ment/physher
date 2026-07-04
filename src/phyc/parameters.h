@@ -348,6 +348,8 @@ void get_parameters_references2(json_node* node, Hashtable* hash, Parameters* pa
 
 void get_parameters_slice(const char* ref, Parameters* parameters, Hashtable* hash);
 
+void get_parameter_reference(const char* ref, Hashtable* hash, Parameters* parameters);
+
 void grab_parameters(json_node *node, Hashtable *hash, Parameters *parameters);
 
 #endif
