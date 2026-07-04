@@ -78,7 +78,13 @@ struct _SingleTreeLikelihood{
 	
 	bool *update_nodes;
 	bool update;
-	
+	// Number of recompute passes (partial ping-pong flips) since the last
+	// store. The cheap index-swap restore is only valid when a node is
+	// recomputed at most once per proposal (i.e. this stays <= 1, as for
+	// single-eval MCMC). Multi-eval proposals (HMC/NUTS) push it > 1 and force
+	// a full recompute-on-restore instead. See _singleTreeLikelihood_restore.
+	size_t recompute_count;
+
 	int root_partials_size;
 	int pattern_lk_size;
 	double *root_partials;

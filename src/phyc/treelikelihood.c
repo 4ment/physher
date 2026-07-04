@@ -149,6 +149,9 @@ static void _singleTreeLikelihood_store(Model* self){
 		}
 		self->storedLogP = self->lp;
 		tlk->stored_lk = tlk->lk;
+		// Start counting recompute passes for this proposal so restore can
+		// decide between the cheap index swap and a full recompute.
+		tlk->recompute_count = 0;
 		self->stored = true;
 	}
 }
@@ -168,15 +171,6 @@ static void _singleTreeLikelihood_restore(Model* self){
 		}
 		self->lp = self->storedLogP;
 		tlk->lk = tlk->stored_lk;
-		// The current/stored partials form a 2-slot ping-pong that only preserves
-		// the pre-proposal state when a node is recomputed at most once per
-		// proposal. HMC evaluates the likelihood many times per proposal, so the
-		// stored slot is overwritten mid-trajectory and the index swap above can
-		// restore garbage (e.g. NaN partials from a divergent leapfrog step).
-		// Branch lengths/heights are restored correctly by the submodels, so force
-		// a full recomputation of partials from them on the next evaluation.
-		//FIXME: This defeats the purpose of storing/restoring some partials
-		SingleTreeLikelihood_update_all_nodes(tlk);
 		self->stored = false;
 	}
 }
@@ -696,6 +690,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *
 	tlk->scaling_threshold = 1.E-40;
 	
 	tlk->node_id = -1;
+	tlk->recompute_count = 0;
     
     // Upper likelihood calculation
     // Variables are instanciated when we need them using SingleTreeLikelihood_use_upper
@@ -881,7 +876,8 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	
 	newtlk->pattern_lk = clone_dvector( tlk->pattern_lk, tlk->pattern_lk_size );
 	newtlk->lk = tlk->lk;
-	
+	newtlk->recompute_count = tlk->recompute_count;
+
 	newtlk->calculate            = tlk->calculate;
 	newtlk->update_partials      = tlk->update_partials;
 	newtlk->update_partials_flexible = tlk->update_partials_flexible;
@@ -1034,6 +1030,11 @@ double _calculate_simple( SingleTreeLikelihood *tlk ){
 		return tlk->lk;
 	}
 
+	// A real recompute pass follows: each dirty node's partials index is
+	// flipped in the ping-pong buffer. Counting these passes lets restore
+	// tell a single-eval proposal (<= 1) from a multi-eval one (HMC/NUTS).
+	tlk->recompute_count++;
+
 	bool success = tlk->sm->update(tlk->sm);
 	if(!success){
 		tlk->lk = NAN;
@@ -1074,9 +1075,14 @@ double _calculate_simple( SingleTreeLikelihood *tlk ){
 		SingleTreeLikelihood_use_rescaling(tlk, true );
 		
 		SingleTreeLikelihood_update_all_nodes( tlk );
+		// This is a second recompute pass within the same evaluation. Bump the
+		// counter so the ping-pong flip in _calculate_partials is suppressed:
+		// the rescaled partials must overwrite the alternate (current) slot in
+		// place, not flip back into the stored slot and clobber the snapshot.
+		tlk->recompute_count++;
 		tlk->lk = 0;
 		_calculate_partials( tlk, Tree_root(tlk->tree), branchLengths );
-		
+
 		int nodeID = Node_id(Tree_root(tlk->tree));
 		if(tlk->sm->integrate){
 			tlk->integrate_partials(tlk, tlk->partials[tlk->current_partials_indexes[nodeID]][nodeID], tlk->sm->get_proportions(tlk->sm), tlk->root_partials );
@@ -1259,7 +1265,7 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n, const double* bran
 				}
 			}
 			
-			if (!tlk->use_upper && tlk->partials[1] != NULL) {
+			if (!tlk->use_upper && tlk->partials[1] != NULL && tlk->recompute_count == 1) {
 				tlk->current_matrices_indexes[nodeID] = 1 - tlk->current_matrices_indexes[nodeID];
 				tlk->current_matrices_indexes[nodeID+Tree_node_count(tlk->tree)] = tlk->current_matrices_indexes[nodeID];
 			}
@@ -1304,7 +1310,7 @@ bool _calculate_partials( SingleTreeLikelihood *tlk, Node *n, const double* bran
 			int indx_child1 = Node_id(Node_left(n));
 			int indx_child2 = Node_id(Node_right(n));
 
-			if (!tlk->use_upper && tlk->partials[1] != NULL) {
+			if (!tlk->use_upper && tlk->partials[1] != NULL && tlk->recompute_count == 1) {
 				tlk->current_partials_indexes[nodeID] = 1 - tlk->current_partials_indexes[nodeID];
 				tlk->current_partials_indexes[nodeID+Tree_node_count(tlk->tree)] = tlk->current_partials_indexes[nodeID];
 			}

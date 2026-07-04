@@ -225,7 +225,7 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	    {"interruptible", JSON_OPTIONAL, JSON_BOOL},
 	    {"generalized", JSON_OPTIONAL, JSON_BOOL},
 	    {"length", JSON_OPTIONAL, JSON_NUMBER},
-	    {"log", JSON_OPTIONAL, JSON_STRING},
+	    {"log", JSON_OPTIONAL, JSON_ARRAY},
 	    {"model", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 	    {"operators", JSON_REQUIRED, JSON_ARRAY},
 	    {"temperature", JSON_OPTIONAL, JSON_NUMBER},
