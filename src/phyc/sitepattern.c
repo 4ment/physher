@@ -936,7 +936,7 @@ DataType* get_datatype(json_node* datatype_node, Hashtable* hash){
 
 SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
-	    {"alignment", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+	    {"alignment", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 	    {"datatype", JSON_OPTIONAL, JSON_ANY},
 	    {"every", JSON_OPTIONAL, JSON_NUMBER},
 	    {"length", JSON_OPTIONAL, JSON_NUMBER},

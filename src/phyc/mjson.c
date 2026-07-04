@@ -819,32 +819,38 @@ static int json_edit_distance(const char* a, const char* b) {
 
 // True if the node type satisfies the declared field type.
 static bool json_type_matches(json_node_t got, json_field_type want) {
-	switch (want) {
-		case JSON_ANY: return true;
-		case JSON_STRING: return got == MJSON_STRING;
-		case JSON_NUMBER:
-		case JSON_BOOL: return got == MJSON_PRIMITIVE;
-		case JSON_OBJECT_T: return got == MJSON_OBJECT;
-		case JSON_ARRAY: return got == MJSON_ARRAY;
-		case JSON_ARRAY_OR_NUMBER:
-			return got == MJSON_ARRAY || got == MJSON_PRIMITIVE;
-		case JSON_OBJECT_OR_STRING:
-			return got == MJSON_OBJECT || got == MJSON_STRING;
+	if (want == JSON_ANY) return true;
+	json_field_type got_flag;
+	switch (got) {
+		case MJSON_STRING: got_flag = JSON_STRING; break;
+		// The parser does not distinguish numbers, booleans and null: they are
+		// all primitives, so a primitive satisfies either JSON_NUMBER or JSON_BOOL.
+		case MJSON_PRIMITIVE: got_flag = JSON_NUMBER | JSON_BOOL; break;
+		case MJSON_OBJECT: got_flag = JSON_OBJECT; break;
+		case MJSON_ARRAY: got_flag = JSON_ARRAY; break;
+		default: return false;
 	}
-	return true;
+	return (got_flag & want) != 0;
 }
 
 static const char* json_type_name(json_field_type want) {
-	switch (want) {
-		case JSON_STRING: return "a string";
-		case JSON_NUMBER: return "a number";
-		case JSON_BOOL: return "a boolean";
-		case JSON_OBJECT_T: return "an object";
-		case JSON_ARRAY: return "an array";
-		case JSON_ARRAY_OR_NUMBER: return "an array or a number";
-		case JSON_OBJECT_OR_STRING: return "an object or a string reference";
-		default: return "valid";
+	static const struct {
+		json_field_type bit;
+		const char* name;
+	} names[] = {
+		{JSON_STRING, "a string"}, {JSON_NUMBER, "a number"},
+		{JSON_BOOL, "a boolean"},  {JSON_OBJECT, "an object"},
+		{JSON_ARRAY, "an array"},
+	};
+	static char buf[128];
+	buf[0] = '\0';
+	int count = 0;
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+		if ((want & names[i].bit) == 0) continue;
+		if (count++ > 0) strcat(buf, " or ");
+		strcat(buf, names[i].name);
 	}
+	return count > 0 ? buf : "valid";
 }
 
 void json_validate(json_node* node, const json_field* schema, size_t n) {

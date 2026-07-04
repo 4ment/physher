@@ -390,16 +390,16 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 
 Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	static const json_field schema[] = {
-		{"branchmodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"branchmodel", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"include_jacobian", JSON_OPTIONAL, JSON_BOOL},
 		{"reparameterized", JSON_FORBIDDEN, JSON_BOOL},  // deprecated alias of include_jacobian
 		{"root_frequencies", JSON_OPTIONAL, JSON_BOOL},
-		{"sitemodel", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
-		{"sitepattern", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+		{"sitemodel", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
+		{"sitepattern", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 		{"sse", JSON_OPTIONAL, JSON_BOOL},
-		{"substitutionmodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"substitutionmodel", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"tipstates", JSON_OPTIONAL, JSON_BOOL},
-		{"tree", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+		{"tree", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	

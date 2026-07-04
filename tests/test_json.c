@@ -11,7 +11,7 @@ static const json_field schema[] = {
     {"sitepattern", JSON_REQUIRED, JSON_STRING},
     {"epsilon", JSON_OPTIONAL, JSON_NUMBER},
     {"invariant", JSON_OPTIONAL, JSON_BOOL},
-    {"model", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+    {"model", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
     {"substitutionmodel", JSON_FORBIDDEN, JSON_ANY, "renamed to 'model'"},
 };
 static const size_t schema_n = sizeof(schema) / sizeof(schema[0]);

@@ -517,22 +517,6 @@ static void DistributionModel_lognormal_entropy_gradient(DistributionModel* dm,
     }
 }
 
-// static double DistributionModel_lognormal_sample_evaluate(DistributionModel* dm){
-//     if(Parameters_count(dm->parameters[0]) > 1){
-//         for (int i = 0; i < Parameters_count(dm->x); i++) {
-//             double sample = gsl_ran_lognormal(dm->rng, Parameters_value(dm->parameters[0], i), Parameters_value(dm->parameters[1], i));
-//             Parameters_set_value(dm->x, i, sample);
-//         }
-//     }
-//     else{
-//         for (int i = 0; i < Parameters_count(dm->x); i++) {
-//             double sample = gsl_ran_lognormal(dm->rng, Parameters_value(dm->parameters[0], 0), Parameters_value(dm->parameters[1], 0));
-//             Parameters_set_value(dm->x, i, sample);
-//         }
-//     }
-//     return DistributionModel_lognormal_logP(dm);
-// }
-
 DistributionModel* new_LogNormalDistributionModel_with_parameters(Parameters* parameters, Parameters* x, distribution_parameterization parameterization){
     DistributionModel* dm = new_DistributionModel(parameters, x);
     dm->type = DISTRIBUTION_LOGNORMAL;

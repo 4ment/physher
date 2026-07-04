@@ -421,7 +421,7 @@ Model* new_CompoundModel2(const char* name, CompoundModel* cm){
 Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 	static const json_field schema[] = {
 		{"distributions", JSON_REQUIRED, JSON_ARRAY},
-		{"weights", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"weights", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	

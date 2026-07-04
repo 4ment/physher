@@ -1350,19 +1350,19 @@ size_t parse_taxa_dates(json_node* node, char*** ptaxa, double** pdates){
 
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
-		{"branch_lengths", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"branch_lengths", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"dates", JSON_FORBIDDEN, JSON_ANY},
-		{"initializer", JSON_OPTIONAL, JSON_OBJECT_T},
+		{"initializer", JSON_OPTIONAL, JSON_OBJECT},
 		{"file", JSON_OPTIONAL, JSON_STRING},
-		{"heights", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},          // height parameters
+		{"heights", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},          // height parameters
 		{"keep_branch_lengths", JSON_OPTIONAL, JSON_BOOL},
 		{"newick", JSON_OPTIONAL, JSON_STRING},
 		{"parameters", JSON_FORBIDDEN, JSON_ANY},                  // deprecated
-		{"proportions", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},     // reparameterization parameters
-		{"ratios", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},          // reparameterization parameters
-		{"root_height", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
-		{"shifts", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
-		{"taxa", JSON_OPTIONAL, JSON_OBJECT_T},
+		{"proportions", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},     // reparameterization parameters
+		{"ratios", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},          // reparameterization parameters
+		{"root_height", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+		{"shifts", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+		{"taxa", JSON_OPTIONAL, JSON_OBJECT},
 		{"time", JSON_OPTIONAL, JSON_BOOL},
 		{"transform", JSON_FORBIDDEN, JSON_ANY}, // deprecated
 	};

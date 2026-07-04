@@ -115,7 +115,7 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	    {"bf", JSON_OPTIONAL, JSON_BOOL},
 	    {"distribution", JSON_OPTIONAL, JSON_STRING},
 	    {"gss", JSON_OPTIONAL, JSON_BOOL},
-	    {"mcmc", JSON_REQUIRED, JSON_OBJECT_T},
+	    {"mcmc", JSON_REQUIRED, JSON_OBJECT},
 	    {"samples", JSON_OPTIONAL, JSON_NUMBER},
 	    {"start", JSON_OPTIONAL, JSON_NUMBER},
 	    {"steps", JSON_OPTIONAL, JSON_NUMBER},

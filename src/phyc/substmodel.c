@@ -269,9 +269,9 @@ Model* new_SubstitutionModel2(const char* name, SubstitutionModel* sm) {
 
 Model* new_SubstitutionModel_from_json(json_node* node, Hashtable* hash) {
     static const json_field schema[] = {
-        {"datatype", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
-        {"frequencies", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
-        {"init", JSON_OPTIONAL, JSON_OBJECT_T},
+        {"datatype", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
+        {"frequencies", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+        {"init", JSON_OPTIONAL, JSON_OBJECT},
         {"model", JSON_REQUIRED, JSON_ANY},
         {"normalize", JSON_OPTIONAL, JSON_BOOL},
         {"rates", JSON_OPTIONAL, JSON_ANY},
@@ -1166,18 +1166,6 @@ void check_frequencies( const double *freqs, const int dim ){
 		exit(1);
 	}
 }
-
-void check_frequencies_parameters( Parameters* freqs ){
-	double sum = 0.;
-	for ( int i = 0; i < Parameters_count(freqs); i++)
-		sum += Parameters_value(freqs, i);
-	if( fabs(sum - 1.0) > 0.0001 ){
-		fprintf(stderr, "Frequencies do not add up to 1:%f (diff = %f)\n",sum, fabs(sum - 1.0) );
-		exit(1);
-	}
-}
-
-
 
 void bufferize_frequencies(StringBuffer *buffer, SubstitutionModel *m ){
 	const double* freqs = m->get_frequencies(m);

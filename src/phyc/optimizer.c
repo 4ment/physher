@@ -820,7 +820,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	    {"eta", JSON_OPTIONAL, JSON_NUMBER},
 	    {"frequency_check", JSON_OPTIONAL, JSON_NUMBER},
 	    {"list", JSON_OPTIONAL, JSON_ANY},
-	    {"logger", JSON_OPTIONAL, JSON_OBJECT_T},
+	    {"logger", JSON_OPTIONAL, JSON_OBJECT},
 	    {"max", JSON_OPTIONAL, JSON_ANY},
 	    {"maximize", JSON_OPTIONAL, JSON_ANY},
 	    {"min", JSON_OPTIONAL, JSON_ANY},

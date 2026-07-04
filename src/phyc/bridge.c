@@ -244,9 +244,9 @@ BridgeSampling* new_BridgeSampling_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"burnin", JSON_OPTIONAL, JSON_NUMBER},
 	    {"file", JSON_OPTIONAL, JSON_STRING},
-	    {"model", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
-	    {"treelikelihood", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
-	    {"x", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+	    {"model", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
+	    {"treelikelihood", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
+	    {"x", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	

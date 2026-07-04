@@ -299,18 +299,18 @@ char * Node_get_string_from_info2( const Node *node, const char *str ){
 
 void SimulateSequences_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
-	    {"branchmodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+	    {"branchmodel", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 	    {"datatype", JSON_OPTIONAL, JSON_ANY},
-	    {"distribution", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+	    {"distribution", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 	    {"format", JSON_OPTIONAL, JSON_STRING},
 	    {"internal", JSON_OPTIONAL, JSON_BOOL},
 	    {"length", JSON_OPTIONAL, JSON_NUMBER},
 	    {"output", JSON_OPTIONAL, JSON_ANY},
 	    {"scaler", JSON_OPTIONAL, JSON_NUMBER},
 	    {"seed", JSON_OPTIONAL, JSON_NUMBER},
-	    {"sitemodel", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
-	    {"substitutionmodel", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
-	    {"tree", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+	    {"sitemodel", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+	    {"substitutionmodel", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
+	    {"tree", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 	    {"verbosity", JSON_OPTIONAL, JSON_NUMBER},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));

@@ -152,7 +152,11 @@ void log_log_with(Log* logger, size_t iter, const char* more){
 		fprintf(logger->file, "\t%e", model->lp);
 	}
 	for (int i = 0; i < Parameters_count(logger->x); i++) {
-		fprintf(logger->file, "\t%e", Parameters_value(logger->x, i));
+		Parameter* parameter = Parameters_at(logger->x, i);
+		const double* values = Parameter_values(parameter);
+		for(size_t j = 0; j < Parameter_size(parameter); j++){
+			fprintf(logger->file, "\t%e", values[j]);
+		}
 	}
 	
 	fprintf(logger->file, "\t%s\n", more);

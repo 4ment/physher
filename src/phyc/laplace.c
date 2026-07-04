@@ -1154,7 +1154,7 @@ void _free_Laplace(Laplace* laplace){
 
 Laplace* new_Laplace_from_json2(json_node* node, Hashtable* hash){
     static const json_field schema[] = {
-        {"distribution", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+        {"distribution", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
         {"model", JSON_REQUIRED, JSON_STRING},
         {"x", JSON_REQUIRED, JSON_ANY},
     };

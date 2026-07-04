@@ -375,10 +375,10 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		{"cutoff", JSON_OPTIONAL, JSON_NUMBER},
 		{"data", JSON_OPTIONAL, JSON_ANY},
 		{"groups", JSON_OPTIONAL, JSON_ANY},
-		{"growth", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"growth", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"model", JSON_REQUIRED, JSON_STRING},
-		{"theta", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
-		{"tree", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"theta", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
+		{"tree", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	json_validate_xor(node, "data", "tree", NULL);
@@ -1216,18 +1216,20 @@ double _skyride_gradient( Coalescent* coal, const Parameters* parameters ){
 }
 
 void _skyride_calculate_gradient( Coalescent* coal ){
+	Parameter* thetaParameter = Parameters_at(coal->p, 0);
+	const double* theta = Parameter_values(thetaParameter);
 	size_t offset = 0;
 	double* chooses = dvector(coal->n);
-	double mexpPop = exp(-Parameters_value(coal->p, 0));
+	double mexpPop = exp(-theta[0]);
 	size_t index = 0;
 	size_t i = 1;
 	for( ; i < coal->n - 1; i++){
 		chooses[i] = CHOOSE2(coal->lineages[i])*mexpPop;
 		if (coal->iscoalescent[i]) {
-			mexpPop = exp(-Parameters_value(coal->p, ++index));
+			mexpPop = exp(-theta[++index]);
 		}
 	}
-	chooses [i] = CHOOSE2(coal->lineages[i])*exp(-Parameters_value(coal->p, index));
+	chooses [i] = CHOOSE2(coal->lineages[i])*exp(-theta[index]);
 
     if(coal->prepared_gradient & GRADIENT_FLAG_COALESCENT_THETA){
 		memset(coal->grad, 0, Parameters_count(coal->p)*sizeof(double));
@@ -1751,17 +1753,17 @@ double _coalescent_skyline_calculate( Coalescent* coal ){
 		size_t cum = coal->groups->values[currentGroupIndex];
 		size_t coalescentCount = 0;
 		Parameter* thetaParameter = Parameters_at(coal->p, 0);
-		double popSize = Parameter_value_at(thetaParameter, currentGroupIndex);
+		const double* theta = Parameter_values(thetaParameter);
+		double popSize = theta[0];
 		double logPopSize = log(popSize);
 		
 		for( int i = 0; i< coal->n; i++  ){
 			if (coalescentCount == cum) {
 				currentGroupIndex++;
 				cum += coal->groups->values[currentGroupIndex];
-				popSize = Parameter_value_at(thetaParameter, currentGroupIndex);
+				popSize = theta[currentGroupIndex];
 				logPopSize = log(popSize);
 			}
-//			printf("%d %d %f\n", i, currentGroupIndex, Parameters_value(coal->p, currentGroupIndex));
 			if(coal->times[i] != 0.0){
 				coal->logP -= coal->times[i]*CHOOSE2(coal->lineages[i])/popSize;
 			}

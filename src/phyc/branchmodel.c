@@ -280,11 +280,11 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model*
 Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 	static const json_field schema[] = {
 		{"indicators", JSON_OPTIONAL, JSON_ANY},
-		{"location", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+		{"location", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"model", JSON_REQUIRED, JSON_STRING},
-		{"rate", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
-		{"scale", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
-		{"tree", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+		{"rate", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
+		{"scale", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+		{"tree", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	

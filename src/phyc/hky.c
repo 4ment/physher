@@ -99,7 +99,8 @@ SubstitutionModel *new_HKY_with_parameters(Parameter *freqs, Parameter *kappa) {
 }
 
 void hky_update_Q( SubstitutionModel *model ){
-    model->Q[1][3] = model->Q[3][1] = model->Q[0][2] = model->Q[2][0] = Parameters_value(model->rates, 0); // kappa
+    double kappa = Parameters_value(model->rates, 0);
+    model->Q[1][3] = model->Q[3][1] = model->Q[0][2] = model->Q[2][0] = kappa; // kappa
     model->Q[0][1] = model->Q[1][0] = model->Q[0][3] = model->Q[3][0] = model->Q[1][2] = model->Q[2][1] = model->Q[2][3] = model->Q[3][2] = 1.;
     
 	const double* freqs = model->get_frequencies(model);
@@ -232,13 +233,14 @@ void _hky_p_t( SubstitutionModel *m, const double t, double *P ){
     //		m->update_Q(m);
     //	}
     const double* freqs = m->get_frequencies(m);
-    
+    double kappa = Parameters_value(m->rates, 0);
+
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
-    double k1 = Parameters_value(m->rates, 0) * Y + R;
-    double k2 = Parameters_value(m->rates, 0) * R + Y;
+    double k1 = kappa * Y + R;
+    double k2 = kappa * R + Y;
     
-    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + Parameters_value(m->rates, 0) * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
+    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + kappa * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
     
     double exp1  = exp(-t*r);
     double exp22 = exp(-k2 * t * r);
@@ -277,13 +279,14 @@ void _hky_p_t_transpose( SubstitutionModel *m, const double t, double *P ){
     //		m->update_Q(m);
     //	}
     const double* freqs = m->get_frequencies(m);
+    double kappa = Parameters_value(m->rates, 0);
     
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
-    double k1 = Parameters_value(m->rates, 0) * Y + R;
-    double k2 = Parameters_value(m->rates, 0) * R + Y;
+    double k1 = kappa * Y + R;
+    double k2 = kappa * R + Y;
     
-    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + Parameters_value(m->rates, 0) * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
+    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + kappa * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
     
     double exp1  = exp(-t*r);
     double exp22 = exp(-k2 * t * r);
@@ -319,13 +322,14 @@ void _hky_p_t_transpose( SubstitutionModel *m, const double t, double *P ){
 void _hky_dp_dt( SubstitutionModel *m, const double t, double *P ) {
     
     const double* freqs = m->get_frequencies(m);
-    
+    double kappa = Parameters_value(m->rates, 0);
+
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
-    double k1 = Parameters_value(m->rates, 0) * Y + R;
-    double k2 = Parameters_value(m->rates, 0) * R + Y;
+    double k1 = kappa * Y + R;
+    double k2 = kappa * R + Y;
     
-    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + Parameters_value(m->rates, 0) * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
+    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + kappa * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
     
     double exp1  = exp(-t*r);
     double exp22 = exp(-k2 * t * r);
@@ -359,15 +363,15 @@ void _hky_dp_dt( SubstitutionModel *m, const double t, double *P ) {
 }
 
 void _hky_dp_dt_transpose( SubstitutionModel *m, const double t, double *P ) {
-    //fprintf(stderr, "dp_dt_T %d\n", counter++);
     const double* freqs = m->get_frequencies(m);
-    
+    double kappa = Parameters_value(m->rates, 0);
+
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
-    double k1 = Parameters_value(m->rates, 0) * Y + R;
-    double k2 = Parameters_value(m->rates, 0) * R + Y;
+    double k1 = kappa * Y + R;
+    double k2 = kappa * R + Y;
     
-    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + Parameters_value(m->rates, 0) * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
+    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + kappa * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
     
     double exp1  = exp(-t*r);
     double exp22 = exp(-k2 * t * r);
@@ -402,15 +406,16 @@ void _hky_dp_dt_transpose( SubstitutionModel *m, const double t, double *P ) {
 void _hky_d2p_dt2( SubstitutionModel *m, const double t, double *P ) {
     
     const double* freqs = m->get_frequencies(m);
-    
+    double kappa = Parameters_value(m->rates, 0);
+
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
-    double k1 = Parameters_value(m->rates, 0) * Y + R;
-    double k2 = Parameters_value(m->rates, 0) * R + Y;
+    double k1 = kappa * Y + R;
+    double k2 = kappa * R + Y;
     double k12 = k1*k1;
     double k22 = k2*k2;
     
-    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + Parameters_value(m->rates, 0) * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
+    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + kappa * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
     double r2 = r * r;
     
     double l = r * t;
@@ -448,15 +453,16 @@ void _hky_d2p_dt2( SubstitutionModel *m, const double t, double *P ) {
 void _hky_d2p_dt2_transpose( SubstitutionModel *m, const double t, double *P ) {
     
     const double* freqs = m->get_frequencies(m);
+    double kappa = Parameters_value(m->rates, 0);
     
     double R  = freqs[0] + freqs[2];
     double Y  = freqs[3] + freqs[1];
-    double k1 = Parameters_value(m->rates, 0) * Y + R;
-    double k2 = Parameters_value(m->rates, 0) * R + Y;
+    double k1 = kappa * Y + R;
+    double k2 = kappa * R + Y;
     double k12 = k1*k1;
     double k22 = k2*k2;
     
-    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + Parameters_value(m->rates, 0) * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
+    double r = 1. / (2. * (freqs[0] * freqs[1] + freqs[1] * freqs[2] + freqs[0] * freqs[3] + freqs[2] * freqs[3] + kappa * (freqs[1] * freqs[3] + freqs[0] * freqs[2])));
     double r2 = r * r;
     
     double l = r * t;

@@ -68,43 +68,6 @@ double DistributionModel_log_exp(DistributionModel* dm){
     return dm->lp;
 }
 
-
-// double DistributionModel_log_exp_with_values(DistributionModel* dm, const double* values){
-// 	double logP = 0;
-// 	if(Parameters_count(dm->parameters[0]) > 1){
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			double lambda = Parameters_value(dm->parameters[0], i);
-// 			logP += log(lambda) - lambda * values[i];
-// 		}
-// 	}
-// 	else{
-// 		double lambda = Parameters_value(dm->parameters[0], 0);
-// 		logP = log(lambda) * Parameters_count(dm->x);
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			logP -= lambda * values[i];
-// 		}
-// 	}
-// 	return logP;
-// }
-
-// double DistributionModel_log_exp_with_values_mean(DistributionModel* dm, const double* values){
-// 	double logP = 0;
-// 	if(Parameters_count(dm->parameters[0]) > 1){
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			double mean = Parameters_value(dm->parameters[0], i);
-// 			logP += -log(mean) - values[i]/mean;
-// 		}
-// 	}
-// 	else{
-// 		double mean = Parameters_value(dm->parameters[0], 0);
-// 		logP = -log(mean) * Parameters_count(dm->x);
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			logP -= values[i]/mean;
-// 		}
-// 	}
-// 	return logP;
-// }
-
 void DistributionModel_gradient_exp(DistributionModel* dm, Parameters* parameters){
     size_t dimX = Parameters_count(dm->x);
     Parameter* parameter = Parameters_at(dm->parameters, 0); // lambda or mean
@@ -251,40 +214,6 @@ static void DistributionModel_exp_sample_mean(DistributionModel* dm){
         }
     }
 }
-
-// static double DistributionModel_exp_sample_evaluate(DistributionModel* dm){
-// 	if(Parameters_count(dm->parameters[0]) > 1){
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			double sample = gsl_ran_exponential(dm->rng, 1.0/Parameters_value(dm->parameters[0], i));
-// 			Parameters_set_value(dm->x, i, sample);
-// 		}
-// 	}
-// 	else{
-// 		double mean = 1.0/Parameters_value(dm->parameters[0], 0);
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			double sample = gsl_ran_exponential(dm->rng, mean);
-// 			Parameters_set_value(dm->x, i, sample);
-// 		}
-// 	}
-// 	return DistributionModel_log_exp(dm);
-// }
-
-// static double DistributionModel_exp_sample_evaluate_mean(DistributionModel* dm){
-// 	if(Parameters_count(dm->parameters[0]) > 1){
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			double sample = gsl_ran_exponential(dm->rng, Parameters_value(dm->parameters[0], i));
-// 			Parameters_set_value(dm->x, i, sample);
-// 		}
-// 	}
-// 	else{
-// 		double mean = Parameters_value(dm->parameters[0], 0);
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			double sample = gsl_ran_exponential(dm->rng, mean);
-// 			Parameters_set_value(dm->x, i, sample);
-// 		}
-// 	}
-// 	return DistributionModel_log_exp_mean(dm);
-// }
 
 DistributionModel* new_ExponentialDistributionModel_with_parameters(Parameters* parameters, Parameters* x, distribution_parameterization parameterization){
 	DistributionModel* dm = new_DistributionModel(parameters, x);

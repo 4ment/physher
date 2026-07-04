@@ -114,9 +114,9 @@ Model* new_AbstractBoundModel_from_json(json_node* node, Hashtable* hash) {
     static const json_field schema[] = {
         {"bound", JSON_REQUIRED, JSON_STRING},
         {"entropy", JSON_OPTIONAL, JSON_BOOL},
-        {"joint", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
-        {"samples", JSON_OPTIONAL, JSON_ARRAY_OR_NUMBER},
-        {"variational", JSON_REQUIRED, JSON_OBJECT_OR_STRING},
+        {"joint", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
+        {"samples", JSON_OPTIONAL, JSON_ARRAY | JSON_NUMBER},
+        {"variational", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
     };
     json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 

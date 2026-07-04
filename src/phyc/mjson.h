@@ -82,23 +82,22 @@ typedef enum {
     JSON_FORBIDDEN,     // must not be present (e.g. removed/renamed keys)
 } json_field_req;
 
-// Expected JSON type of a field's value. JSON_ANY skips the type check.
-// JSON_OBJECT_OR_STRING accepts either an inline object or a string
-// id-reference, the common "reference or definition" pattern in physher.
+// Expected JSON type of a field's value, as a bitmask: OR the base types
+// together to accept more than one shape, e.g. JSON_OBJECT | JSON_STRING for
+// the common "reference or definition" pattern (an inline object or a string
+// id-reference). JSON_ANY (0) skips the type check entirely.
 typedef enum {
     JSON_ANY = 0,
-    JSON_STRING,
-    JSON_NUMBER,
-    JSON_BOOL,
-    JSON_OBJECT_T,
-    JSON_ARRAY,
-    JSON_ARRAY_OR_NUMBER,
-    JSON_OBJECT_OR_STRING,
+    JSON_STRING = 1 << 0,
+    JSON_NUMBER = 1 << 1,
+    JSON_BOOL = 1 << 2,
+    JSON_OBJECT = 1 << 3,
+    JSON_ARRAY = 1 << 4,
 } json_field_type;
 
 // One row of a node's schema. Designated/partial init is intended, e.g.
 //   {"epsilon", JSON_OPTIONAL, JSON_NUMBER}
-//   {"model", JSON_REQUIRED, JSON_OBJECT_OR_STRING}
+//   {"model", JSON_REQUIRED, JSON_OBJECT | JSON_STRING}
 //   {"substitutionmodel", JSON_FORBIDDEN, JSON_ANY, "renamed to 'model'"}
 // "id" and "type" are implicitly allowed/required on object nodes and must not
 // be listed. Keys starting with '_' are treated as comments and ignored.

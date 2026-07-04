@@ -37,10 +37,10 @@ Model* new_DistributionModel_from_json(json_node* node, Hashtable* hash) {
         {"file", JSON_OPTIONAL, JSON_STRING},
         {"from", JSON_OPTIONAL, JSON_ANY},
         {"margin", JSON_OPTIONAL, JSON_ANY},
-        {"parameters", JSON_OPTIONAL, JSON_OBJECT_T},
+        {"parameters", JSON_OPTIONAL, JSON_OBJECT},
         {"parameterization", JSON_OPTIONAL, JSON_STRING},
-        {"posterior", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
-        {"tree", JSON_OPTIONAL, JSON_OBJECT_OR_STRING},
+        {"posterior", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+        {"tree", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
         {"x", JSON_OPTIONAL, JSON_ANY},
     };
     json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));

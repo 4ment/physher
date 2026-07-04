@@ -142,7 +142,7 @@ Model* new_DiscreteParameterModel_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 		{"dimension", JSON_OPTIONAL, JSON_NUMBER},
 		{"values", JSON_FORBIDDEN, JSON_ANY},
-		{"x", JSON_OPTIONAL, JSON_ARRAY_OR_NUMBER},
+		{"x", JSON_OPTIONAL, JSON_ARRAY | JSON_NUMBER},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	

@@ -92,8 +92,9 @@ void k80_update_Q( SubstitutionModel *m ){
 	//    m->Q[1][3] = m->Q[3][1] = m->Q[0][2] = m->Q[2][0] = Parameters_value(m->rates, 0)*0.25; // kappa
 	//    m->Q[0][1] = m->Q[1][0] = m->Q[0][3] = m->Q[3][0] = m->Q[1][2] = m->Q[2][1] = m->Q[2][3] = m->Q[3][2] = 0.25;
 	//update_eigen_system( m );
-	m->Q[1][3] = m->Q[3][1] = m->Q[0][2] = m->Q[2][0] = Parameters_value(m->rates, 0)/(Parameters_value(m->rates, 0)+2.0);
-	m->Q[0][1] = m->Q[1][0] = m->Q[0][3] = m->Q[3][0] = m->Q[1][2] = m->Q[2][1] = m->Q[2][3] = m->Q[3][2] = 1.0/(Parameters_value(m->rates, 0)+2.0);
+	double kappa = Parameters_value(m->rates, 0);
+	m->Q[1][3] = m->Q[3][1] = m->Q[0][2] = m->Q[2][0] = kappa/(kappa+2.0);
+	m->Q[0][1] = m->Q[1][0] = m->Q[0][3] = m->Q[3][0] = m->Q[1][2] = m->Q[2][1] = m->Q[2][3] = m->Q[3][2] = 1.0/(kappa+2.0);
 	m->Q[0][0] = m->Q[1][1] = m->Q[2][2] = m->Q[3][3] = -1;
     m->need_update = false;
 }

@@ -233,26 +233,6 @@ static void DistributionModel_kumaraswamy_rgradient(DistributionModel* dm){
     }
 }
 
-// static double DistributionModel_kumaraswamy_sample_evaluate(DistributionModel* dm){
-// 	if(Parameters_count(dm->parameters[0]) > 1){
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			double a = Parameters_value(dm->parameters[0], i);
-// 			double b = Parameters_value(dm->parameters[1], i);
-// 			double sample = DistributionModel_kumaraswamy_inverse_CDF(gsl_ran_flat(dm->rng, 0, 1), a, b);
-// 			Parameters_set_value(dm->x, i, sample);
-// 		}
-// 	}
-// 	else{
-// 		double a = Parameters_value(dm->parameters[0], 0);
-// 		double b = Parameters_value(dm->parameters[1], 0);
-// 		for (int i = 0; i < Parameters_count(dm->x); i++) {
-// 			double sample = DistributionModel_kumaraswamy_inverse_CDF(gsl_ran_flat(dm->rng, 0, 1), a, b);
-// 			Parameters_set_value(dm->x, i, sample);
-// 		}
-// 	}
-// 	return DistributionModel_log_kumaraswamy(dm);
-// }
-
 DistributionModel* new_KumaraswamyDistributionModel_with_parameters(Parameters* parameters, Parameters* x){
 	DistributionModel* dm = new_DistributionModel(parameters, x);
 	dm->type = DISTRIBUTION_KUMARASWAMY;
