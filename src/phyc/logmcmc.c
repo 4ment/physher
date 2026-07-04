@@ -157,6 +157,83 @@ void log_log_with(Log* logger, size_t iter, const char* more){
 	fprintf(logger->file, "\t%s\n", more);
 }
 
+static void _log_columns_header(Log* logger){
+	StringBuffer* buffer = new_StringBuffer(10);
+	fprintf(logger->file, "iter");
+	for (size_t i = 0; i < logger->column_count; i++) {
+		if (logger->columns[i].model != NULL) {
+			Model* model = logger->columns[i].model;
+			if(model->type == MODEL_DISCRETE_PARAMETER){
+				DiscreteParameter* dp = model->obj;
+				for (int j = 0; j < dp->length; j++) {
+					fprintf(logger->file, "\t%s.%d", model->name, j+1);
+				}
+			}
+			else{
+				fprintf(logger->file, "\t%s", model->name);
+			}
+		}
+		else{
+			Parameter* parameter = logger->columns[i].parameter;
+			if(Parameter_size(parameter) == 1){
+				fprintf(logger->file, "\t%s", Parameter_name(parameter));
+			}
+			else{
+				for(size_t j = 0; j < Parameter_size(parameter); j++){
+					StringBuffer_empty(buffer);
+					StringBuffer_append_format(buffer, "%s.%zu", Parameter_name(parameter), j);
+					fprintf(logger->file, "\t%s", buffer->c);
+				}
+			}
+		}
+	}
+	free_StringBuffer(buffer);
+	fprintf(logger->file, "\n");
+}
+
+void log_columns(Log* logger, size_t iter){
+	fprintf(logger->file, "%zu", iter);
+	for (size_t i = 0; i < logger->column_count; i++) {
+		if (logger->columns[i].model != NULL) {
+			Model* model = logger->columns[i].model;
+			if(model->type == MODEL_DISCRETE_PARAMETER){
+				DiscreteParameter* dp = model->obj;
+				for (int j = 0; j < dp->length; j++) {
+					fprintf(logger->file, "\t%d", dp->values[j]);
+				}
+			}
+			else{
+				fprintf(logger->file, "\t%e", model->logP(model));
+			}
+		}
+		else{
+			Parameter* parameter = logger->columns[i].parameter;
+			const double* values = Parameter_values(parameter);
+			for(size_t j = 0; j < Parameter_size(parameter); j++){
+				fprintf(logger->file, "\t%e", values[j]);
+			}
+		}
+	}
+
+	if (logger->filename == NULL) {
+		if(iter > 0){
+			gettimeofday(&logger->end, NULL);
+			double diff_time = (double)(logger->end.tv_usec - logger->start.tv_usec) / 1000000 + (double)(logger->end.tv_sec - logger->start.tv_sec);
+			double speed = diff_time/logger->every*1e6;
+			if (speed < 1) {
+				fprintf(logger->file, "  %.2f sec/million", speed);
+			}
+			else{
+				fprintf(logger->file, "  %.2f min/million", speed/60);
+			}
+			logger->start = logger->end;
+		}
+	}
+
+	fprintf(logger->file, "\n");
+	fflush(logger->file);
+}
+
 void log_initialize(Log* logger){
 	if (logger->filename != NULL) {
 		char a[2] = "w";
@@ -170,7 +247,12 @@ void log_initialize(Log* logger){
 		Tree_print_nexus_header_figtree_BeginTrees(logger->file, tree);
 	}
 	else if(!logger->tree || (logger->tree && strcasecmp(logger->format, "newick") != 0)){
-		_log_write_header(logger);
+		if(logger->column_count > 0){
+			_log_columns_header(logger);
+		}
+		else{
+			_log_write_header(logger);
+		}
 	}
 }
 
@@ -195,6 +277,9 @@ void _free_Log(Log* logger){
 	if(logger->model_count > 0){
 		free(logger->models);
 	}
+	if(logger->column_count > 0){
+		free(logger->columns);
+	}
 	if (logger->format != NULL) {
 		free(logger->format);
 	}
@@ -204,25 +289,27 @@ void _free_Log(Log* logger){
 Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"append", JSON_OPTIONAL, JSON_ANY},
+	    {"columns", JSON_OPTIONAL, JSON_ANY},
 	    {"cpo", JSON_OPTIONAL, JSON_ANY},
 	    {"every", JSON_OPTIONAL, JSON_ANY},
 	    {"file", JSON_OPTIONAL, JSON_ANY},
 	    {"force", JSON_OPTIONAL, JSON_ANY},
 	    {"format", JSON_OPTIONAL, JSON_ANY},
 	    {"header", JSON_OPTIONAL, JSON_ANY},
-	    {"models", JSON_OPTIONAL, JSON_ANY},
-	    {"x", JSON_OPTIONAL, JSON_ANY},
+	    {"models", JSON_FORBIDDEN, JSON_ANY, "replaced by 'columns'"},
+	    {"x", JSON_FORBIDDEN, JSON_ANY, "replaced by 'columns'"},
+	    {"tree", JSON_OPTIONAL, JSON_STRING},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
-	
+	json_validate_xor(node, "tree", "columns", NULL);
+
 	Log* logger = malloc(sizeof(Log));
 	logger->x = new_Parameters(1);
-	json_node* header_node = get_json_node(node, "header");
-	json_node* x_node = get_json_node(node, "x");
-	if (x_node != NULL) {
-		get_parameters_references2(node, hash, logger->x, "x");
-	}
-	
+	// A logger is either a tree logger ("tree": "@tree") or a column logger
+	// ("columns": [...]); json_validate_xor above guarantees exactly one.
+	logger->columns = NULL;
+	logger->column_count = get_columns_from_json(node, hash, &logger->columns);
+
 	logger->every = get_json_node_value_size_t(node, "every", 1000);
 	json_node* filename_node = get_json_node(node, "file");
 	logger->write = log_log;
@@ -250,45 +337,32 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	
-	json_node* models_node = get_json_node(node, "models");
 	logger->cpo = get_json_node_value_bool(node, "cpo", false);
-	
+
+	logger->model_count = 0;
+	logger->models = NULL;
+
+	// "tree": "@tree" turns this into a tree logger; the referenced model is
+	// stashed in models[0] the same way the tree-printing helpers expect it.
+	json_node* tree_node = get_json_node(node, "tree");
+	if (tree_node != NULL) {
+		char* ref = (char*)tree_node->value;
+		Model* m = Hashtable_get(hash, ref + 1);
+		if (m == NULL || m->type != MODEL_TREE) {
+			json_die(node, "logger \"tree\" must reference a tree model (e.g. \"@tree\"): '%s'", ref);
+		}
+		logger->models = malloc(sizeof(Model*));
+		logger->models[0] = m;
+		logger->model_count = 1;
+		logger->tree = true;
+	}
+
 	if (logger->cpo) {
 		logger->write = log_log_cpo;
 	}
-	
-	logger->model_count = 0;
-	logger->models = NULL;
-	if (models_node != NULL) {
-		if (models_node->node_type == MJSON_ARRAY) {
-			for (int i = 0; i < models_node->child_count; i++) {
-				json_node* child = models_node->children[i];
-				char* child_string = child->value;
-				Model* m = Hashtable_get(hash, child_string+1);
-				if(logger->model_count == 0){
-					logger->models = malloc(sizeof(Model*));
-				}
-				else{
-					logger->models = realloc(logger->models, sizeof(Model*)*(logger->model_count+1));
-				}
-				logger->models[i] = m;
-				logger->model_count++;
-				if (m->type == MODEL_TREE) {
-					logger->tree = true;
-				}
-			}
-		}
-		else if (models_node->node_type == MJSON_STRING) {
-			char* ref = models_node->value;
-			logger->models = malloc(sizeof(Model*));
-			logger->models[0] = Hashtable_get(hash, ref+1);;
-			logger->model_count++;
-			if (logger->models[0]->type == MODEL_TREE) {
-				logger->tree = true;
-			}
-		}
+	if (logger->column_count > 0) {
+		logger->write = log_columns;
 	}
-	
 	if (logger->tree) {
 		logger->write = log_tree;
 		if(format == NULL)logger->format = String_clone("newick");

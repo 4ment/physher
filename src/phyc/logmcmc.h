@@ -8,11 +8,14 @@
 #include <sys/time.h>
 
 #include "parameters.h"
+#include "logger.h"
 
 typedef struct Log{
 	Parameters* x;
 	Model** models;
 	size_t model_count;
+	LogColumn* columns;
+	size_t column_count;
 	FILE* file;
 	char* filename;
 	size_t every;

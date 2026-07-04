@@ -636,11 +636,9 @@
           "id": "screenlogger",
           "type": "logger",
           "every": 1000,
-          "models": [
-            "&joint",
-            "&treelikelihood"
-          ],
-          "x": [
+          "columns": [
+            "@joint",
+            "@treelikelihood",
             "&tree.root_height",
             "&rate",
             "&n0"
@@ -651,11 +649,9 @@
           "type": "logger",
           "file": "samples.log",
           "every": 1000,
-          "models": [
-            "&joint",
-            "&treelikelihood"
-          ],
-          "x": [
+          "columns": [
+            "@joint",
+            "@treelikelihood",
             "&tree.root_height",
             "&kappa",
             "&frequencies",
@@ -668,7 +664,7 @@
           "type": "logger",
           "file": "samples.trees",
           "every": 1000,
-          "models": "&tree"
+          "tree": "@tree"
         }
       ],
       "operators": [
