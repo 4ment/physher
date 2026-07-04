@@ -102,8 +102,11 @@ DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm
 
 	clone->logP = dm->logP;
 	clone->gradient = dm->gradient;
+	clone->rgradient = dm->rgradient;
 	clone->sample = dm->sample;
 	clone->rsample = dm->rsample;
+	clone->entropy = dm->entropy;
+	clone->gradient_entropy = dm->gradient_entropy;
 	clone->clone = dm->clone;
 	clone->free = dm->free;
 	clone->tempp = NULL;

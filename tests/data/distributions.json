@@ -93,7 +93,7 @@
 },
 "multivariatenormal":{
 	"id":"multivariatenormal",
-	"type": "distribution", 
+	"type": "distribution",
 	"distribution": "multivariatenormal",
 	"parameters":{
 		"mu":{"id":"multivariatenormal.mu", "type":"parameter", "dimension": 2, "values": [0.5, 0.1]},
@@ -103,7 +103,7 @@
 },
 "multivariatenormal2":{
 	"id":"multivariatenormal2",
-	"type": "distribution", 
+	"type": "distribution",
 	"distribution": "multivariatenormal",
 	"parameters":{
 		"mu":{"id":"multivariatenormal2.mu", "type":"parameter", "dimension": 2, "values": [0.5, 0.1]},

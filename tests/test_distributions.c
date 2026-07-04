@@ -15,7 +15,9 @@
 #include "phyc/distgamma.h"
 #include "phyc/distkumaraswamy.h"
 #include "phyc/distlognormal.h"
+#include "phyc/distmultinormal.h"
 #include "phyc/distnormal.h"
+#include "phyc/matrix.h"
 #include "phyc/distweibull.h"
 #include "phyc/parameters.h"
 
@@ -1561,6 +1563,393 @@ char* test_dirichlet_distribution() {
 
 #pragma endregion
 
+#pragma region Multivariate Normal Distribution
+
+// Independent oracle for the MVN log density with a lower-triangular Cholesky
+// factor L (packed row-major), computed by hand:
+//   logP = -k/2 log(2pi) - sum_i log(L_ii) - 1/2 || L^{-1}(x-mu) ||^2
+static double mvn_logP_oracle(const double* mu, const double* Lpacked,
+                              const double* x, size_t dim) {
+    double* r = dvector(dim);
+    double* w = dvector(dim);
+    for (size_t i = 0; i < dim; i++) r[i] = x[i] - mu[i];
+    // Forward substitution L w = r, reading L in packed lower-triangular order.
+    double logdet = 0;
+    for (size_t i = 0; i < dim; i++) {
+        double s = r[i];
+        size_t base = i * (i + 1) / 2;
+        for (size_t j = 0; j < i; j++) s -= Lpacked[base + j] * w[j];
+        double Lii = Lpacked[base + i];
+        w[i] = s / Lii;
+        logdet += log(Lii);
+    }
+    double quad = 0;
+    for (size_t i = 0; i < dim; i++) quad += w[i] * w[i];
+    free(r);
+    free(w);
+    return -0.5 * dim * (log(2.0) + log(M_PI)) - logdet - 0.5 * quad;
+}
+
+// logP against the hand-rolled oracle and every gradient (x, mu, packed L)
+// against a finite difference of logP.
+char* test_multivariate_normal_distribution() {
+    size_t dim = 3;
+    double muValues[] = {0.5, -0.2, 1.0};
+    // L (lower-triangular Cholesky), packed row-major: rows [1.0][0.3,0.8][0.1,-0.2,0.5]
+    double LValues[] = {1.0, 0.3, 0.8, 0.1, -0.2, 0.5};
+    double xValues[] = {0.4, 0.1, 0.9};
+
+    Parameter* mu =
+        new_Parameter2("mu", muValues, dim, new_Constraint(-INFINITY, INFINITY));
+    Parameter* L =
+        new_Parameter2("L", LValues, 6, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x =
+        new_Parameter2("x", xValues, dim, new_Constraint(-INFINITY, INFINITY));
+
+    Parameters* xs = new_Parameters(1);
+    Parameters_move(xs, x);
+    Parameters* parameters = new_Parameters(2);
+    Parameters_move(parameters, mu);
+    Parameters_move(parameters, L);
+
+    DistributionModel* dm =
+        new_MultivariateNormalDistributionModel_with_parameters(parameters, xs);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    double logP2 = mvn_logP_oracle(muValues, LValues, xValues, dim);
+    printf("MVN LogP: %f, oracle: %f\n", logP, logP2);
+    mu_assert(fabs(logP - logP2) < 1e-10, "MVN logP not matching oracle");
+
+    Parameters* ps = new_Parameters(3);
+    Parameters_add(ps, mu);
+    Parameters_add(ps, L);
+    Parameters_add(ps, x);
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "MVN gradient does not match finite difference");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
+// A full covariance matrix (dim*dim) is Cholesky-decomposed internally; check logP
+// against the oracle fed the corresponding L, and x/mu gradients against FD.
+char* test_multivariate_normal_distribution_full_cov() {
+    size_t dim = 2;
+    double muValues[] = {0.5, -0.2};
+    // Sigma = [[1.0, 0.3],[0.3, 0.5]] -> L = [[1.0],[0.3, sqrt(0.5-0.09)]]
+    double sigmaValues[] = {1.0, 0.3, 0.3, 0.5};
+    double xValues[] = {0.4, 0.1};
+    double Lpacked[] = {1.0, 0.3, sqrt(0.5 - 0.09)};
+
+    Parameter* mu =
+        new_Parameter2("mu", muValues, dim, new_Constraint(-INFINITY, INFINITY));
+    Parameter* sigma =
+        new_Parameter2("sigma", sigmaValues, 4, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x =
+        new_Parameter2("x", xValues, dim, new_Constraint(-INFINITY, INFINITY));
+
+    Parameters* xs = new_Parameters(1);
+    Parameters_move(xs, x);
+    Parameters* parameters = new_Parameters(2);
+    Parameters_move(parameters, mu);
+    Parameters_move(parameters, sigma);
+
+    DistributionModel* dm =
+        new_MultivariateNormalDistributionModel_with_parameters(parameters, xs);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    double logP2 = mvn_logP_oracle(muValues, Lpacked, xValues, dim);
+    printf("MVN (full cov) LogP: %f, oracle: %f\n", logP, logP2);
+    mu_assert(fabs(logP - logP2) < 1e-10, "MVN full-cov logP not matching oracle");
+
+    // Only x and mu gradients are defined for the full-covariance parameterization.
+    Parameters* ps = new_Parameters(2);
+    Parameters_add(ps, mu);
+    Parameters_add(ps, x);
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "MVN full-cov gradient does not match finite difference");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
+// Reparameterization gradient: x = mu + L z. Given downstream dL/dx (in x->grad)
+// and the standard-normal draw z (stashed in dm->tempx by rsample), we expect
+//   dL/dmu_a  = dL/dx_a
+//   dL/dL_ab  = dL/dx_a * z_b   (packed lower-triangular, a >= b)
+char* test_multivariate_normal_rgradient() {
+    size_t dim = 3;
+    double muValues[] = {0.5, -0.2, 1.0};
+    double LValues[] = {1.0, 0.3, 0.8, 0.1, -0.2, 0.5};
+    double xValues[] = {0.0, 0.0, 0.0};
+
+    Parameter* mu =
+        new_Parameter2("mu", muValues, dim, new_Constraint(-INFINITY, INFINITY));
+    Parameter* L =
+        new_Parameter2("L", LValues, 6, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x =
+        new_Parameter2("x", xValues, dim, new_Constraint(-INFINITY, INFINITY));
+
+    Parameters* xs = new_Parameters(1);
+    Parameters_move(xs, x);
+    Parameters* parameters = new_Parameters(2);
+    Parameters_move(parameters, mu);
+    Parameters_move(parameters, L);
+
+    DistributionModel* dm =
+        new_MultivariateNormalDistributionModel_with_parameters(parameters, xs);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double z[] = {0.7, -1.1, 0.3};
+    double upstream[] = {0.9, -0.4, 1.2};  // downstream dL/dx
+    for (size_t i = 0; i < dim; i++) {
+        dm->tempx[i] = z[i];
+        x->grad[i] = upstream[i];
+    }
+    Parameters_zero_grad(parameters);
+
+    dm->rgradient(dm);
+
+    for (size_t a = 0; a < dim; a++) {
+        mu_assert(fabs(mu->grad[a] - upstream[a]) < 1e-12,
+                  "MVN rgradient dmu does not match");
+    }
+    size_t idx = 0;
+    for (size_t a = 0; a < dim; a++) {
+        for (size_t b = 0; b <= a; b++) {
+            double expected = upstream[a] * z[b];
+            printf("dL/dL[%zu,%zu]: %f (expected %f)\n", a, b, L->grad[idx], expected);
+            mu_assert(fabs(L->grad[idx] - expected) < 1e-12,
+                      "MVN rgradient dL does not match");
+            idx++;
+        }
+    }
+
+    model->free(model);
+    return NULL;
+}
+
+// Several observations sharing one MVN(mu, L): logP is the sum of per-observation
+// densities, and mu/L gradients accumulate over observations while each x_k has its
+// own gradient. All checked against finite differences of logP.
+char* test_multivariate_normal_multi() {
+    size_t dim = 3;
+    double muValues[] = {0.5, -0.2, 1.0};
+    double LValues[] = {1.0, 0.3, 0.8, 0.1, -0.2, 0.5};
+    double x0v[] = {0.4, 0.1, 0.9};
+    double x1v[] = {-0.3, 0.7, 0.2};
+
+    Parameter* mu =
+        new_Parameter2("mu", muValues, dim, new_Constraint(-INFINITY, INFINITY));
+    Parameter* L =
+        new_Parameter2("L", LValues, 6, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x0 =
+        new_Parameter2("x0", x0v, dim, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x1 =
+        new_Parameter2("x1", x1v, dim, new_Constraint(-INFINITY, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, mu);
+    Parameters_add(parameters, L);
+
+    DistributionModel* dm =
+        new_MultivariateNormalDistributionModel_with_parameters(parameters, xs);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double logP = model->logP(model);
+    double logP2 = 0;
+    for (size_t k = 0; k < Parameters_count(xs); k++) {
+        logP2 += mvn_logP_oracle(muValues, LValues,
+                                 Parameter_values(Parameters_at(xs, k)), dim);
+    }
+    printf("MVN multi LogP: %f, oracle: %f\n", logP, logP2);
+    mu_assert(fabs(logP - logP2) < 1e-10, "MVN multi logP not matching oracle");
+
+    Parameters* ps = new_Parameters(2 + Parameters_count(xs));
+    Parameters_add(ps, mu);
+    Parameters_add(ps, L);
+    for (size_t k = 0; k < Parameters_count(xs); k++) {
+        Parameters_add(ps, Parameters_at(xs, k));
+    }
+    Parameters_zero_grad(ps);
+    model->gradient(model, ps);
+
+    for (size_t i = 0; i < Parameters_count(ps); i++) {
+        Parameter* p = Parameters_at(ps, i);
+        printf("dlogP/d%s:", Parameter_name(p));
+        for (size_t j = 0; j < Parameter_size(p); j++) {
+            double fd = fd_logP_grad(model, p, j);
+            printf(" %f (fd %f)", p->grad[j], fd);
+            mu_assert(fabs(p->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                      "MVN multi gradient does not match finite difference");
+        }
+        printf("\n");
+    }
+
+    free_Parameters(ps);
+    model->free(model);
+    return NULL;
+}
+
+// Reparameterization gradient with several observations: mu and L gradients sum
+// over observations, each using its own stashed z_k.
+char* test_multivariate_normal_multi_rgradient() {
+    size_t dim = 3;
+    double muValues[] = {0.5, -0.2, 1.0};
+    double LValues[] = {1.0, 0.3, 0.8, 0.1, -0.2, 0.5};
+    double zero[] = {0.0, 0.0, 0.0};
+
+    Parameter* mu =
+        new_Parameter2("mu", muValues, dim, new_Constraint(-INFINITY, INFINITY));
+    Parameter* L =
+        new_Parameter2("L", LValues, 6, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x0 =
+        new_Parameter2("x0", zero, dim, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x1 =
+        new_Parameter2("x1", zero, dim, new_Constraint(-INFINITY, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, mu);
+    Parameters_add(parameters, L);
+
+    DistributionModel* dm =
+        new_MultivariateNormalDistributionModel_with_parameters(parameters, xs);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double z[2][3] = {{0.7, -1.1, 0.3}, {0.2, 0.5, -0.9}};
+    double up[2][3] = {{0.9, -0.4, 1.2}, {-0.5, 0.8, 0.1}};
+    for (size_t k = 0; k < 2; k++) {
+        Parameter* xk = Parameters_at(xs, k);
+        for (size_t i = 0; i < dim; i++) {
+            dm->tempx[k * dim + i] = z[k][i];
+            xk->grad[i] = up[k][i];
+        }
+    }
+    Parameters_zero_grad(parameters);
+
+    dm->rgradient(dm);
+
+    for (size_t a = 0; a < dim; a++) {
+        double expected = up[0][a] + up[1][a];
+        mu_assert(fabs(mu->grad[a] - expected) < 1e-12,
+                  "MVN multi rgradient dmu does not match");
+    }
+    size_t idx = 0;
+    for (size_t a = 0; a < dim; a++) {
+        for (size_t b = 0; b <= a; b++) {
+            double expected = up[0][a] * z[0][b] + up[1][a] * z[1][b];
+            printf("dL/dL[%zu,%zu]: %f (expected %f)\n", a, b, L->grad[idx], expected);
+            mu_assert(fabs(L->grad[idx] - expected) < 1e-12,
+                      "MVN multi rgradient dL does not match");
+            idx++;
+        }
+    }
+
+    model->free(model);
+    return NULL;
+}
+
+// Central finite-difference of the entropy wrt element i of parameter p.
+static double fd_entropy_grad(DistributionModel* dm, Parameter* p, size_t i) {
+    const double h = 1e-6;
+    double v = Parameter_value_at(p, i);
+    Parameter_set_value_at(p, v + h, i);
+    double hp = dm->entropy(dm);
+    Parameter_set_value_at(p, v - h, i);
+    double hm = dm->entropy(dm);
+    Parameter_set_value_at(p, v, i);
+    return (hp - hm) / (2.0 * h);
+}
+
+// Entropy against the closed form k/2(1+log2pi) + sum_i log L_ii (times the number
+// of observations), and its gradient wrt mu (zero) and L against finite differences.
+char* test_multivariate_normal_entropy() {
+    size_t dim = 3;
+    double muValues[] = {0.5, -0.2, 1.0};
+    double LValues[] = {1.0, 0.3, 0.8, 0.1, -0.2, 0.5};  // diag: 1.0, 0.8, 0.5
+    double x0v[] = {0.4, 0.1, 0.9};
+    double x1v[] = {-0.3, 0.7, 0.2};
+
+    Parameter* mu =
+        new_Parameter2("mu", muValues, dim, new_Constraint(-INFINITY, INFINITY));
+    Parameter* L =
+        new_Parameter2("L", LValues, 6, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x0 =
+        new_Parameter2("x0", x0v, dim, new_Constraint(-INFINITY, INFINITY));
+    Parameter* x1 =
+        new_Parameter2("x1", x1v, dim, new_Constraint(-INFINITY, INFINITY));
+
+    Parameters* xs = new_Parameters(2);
+    Parameters_move(xs, x0);
+    Parameters_move(xs, x1);
+    Parameters* parameters = new_Parameters(2);
+    Parameters_add(parameters, mu);
+    Parameters_add(parameters, L);
+
+    DistributionModel* dm =
+        new_MultivariateNormalDistributionModel_with_parameters(parameters, xs);
+    Model* model = new_DistributionModel2("dist", dm);
+
+    double H = dm->entropy(dm);
+    double logdet = log(1.0) + log(0.8) + log(0.5);
+    double Href = 2 * (0.5 * dim * (1.0 + log(2.0) + log(M_PI)) + logdet);
+    printf("MVN entropy: %f, oracle: %f\n", H, Href);
+    mu_assert(fabs(H - Href) < 1e-10, "MVN entropy not matching closed form");
+
+    Parameters_zero_grad(parameters);
+    dm->gradient_entropy(dm, parameters);
+
+    // mu gradient is zero; L gradient matches finite differences of the entropy.
+    for (size_t i = 0; i < dim; i++) {
+        mu_assert(fabs(mu->grad[i]) < 1e-12, "MVN entropy dmu should be zero");
+    }
+    for (size_t j = 0; j < Parameter_size(L); j++) {
+        double fd = fd_entropy_grad(dm, L, j);
+        printf("dH/dL[%zu]: %f (fd %f)\n", j, L->grad[j], fd);
+        mu_assert(fabs(L->grad[j] - fd) < 1e-4 * (1.0 + fabs(fd)),
+                  "MVN entropy dL does not match finite difference");
+    }
+
+    model->free(model);
+    return NULL;
+}
+
+#pragma endregion
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_exponential_distribution);
@@ -1604,6 +1993,13 @@ char* all_tests() {
     mu_run_test(test_kumaraswamy_distribution_prior);
 
     mu_run_test(test_dirichlet_distribution);
+
+    mu_run_test(test_multivariate_normal_distribution);
+    mu_run_test(test_multivariate_normal_distribution_full_cov);
+    mu_run_test(test_multivariate_normal_rgradient);
+    mu_run_test(test_multivariate_normal_multi);
+    mu_run_test(test_multivariate_normal_multi_rgradient);
+    mu_run_test(test_multivariate_normal_entropy);
 
     return NULL;
 }
