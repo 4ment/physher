@@ -31,60 +31,32 @@ static void _validate_log_format(json_node* node, const char* fmt){
 	}
 }
 
-static void _log_write_header(Trace* logger){
+// Header for a CPO logger: a comment line of per-pattern weights, then the
+// per-pattern column names.
+static void _log_cpo_header(Trace* logger){
 	StringBuffer* buffer = new_StringBuffer(10);
-	if(logger->cpo){
-		fprintf(logger->file, "#");
-		for(int j = 0; j < logger->model_count; j++){
-			Model* treelikelihood = logger->models[j];
-			SingleTreeLikelihood* tlk = treelikelihood->obj;
-			
-			for (int i = 0; i < tlk->sp->count; i++) {
-				StringBuffer_empty(buffer);
-				StringBuffer_append_format(buffer, "%f", tlk->sp->weights[i]);
-				fprintf(logger->file, "%s%s", (i == 0 && j == 0 ? "": "\t"), buffer->c);
-			}
-		}
-		fprintf(logger->file, "\niter");
-		for(int j = 0; j < logger->model_count; j++){
-			Model* treelikelihood = logger->models[j];
-			SingleTreeLikelihood* tlk = treelikelihood->obj;
-			for (int i = 0; i < tlk->sp->count; i++) {
-				StringBuffer_empty(buffer);
-				StringBuffer_append_format(buffer, "%s%s%d", treelikelihood->name, ".p", i);
-				fprintf(logger->file, "\t%s", buffer->c);
-			}
-		}
-		fflush(logger->file);
-	}
-	else{
-		fprintf(logger->file, "iter");
-		for (int i = 0; i < logger->model_count; i++) {
-			Model* model = logger->models[i];
-			if(model->type == MODEL_DISCRETE_PARAMETER){
-				DiscreteParameter* dp = model->obj;
-				for (int j = 0; j < dp->length; j++) {
-					fprintf(logger->file, "\t%s.%d", model->name, j+1);
-				}
-			}
-			else{
-				fprintf(logger->file, "\t%s", model->name);
-			}
-		}
-		for (int i = 0; i < Parameters_count(logger->x); i++) {
-			Parameter* parameter = Parameters_at(logger->x, i);
-			if(Parameter_size(parameter) == 1){
-				fprintf(logger->file, "\t%s", Parameters_name(logger->x, i));
-			}
-			else{
-				for(size_t j = 0; j < Parameter_size(parameter); j++){
-					StringBuffer_empty(buffer);
-					StringBuffer_append_format(buffer, "%s.%zu", Parameter_name(parameter), j);
-					fprintf(logger->file, "\t%s", buffer->c);
-				}
-			}
+	fprintf(logger->file, "#");
+	for(int j = 0; j < logger->model_count; j++){
+		Model* treelikelihood = logger->models[j];
+		SingleTreeLikelihood* tlk = treelikelihood->obj;
+
+		for (int i = 0; i < tlk->sp->count; i++) {
+			StringBuffer_empty(buffer);
+			StringBuffer_append_format(buffer, "%f", tlk->sp->weights[i]);
+			fprintf(logger->file, "%s%s", (i == 0 && j == 0 ? "": "\t"), buffer->c);
 		}
 	}
+	fprintf(logger->file, "\niter");
+	for(int j = 0; j < logger->model_count; j++){
+		Model* treelikelihood = logger->models[j];
+		SingleTreeLikelihood* tlk = treelikelihood->obj;
+		for (int i = 0; i < tlk->sp->count; i++) {
+			StringBuffer_empty(buffer);
+			StringBuffer_append_format(buffer, "%s%s%d", treelikelihood->name, ".p", i);
+			fprintf(logger->file, "\t%s", buffer->c);
+		}
+	}
+	fflush(logger->file);
 	free_StringBuffer(buffer);
 	fprintf(logger->file, "\n");
 }
@@ -160,51 +132,6 @@ void log_tree(Trace* logger, size_t iter){
 	fprintf(logger->file, "\n");
 }
 
-void log_log(Trace* logger, size_t iter){
-	fprintf(logger->file, "%zu", iter);
-	for (int i = 0; i < logger->model_count; i++) {
-		Model* model = logger->models[i];
-		if(model->type == MODEL_DISCRETE_PARAMETER){
-			DiscreteParameter* dp = model->obj;
-			for (int j = 0; j < dp->length; j++) {
-				fprintf(logger->file, "\t%d", dp->values[j]);
-			}
-		}
-		else{
-			// if (logger->force) {
-				fprintf(logger->file, "\t%e", model->logP(model));
-			// }
-			// else fprintf(logger->file, "\t%e", model->lp);
-		}
-	}
-	for (int i = 0; i < Parameters_count(logger->x); i++) {
-		Parameter* parameter = Parameters_at(logger->x, i);
-		const double* values = Parameter_values(parameter);
-		for(size_t j = 0; j < Parameter_size(parameter); j++){
-			fprintf(logger->file, "\t%e", values[j]);
-		}
-	}
-	
-	if (logger->filename == NULL) {
-		if(iter > 0){
-			gettimeofday(&logger->end, NULL);
-			double diff_time = (double)(logger->end.tv_usec - logger->start.tv_usec) / 1000000 + (double)(logger->end.tv_sec - logger->start.tv_sec);
-			double speed = diff_time/logger->every*1e6;
-			if (speed < 1) {
-				fprintf(logger->file, "  %.2f sec/million", speed);
-			}
-			else{
-				fprintf(logger->file, "  %.2f min/million", speed/60);
-			}
-			
-			logger->start = logger->end;
-		}
-	}
-
-	fprintf(logger->file, "\n");
-	fflush(logger->file);
-}
-
 void log_log_cpo(Trace* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
 	for(int j = 0; j < logger->model_count; j++){
@@ -216,23 +143,6 @@ void log_log_cpo(Trace* logger, size_t iter){
 		}
 	}
 	fprintf(logger->file, "\n");
-}
-
-void log_log_with(Trace* logger, size_t iter, const char* more){
-	fprintf(logger->file, "%zu", iter);
-	for (int i = 0; i < logger->model_count; i++) {
-		Model* model = logger->models[i];
-		fprintf(logger->file, "\t%e", model->lp);
-	}
-	for (int i = 0; i < Parameters_count(logger->x); i++) {
-		Parameter* parameter = Parameters_at(logger->x, i);
-		const double* values = Parameter_values(parameter);
-		for(size_t j = 0; j < Parameter_size(parameter); j++){
-			fprintf(logger->file, "\t%e", values[j]);
-		}
-	}
-	
-	fprintf(logger->file, "\t%s\n", more);
 }
 
 static void _log_columns_header(Trace* logger){
@@ -325,11 +235,11 @@ void log_initialize(Trace* logger){
 		Tree_print_nexus_header_figtree_BeginTrees(logger->file, tree);
 	}
 	else if(!logger->tree || (logger->tree && strcasecmp(logger->format, "newick") != 0)){
-		if(logger->column_count > 0){
-			_log_columns_header(logger);
+		if(logger->cpo){
+			_log_cpo_header(logger);
 		}
 		else{
-			_log_write_header(logger);
+			_log_columns_header(logger);
 		}
 	}
 }
@@ -346,7 +256,6 @@ void log_finalize(Trace* logger){
 
 void _free_Trace(Trace* logger){
 	//printf("free logger");
-	free_Parameters(logger->x);
 	if (logger->filename != NULL) {
 		//		printf("close logger");
 		free(logger->filename);
@@ -453,7 +362,6 @@ Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 	json_validate_xor(node, "tree", "columns", NULL);
 
 	Trace* logger = malloc(sizeof(Trace));
-	logger->x = new_Parameters(1);
 	// A logger is either a tree logger ("tree": "@tree") or a column logger
 	// ("columns": [...]); json_validate_xor above guarantees exactly one.
 	logger->columns = NULL;
@@ -461,8 +369,7 @@ Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 
 	logger->every = get_json_node_value_size_t(node, "every", 1000);
 	json_node* filename_node = get_json_node(node, "file");
-	logger->write = log_log;
-	logger->write_with = log_log_with;
+	logger->write = log_columns;
 	logger->file = stdout;
 	logger->filename = NULL;
 	gettimeofday(&logger->start, NULL);

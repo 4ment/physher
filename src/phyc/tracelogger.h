@@ -23,7 +23,6 @@ typedef struct LogColumn{
 size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** columns);
 
 typedef struct Trace{
-	Parameters* x;
 	Model** models;
 	size_t model_count;
 	LogColumn* columns;
@@ -43,7 +42,6 @@ typedef struct Trace{
 	void(*initialize)(struct Trace* logger);
 	void(*finalize)(struct Trace* logger);
 	void(*write)(struct Trace* logger, size_t);
-	void(*write_with)(struct Trace* logger, size_t, const char*);
 	void(*free)(struct Trace*);
 	bool cpo;
 	bool tree;
