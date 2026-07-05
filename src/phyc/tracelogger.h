@@ -42,6 +42,7 @@ typedef struct Trace{
 	void(*initialize)(struct Trace* logger);
 	void(*finalize)(struct Trace* logger);
 	void(*write)(struct Trace* logger, size_t);
+	void(*report)(struct Trace* logger);
 	void(*free)(struct Trace*);
 	bool cpo;
 	bool tree;

@@ -254,6 +254,58 @@ void log_finalize(Trace* logger){
 	}
 }
 
+// One-shot label layout: one line per column, "name: value(s)", no iter column
+// and no header. Used when a single snapshot is logged (see log_report).
+static void _log_report(Trace* logger){
+	for (size_t i = 0; i < logger->column_count; i++) {
+		if (logger->columns[i].model != NULL) {
+			Model* model = logger->columns[i].model;
+			fprintf(logger->file, "%s:", model->name);
+			if(model->type == MODEL_DISCRETE_PARAMETER){
+				DiscreteParameter* dp = model->obj;
+				for (int j = 0; j < dp->length; j++) {
+					fprintf(logger->file, " %d", dp->values[j]);
+				}
+			}
+			else{
+				fprintf(logger->file, " %e", model->logP(model));
+			}
+		}
+		else{
+			Parameter* parameter = logger->columns[i].parameter;
+			fprintf(logger->file, "%s:", Parameter_name(parameter));
+			const double* values = Parameter_values(parameter);
+			for(size_t j = 0; j < Parameter_size(parameter); j++){
+				fprintf(logger->file, " %e", values[j]);
+			}
+		}
+		fprintf(logger->file, "\n");
+	}
+	fflush(logger->file);
+}
+
+// Emit a single snapshot outside any iterative algorithm. Column loggers use
+// the label layout; a tree logger has no alternative rendering, so it reuses
+// the streaming lifecycle (which also handles the nexus header/footer).
+void log_report(Trace* logger){
+	if(logger->tree){
+		logger->initialize(logger);
+		logger->write(logger, 0);
+		logger->finalize(logger);
+		return;
+	}
+	if (logger->filename != NULL) {
+		char a[2] = "w";
+		if(logger->append) a[0] = 'a';
+		logger->file = fopen(logger->filename, a);
+	}
+	_log_report(logger);
+	if (logger->filename != NULL) {
+		fclose(logger->file);
+		logger->file = NULL;
+	}
+}
+
 void _free_Trace(Trace* logger){
 	//printf("free logger");
 	if (logger->filename != NULL) {
@@ -498,6 +550,7 @@ Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 
 	logger->initialize = log_initialize;
 	logger->finalize = log_finalize;
+	logger->report = log_report;
 	logger->free = _free_Trace;
 	
 	return logger;

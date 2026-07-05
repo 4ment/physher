@@ -20,8 +20,6 @@
 #include "topologyopt.h"
 #include "tree.h"
 #include "treelikelihood.h"
-
-#include "vb.h"
 #include "tracelogger.h"
 
 static double model_logP( Parameters *params, double *grad, void *data ){

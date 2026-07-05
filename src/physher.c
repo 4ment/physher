@@ -183,12 +183,10 @@ int main(int argc, const char* argv[]){
 			free_Optimizer(opt);
 		}
 		else if (strcasecmp(type, "logger") == 0) {
-			// A standalone logger action is a one-shot Trace: initialize (header),
-			// write a single row at iteration 0, finalize.
+			// A standalone logger action logs a single snapshot: report() uses the
+			// one-line-per-column label layout (or prints the tree for a tree logger).
 			Trace* logger = new_Trace_from_json(child, hash2);
-			logger->initialize(logger);
-			logger->write(logger, 0);
-			logger->finalize(logger);
+			logger->report(logger);
 			logger->free(logger);
 		}
         else if (strcasecmp(type, "dumper") == 0) {
