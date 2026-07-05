@@ -17,6 +17,7 @@
 #include "phyc/modelfactory.h"
 #include "phyc/mjson.h"
 #include "phyc/logger.h"
+#include "phyc/dumper.h"
 #include "phyc/mcmc.h"
 #include "phyc/mmcmc.h"
 #include "phyc/hessian.h"

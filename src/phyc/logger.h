@@ -36,25 +36,8 @@ typedef struct Logger{
     char sep; //separator
 }Logger;
 
-struct Dumper{
-    Parameters** parameters;
-    size_t parameter_count;
-    Model** models;
-    size_t model_count;
-    void (*dump)(struct Dumper*);
-    void (*free)(struct Dumper*);
-    FILE* file;
-    char* filename;
-};
-
-
 struct Logger* new_logger_from_json(json_node* node, Hashtable* hash);
 
 void free_Logger(struct Logger* logger);
-
-
-struct Dumper* new_Dumper_from_json(json_node* node, Hashtable* hash);
-
-void free_Dumper(struct Dumper* logger);
 
 #endif /* logger_h */
