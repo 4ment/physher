@@ -389,8 +389,12 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 			fmt = get_json_node_value_string(item, "format");
 			if (fmt != NULL) _validate_log_format(item, fmt);
 		}
-		else{
+		else if (item->node_type == MJSON_STRING) {
 			ref = (char*)item->value;
+		}
+		else{
+			// anything else (number/bool/null) has no ref string to dereference
+			json_die(item, "a column must be a ref string (\"@id\") or an object {\"ref\": \"@id\"}");
 		}
 
 		if (ref[0] == '@') {
