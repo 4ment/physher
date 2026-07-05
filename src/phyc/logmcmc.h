@@ -16,6 +16,14 @@ typedef struct Log{
 	size_t model_count;
 	LogColumn* columns;
 	size_t column_count;
+	// tree annotation (tree loggers only)
+	Model** trait_models;   // BranchModel sources for per-branch traits
+	char** trait_tags;      // output key written per trait, e.g. "rate"
+	char** trait_formats;   // printf format per trait, e.g. "%e" (default) or "%.10f"
+	size_t trait_count;
+	Model** scalar_models;  // whole-tree likelihoods, logged as [&name=logP] (nexus only)
+	char** scalar_formats;  // printf format per annotation, e.g. "%e" (default)
+	size_t scalar_count;
 	FILE* file;
 	char* filename;
 	size_t every;

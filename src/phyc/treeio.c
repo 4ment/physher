@@ -264,6 +264,53 @@ void Tree_print_newick(FILE *pf, Tree *tree, bool internal, int precision){
     Tree_print_newick_subtree(pf, Tree_is_time_mode(tree), Tree_root(tree), internal, precision);
 }
 
+// Emit "[&key=val,key=val]" for a node's annotation table, or nothing if empty.
+static void _fprint_node_annotation( FILE *pf, const Node *n ){
+	if( n->annotation == NULL || Hashtable_length(n->annotation) == 0 ) return;
+	StringBuffer *buff = new_StringBuffer(10);
+	Hashtable_init_iterator(n->annotation);
+	HashEntry *entry = NULL;
+	while ( (entry = Hashtable_next(n->annotation)) != NULL ) {
+		char *value = (char*)HashEntry_value(entry);
+		char *key   = (char*)HashEntry_key(entry);
+		StringBuffer_append_strings(buff, 4, key, "=", value, ",");
+	}
+	StringBuffer_chop(buff);
+	fprintf(pf, "[&%s]", buff->c);
+	free_StringBuffer(buff);
+}
+
+static void _Tree_print_newick_with_annotation_aux( FILE *pf, bool time, const Node *n, bool internal, int precision ){
+	if( n == NULL ) return;
+	if( n->left != NULL ){
+		fprintf(pf, "(");
+		_Tree_print_newick_with_annotation_aux( pf, time, n->left, internal, precision );
+		fprintf(pf, ",");
+		_Tree_print_newick_with_annotation_aux( pf, time, n->right, internal, precision );
+		fprintf(pf, ")");
+		if( n->parent != NULL ){
+			if( internal ) fprintf(pf, "%s", n->name);
+			_fprint_node_annotation(pf, n);
+			fprintf(pf, ":%.*f", precision, time ? Node_time_elapsed((Node*)n) : Node_distance(n));
+		}
+		else fprintf(pf, ";");
+	}
+	else{
+		fprintf(pf, "%s", n->name);
+		_fprint_node_annotation(pf, n);
+		fprintf(pf, ":%.*f", precision, time ? Node_time_elapsed((Node*)n) : Node_distance(n));
+	}
+}
+
+// Like Tree_print_newick but decorates each branch with its node's annotation
+// table as a BEAST-style [&key=value,...] comment before the branch length.
+void Tree_print_newick_with_annotation( FILE *pf, Tree *tree, bool internal, int precision ){
+	if(Tree_is_time_mode(tree)){
+		Tree_update_heights(tree);
+	}
+	_Tree_print_newick_with_annotation_aux(pf, Tree_is_time_mode(tree), Tree_root(tree), internal, precision);
+}
+
 static void _Tree_print_height_newick_aux( FILE *pf, Tree *tree, const Node *n, bool internal ){
 	if( n == NULL ) return;
 	if( !Node_isleaf(n) ) fprintf(pf, "(");
