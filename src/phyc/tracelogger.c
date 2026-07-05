@@ -151,25 +151,27 @@ static void _log_columns_header(Trace* logger){
 	for (size_t i = 0; i < logger->column_count; i++) {
 		if (logger->columns[i].model != NULL) {
 			Model* model = logger->columns[i].model;
+			const char* colname = logger->columns[i].name != NULL ? logger->columns[i].name : model->name;
 			if(model->type == MODEL_DISCRETE_PARAMETER){
 				DiscreteParameter* dp = model->obj;
 				for (int j = 0; j < dp->length; j++) {
-					fprintf(logger->file, "\t%s.%d", model->name, j+1);
+					fprintf(logger->file, "\t%s.%d", colname, j+1);
 				}
 			}
 			else{
-				fprintf(logger->file, "\t%s", model->name);
+				fprintf(logger->file, "\t%s", colname);
 			}
 		}
 		else{
 			Parameter* parameter = logger->columns[i].parameter;
+			const char* colname = logger->columns[i].name != NULL ? logger->columns[i].name : Parameter_name(parameter);
 			if(Parameter_size(parameter) == 1){
-				fprintf(logger->file, "\t%s", Parameter_name(parameter));
+				fprintf(logger->file, "\t%s", colname);
 			}
 			else{
 				for(size_t j = 0; j < Parameter_size(parameter); j++){
 					StringBuffer_empty(buffer);
-					StringBuffer_append_format(buffer, "%s.%zu", Parameter_name(parameter), j);
+					StringBuffer_append_format(buffer, "%s.%zu", colname, j);
 					fprintf(logger->file, "\t%s", buffer->c);
 				}
 			}
@@ -264,7 +266,8 @@ static void _log_report(Trace* logger){
 	for (size_t i = 0; i < logger->column_count; i++) {
 		if (logger->columns[i].model != NULL) {
 			Model* model = logger->columns[i].model;
-			fprintf(logger->file, "%s:", model->name);
+			const char* colname = logger->columns[i].name != NULL ? logger->columns[i].name : model->name;
+			fprintf(logger->file, "%s:", colname);
 			if(model->type == MODEL_DISCRETE_PARAMETER){
 				DiscreteParameter* dp = model->obj;
 				for (int j = 0; j < dp->length; j++) {
@@ -280,7 +283,8 @@ static void _log_report(Trace* logger){
 		else{
 			Parameter* parameter = logger->columns[i].parameter;
 			const char* fmt = logger->columns[i].format != NULL ? logger->columns[i].format : logger->format;
-			fprintf(logger->file, "%s:", Parameter_name(parameter));
+			const char* colname = logger->columns[i].name != NULL ? logger->columns[i].name : Parameter_name(parameter);
+			fprintf(logger->file, "%s:", colname);
 			const double* values = Parameter_values(parameter);
 			for(size_t j = 0; j < Parameter_size(parameter); j++){
 				fprintf(logger->file, " ");
@@ -327,6 +331,7 @@ void _free_Trace(Trace* logger){
 	if(logger->column_count > 0){
 		for(size_t i = 0; i < logger->column_count; i++){
 			free(logger->columns[i].format);
+			free(logger->columns[i].name);
 		}
 		free(logger->columns);
 	}
@@ -381,6 +386,7 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 		// object {"ref": "@id", "format": "%f"} with an optional per-column format.
 		char* ref;
 		char* fmt = NULL;
+		char* name = NULL;
 		if (item->node_type == MJSON_OBJECT) {
 			ref = get_json_node_value_string(item, "ref");
 			if (ref == NULL) {
@@ -388,6 +394,7 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 			}
 			fmt = get_json_node_value_string(item, "format");
 			if (fmt != NULL) _validate_log_format(item, fmt);
+			name = get_json_node_value_string(item, "name");
 		}
 		else if (item->node_type == MJSON_STRING) {
 			ref = (char*)item->value;
@@ -402,6 +409,7 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 			cols[count].model = Hashtable_get(hash, ref + 1);
 			cols[count].parameter = NULL;
 			cols[count].format = fmt != NULL ? String_clone(fmt) : NULL;
+			cols[count].name = name != NULL ? String_clone(name) : NULL;
 			count++;
 		}
 		else if (ref[0] == '&' || ref[0] == '%') {
@@ -410,11 +418,17 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 			// every resulting column shares the item's format.
 			Parameters* tmp = new_Parameters(1);
 			get_parameter_reference(ref, hash, tmp);
+			// A "name" override renames a single column; it would be ambiguous
+			// across several parameters, so require the ref to resolve to one.
+			if (name != NULL && Parameters_count(tmp) != 1) {
+				json_die(item, "a column \"name\" requires a ref resolving to a single parameter: '%s'", ref);
+			}
 			for (size_t j = 0; j < Parameters_count(tmp); j++) {
 				cols = realloc(cols, sizeof(LogColumn) * (count + 1));
 				cols[count].model = NULL;
 				cols[count].parameter = Parameters_at(tmp, j);
 				cols[count].format = fmt != NULL ? String_clone(fmt) : NULL;
+				cols[count].name = name != NULL ? String_clone(name) : NULL;
 				count++;
 			}
 			free_Parameters_weak(tmp);

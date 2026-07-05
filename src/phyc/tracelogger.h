@@ -13,18 +13,21 @@
 //   model     != NULL -> log this Model's logP        (JSON ref "@id")
 //   parameter != NULL -> log this Parameter's value(s) (JSON ref "&id" or "%id")
 // format is an optional per-column printf conversion; NULL falls back to the
-// logger-level format.
+// logger-level format. name is an optional header/label override; NULL falls
+// back to the model/parameter's own name.
 typedef struct LogColumn{
 	Model* model;
 	Parameter* parameter;
 	char* format;
+	char* name;
 }LogColumn;
 
 // Parse the "columns" array into a freshly allocated ordered array; returns the
 // number of columns (0 and *columns==NULL when the node is absent). Each item is
 // either a bare ref string ("@id", "&id" or "%id") or an object
-// {"ref": "@id", "format": "%f"} with an optional per-column format. "%id"/vector
-// refs expand to one column per element (sharing the item's format).
+// {"ref": "@id", "name": "lnL", "format": "%f"} with an optional per-column
+// format and header/label name. "%id"/vector refs expand to one column per
+// element (sharing the item's format); a "name" override requires a single ref.
 size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** columns);
 
 typedef struct Trace{
