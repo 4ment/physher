@@ -191,14 +191,16 @@ void log_columns(Trace* logger, size_t iter){
 				}
 			}
 			else{
-				fprintf(logger->file, "\t%e", model->logP(model));
+				fprintf(logger->file, "\t");
+				fprintf(logger->file, logger->format, model->logP(model));
 			}
 		}
 		else{
 			Parameter* parameter = logger->columns[i].parameter;
 			const double* values = Parameter_values(parameter);
 			for(size_t j = 0; j < Parameter_size(parameter); j++){
-				fprintf(logger->file, "\t%e", values[j]);
+				fprintf(logger->file, "\t");
+				fprintf(logger->file, logger->format, values[j]);
 			}
 		}
 	}
@@ -268,7 +270,8 @@ static void _log_report(Trace* logger){
 				}
 			}
 			else{
-				fprintf(logger->file, " %e", model->logP(model));
+				fprintf(logger->file, " ");
+				fprintf(logger->file, logger->format, model->logP(model));
 			}
 		}
 		else{
@@ -276,7 +279,8 @@ static void _log_report(Trace* logger){
 			fprintf(logger->file, "%s:", Parameter_name(parameter));
 			const double* values = Parameter_values(parameter);
 			for(size_t j = 0; j < Parameter_size(parameter); j++){
-				fprintf(logger->file, " %e", values[j]);
+				fprintf(logger->file, " ");
+				fprintf(logger->file, logger->format, values[j]);
 			}
 		}
 		fprintf(logger->file, "\n");
@@ -481,6 +485,17 @@ Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 	if (logger->tree) {
 		logger->write = log_tree;
 		if(format == NULL)logger->format = String_clone("newick");
+	}
+	else {
+		// For a value (columns/cpo) logger, "format" is the printf conversion
+		// applied to every numeric value, in both the tabular and label layouts;
+		// default to "%e".
+		if(format != NULL){
+			_validate_log_format(node, format);
+		}
+		else{
+			logger->format = String_clone("%e");
+		}
 	}
 
 	// Tree annotation: per-branch "traits" (branch-model rates, both formats) and
