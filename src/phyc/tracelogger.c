@@ -380,6 +380,59 @@ void _free_Trace(Trace* logger){
 	free(logger);
 }
 
+size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** columns){
+	json_node* columns_node = get_json_node(node, "columns");
+	*columns = NULL;
+	if (columns_node == NULL) return 0;
+
+	// normalize to an array of ref strings
+	json_node** items;
+	size_t item_count;
+	if (columns_node->node_type == MJSON_ARRAY) {
+		items = columns_node->children;
+		item_count = columns_node->child_count;
+	}
+	else if (columns_node->node_type == MJSON_STRING) {
+		items = &columns_node;
+		item_count = 1;
+	}
+	else{
+		fprintf(stderr, "\"columns\" must be a string or an array of strings\n");
+		exit(1);
+	}
+
+	LogColumn* cols = NULL;
+	size_t count = 0;
+	for (size_t i = 0; i < item_count; i++) {
+		char* ref = (char*)items[i]->value;
+		if (ref[0] == '@') {
+			cols = realloc(cols, sizeof(LogColumn) * (count + 1));
+			cols[count].model = Hashtable_get(hash, ref + 1);
+			cols[count].parameter = NULL;
+			count++;
+		}
+		else if (ref[0] == '&' || ref[0] == '%') {
+			// resolve the (possibly multi-element) reference, then splay it into
+			// one column per Parameter so the header/value order stays aligned
+			Parameters* tmp = new_Parameters(1);
+			get_parameter_reference(ref, hash, tmp);
+			for (size_t j = 0; j < Parameters_count(tmp); j++) {
+				cols = realloc(cols, sizeof(LogColumn) * (count + 1));
+				cols[count].model = NULL;
+				cols[count].parameter = Parameters_at(tmp, j);
+				count++;
+			}
+			free_Parameters_weak(tmp);
+		}
+		else{
+			fprintf(stderr, "column reference '%s' must start with '@' (Model), '&' (Parameter) or '%%' (Parameters)\n", ref);
+			exit(1);
+		}
+	}
+	*columns = cols;
+	return count;
+}
+
 Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"annotate", JSON_OPTIONAL, JSON_ARRAY},
