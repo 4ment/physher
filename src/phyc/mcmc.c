@@ -285,12 +285,12 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
         for (int i = 0; i < logs->child_count; i++) {
             json_node* child = logs->children[i];
             if(mcmc->log_count == 0){
-                mcmc->logs = malloc(sizeof(Log*));
+                mcmc->logs = malloc(sizeof(Trace*));
             }
             else{
-                mcmc->logs = realloc(mcmc->logs, sizeof(Log*)*(mcmc->log_count+1));
+                mcmc->logs = realloc(mcmc->logs, sizeof(Trace*)*(mcmc->log_count+1));
             }
-            mcmc->logs[i] = new_Log_from_json(child, hash);
+            mcmc->logs[i] = new_Trace_from_json(child, hash);
             mcmc->log_count++;
         }
     }

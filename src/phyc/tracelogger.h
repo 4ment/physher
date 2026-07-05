@@ -1,8 +1,8 @@
 // Copyright (C) 2010-2026 Mathieu Fourment
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef logmcmc_h
-#define logmcmc_h
+#ifndef tracelogger_h
+#define tracelogger_h
 
 #include <stdio.h>
 #include <sys/time.h>
@@ -10,7 +10,7 @@
 #include "parameters.h"
 #include "logger.h"
 
-typedef struct Log{
+typedef struct Trace{
 	Parameters* x;
 	Model** models;
 	size_t model_count;
@@ -28,19 +28,19 @@ typedef struct Log{
 	char* filename;
 	size_t every;
 	bool append;
-	void(*initialize)(struct Log* logger);
-	void(*finalize)(struct Log* logger);
-	void(*write)(struct Log* logger, size_t);
-	void(*write_with)(struct Log* logger, size_t, const char*);
-	void(*free)(struct Log*);
+	void(*initialize)(struct Trace* logger);
+	void(*finalize)(struct Trace* logger);
+	void(*write)(struct Trace* logger, size_t);
+	void(*write_with)(struct Trace* logger, size_t, const char*);
+	void(*free)(struct Trace*);
 	bool cpo;
 	bool tree;
 	char* format;
 	bool force;// force calculation of model (i.e. do not use stored lnl)
 	struct timeval start;
 	struct timeval end;
-}Log;
+}Trace;
 	
- Log* new_Log_from_json(json_node* node, Hashtable* hash);
+ Trace* new_Trace_from_json(json_node* node, Hashtable* hash);
 
-#endif /* logmcmc_h */
+#endif /* tracelogger_h */

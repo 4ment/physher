@@ -6,12 +6,12 @@
 
 #include <stdio.h>
 
-#include "logmcmc.h"
+#include "tracelogger.h"
 #include "parameters.h"
 
 typedef struct Sampler {
     Model* model;
-    Log** loggers;
+    Trace** loggers;
     size_t logger_count;
     size_t samples;
     void (*sample)(struct Sampler*);

@@ -50,11 +50,11 @@ Sampler* new_Sampler_from_json(json_node* node, Hashtable* hash) {
     Sampler* sampler = malloc(sizeof(Sampler));
     sampler->model = Hashtable_get(hash, ref + 1);
     sampler->model->ref_count++;
-    sampler->loggers = malloc(loggers_node->child_count * sizeof(Log*));
+    sampler->loggers = malloc(loggers_node->child_count * sizeof(Trace*));
     sampler->logger_count = loggers_node->child_count;
     for (size_t i = 0; i < loggers_node->child_count; i++) {
         json_node* child = loggers_node->children[i];
-        sampler->loggers[i] = new_Log_from_json(child, hash);
+        sampler->loggers[i] = new_Trace_from_json(child, hash);
     }
     sampler->samples = get_json_node_value_size_t(node, "samples", 1000);
     sampler->sample = _sampler_sample;

@@ -6,7 +6,7 @@
 
 #include "parameters.h"
 #include "operator.h"
-#include "logmcmc.h"
+#include "tracelogger.h"
 
 typedef struct MCMC{
 	Model* model;
@@ -16,7 +16,7 @@ typedef struct MCMC{
 	size_t operator_count;
 	size_t chain_length;
 	double chain_temperature;
-	Log** logs;
+	Trace** logs;
 	size_t log_count;
 	size_t tuning_frequency;
 	int verbose;

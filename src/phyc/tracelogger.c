@@ -1,7 +1,7 @@
 // Copyright (C) 2010-2026 Mathieu Fourment
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#include "logmcmc.h"
+#include "tracelogger.h"
 
 #include <ctype.h>
 #include <strings.h>
@@ -31,7 +31,7 @@ static void _validate_log_format(json_node* node, const char* fmt){
 	}
 }
 
-static void _log_write_header(Log* logger){
+static void _log_write_header(Trace* logger){
 	StringBuffer* buffer = new_StringBuffer(10);
 	if(logger->cpo){
 		fprintf(logger->file, "#");
@@ -91,7 +91,7 @@ static void _log_write_header(Log* logger){
 
 // Refresh each node's annotation table from the branch-model traits. Rates
 // change every sample, so the previous annotations are cleared first.
-static void _log_tree_annotate(Log* logger, Tree* tree){
+static void _log_tree_annotate(Trace* logger, Tree* tree){
 	if(logger->trait_count == 0) return;
 	Node** nodes = Tree_get_nodes(tree, POSTORDER);
 	int node_count = Tree_node_count(tree);
@@ -124,7 +124,7 @@ static void _log_tree_annotate(Log* logger, Tree* tree){
 	}
 }
 
-void log_tree(Log* logger, size_t iter){
+void log_tree(Trace* logger, size_t iter){
 	Tree* tree = logger->models[0]->obj;
 	_log_tree_annotate(logger, tree);
 
@@ -160,7 +160,7 @@ void log_tree(Log* logger, size_t iter){
 	fprintf(logger->file, "\n");
 }
 
-void log_log(Log* logger, size_t iter){
+void log_log(Trace* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
 		Model* model = logger->models[i];
@@ -205,7 +205,7 @@ void log_log(Log* logger, size_t iter){
 	fflush(logger->file);
 }
 
-void log_log_cpo(Log* logger, size_t iter){
+void log_log_cpo(Trace* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
 	for(int j = 0; j < logger->model_count; j++){
 		Model* treelikelihood = logger->models[j];
@@ -218,7 +218,7 @@ void log_log_cpo(Log* logger, size_t iter){
 	fprintf(logger->file, "\n");
 }
 
-void log_log_with(Log* logger, size_t iter, const char* more){
+void log_log_with(Trace* logger, size_t iter, const char* more){
 	fprintf(logger->file, "%zu", iter);
 	for (int i = 0; i < logger->model_count; i++) {
 		Model* model = logger->models[i];
@@ -235,7 +235,7 @@ void log_log_with(Log* logger, size_t iter, const char* more){
 	fprintf(logger->file, "\t%s\n", more);
 }
 
-static void _log_columns_header(Log* logger){
+static void _log_columns_header(Trace* logger){
 	StringBuffer* buffer = new_StringBuffer(10);
 	fprintf(logger->file, "iter");
 	for (size_t i = 0; i < logger->column_count; i++) {
@@ -269,7 +269,7 @@ static void _log_columns_header(Log* logger){
 	fprintf(logger->file, "\n");
 }
 
-void log_columns(Log* logger, size_t iter){
+void log_columns(Trace* logger, size_t iter){
 	fprintf(logger->file, "%zu", iter);
 	for (size_t i = 0; i < logger->column_count; i++) {
 		if (logger->columns[i].model != NULL) {
@@ -312,7 +312,7 @@ void log_columns(Log* logger, size_t iter){
 	fflush(logger->file);
 }
 
-void log_initialize(Log* logger){
+void log_initialize(Trace* logger){
 	if (logger->filename != NULL) {
 		char a[2] = "w";
 		if(logger->append) a[0] = 'a';
@@ -334,7 +334,7 @@ void log_initialize(Log* logger){
 	}
 }
 
-void log_finalize(Log* logger){
+void log_finalize(Trace* logger){
 	if(logger->tree && strcasecmp(logger->format, "nexus") == 0){
 		fprintf(logger->file, "end;\n");
 	}
@@ -344,7 +344,7 @@ void log_finalize(Log* logger){
 	}
 }
 
-void _free_Log(Log* logger){
+void _free_Trace(Trace* logger){
 	//printf("free logger");
 	free_Parameters(logger->x);
 	if (logger->filename != NULL) {
@@ -380,7 +380,7 @@ void _free_Log(Log* logger){
 	free(logger);
 }
 
-Log* new_Log_from_json(json_node* node, Hashtable* hash){
+Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"annotate", JSON_OPTIONAL, JSON_ARRAY},
 	    {"append", JSON_OPTIONAL, JSON_ANY},
@@ -399,7 +399,7 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	json_validate_xor(node, "tree", "columns", NULL);
 
-	Log* logger = malloc(sizeof(Log));
+	Trace* logger = malloc(sizeof(Trace));
 	logger->x = new_Parameters(1);
 	// A logger is either a tree logger ("tree": "@tree") or a column logger
 	// ("columns": [...]); json_validate_xor above guarantees exactly one.
@@ -538,7 +538,7 @@ Log* new_Log_from_json(json_node* node, Hashtable* hash){
 
 	logger->initialize = log_initialize;
 	logger->finalize = log_finalize;
-	logger->free = _free_Log;
+	logger->free = _free_Trace;
 	
 	return logger;
 }
