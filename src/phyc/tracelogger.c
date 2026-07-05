@@ -191,16 +191,18 @@ void log_columns(Trace* logger, size_t iter){
 				}
 			}
 			else{
+				const char* fmt = logger->columns[i].format != NULL ? logger->columns[i].format : logger->format;
 				fprintf(logger->file, "\t");
-				fprintf(logger->file, logger->format, model->logP(model));
+				fprintf(logger->file, fmt, model->logP(model));
 			}
 		}
 		else{
 			Parameter* parameter = logger->columns[i].parameter;
+			const char* fmt = logger->columns[i].format != NULL ? logger->columns[i].format : logger->format;
 			const double* values = Parameter_values(parameter);
 			for(size_t j = 0; j < Parameter_size(parameter); j++){
 				fprintf(logger->file, "\t");
-				fprintf(logger->file, logger->format, values[j]);
+				fprintf(logger->file, fmt, values[j]);
 			}
 		}
 	}
@@ -270,17 +272,19 @@ static void _log_report(Trace* logger){
 				}
 			}
 			else{
+				const char* fmt = logger->columns[i].format != NULL ? logger->columns[i].format : logger->format;
 				fprintf(logger->file, " ");
-				fprintf(logger->file, logger->format, model->logP(model));
+				fprintf(logger->file, fmt, model->logP(model));
 			}
 		}
 		else{
 			Parameter* parameter = logger->columns[i].parameter;
+			const char* fmt = logger->columns[i].format != NULL ? logger->columns[i].format : logger->format;
 			fprintf(logger->file, "%s:", Parameter_name(parameter));
 			const double* values = Parameter_values(parameter);
 			for(size_t j = 0; j < Parameter_size(parameter); j++){
 				fprintf(logger->file, " ");
-				fprintf(logger->file, logger->format, values[j]);
+				fprintf(logger->file, fmt, values[j]);
 			}
 		}
 		fprintf(logger->file, "\n");
@@ -321,6 +325,9 @@ void _free_Trace(Trace* logger){
 		free(logger->models);
 	}
 	if(logger->column_count > 0){
+		for(size_t i = 0; i < logger->column_count; i++){
+			free(logger->columns[i].format);
+		}
 		free(logger->columns);
 	}
 	if(logger->trait_count > 0){
@@ -350,7 +357,7 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 	*columns = NULL;
 	if (columns_node == NULL) return 0;
 
-	// normalize to an array of ref strings
+	// normalize to an array of items (each a ref string or a {"ref":...} object)
 	json_node** items;
 	size_t item_count;
 	if (columns_node->node_type == MJSON_ARRAY) {
@@ -362,29 +369,48 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 		item_count = 1;
 	}
 	else{
-		fprintf(stderr, "\"columns\" must be a string or an array of strings\n");
+		fprintf(stderr, "\"columns\" must be a string or an array\n");
 		exit(1);
 	}
 
 	LogColumn* cols = NULL;
 	size_t count = 0;
 	for (size_t i = 0; i < item_count; i++) {
-		char* ref = (char*)items[i]->value;
+		json_node* item = items[i];
+		// A column item is either a bare ref string ("@id"/"&id"/"%id") or an
+		// object {"ref": "@id", "format": "%f"} with an optional per-column format.
+		char* ref;
+		char* fmt = NULL;
+		if (item->node_type == MJSON_OBJECT) {
+			ref = get_json_node_value_string(item, "ref");
+			if (ref == NULL) {
+				json_die(item, "each column object needs a \"ref\" (e.g. {\"ref\": \"@id\"})");
+			}
+			fmt = get_json_node_value_string(item, "format");
+			if (fmt != NULL) _validate_log_format(item, fmt);
+		}
+		else{
+			ref = (char*)item->value;
+		}
+
 		if (ref[0] == '@') {
 			cols = realloc(cols, sizeof(LogColumn) * (count + 1));
 			cols[count].model = Hashtable_get(hash, ref + 1);
 			cols[count].parameter = NULL;
+			cols[count].format = fmt != NULL ? String_clone(fmt) : NULL;
 			count++;
 		}
 		else if (ref[0] == '&' || ref[0] == '%') {
 			// resolve the (possibly multi-element) reference, then splay it into
-			// one column per Parameter so the header/value order stays aligned
+			// one column per Parameter so the header/value order stays aligned;
+			// every resulting column shares the item's format.
 			Parameters* tmp = new_Parameters(1);
 			get_parameter_reference(ref, hash, tmp);
 			for (size_t j = 0; j < Parameters_count(tmp); j++) {
 				cols = realloc(cols, sizeof(LogColumn) * (count + 1));
 				cols[count].model = NULL;
 				cols[count].parameter = Parameters_at(tmp, j);
+				cols[count].format = fmt != NULL ? String_clone(fmt) : NULL;
 				count++;
 			}
 			free_Parameters_weak(tmp);
