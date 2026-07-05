@@ -734,7 +734,7 @@
       "logger":{
         "id": "logger",
         "type": "logger",
-        "models": "&elbo"
+        "columns": ["@elbo"]
       },
       "checkpoint": "checkpoint.json",
       "parameters": [
@@ -758,8 +758,7 @@
           {
               "id": "logger",
               "type": "logger",
-              "x": ["&root.height", "&rate", "&n0"],
-              "models": ["&posterior", "&treelikelihood"],
+              "columns": ["@posterior", "@treelikelihood", "&root.height", "&rate", "&n0"],
               "file": "physher.csv"
           }
       ]

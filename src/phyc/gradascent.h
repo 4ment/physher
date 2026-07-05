@@ -6,10 +6,10 @@
 
 #include <stdio.h>
 #include "optimizer.h"
-#include "logger.h"
+#include "tracelogger.h"
 
 opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer);
-opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer, Logger* logger);
+opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer, Trace* logger);
 
 
 opt_result optimize_stochastic_gradient_adapt(Parameters* parameters, opt_func f, opt_grad_func grad_f, void(*reset)(void*),

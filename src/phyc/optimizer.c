@@ -22,7 +22,7 @@
 #include "treelikelihood.h"
 
 #include "vb.h"
-#include "logger.h"
+#include "tracelogger.h"
 
 static double model_logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -139,7 +139,7 @@ struct _Optimizer{
     bool ascent;
 	size_t threads;
 	bool maximize;
-	Logger* logger;
+	Trace* logger;
 };
 
 opt_result topology_optimize(TopologyOptimizer* topopt, double *fmin){
@@ -404,7 +404,7 @@ void free_Optimizer( Optimizer *opt ){
 		free(opt->checkpoint_file);
 	}
 	if(opt->logger != NULL){
-		free_Logger(opt->logger);
+		opt->logger->free(opt->logger);
 	}
 	free(opt);
 }
@@ -955,7 +955,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	
 	json_node* loggerNode = get_json_node(node, "logger");
 	if(loggerNode != NULL){
-		opt->logger = new_logger_from_json(loggerNode, hash);
+		opt->logger = new_Trace_from_json(loggerNode, hash);
 	}
 	free_Parameters(parameters);
 	return opt;

@@ -233,7 +233,7 @@ void adam_signal_callback_handler( int signum ) {
 
 // use loss to compute gradient
 // opt_result optimize_stochastic_gradient_adam(Model* loss, Parameters* parameters, double eta, bool maximize, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer){
-opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer, Logger* logger){
+opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* parameters, opt_func f, opt_grad_func grad_f, double eta, void *data, OptStopCriterion *stop, int verbose, double *fmin, OptimizerCheckpoint* checkpointer, Trace* logger){
 	signal(SIGINT, adam_signal_callback_handler);
 	adam_interrupted = false;
 
@@ -272,9 +272,9 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 	// if(verbose > 0)
 	// 	printf("%zu ELBO: %f\n", stop->iter, elbo0);
 	if(logger){
+		logger->initialize(logger);
 #ifndef ADAM_DEBUG
-		printf("0 ");
-		logger->log(logger);
+		logger->write(logger, 0);
 #endif
 	}
 
@@ -298,7 +298,7 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 	while(stop->iter++ < stop->iter_max){
 		// grad_f(parameters, grads, data);
 #ifdef ADAM_DEBUG
-		logger->log(logger);
+		logger->write(logger, stop->iter);
 #endif
 		double logP = model->logP(model);
 		Parameters_zero_grad(parameters);
@@ -376,8 +376,7 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 			elbo = model->logP(model);
 			// if(verbose > 0)  printf("%zu ELBO: %f (%f)\n", stop->iter, elbo, elbo_prev);
 			if(logger){
-				printf("%zu ", stop->iter);
-				logger->log(logger);
+				logger->write(logger, stop->iter);
 			}
 
 			if (isnan(elbo) || isinf(elbo)) {
@@ -417,6 +416,10 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 	}
 
 	signal(SIGINT, SIG_DFL);// restore the default handler
+
+	if(logger){
+		logger->finalize(logger);
+	}
 
 	free(temp);
 	free(grads);
