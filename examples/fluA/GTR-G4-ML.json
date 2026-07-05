@@ -110,20 +110,19 @@
       {
         "id":"log",
         "type":"logger",
-        "models":["&treelikelihood", "&tree"]
+        "columns":["@treelikelihood"]
       },
       {
         "id":"log",
         "type":"logger",
-        "parameters":[
+        "columns":[
           "&alpha", "&rates", "&freqs", "&rates2", "&freqs2"
         ]
       },
       {
         "id":"log",
         "type":"logger",
-        "models":"&tree",
-        "tree":true
+        "tree":"@tree"
       }
     ]
   }

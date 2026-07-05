@@ -70,13 +70,12 @@
       {
         "id": "log",
         "type": "logger",
-        "models": ["&treelikelihood", "&tree"]
+        "columns": ["@treelikelihood"]
       },
       {
         "id": "log",
         "type": "logger",
-        "models": "&tree",
-        "tree": true
+        "tree": "@tree"
       }
     ]
   }

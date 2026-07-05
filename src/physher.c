@@ -16,7 +16,7 @@
 #include "phyc/filereader.h"
 #include "phyc/modelfactory.h"
 #include "phyc/mjson.h"
-#include "phyc/logger.h"
+#include "phyc/tracelogger.h"
 #include "phyc/dumper.h"
 #include "phyc/mcmc.h"
 #include "phyc/mmcmc.h"
@@ -183,9 +183,13 @@ int main(int argc, const char* argv[]){
 			free_Optimizer(opt);
 		}
 		else if (strcasecmp(type, "logger") == 0) {
-			struct Logger* logger = new_logger_from_json(child, hash2);
-			logger->log(logger);
-			free_Logger(logger);
+			// A standalone logger action is a one-shot Trace: initialize (header),
+			// write a single row at iteration 0, finalize.
+			Trace* logger = new_Trace_from_json(child, hash2);
+			logger->initialize(logger);
+			logger->write(logger, 0);
+			logger->finalize(logger);
+			logger->free(logger);
 		}
         else if (strcasecmp(type, "dumper") == 0) {
             struct Dumper* dumper = new_Dumper_from_json(child, hash2);
