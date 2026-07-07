@@ -807,7 +807,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	    {"iterations", JSON_OPTIONAL, JSON_NUMBER},
 	    {"list", JSON_OPTIONAL, JSON_ANY},
 	    {"logger", JSON_OPTIONAL, JSON_OBJECT},
-	    {"iterations", JSON_FORBIDDEN, JSON_ANY},
+	    {"max", JSON_FORBIDDEN, JSON_ANY},
 	    {"maximize", JSON_OPTIONAL, JSON_ANY},
 	    {"min", JSON_OPTIONAL, JSON_ANY},
 	    {"model", JSON_REQUIRED, JSON_STRING|JSON_OBJECT},

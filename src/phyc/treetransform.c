@@ -30,37 +30,53 @@ static void _build_unknown_leaf_slots(TreeTransform* tt){
 #pragma region Shift transform
 // ======================= Shift transform =======================
 
-void tree_transform_shift_update_heights(Node *node, const double *parameters) {
+// Unknown-age leaf shifts occupy the first `offset` slots (leaf-id order, via
+// unknownLeafSlot); internal-node shifts follow at offset + class_id. When there
+// are no unknown leaves offset == 0 and internal shifts are indexed by class_id.
+void tree_transform_shift_update_heights(TreeTransform *tt, Node *node, const double *parameters, size_t offset) {
 	// set height quietly because ratios already notified the tree (and other upstream listeners)
 	if (!Node_isleaf(node)) {
-        tree_transform_shift_update_heights(node->left, parameters);
-        tree_transform_shift_update_heights(node->right, parameters);
-        double shift = parameters[Node_class_id(node)];
+        tree_transform_shift_update_heights(tt, node->left, parameters, offset);
+        tree_transform_shift_update_heights(tt, node->right, parameters, offset);
+        double shift = parameters[offset + Node_class_id(node)];
         double height = fmax(Node_height(node->left), Node_height(node->right));
         Node_set_height_quietly(node, height + shift);
+    }
+    else if (offset > 0 && tt->unknownLeaves[Node_id(node)]) {
+        // an unknown-age leaf has lower bound 0, so its shift is the age itself
+        Node_set_height_quietly(node, parameters[tt->unknownLeafSlot[Node_id(node)]]);
     }
 }
 
 void _tree_transform_shift_update(TreeTransform *tt) {
-    const double* values = Parameter_values(Parameters_at(tt->parameters, 0));
-    tree_transform_shift_update_heights(Tree_root(tt->tree), values);
+    Parameter* shifts = Parameters_at(tt->parameters, 0);
+    const double* values = Parameter_values(shifts);
+    size_t offset = Parameter_size(shifts) - (tt->tipCount - 1);
+    tree_transform_shift_update_heights(tt, Tree_root(tt->tree), values, offset);
 }
 
 double _height_tree_inverse_shift_transform(TreeTransform *tt, Node *node) {
+    // an unknown-age leaf has lower bound 0, so its shift equals its height
+    if (Node_isleaf(node)) return Node_height(node);
     return Node_height(node) - fmax(Node_height(node->left), Node_height(node->right));
 }
 
 void node_transform_vjp_shift(TreeTransform *tt, const double *height_gradient, double *gradient){
-	memset(gradient, 0, sizeof(double)*(tt->tipCount-1));
+    Parameter* shifts = Parameters_at(tt->parameters, 0);
+    size_t gradLength = Parameter_size(shifts);
+    size_t offset = gradLength - (tt->tipCount - 1);
+	memset(gradient, 0, sizeof(double)*gradLength);
     Node** nodes = Tree_get_nodes(tt->tree, PREORDER);
     size_t nodeCount = Tree_node_count(tt->tree);
     double* adjoints = clone_dvector(height_gradient, nodeCount);
 
+    // PREORDER visits a parent before its children, so a leaf's adjoint has already
+    // received its parent's contribution by the time the leaf is reached.
     for(size_t i = 0; i < nodeCount; i++){
         Node* node = nodes[i];
         if(!Node_isleaf(node)){
             double grad = adjoints[Node_id(node)];
-            gradient[Node_class_id(node)] = grad;
+            gradient[offset + Node_class_id(node)] = grad;
             double hl = Node_height(node->left);
             double hr = Node_height(node->right);
 
@@ -74,6 +90,10 @@ void node_transform_vjp_shift(TreeTransform *tt, const double *height_gradient, 
                 adjoints[Node_id(node->left)] += grad * 0.5;
                 adjoints[Node_id(node->right)] += grad * 0.5;
             }
+        }
+        else if(offset > 0 && tt->unknownLeaves[Node_id(node)]){
+            // dheight_leaf/dshift_leaf = 1
+            gradient[tt->unknownLeafSlot[Node_id(node)]] = adjoints[Node_id(node)];
         }
     }
     free(adjoints);
@@ -92,11 +112,12 @@ void _node_transform_log_jacobian_gradient_zero(struct TreeTransform *tt, double
 }
 
 static void _shift_backward(TreeTransform* obj, Parameters* parameters, const double* ingrad){
-	double* reparamGradient = dvector(obj->tipCount - 1);
-	obj->vjp(obj, ingrad, reparamGradient);
     Parameter* shifts = Parameters_at(obj->parameters, 0);
+    size_t gradLength = Parameter_size(shifts);
+	double* reparamGradient = dvector(gradLength);
+	obj->vjp(obj, ingrad, reparamGradient);
     // accumulate the gradient of constrained parameters
-    for(size_t i = 0; i < obj->tipCount - 1; i++){
+    for(size_t i = 0; i < gradLength; i++){
         shifts->grad[i] += reparamGradient[i];
     }
 
@@ -574,11 +595,16 @@ void TreeTransform_initialize_from_heights(TreeTransform* tt){
     if(tt->parameterization == TREE_TRANSFORM_SHIFT){
         Node **nodes = Tree_get_nodes(atree, POSTORDER);
         Parameter* shifts = Parameters_at(tt->parameters, 0);
+        size_t offset = Parameter_size(shifts) - (tt->tipCount - 1);
         for (int i = 0; i < Tree_node_count(atree); i++) {
             Node* node = nodes[i];
             if(!Node_isleaf(node)){
                 double s = tt->inverse_transform(tt, node);
-                Parameter_set_value_at_quietly(shifts, s, node->class_id);
+                Parameter_set_value_at_quietly(shifts, s, offset + node->class_id);
+            }
+            else if(offset > 0 && tt->unknownLeaves[Node_id(node)]){
+                double s = tt->inverse_transform(tt, node);
+                Parameter_set_value_at_quietly(shifts, s, tt->unknownLeafSlot[Node_id(node)]);
             }
         }
     }
@@ -668,17 +694,28 @@ TreeTransform *new_HeightTreeTransform(Tree *tree, tree_transform_t parameteriza
 
     // The shift parameterization has a distinct layout: a single parameter with one
     // slot per internal node (indexed by class id, root included) holding
-    // height - max(child heights). There is no separate root-height parameter, so it
-    // must not share the ratio/proportion construction below (which splits the root
-    // out and would size the parameter one slot too small: tipCount-2 vs tipCount-1).
+    // height - max(child heights), preceded by one slot per unknown-age leaf (holding
+    // the leaf age, since a leaf's lower bound is 0). There is no separate root-height
+    // parameter, so it must not share the ratio/proportion construction below (which
+    // splits the root out and would size the parameter one slot too small: tipCount-2
+    // vs tipCount-1).
     if (parameterization == TREE_TRANSFORM_SHIFT) {
-        size_t shiftCount = tt->tipCount - 1;
+        size_t numUnknown = 0;
+        for (size_t i = 0; i < tt->tipCount; i++) {
+            if (tt->unknownLeaves[i]) numUnknown++;
+        }
+        // unknown-leaf shifts occupy the first `offset` slots, internal shifts follow
+        size_t offset = numUnknown;
+        size_t shiftCount = (tt->tipCount - 1) + numUnknown;
         double *shift_values = dvector(shiftCount);
         Node **shiftNodes = Tree_get_nodes(tree, PREORDER);
         for (int i = 0; i < Tree_node_count(tree); i++) {
             Node *node = shiftNodes[i];
             if (!Node_isleaf(node)) {
-                shift_values[Node_class_id(node)] = tt->inverse_transform(tt, node);
+                shift_values[offset + Node_class_id(node)] = tt->inverse_transform(tt, node);
+            }
+            else if (tt->unknownLeaves[Node_id(node)]) {
+                shift_values[tt->unknownLeafSlot[Node_id(node)]] = tt->inverse_transform(tt, node);
             }
         }
         Parameter *shifts = new_Parameter_with_postfix2("shifts", "", shift_values,
@@ -930,7 +967,16 @@ static void _tree_transform_model_handle_change_shift(Model *self, Model *model,
     }
     else{
         TreeTransform *tt = (TreeTransform *)self->obj;
-        Node* node = Tree_node(tt->tree, tt->tipCount + index);
+        // unknown-leaf shifts occupy the first `offset` slots of the shifts parameter
+        size_t offset = Parameter_size(Parameters_at(tt->parameters, 0)) - (tt->tipCount - 1);
+        Node* node;
+        if((size_t)index < offset){
+            // an unknown-leaf age changed: its own branch and every ancestor are affected
+            node = _tree_transform_unknown_leaf(tt, index);
+        }
+        else{
+            node = Tree_node(tt->tree, tt->tipCount + (index - offset));
+        }
         Node* root = Tree_root(tt->tree);
         while(node != root){
             /* This guarantees that branches above are updated.

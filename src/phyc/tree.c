@@ -1517,14 +1517,22 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 					else{
 						if(shifts_node->node_type == MJSON_STRING){
 							char* shiftsName = get_json_node_value_string(node, "shifts");
+							// one shift per internal node, plus one per unknown-age leaf
+							size_t numUnknown = 0;
+							if(tree->unknownLeaves != NULL){
+								for(size_t j = 0; j < Tree_tip_count(tree); j++){
+									if(tree->unknownLeaves[j]) numUnknown++;
+								}
+							}
+							size_t shiftDim = Tree_tip_count(tree) - 1 + numUnknown;
 							json_node* fakeShiftNode = NULL;
 							if(shiftsName != NULL){
-								fakeShiftNode = create_json_node_parameter_full(transformNode, shiftsName, 1.0, Tree_tip_count(tree)-1, 0.0, INFINITY);
+								fakeShiftNode = create_json_node_parameter_full(transformNode, shiftsName, 1.0, shiftDim, 0.0, INFINITY);
 							}
 							else{
-								fakeShiftNode = create_json_node_parameter_full(transformNode, "shifts", 1.0, Tree_tip_count(tree)-1, 0.0, INFINITY);
+								fakeShiftNode = create_json_node_parameter_full(transformNode, "shifts", 1.0, shiftDim, 0.0, INFINITY);
 							}
-							add_json_node_size_t(fakeShiftNode, "dimension", Tree_tip_count(tree)-1);
+							add_json_node_size_t(fakeShiftNode, "dimension", shiftDim);
 						}
 						else{
 							json_node* clonedShiftsNode = clone_json_node(NULL, shifts_node);
