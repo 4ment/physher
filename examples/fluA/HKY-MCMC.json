@@ -560,7 +560,7 @@
         "branchmodel": {
           "id": "branchmodel",
           "type": "branchmodel",
-          "tree": "&tree",
+          "tree": "@tree",
           "model": "strict",
           "rate": {
             "id": "rate",
@@ -581,7 +581,7 @@
             "lower": 0.0,
             "upper": "infinity"
         },
-        "tree": "&tree"
+        "tree": "@tree"
       },
       {
         "id": "coalescent.theta.prior",
@@ -594,7 +594,7 @@
         "type": "distribution",
         "distribution": "ctmcscale",
         "x": "&rate",
-        "tree": "&tree"
+        "tree": "@tree"
       },
       {
         "id": "priorfreqs",
@@ -629,7 +629,7 @@
     {
       "id": "mcmc",
       "type": "mcmc",
-      "model": "&joint",
+      "model": "@joint",
       "length": 1000000,
       "log": [
         {

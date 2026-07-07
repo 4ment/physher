@@ -381,7 +381,7 @@ def is_float(value):
 
 
 def create_branch_model(id_, tree_id, taxa_count, arg, rate_init=None):
-    branch_model = {"id": id_, "type": "branchmodel", "tree": "&tree"}
+    branch_model = {"id": id_, "type": "branchmodel", "tree": "@tree"}
     if arg.clock == "strict":
         branch_model["model"] = "strict"
         branch_model["rate"] = {

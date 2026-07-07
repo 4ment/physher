@@ -89,28 +89,28 @@
 		"type":"optimizer",
 		"algorithm":"meta",
 		"precision":0.001,
-		"max": 10,
-		"model":"&posterior",
+		"iterations": 10,
+		"model":"@posterior",
 		"list":[
 			{				
 				"id":"optbl",
 				"type":"optimizer",
 				"algorithm":"serial",
-				"model":"&posterior",
+				"model":"@posterior",
 				"parameters":["%tree.distances"]
 			},
 			{				
 				"id":"optgamma",
 				"type":"optimizer",
 				"algorithm":"brent",
-				"model":"&posterior",
+				"model":"@posterior",
 				"parameters":"&alpha"
 			},
 			{				
 				"id":"optfreqs",
 				"type":"optimizer",
 				"algorithm":"serial",
-				"model":"&posterior",
+				"model":"@posterior",
 				"parameters":[
 					"&ac", "&ag", "&at", "&cg", "&ct", "$freqs"
 				]
@@ -120,12 +120,12 @@
 	{
 		"id": "log",
 		"type": "logger",
-		"tree": "&tree"
+		"tree": "@tree"
 	},
 	{
 		"id": "log2",
 		"type": "logger",
-		"models": ["&posterior", "&treelikelihood"]
+		"models": ["@posterior", "@treelikelihood"]
 	},
 	{
 		"id": "log3",

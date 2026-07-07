@@ -560,7 +560,7 @@
           "id": "bm",
           "type": "branchmodel",
           "model": "strict",
-          "tree": "&tree",
+          "tree": "@tree",
           "rate": {
             "id": "rate",
             "type": "parameter",
@@ -591,7 +591,7 @@
               },
               "lower": 0
             },
-            "tree": "&tree"
+            "tree": "@tree"
           },
           {
             "id": "priortheta",
@@ -604,7 +604,7 @@
             "type": "distribution",
             "distribution": "ctmcscale",
             "x": "&rate",
-            "tree": "&tree"
+            "tree": "@tree"
           }
         ]
       },
@@ -613,7 +613,7 @@
             "type": "jacobiantransform",
             "parameters": ["&root.height", "&ratios", "&rate", "&n0"]
         },
-        "&tree"
+        "@tree"
     ]
   },
   "variational": {
@@ -708,8 +708,8 @@
     "id": "elbo",
     "type": "bound",
     "bound": "elbo",
-    "joint": "&posterior",
-    "variational": "&variational",
+    "joint": "@posterior",
+    "variational": "@variational",
     "samples": 100,
     "entropy": true
   },
@@ -717,8 +717,8 @@
     "id": "gradelbo",
     "type": "bound",
     "bound": "elbo",
-    "joint": "&posterior",
-    "variational": "&variational",
+    "joint": "@posterior",
+    "variational": "@variational",
     "samples": 1,
     "entropy": false
   },
@@ -729,7 +729,7 @@
       "type": "optimizer",
       "tol": 1e-05,
       "eta": 0.1,
-      "model": "&gradelbo",
+      "model": "@gradelbo",
       "update": "adam",
       "logger":{
         "id": "logger",
@@ -747,12 +747,12 @@
         "&mu.n0",
         "&sigma.n0"
       ],
-      "max": 10000
+      "iterations": 10000
     },
     {
       "id": "sampler",
       "type": "sampler",
-      "model": "&variational",
+      "model": "@variational",
       "samples": 1000,
       "loggers": [
           {

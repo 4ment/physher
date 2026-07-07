@@ -431,7 +431,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 		
 		if (child->node_type == MJSON_STRING) {
 			char* ref = (char*)child->value;
-			Model* model = Hashtable_get(hash, ref+1);
+			Model* model = safe_get_reference_model(ref, hash, node);
 			model->ref_count++;
 			cm->add(cm, model);
 			model->free(model);
@@ -449,7 +449,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			}
 			else if(child->node_type == MJSON_STRING){
 				char* ref = (char*)child->value;
-				likelihood = Hashtable_get(hash, ref+1);
+				likelihood = safe_get_reference_model(ref, hash, node);
 				likelihood->ref_count++;
 			}
 			else{
@@ -467,7 +467,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			}
 			else if(child->node_type == MJSON_STRING){
 				char* ref = (char*)child->value;
-				compound = Hashtable_get(hash, ref+1);
+				compound = safe_get_reference_model(ref, hash, node);
 				compound->ref_count++;
 			}
 			else{
@@ -484,7 +484,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			}
 			else if(child->node_type == MJSON_STRING){
 				char* ref = (char*)child->value;
-				compound = Hashtable_get(hash, ref+1);
+				compound = safe_get_reference_model(ref, hash, node);
 				compound->ref_count++;
 			}
 			else{
@@ -502,7 +502,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			}
 			else if(child->node_type == MJSON_STRING){
 				char* ref = (char*)child->value;
-				coalescent = Hashtable_get(hash, ref+1);
+				coalescent = safe_get_reference_model(ref, hash, node);
 				coalescent->ref_count++;
 			}
 			else{
@@ -520,7 +520,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			}
 			else if(child->node_type == MJSON_STRING){
 				char* ref = (char*)child->value;
-				jac = Hashtable_get(hash, ref+1);
+				jac = safe_get_reference_model(ref, hash, node);
 				jac->ref_count++;
 			}
 			else{
@@ -545,8 +545,7 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 		}
 		else if(simplex_node->node_type == MJSON_STRING){
 			char* ref = (char*)simplex_node->value;
-			// check it starts with a &
-			cm->weights = Hashtable_get(hash, ref+1);
+			cm->weights = safe_get_reference_model(ref, hash, node);
 			cm->weights->refCount++;
 		}
 	}

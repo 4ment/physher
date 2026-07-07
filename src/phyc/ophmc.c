@@ -173,7 +173,7 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"algorithm", JSON_REQUIRED, JSON_STRING},
 	    {"delay", JSON_OPTIONAL, JSON_NUMBER},
-	    {"model", JSON_OPTIONAL, JSON_STRING},
+	    {"model", JSON_REQUIRED, JSON_STRING},
 	    {"parameters", JSON_OPTIONAL, JSON_ANY},
 	    {"stepsize", JSON_OPTIONAL, JSON_NUMBER},
 	    {"steps", JSON_OPTIONAL, JSON_NUMBER},
@@ -190,10 +190,11 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	
 	op->x = new_Parameters(1);
 	get_parameters_references2(node, hash, op->x, "x");
-	char* ref = get_json_node_value_string(node, "model");
 	op->models = malloc(sizeof(Model*));
 	// posterior model
-	op->models[0] = Hashtable_get(hash, ref+1);
+	json_node* model_node = get_json_node(node, "model");
+	const char* ref = (char*)model_node->value;
+	op->models[0] = safe_get_reference_model(ref, hash, node);
 	op->models[0]->ref_count++;
 	op->model_count = 1;
 	

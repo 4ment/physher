@@ -390,7 +390,8 @@ opt_result optimize_stochastic_gradient_adam(bool maximize, Parameters* paramete
 				*fmin = elbo_best;
 			}
 
-			if (stop->iter % checkpointer->frequency == 0){
+			if (checkpointer->file != NULL && checkpointer->frequency > 0 &&
+			    stop->iter % checkpointer->frequency == 0){
 				checkpoint_save(checkpointer->file, parameters);
 			}
 
@@ -520,10 +521,11 @@ opt_result optimize_stochastic_gradient(Parameters* parameters, opt_func f, opt_
 				*fmin = elbo_best;
 			}
 
-			if (stop->iter % checkpointer->frequency == 0){
+			if (checkpointer->file != NULL && checkpointer->frequency > 0 &&
+			    stop->iter % checkpointer->frequency == 0){
 				checkpoint_save(checkpointer->file, parameters);
 			}
-			
+
 			double delta_elbo = fabs((elbo_prev - elbo) / elbo);
 			size_t eval_count = stop->iter/eval_elbo;
 			elbos[eval_count-1] = delta_elbo;

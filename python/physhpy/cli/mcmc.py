@@ -123,7 +123,7 @@ def create_mcmc(id_, parameters, arg):
     mcmc_dic = {
         "id": f"{id_}",
         "type": "mcmc",
-        "model": "&joint",
+        "model": "@joint",
         "length": arg.iter,
         "log": [
             {
@@ -131,14 +131,14 @@ def create_mcmc(id_, parameters, arg):
                 "type": "logger",
                 "file": f"{arg.stem}.log",
                 "every": 1000,
-                "models": ["&joint", "&treelikelihood"],
+                "models": ["@joint", "@treelikelihood"],
                 "x": parameters,
             },
             {
                 "id": "logger2",
                 "type": "logger",
                 "every": 10000,
-                "models": ["&joint", "&treelikelihood"],
+                "models": ["@joint", "@treelikelihood"],
             },
         ],
         "operators": [],

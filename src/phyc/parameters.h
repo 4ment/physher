@@ -330,6 +330,9 @@ size_t Parameters_size(const Parameters *ps);
 void *safe_get_reference_parameter(const char *ref, Hashtable *hash,
                                    const char *parent);
 
+void *safe_get_reference_model(const char *ref, Hashtable *hash,
+                               const char *parent);
+
 bool safe_is_reference(const char *ref, const char *parent);
 
 #pragma mark -

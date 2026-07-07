@@ -200,7 +200,7 @@ def create_variational_model(id_, joint, arg) -> tuple[dict, list[str]]:
     variational = {
         "id": id_,
         "type": "variational",
-        "posterior": "&joint",
+        "posterior": "@joint",
         "elbosamples": arg.elbo_samples,
         "distributions": [],
     }
@@ -229,7 +229,7 @@ def create_advi(variational, parameters, arg):
         "checkpoint": checkpoint,
         "parameters": parameters,
         "frequency_check": arg.convergence_every,
-        "max": arg.iter,
+        "iterations": arg.iter,
     }
     return advi_dic
 

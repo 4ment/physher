@@ -551,7 +551,7 @@
             "id": "bm",
             "type": "branchmodel",
             "model": "strict",
-            "tree": "&tree",
+            "tree": "@tree",
             "rate":	{"id":"rate", "type":"parameter", "x":0.001, "lower":0.0}
         }
     },
@@ -1193,22 +1193,22 @@
             "type":"optimizer",
             "algorithm":"meta",
             "precision":0.001,
-            "max": 10000,
-            "model":"&treelikelihood",
+            "iterations": 10000,
+            "model":"@treelikelihood",
             "list":[
                 {				
                     "id":"optbl",
                     "type":"optimizer",
                     "algorithm":"serial",
-                    "model":"&treelikelihood",
-                    "treelikelihood": "&treelikelihood"
+                    "model":"@treelikelihood",
+                    "treelikelihood": "@treelikelihood"
                 }
             ]
         },
         {
             "id": "log",
             "type": "logger",
-            "models": "&tree",
+            "models": "@tree",
             "tree": true
         }
     ]

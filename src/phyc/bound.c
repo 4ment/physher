@@ -139,32 +139,32 @@ Model* new_AbstractBoundModel_from_json(json_node* node, Hashtable* hash) {
 
     json_node* jointNode = get_json_node(node, "joint");
     Model* joint = NULL;
-    char* ref = (char*)jointNode->value;
-    if (safe_is_reference(ref, id)) {
-        joint = safe_get_reference_parameter(ref, hash, id);
+    if (jointNode->node_type == MJSON_STRING) {
+        char* ref = (char*)jointNode->value;
+        joint = safe_get_reference_model(ref, hash, id);
         joint->ref_count++;
     } else {
         char* type = get_json_node_value_string(jointNode, "type");
-        if (strcasecmp(type, "treelikelihood")) {
+        if (strcasecmp(type, "treelikelihood") == 0) {
             joint = new_TreeLikelihoodModel_from_json(jointNode, hash);
-        } else if (strcasecmp(type, "compound")) {
+        } else if (strcasecmp(type, "compound") == 0) {
             joint = new_CompoundModel_from_json(jointNode, hash);
-        } else if (strcasecmp(type, "distribution")) {
+        } else if (strcasecmp(type, "distribution") == 0) {
             joint = new_DistributionModel_from_json(jointNode, hash);
         }
     }
 
     json_node* variationalNode = get_json_node(node, "variational");
     Model* variational = NULL;
-    ref = (char*)variationalNode->value;
-    if (safe_is_reference(ref, id)) {
-        variational = safe_get_reference_parameter(ref, hash, id);
+    if (variationalNode->node_type == MJSON_STRING) {
+        char* ref = (char*)variationalNode->value;
+        variational = safe_get_reference_model(ref, hash, id);
         variational->ref_count++;
     } else {
         char* type = get_json_node_value_string(variationalNode, "type");
-        if (strcasecmp(type, "compound")) {
+        if (strcasecmp(type, "compound") == 0) {
             variational = new_CompoundModel_from_json(variationalNode, hash);
-        } else if (strcasecmp(type, "distribution")) {
+        } else if (strcasecmp(type, "distribution") == 0) {
             variational = new_DistributionModel_from_json(variationalNode, hash);
         }
     }

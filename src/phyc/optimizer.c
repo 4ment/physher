@@ -21,6 +21,7 @@
 #include "tree.h"
 #include "treelikelihood.h"
 #include "tracelogger.h"
+#include "modelfactory.h"
 
 static double model_logP( Parameters *params, double *grad, void *data ){
 	Model* model = (Model*)data;
@@ -803,13 +804,14 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	    {"checkpoint_frequency", JSON_OPTIONAL, JSON_NUMBER},
 	    {"eta", JSON_OPTIONAL, JSON_NUMBER},
 	    {"frequency_check", JSON_OPTIONAL, JSON_NUMBER},
+	    {"iterations", JSON_OPTIONAL, JSON_NUMBER},
 	    {"list", JSON_OPTIONAL, JSON_ANY},
 	    {"logger", JSON_OPTIONAL, JSON_OBJECT},
-	    {"max", JSON_OPTIONAL, JSON_ANY},
+	    {"iterations", JSON_FORBIDDEN, JSON_ANY},
 	    {"maximize", JSON_OPTIONAL, JSON_ANY},
 	    {"min", JSON_OPTIONAL, JSON_ANY},
-	    {"model", JSON_OPTIONAL, JSON_ANY},
-	    {"parameters", JSON_OPTIONAL, JSON_ANY},
+	    {"model", JSON_REQUIRED, JSON_STRING|JSON_OBJECT},
+	    {"parameters", JSON_REQUIRED, JSON_ANY},
 	    {"precision", JSON_OPTIONAL, JSON_NUMBER},
 	    {"rounds", JSON_OPTIONAL, JSON_ANY},
 	    {"threads", JSON_OPTIONAL, JSON_NUMBER},
@@ -821,7 +823,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	const char* idNode = get_json_node_value_string(node, "id");
-	size_t max = get_json_node_value_size_t(node, "max", 1000);
+	size_t iterations = get_json_node_value_size_t(node, "iterations", 1000);
 	size_t min = get_json_node_value_size_t(node, "min", 1);
 	bool maximize = get_json_node_value_bool(node, "maximize", true);
 	double precision = get_json_node_value_double(node, "precision", 0.001);
@@ -864,10 +866,11 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		opt_set_tolfx(opt, precision);
 	}
 	else if (strcasecmp(algorithm_string, "brent") == 0 || strcasecmp(algorithm_string, "serial") == 0) {
-		if (get_json_node(node, "treelikelihood") != NULL) {
-			const char* ref = get_json_node_value_string(node, "treelikelihood");
+		json_node* treelike_node = get_json_node(node, "treelikelihood");
+		if (treelike_node != NULL) {
+			const char* ref = (char*)treelike_node->value;
+			opt->treelikelihood = safe_get_reference_model(ref, hash, node);
 			opt = new_Optimizer(OPT_SERIAL_BRENT);
-			opt->treelikelihood = Hashtable_get(hash, ref+1);
 			//opt->treelikelihood->ref_count++;
 		}
 		else{
@@ -912,16 +915,18 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
     }
 	
 	opt->maximize = maximize;
-	opt_set_max_iteration(opt, max);
+	opt_set_max_iteration(opt, iterations);
 	opt_set_min_iteration(opt, min);
 
 	json_node* model_node = get_json_node(node, "model");
-	if(model_node == NULL){
-		fprintf(stderr, "The `model' key is not specified for object %s\n", idNode);
-		exit(13);
+	Model* model = NULL;
+	if(model_node->node_type == MJSON_STRING){
+		const char* ref = (char*)model_node->value;
+		model = safe_get_reference_model(ref, hash, node);
 	}
-	const char* ref = (char*)model_node->value;
-	Model* model = Hashtable_get(hash, ref+1);
+	else{
+		model = model_factory_from_json(model_node, hash);
+	}
 	opt_set_data(opt, model);
 	
 	if(maximize){

@@ -136,7 +136,7 @@ json_node* create_json_distance(Hashtable* options){
 	add_json_node(jphysher, jlogger);
 	add_json_node_string(jlogger, "id", "log");
 	add_json_node_string(jlogger, "type", "logger");
-	add_json_node_string(jlogger, "models", "&tree");
+	add_json_node_string(jlogger, "models", "@tree");
     add_json_node_bool(jlogger, "tree", true);
     if(strcmp(stem, "") != 0){
         add_json_node_string(jlogger, "file", stem);
@@ -258,8 +258,8 @@ void create_json_phylo_tree(Hashtable* options, Hashtable* nodes){
 		add_json_node_string(jopt_bl, "id", "optbl");
 		add_json_node_string(jopt_bl, "type", "optimizer");
 		add_json_node_string(jopt_bl, "algorithm", "serial");
-		add_json_node_string(jopt_bl, "model", "&treelikelihood");
-		add_json_node_string(jopt_bl, "treelikelihood", "&treelikelihood");
+		add_json_node_string(jopt_bl, "model", "@treelikelihood");
+		add_json_node_string(jopt_bl, "treelikelihood", "@treelikelihood");
 	}
 	
 	if (strlen(Hashtable_get(options, "treeopt")) > 0) {
@@ -268,7 +268,7 @@ void create_json_phylo_tree(Hashtable* options, Hashtable* nodes){
 		add_json_node_string(jopt_topo, "id", "opttopo");
 		add_json_node_string(jopt_topo, "type", "optimizer");
 		add_json_node_string(jopt_topo, "algorithm", "topology");
-		add_json_node_string(jopt_topo, "model", "&treelikelihood");
+		add_json_node_string(jopt_topo, "model", "@treelikelihood");
 		add_json_node_string(jopt_topo, "move", Hashtable_get(options, "treeopt"));
 	}
 	
@@ -287,7 +287,7 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 	add_json_node_string(jopt_mat, "id", "optmat");
 	add_json_node_string(jopt_mat, "type", "optimizer");
 	add_json_node_string(jopt_mat, "algorithm", "serial");
-	add_json_node_string(jopt_mat, "model", "&treelikelihood");
+	add_json_node_string(jopt_mat, "model", "@treelikelihood");
 	
 	json_node* jparams = create_json_node(jopt_mat);
 	add_json_node(jopt_mat, jparams);
@@ -793,9 +793,9 @@ void create_json_node_meta_opt(Hashtable* nodes){
 	add_json_node_string(joptmeta, "id", "metaopt");
 	add_json_node_string(joptmeta, "type", "optimizer");
 	add_json_node_string(joptmeta, "algorithm", "meta");
-	add_json_node_string(joptmeta, "model", "&treelikelihood");
+	add_json_node_string(joptmeta, "model", "@treelikelihood");
 	add_json_node_double(joptmeta, "min", 1);
-	add_json_node_double(joptmeta, "max", 10000);
+	add_json_node_double(joptmeta, "iterations", 10000);
 	add_json_node_double(joptmeta, "precision", 0.001);
 	
 	json_node* joptmetalist = create_json_node_array(joptmeta, "list");
@@ -898,7 +898,7 @@ void create_json_vb_block(Hashtable* options, Hashtable* nodes, json_node* jvb){
     json_node* jblock = create_json_node_object(jvb, "modelvb");
     add_json_node_string(jblock, "id", "block");
     add_json_node_string(jblock, "type", "block");
-    add_json_node_string(jblock, "posterior", "&posterior");
+    add_json_node_string(jblock, "posterior", "@posterior");
     add_json_node_size_t(jblock, "elbosamples", 100);
     add_json_node_size_t(jblock, "gradsamples", 1);
     add_json_node(jvb, jblock);
@@ -909,7 +909,7 @@ void create_json_vb(Hashtable* options, Hashtable* nodes){
     json_node* jvb = create_json_node_object(jroot, "modelvb");
     add_json_node_string(jvb, "id", "variational");
     add_json_node_string(jvb, "type", "variational");
-    add_json_node_string(jvb, "posterior", "&posterior");
+    add_json_node_string(jvb, "posterior", "@posterior");
     add_json_node_size_t(jvb, "elbosamples", 100);
     add_json_node_size_t(jvb, "gradsamples", 1);
     add_json_node(jroot, jvb);

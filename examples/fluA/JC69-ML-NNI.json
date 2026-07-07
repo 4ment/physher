@@ -53,16 +53,16 @@
       "type": "optimizer",
       "algorithm": "meta",
       "precision": 1e-05,
-      "max": 10000,
+      "iterations": 10000,
       "min": 1,
-      "model": "&treelikelihood",
+      "model": "@treelikelihood",
       "list": [
         {
           "id": "optbl",
           "type": "optimizer",
           "algorithm": "serial",
-          "model": "&treelikelihood",
-          "treelikelihood": "&treelikelihood"
+          "model": "@treelikelihood",
+          "treelikelihood": "@treelikelihood"
         },
         {
           "id": "opttopology",
@@ -70,8 +70,8 @@
           "algorithm": "topology",
           "move": "nni",
           "failures": 3,
-          "model": "&treelikelihood",
-          "treelikelihood": "&treelikelihood"
+          "model": "@treelikelihood",
+          "treelikelihood": "@treelikelihood"
         }
       ]
     },

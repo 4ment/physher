@@ -48,21 +48,21 @@
 		"type":"optimizer",
 		"algorithm":"meta",
 		"precision":0.001,
-		"max": 10000,
-		"model":"&treelikelihood",
+		"iterations": 10000,
+		"model":"@treelikelihood",
 		"list":[
 			{				
 				"id":"optbl",
 				"type":"optimizer",
 				"algorithm":"serial",
-				"model":"&treelikelihood",
-				"treelikelihood": "&treelikelihood"
+				"model":"@treelikelihood",
+				"treelikelihood": "@treelikelihood"
 			},
 			{				
 				"id":"optfreqskappa",
 				"type":"optimizer",
 				"algorithm":"serial",
-				"model":"&treelikelihood",
+				"model":"@treelikelihood",
 				"parameters":[
 					"&kappa", "$freqs"
 				]
@@ -72,7 +72,7 @@
 	{
 		"id": "log",
 		"type": "logger",
-		"tree": "&tree"
+		"tree": "@tree"
 	}
 ]
 }

@@ -55,6 +55,27 @@ void* safe_get_reference_parameter(const char* ref, Hashtable* hash,
     return res;
 }
 
+void* safe_get_reference_model(const char* ref, Hashtable* hash,
+                               const char* parent) {
+    if (ref == NULL || strlen(ref) < 2 || ref[0] != '@') {
+        if (ref == NULL)
+            fprintf(stderr, "No reference provided for parent '%s'\n", parent);
+        if (strlen(ref) < 2)
+            fprintf(stderr, "Invalid reference (%s) provided for parent '%s'\n", ref,
+                    parent);
+        if (ref[0] != '@')
+            fprintf(stderr, "Reference '%s' should start with a '@' with parent '%s'\n",
+                    ref, parent);
+        exit(2);
+    }
+    void* res = Hashtable_get(hash, ref + 1);
+    if (res == NULL) {
+        fprintf(stderr, "Reference '%s' not found for parent '%s'\n", ref, parent);
+        exit(2);
+    }
+    return res;
+}
+
 bool safe_is_reference(const char* ref, const char* parent) {
     if (ref == NULL || strlen(ref) < 2) {
         if (ref == NULL)

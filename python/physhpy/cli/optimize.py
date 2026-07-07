@@ -40,7 +40,7 @@ def create_meta_optimizer(joint, arg):
         "type": "optimizer",
         "algorithm": "meta",
         "precision": 0.001,
-        "max": arg.max_iter,
+        "iterations": arg.max_iter,
         "model": f"&{joint}",
         "list": [],
     }

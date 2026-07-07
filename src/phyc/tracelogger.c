@@ -538,7 +538,7 @@ Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 			_validate_log_format(node, format);
 		}
 		else{
-			logger->format = String_clone("%e");
+			logger->format = String_clone("%f");
 		}
 	}
 
