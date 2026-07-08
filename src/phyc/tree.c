@@ -1241,14 +1241,16 @@ void _TreeModel_print(Model* mtree, FILE* out){
 double _treeModel_logP(Model *self){
 	Tree* tree = (Tree*)self->obj;
 	Tree_update_heights(tree);
-	self->lp = tree->tt->log_jacobian(tree->tt);
+	self->lp = (tree->tt != NULL) ? tree->tt->log_jacobian(tree->tt) : 0.0;
 	return self->lp;
 }
 
 void _treeModel_gradient(Model *self, Parameters* parameters){
 	Tree* tree = (Tree*)self->obj;
 	Tree_update_heights(tree);
-	tree->tt->log_jacobian_gradient(tree->tt, NULL);
+	if(tree->tt != NULL){
+		tree->tt->log_jacobian_gradient(tree->tt, NULL);
+	}
 }
 
 // TreeModel listen to the height and distance parameters

@@ -4,6 +4,7 @@
 #include "tracelogger.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <strings.h>
 
 #include "treelikelihood.h"
@@ -118,7 +119,7 @@ void log_tree(Trace* logger, size_t iter){
 		for(size_t s = 0; s < logger->scalar_count; s++){
 			Model* m = logger->scalar_models[s];
 			fprintf(logger->file, "%s%s=", (s == 0 ? "[&" : ","), m->name);
-			fprintf(logger->file, logger->scalar_formats[s], m->logP(m));
+			fprintf(logger->file, logger->scalar_formats[s], m->logP != NULL ? m->logP(m) : NAN);
 		}
 		if(logger->scalar_count > 0) fprintf(logger->file, "] ");
 		fprintf(logger->file, "= [&%c] ", root_tag);
@@ -195,7 +196,7 @@ void log_columns(Trace* logger, size_t iter){
 			else{
 				const char* fmt = logger->columns[i].format != NULL ? logger->columns[i].format : logger->format;
 				fprintf(logger->file, "\t");
-				fprintf(logger->file, fmt, model->logP(model));
+				fprintf(logger->file, fmt, model->logP != NULL ? model->logP(model) : NAN);
 			}
 		}
 		else{
@@ -277,7 +278,7 @@ static void _log_report(Trace* logger){
 			else{
 				const char* fmt = logger->columns[i].format != NULL ? logger->columns[i].format : logger->format;
 				fprintf(logger->file, " ");
-				fprintf(logger->file, fmt, model->logP(model));
+				fprintf(logger->file, fmt, model->logP != NULL ? model->logP(model) : NAN);
 			}
 		}
 		else{
