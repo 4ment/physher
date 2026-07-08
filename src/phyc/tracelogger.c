@@ -153,7 +153,22 @@ static void _log_columns_header(Trace* logger){
 		if (logger->columns[i].model != NULL) {
 			Model* model = logger->columns[i].model;
 			const char* colname = logger->columns[i].name != NULL ? logger->columns[i].name : model->name;
-			if(model->type == MODEL_DISCRETE_PARAMETER){
+			if(logger->columns[i].quantity != NULL){
+				// Loggable quantity: the model names each of its columns, unless a
+				// single-column "name" override was given (enforced at parse time).
+				const char* quantity = logger->columns[i].quantity;
+				for (size_t j = 0; j < logger->columns[i].loggable_count; j++) {
+					if(logger->columns[i].name != NULL){
+						fprintf(logger->file, "\t%s", colname);
+					}
+					else{
+						StringBuffer_empty(buffer);
+						model->log_name(model, quantity, j, buffer);
+						fprintf(logger->file, "\t%s", buffer->c);
+					}
+				}
+			}
+			else if(model->type == MODEL_DISCRETE_PARAMETER){
 				DiscreteParameter* dp = model->obj;
 				for (int j = 0; j < dp->length; j++) {
 					fprintf(logger->file, "\t%s.%d", colname, j+1);
@@ -187,7 +202,18 @@ void log_columns(Trace* logger, size_t iter){
 	for (size_t i = 0; i < logger->column_count; i++) {
 		if (logger->columns[i].model != NULL) {
 			Model* model = logger->columns[i].model;
-			if(model->type == MODEL_DISCRETE_PARAMETER){
+			if(logger->columns[i].quantity != NULL){
+				const char* quantity = logger->columns[i].quantity;
+				const char* fmt = logger->columns[i].format;  // may be NULL: model default
+				StringBuffer* cell = new_StringBuffer(16);
+				for (size_t j = 0; j < logger->columns[i].loggable_count; j++) {
+					StringBuffer_empty(cell);
+					model->log_value(model, quantity, j, fmt, cell);
+					fprintf(logger->file, "\t%s", cell->c);
+				}
+				free_StringBuffer(cell);
+			}
+			else if(model->type == MODEL_DISCRETE_PARAMETER){
 				DiscreteParameter* dp = model->obj;
 				for (int j = 0; j < dp->length; j++) {
 					fprintf(logger->file, "\t%d", dp->values[j]);
@@ -268,14 +294,38 @@ static void _log_report(Trace* logger){
 		if (logger->columns[i].model != NULL) {
 			Model* model = logger->columns[i].model;
 			const char* colname = logger->columns[i].name != NULL ? logger->columns[i].name : model->name;
-			fprintf(logger->file, "%s:", colname);
-			if(model->type == MODEL_DISCRETE_PARAMETER){
+			if(logger->columns[i].quantity != NULL){
+				// Label each column by the model's log_name (or the "name" override),
+				// mirroring the streaming header rather than falling back to the
+				// model name shared by every quantity of the same model.
+				const char* quantity = logger->columns[i].quantity;
+				const char* fmt = logger->columns[i].format;  // may be NULL: model default
+				StringBuffer* cell = new_StringBuffer(16);
+				for (size_t j = 0; j < logger->columns[i].loggable_count; j++) {
+					if(j > 0) fprintf(logger->file, "\n");
+					if(logger->columns[i].name != NULL){
+						fprintf(logger->file, "%s:", colname);
+					}
+					else{
+						StringBuffer_empty(cell);
+						model->log_name(model, quantity, j, cell);
+						fprintf(logger->file, "%s:", cell->c);
+					}
+					StringBuffer_empty(cell);
+					model->log_value(model, quantity, j, fmt, cell);
+					fprintf(logger->file, " %s", cell->c);
+				}
+				free_StringBuffer(cell);
+			}
+			else if(model->type == MODEL_DISCRETE_PARAMETER){
+				fprintf(logger->file, "%s:", colname);
 				DiscreteParameter* dp = model->obj;
 				for (int j = 0; j < dp->length; j++) {
 					fprintf(logger->file, " %d", dp->values[j]);
 				}
 			}
 			else{
+				fprintf(logger->file, "%s:", colname);
 				const char* fmt = logger->columns[i].format != NULL ? logger->columns[i].format : logger->format;
 				fprintf(logger->file, " ");
 				fprintf(logger->file, fmt, model->logP != NULL ? model->logP(model) : NAN);
@@ -333,6 +383,7 @@ void _free_Trace(Trace* logger){
 		for(size_t i = 0; i < logger->column_count; i++){
 			free(logger->columns[i].format);
 			free(logger->columns[i].name);
+			free(logger->columns[i].quantity);
 		}
 		free(logger->columns);
 	}
@@ -388,14 +439,20 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 		char* ref;
 		char* fmt = NULL;
 		char* name = NULL;
+		char* quantity = NULL;
 		if (item->node_type == MJSON_OBJECT) {
 			ref = get_json_node_value_string(item, "ref");
 			if (ref == NULL) {
 				json_die(item, "each column object needs a \"ref\" (e.g. {\"ref\": \"@id\"})");
 			}
-			fmt = get_json_node_value_string(item, "format");
-			if (fmt != NULL) _validate_log_format(item, fmt);
 			name = get_json_node_value_string(item, "name");
+			// "quantity" (model refs only) logs a named derived value via the
+			// model's log_* interface; the model owns that value's formatting, so
+			// its "format" is passed through unchecked. Every other column formats
+			// doubles, so its "format" must be a float printf conversion.
+			quantity = get_json_node_value_string(item, "quantity");
+			fmt = get_json_node_value_string(item, "format");
+			if (fmt != NULL && quantity == NULL) _validate_log_format(item, fmt);
 		}
 		else if (item->node_type == MJSON_STRING) {
 			ref = (char*)item->value;
@@ -406,11 +463,34 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 		}
 
 		if (ref[0] == '@') {
+			Model* model = Hashtable_get(hash, ref + 1);
 			cols = realloc(cols, sizeof(LogColumn) * (count + 1));
-			cols[count].model = Hashtable_get(hash, ref + 1);
+			cols[count].model = model;
 			cols[count].parameter = NULL;
 			cols[count].format = fmt != NULL ? String_clone(fmt) : NULL;
 			cols[count].name = name != NULL ? String_clone(name) : NULL;
+			cols[count].quantity = NULL;
+			cols[count].loggable_count = 0;
+			if (quantity != NULL) {
+				// Loggable column: the model must expose the log_* interface and
+				// recognise this quantity. Resolve its column count now so the
+				// header and value rows agree.
+				if (model == NULL) {
+					json_die(item, "column ref '%s' does not resolve to a model", ref);
+				}
+				if (model->log_count == NULL) {
+					json_die(item, "model '%s' is not loggable (no \"quantity\" support): '%s'", ref + 1, quantity);
+				}
+				size_t n = model->log_count(model, quantity);
+				if (n == 0) {
+					json_die(item, "model '%s' does not know loggable quantity '%s'", ref + 1, quantity);
+				}
+				if (name != NULL && n != 1) {
+					json_die(item, "a column \"name\" requires a quantity resolving to a single column: '%s'", quantity);
+				}
+				cols[count].quantity = String_clone(quantity);
+				cols[count].loggable_count = n;
+			}
 			count++;
 		}
 		else if (ref[0] == '&' || ref[0] == '%') {
@@ -430,6 +510,8 @@ size_t get_columns_from_json(json_node* node, Hashtable* hash, LogColumn** colum
 				cols[count].parameter = Parameters_at(tmp, j);
 				cols[count].format = fmt != NULL ? String_clone(fmt) : NULL;
 				cols[count].name = name != NULL ? String_clone(name) : NULL;
+				cols[count].quantity = NULL;
+				cols[count].loggable_count = 0;
 				count++;
 			}
 			free_Parameters_weak(tmp);

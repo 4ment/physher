@@ -68,6 +68,9 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->rsample = _dummy_rsample;
 	model->samplable = false;
 	model->print = NULL;
+	model->log_count = NULL;
+	model->log_name = NULL;
+	model->log_value = NULL;
     model->jsonize = _dummy_jsonize;
 	model->epsilon = 0.0;
 	model->get = NULL;

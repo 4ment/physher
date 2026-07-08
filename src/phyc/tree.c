@@ -1229,6 +1229,9 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 		}
 	}
 	clone->print = self->print;
+	clone->log_count = self->log_count;
+	clone->log_name = self->log_name;
+	clone->log_value = self->log_value;
 	//TODO: clone treetransform
 	return clone;
 }
@@ -1236,6 +1239,36 @@ static Model* _tree_model_clone( Model *self, Hashtable *hash ){
 void _TreeModel_print(Model* mtree, FILE* out){
 	Tree* tree = mtree->obj;
 	fprintf(out, "TL(%s): %f\n", mtree->name, Tree_length(tree));
+}
+
+// Loggable interface: derived scalar quantities a column logger can request via
+// {"ref": "@tree", "quantity": "..."}. Each quantity below is a single column.
+static bool _TreeModel_is_known_quantity(const char* quantity){
+	return strcasecmp(quantity, "treeLength") == 0 ||
+	       strcasecmp(quantity, "meanBranchLength") == 0;
+}
+
+size_t _TreeModel_log_count(Model* mtree, const char* quantity){
+	return _TreeModel_is_known_quantity(quantity) ? 1 : 0;
+}
+
+void _TreeModel_log_name(Model* mtree, const char* quantity, size_t i,
+                         struct StringBuffer* out){
+	StringBuffer_append_string(out, quantity);
+}
+
+void _TreeModel_log_value(Model* mtree, const char* quantity, size_t i,
+                          const char* format, struct StringBuffer* out){
+	Tree* tree = mtree->obj;
+	const char* fmt = format != NULL ? format : "%f";
+	if(strcasecmp(quantity, "treeLength") == 0){
+		StringBuffer_append_format(out, fmt, Tree_length(tree));
+	}
+	else if(strcasecmp(quantity, "meanBranchLength") == 0){
+		// 2N-2 for rooted trees, 2N-3 for unrooted trees
+		int branches = tree->time_mode ? Tree_node_count(tree) - 1 : Tree_node_count(tree) - 2;
+		StringBuffer_append_format(out, fmt, Tree_length(tree) / branches);
+	}
 }
 
 double _treeModel_logP(Model *self){
@@ -1291,6 +1324,9 @@ Model * new_TreeModel2( const char* name, Tree *tree, Model* modelTransform ){
 	model->free = _tree_model_free;
 	model->clone = _tree_model_clone;
 	model->print = _TreeModel_print;
+	model->log_count = _TreeModel_log_count;
+	model->log_name = _TreeModel_log_name;
+	model->log_value = _TreeModel_log_value;
 	model->logP = _treeModel_logP;
 	model->full_logP = _treeModel_logP;
 	model->gradient = _treeModel_gradient;

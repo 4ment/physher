@@ -28,6 +28,11 @@ typedef struct _Listener Listener;
 struct _Model;
 typedef struct _Model Model;
 
+// Forward declaration (tag only, no typedef) so the loggable interface below can
+// take a StringBuffer* without pulling in mstring.h. The .c files that implement
+// these callbacks include mstring.h for the full type.
+struct StringBuffer;
+
 typedef enum model_t{
 	MODEL_ALIGNMENT=0,
 	MODEL_BOUNDMODEL,
@@ -138,6 +143,19 @@ struct _Model {
 	double stored;
 	bool samplable; // model is a distribution that can sampled directly
 	void (*print)(Model*, FILE*);
+
+	// Loggable interface: emit a named derived quantity to a column logger
+	// (JSON column {"ref": "@id", "quantity": "..."}). A column requests a
+	// quantity by name; the model resolves it and owns the cell formatting, so
+	// string/int/double are all fine. log_count returns the number of output
+	// columns for `quantity` (0 if the model does not know it — used for
+	// parse-time validation); NULL log_count means the model is not loggable.
+	// log_value receives the column's optional printf `format` (NULL -> the
+	// model's own default) and appends the formatted cell to `out`.
+	size_t (*log_count)(Model*, const char* quantity);
+	void (*log_name)(Model*, const char* quantity, size_t i, struct StringBuffer* out);
+	void (*log_value)(Model*, const char* quantity, size_t i, const char* format, struct StringBuffer* out);
+
     void (*jsonize)(Model*, json_node*);
 	double epsilon; // for finite differences
 };
