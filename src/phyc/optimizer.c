@@ -823,7 +823,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	json_validate_xor(node, "treelikelihood", "parameters", "list", NULL);
 
-	const char* idNode = get_json_node_value_string(node, "id");
+	const char* id = get_json_node_value_string(node, "id");
 	size_t iterations = get_json_node_value_size_t(node, "iterations", 1000);
 	size_t min = get_json_node_value_size_t(node, "min", 1);
 	bool maximize = get_json_node_value_bool(node, "maximize", true);
@@ -833,7 +833,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	json_node* parametersNode = get_json_node(node, "parameters");
 
 	if(get_json_node(node, "treelikelihood") != NULL && parametersNode != NULL){
-		fprintf(stderr, "Cannot specify both `treelikelihood' and `parameters' for object %s\n", idNode);
+		fprintf(stderr, "Cannot specify both `treelikelihood' and `parameters' for object %s\n", id);
 		exit(13);
 	}
 	if(parametersNode != NULL){
@@ -871,7 +871,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		if (treelike_node != NULL) {
 			const char* ref = (char*)treelike_node->value;
 			opt = new_Optimizer(OPT_SERIAL_BRENT);
-			opt->treelikelihood = safe_get_reference_model(ref, hash, node);
+			opt->treelikelihood = safe_get_reference_model(ref, hash, id);
 			//opt->treelikelihood->ref_count++;
 		}
 		else{
@@ -923,7 +923,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	Model* model = NULL;
 	if(model_node->node_type == MJSON_STRING){
 		const char* ref = (char*)model_node->value;
-		model = safe_get_reference_model(ref, hash, node);
+		model = safe_get_reference_model(ref, hash, id);
 	}
 	else{
 		model = model_factory_from_json(model_node, hash);

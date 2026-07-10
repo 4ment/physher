@@ -16,18 +16,18 @@
         },
         "sitemodel":{
             "id": "sitemodel",
-            "type": "sitemodel",
-            "substitutionmodel":{
-                "id":"sm",
-                "type":"substitutionmodel",
-                "model":"jc69",
-                "datatype":"nucleotide",
-                "frequencies":{
-                    "id":"freqs",
-                    "type":"Simplex",
-                    "x":[0.25,0.25,0.25,0.25] 
-                }
-            }	
+            "type": "sitemodel"	
+        },
+        "substitutionmodel":{
+            "id":"sm",
+            "type":"substitutionmodel",
+            "model":"jc69",
+            "datatype":"nucleotide",
+            "frequencies":{
+                "id":"freqs",
+                "type":"Simplex",
+                "x":[0.25,0.25,0.25,0.25] 
+            }
         },
         "tree":{
             "id":"tree",
@@ -572,18 +572,18 @@
         },
         "sitemodel":{
             "id": "sitemodel2",
-            "type": "sitemodel",
-            "substitutionmodel":{
-                "id":"sm2",
-                "type":"substitutionmodel",
-                "model":"jc69",
-                "datatype":"nucleotide",
-                "frequencies":{
-                    "id":"freqs2",
-                    "type":"Simplex",
-                    "x":[0.25,0.25,0.25,0.25] 
-                }
-            }	
+            "type": "sitemodel"	
+        },
+        "substitutionmodel":{
+            "id":"sm2",
+            "type":"substitutionmodel",
+            "model":"jc69",
+            "datatype":"nucleotide",
+            "frequencies":{
+                "id":"freqs2",
+                "type":"Simplex",
+                "x":[0.25,0.25,0.25,0.25] 
+            }
         },
         "tree":{
             "id":"tree2",

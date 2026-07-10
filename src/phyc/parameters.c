@@ -34,17 +34,23 @@ struct _Parameters{
 	size_t capacity;
 };
 
+// Each guard below must be evaluated in isolation: once `ref == NULL` is ruled
+// out, the later checks may safely call strlen()/read ref[0]. The previous
+// chained `if`s dereferenced a NULL ref while reporting the NULL error.
 void* safe_get_reference_parameter(const char* ref, Hashtable* hash,
                                    const char* parent) {
-    if (ref == NULL || strlen(ref) < 2 || ref[0] != '&') {
-        if (ref == NULL)
-            fprintf(stderr, "No reference provided for parent '%s'\n", parent);
-        if (strlen(ref) < 2)
-            fprintf(stderr, "Invalid reference (%s) provided for parent '%s'\n", ref,
-                    parent);
-        if (ref[0] != '&')
-            fprintf(stderr, "Reference '%s' should start with a '&' with parent '%s'\n",
-                    ref, parent);
+    if (ref == NULL) {
+        fprintf(stderr, "No reference provided for parent '%s'\n", parent);
+        exit(2);
+    }
+    if (strlen(ref) < 2) {
+        fprintf(stderr, "Invalid reference (%s) provided for parent '%s'\n", ref,
+                parent);
+        exit(2);
+    }
+    if (ref[0] != '&') {
+        fprintf(stderr, "Reference '%s' should start with a '&' with parent '%s'\n",
+                ref, parent);
         exit(2);
     }
     void* res = Hashtable_get(hash, ref + 1);
@@ -57,15 +63,18 @@ void* safe_get_reference_parameter(const char* ref, Hashtable* hash,
 
 void* safe_get_reference_model(const char* ref, Hashtable* hash,
                                const char* parent) {
-    if (ref == NULL || strlen(ref) < 2 || ref[0] != '@') {
-        if (ref == NULL)
-            fprintf(stderr, "No reference provided for parent '%s'\n", parent);
-        if (strlen(ref) < 2)
-            fprintf(stderr, "Invalid reference (%s) provided for parent '%s'\n", ref,
-                    parent);
-        if (ref[0] != '@')
-            fprintf(stderr, "Reference '%s' should start with a '@' with parent '%s'\n",
-                    ref, parent);
+    if (ref == NULL) {
+        fprintf(stderr, "No reference provided for parent '%s'\n", parent);
+        exit(2);
+    }
+    if (strlen(ref) < 2) {
+        fprintf(stderr, "Invalid reference (%s) provided for parent '%s'\n", ref,
+                parent);
+        exit(2);
+    }
+    if (ref[0] != '@') {
+        fprintf(stderr, "Reference '%s' should start with a '@' with parent '%s'\n",
+                ref, parent);
         exit(2);
     }
     void* res = Hashtable_get(hash, ref + 1);
@@ -77,12 +86,13 @@ void* safe_get_reference_model(const char* ref, Hashtable* hash,
 }
 
 bool safe_is_reference(const char* ref, const char* parent) {
-    if (ref == NULL || strlen(ref) < 2) {
-        if (ref == NULL)
-            fprintf(stderr, "No reference provided for parent '%s'\n", parent);
-        if (ref[0] == '&' && strlen(ref) < 2)
-            fprintf(stderr, "Invalid reference (%s) provided for parent '%s'\n", ref,
-                    parent);
+    if (ref == NULL) {
+        fprintf(stderr, "No reference provided for parent '%s'\n", parent);
+        exit(2);
+    }
+    if (strlen(ref) < 2) {
+        fprintf(stderr, "Invalid reference (%s) provided for parent '%s'\n", ref,
+                parent);
         exit(2);
     }
     return ref[0] == '&';
@@ -649,8 +659,8 @@ void Parameter_grad_mul_inverse_transform(Parameter* p){
 }
 
 double grad_log_det_inverse_transform_from_constrained(double x, double lb, double ub){
-	// lower or upper bound
-    if(!isinf(lb) && isinf(ub) || isinf(lb) && !isinf(ub)){
+	// lower or upper bound (exactly one side is finite)
+    if((!isinf(lb) && isinf(ub)) || (isinf(lb) && !isinf(ub))){
         return 1.0;
     }
     // no transform

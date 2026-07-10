@@ -194,7 +194,7 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	// posterior model
 	json_node* model_node = get_json_node(node, "model");
 	const char* ref = (char*)model_node->value;
-	op->models[0] = safe_get_reference_model(ref, hash, node);
+	op->models[0] = safe_get_reference_model(ref, hash, id_string);
 	op->models[0]->ref_count++;
 	op->model_count = 1;
 	

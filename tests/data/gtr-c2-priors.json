@@ -25,30 +25,30 @@
 					"parameters":{
 						"alpha":{"id":"alpha", "type":"parameter", "value":0.1, "lower":0, "upper":"infinity"}
 					}
-				},
-				"substitutionmodel":{
-					"id":"sm",
-					"type":"substitutionmodel",
-					"model":"gtr",
-					"datatype":"nucleotide",
-					"frequencies":{
-						"id":"freqs",
-						"type":"Simplex",
-						"values":[0.25,0.25,0.25,0.25] 
-					},
-					"rates":{
-						"ac":{"id":"ac", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
-						"ag":{"id":"ag", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
-						"at":{"id":"at", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
-						"cg":{"id":"cg", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
-						"ct":{"id":"ct", "type":"parameter", "value":1, "lower":0, "upper":"infinity"}
-					},
-					"init":{
-						"id":"aaa",
-						"sitepattern": "&patterns"
-					}
 				}
 					
+			},
+			"substitutionmodel":{
+				"id":"sm",
+				"type":"substitutionmodel",
+				"model":"gtr",
+				"datatype":"nucleotide",
+				"frequencies":{
+					"id":"freqs",
+					"type":"Simplex",
+					"values":[0.25,0.25,0.25,0.25] 
+				},
+				"rates":{
+					"ac":{"id":"ac", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+					"ag":{"id":"ag", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+					"at":{"id":"at", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+					"cg":{"id":"cg", "type":"parameter", "value":1, "lower":0, "upper":"infinity"},
+					"ct":{"id":"ct", "type":"parameter", "value":1, "lower":0, "upper":"infinity"}
+				},
+				"init":{
+					"id":"aaa",
+					"sitepattern": "&patterns"
+				}
 			},
 			"tree":{
 				"id":"tree",

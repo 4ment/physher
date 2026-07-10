@@ -661,19 +661,23 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	else if (strcasecmp(algorithm_string, "exchange") == 0) {
-		char* ref = get_json_node_value_string(node, "x");
-		op->model_count = 1;
-		op->models = malloc(op->model_count*sizeof(Model*));
-		op->models[0] = Hashtable_get(hash, ref+1);
-		op->models[0]->ref_count++;
 		op->parameters = dvector(1);
-		
-		if(op->models[0]->type == MODEL_DISCRETE_PARAMETER){
+		char* ref = get_json_node_value_string(node, "x");
+		Model* mref = (ref[0] == '@') ? Hashtable_get(hash, ref + 1) : NULL;
+		if(mref != NULL && mref->type == MODEL_DISCRETE_PARAMETER){
+			op->model_count = 1;
+			op->models = malloc(op->model_count*sizeof(Model*));
+			op->models[0] = mref;
+			op->models[0]->ref_count++;
+
 			op->propose = operator_discrete_exchange;
 			op->optimize = operator_discrete_exchange_optimize;
 			op->parameters[0] = 1;
 		}
 		else{
+			op->x = new_Parameters(1);
+			get_parameters_references2(node, hash, op->x, "x");
+
 			op->propose = operator_simplex_exchange;
 			op->optimize = operator_exchange_optimize;
 			op->parameters[0] = 0.001;

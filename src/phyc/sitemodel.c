@@ -176,6 +176,12 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 	return clone;
 }
 
+static size_t _SiteModel_log_count(Model* model, const char* quantity);
+static void _SiteModel_log_name(Model* model, const char* quantity, size_t i,
+                                struct StringBuffer* out);
+static void _SiteModel_log_value(Model* model, const char* quantity, size_t i,
+                                 const char* format, struct StringBuffer* out);
+
 // SubstitutionModel2 listen to the rate and freq parameters
 Model * new_SiteModel2( const char* name, SiteModel *sm ){
 	Model *model = new_Model(MODEL_SITEMODEL, name, sm);
@@ -198,6 +204,9 @@ Model * new_SiteModel2( const char* name, SiteModel *sm ){
 	model->accept = _site_model_accept;
 	model->free = _site_model_free;
 	model->clone = _site_model_clone;
+	model->log_count = _SiteModel_log_count;
+	model->log_name = _SiteModel_log_name;
+	model->log_value = _SiteModel_log_value;
 	return model;
 }
 
@@ -228,6 +237,33 @@ static void _SiteModel_print(Model* model, FILE* out){
 			fprintf(out, "%f %f\n",sm->cat_proportions[i], sm->cat_rates[i]);
 		}
 	}
+}
+
+// Loggable interface: the per-category "rates" and "proportions", each yielding
+// cat_count columns. Column headers are 0-based (rates.0 … rates.{K-1}), matching
+// the multi-element Parameter convention.
+static size_t _SiteModel_log_count(Model* model, const char* quantity){
+	SiteModel* sm = model->obj;
+	if(strcasecmp(quantity, "rates") == 0 || strcasecmp(quantity, "proportions") == 0){
+		return sm->cat_count;
+	}
+	return 0;
+}
+
+static void _SiteModel_log_name(Model* model, const char* quantity, size_t i,
+                                struct StringBuffer* out){
+	// Prefix with the model id so columns stay unique across several site models,
+	// e.g. "sitemodel.rates.0".
+	StringBuffer_append_format(out, "%s.%s.%zu", model->name, quantity, i);
+}
+
+static void _SiteModel_log_value(Model* model, const char* quantity, size_t i,
+                                 const char* format, struct StringBuffer* out){
+	SiteModel* sm = model->obj;
+	sm->get_proportions(sm);  // refresh cat_rates/cat_proportions
+	double value = strcasecmp(quantity, "rates") == 0 ? sm->get_rate(sm, i)
+	                                                   : sm->get_proportion(sm, i);
+	StringBuffer_append_format(out, format != NULL ? format : "%f", value);
 }
 
 void set_rate(SiteModel* sm, const int index, const double value){
@@ -461,7 +497,7 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Parameter* 
 		Parameter_set_model(proportions, MODEL_SITEMODEL);
 	}
 
-	sm->epsilon = 1.e-6;
+	// sm->epsilon = 1.e-6;
     
 	sm->rates = NULL;
 	
@@ -1077,7 +1113,7 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm ){
 	newsm->gradient = sm->gradient;
 	newsm->derivative = sm->derivative;
 
-	newsm->epsilon = sm->epsilon;
+	// newsm->epsilon = sm->epsilon;
 	return newsm;
 }
 
@@ -1127,7 +1163,7 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* pro
 	newsm->gradient = sm->gradient;
 	newsm->derivative = sm->derivative;
 
-	newsm->epsilon = sm->epsilon;
+	// newsm->epsilon = sm->epsilon;
 	return newsm;
 }
 
@@ -1149,9 +1185,8 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		{"beta", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},     // Beta beta
 		{"categories", JSON_OPTIONAL, JSON_NUMBER},
 		{"distribution", JSON_OPTIONAL, JSON_STRING},
-		{"epsilon", JSON_OPTIONAL, JSON_NUMBER},
+		// {"epsilon", JSON_OPTIONAL, JSON_NUMBER},
 		{"invariant", JSON_OPTIONAL, JSON_BOOL},
-		{"model", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"mu", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"parameters", JSON_OPTIONAL, JSON_ANY},
 		{"proportions", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
@@ -1160,7 +1195,6 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		{"scale", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},    // lognormal scale
 		{"shape", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},    // gamma/Weibull shape
 		{"sitepattern", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
-		{"substitutionmodel", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},  // legacy alias of "model"
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
@@ -1218,22 +1252,11 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				proportions->refCount++;
 			}
 			else{
-				// proportions = new_SimplexParameter_from_json(proportions_node, hash);
 				proportions = new_Parameter_from_json(proportions_node, hash);
 				Hashtable_add(hash, Parameter_name(proportions), proportions);
 			}
 			Parameter_set_model(proportions, MODEL_SITEMODEL);
 			dimProportion = Parameter_size(proportions);
-			// Simplex* props_simplex = (Simplex*)proportions->model_obj->obj;
-			// props_simplex->parameter->model = MODEL_SITEMODEL;
-			// dimProportion = props_simplex->K;
-
-			// mprops_simplex = new_SimplexModel_from_json(proportions_node, hash);
-			// Hashtable_add(hash, mprops_simplex->name, mprops_simplex);
-			// props_simplex = (Simplex*)mprops_simplex->obj;
-			// for (int i = 0; i < Parameters_count(props_simplex->parameters); i++) {
-			// 	Parameters_at(props_simplex->parameters, i)->model = MODEL_SITEMODEL;
-			// }
 		}
 		
 		if(discretization_node != NULL && distribution != DISTRIBUTION_DISCRETE){
@@ -1404,7 +1427,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
 	}
-	sm->epsilon = get_json_node_value_double(node, "epsilon", 1.e-6);
+	// sm->epsilon = get_json_node_value_double(node, "epsilon", 1.e-6);
 	
 	Model* msm = new_SiteModel2(id, sm);
 	

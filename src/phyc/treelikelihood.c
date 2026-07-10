@@ -377,7 +377,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 		{"sitemodel", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 		{"sitepattern", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 		{"sse", JSON_OPTIONAL, JSON_BOOL},
-		{"substitutionmodel", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+		{"substitutionmodel", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 		{"tipstates", JSON_OPTIONAL, JSON_BOOL},
 		{"tree", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 	};
@@ -390,7 +390,8 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	json_node* bm_node = get_json_node(node, "branchmodel");
 	bool include_jacobian = false;
 	bool use_tip_states = get_json_node_value_bool(node, "tipstates", true);
-	
+	char* id = get_json_node_value_string(node, "id");
+
 	Model* mtree = NULL;
 	Model* mm = NULL;
 	Model* msm = NULL;
@@ -400,8 +401,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	
 	if(patterns_node->node_type == MJSON_STRING){
 		char* ref = (char*)patterns_node->value;
-		// check it starts with a &
-		patterns = Hashtable_get(hash, ref+1);
+		patterns = safe_get_reference_model(ref, hash, id);
 		patterns->ref_count++;
 	}
 	else{
@@ -412,8 +412,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	
 	if (tree_node->node_type == MJSON_STRING) {
 		char* ref = (char*)tree_node->value;
-		// check it starts with a &
-		mtree = Hashtable_get(hash, ref+1);
+		mtree = safe_get_reference_model(ref, hash, id);
 		mtree->ref_count++;
 	}
 	else{
@@ -424,8 +423,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	
 	if (sm_node->node_type == MJSON_STRING) {
 		char* ref = (char*)sm_node->value;
-		// check it starts with a &
-		msm = Hashtable_get(hash, ref+1);
+		msm = safe_get_reference_model(ref, hash, id);
 		msm->ref_count++;
 	}
 	else{
@@ -433,14 +431,10 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 		msm = new_SiteModel_from_json(sm_node, hash);
 		Hashtable_add(hash, id, msm);
 	}
-	
-	// the old way
-	if (m_node == NULL) {
-		m_node = get_json_node(sm_node, "substitutionmodel");
-	}
-	if (m_node->node_type == MJSON_STRING && ((char*)m_node->value)[0] == '&') {
+
+	if (m_node->node_type == MJSON_STRING) {
 		char* ref = (char*)m_node->value;
-		mm = Hashtable_get(hash, ref+1);
+		mm = safe_get_reference_model(ref, hash, id);
 		mm->ref_count++;
 	}
 	else{
@@ -451,8 +445,7 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	if(bm_node != NULL){
 		if (bm_node->node_type == MJSON_STRING) {
 			char* ref = (char*)bm_node->value;
-			// check it starts with a &
-			mbm = Hashtable_get(hash, ref+1);
+			mbm = safe_get_reference_model(ref, hash, id);
 			mbm->ref_count++;
 		}
 		else{
@@ -471,7 +464,6 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 	}
 	
 	SingleTreeLikelihood* tlk = new_SingleTreeLikelihood((Tree*)mtree->obj, (SubstitutionModel*)mm->obj, (SiteModel*)msm->obj, patterns, bm, use_tip_states);
-	char* id = get_json_node_value_string(node, "id");
 	Model* model = new_TreeLikelihoodModel(id, tlk, mtree, mm, msm, mbm);
 	mm->free(mm);
 	mtree->free(mtree);

@@ -14,21 +14,21 @@
 	},
 	"sitemodel":{
 		"id": "sitemodel",
-		"type": "sitemodel",
-		"substitutionmodel":{
-			"id":"sm",
-			"type":"substitutionmodel",
-			"model":"hky",
-			"datatype":"nucleotide",
-			"frequencies":{
-				"id":"freqs",
-				"type":"Simplex",
-				"x":[0.25,0.25,0.25,0.25] 
-			},
-			"rates":{
-				"kappa":{"id":"kappa", "type":"parameter", "value":1, "lower":0, "upper":"infinity"}
-			}
-		}	
+		"type": "sitemodel"	
+	},
+	"substitutionmodel":{
+		"id":"sm",
+		"type":"substitutionmodel",
+		"model":"hky",
+		"datatype":"nucleotide",
+		"frequencies":{
+			"id":"freqs",
+			"type":"Simplex",
+			"x":[0.25,0.25,0.25,0.25] 
+		},
+		"rates":{
+			"kappa":{"id":"kappa", "type":"parameter", "value":1, "lower":0, "upper":"infinity"}
+		}
 	},
 	"tree":{
 		"id":"tree",

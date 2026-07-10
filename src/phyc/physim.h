@@ -10,7 +10,7 @@
 #include "substmodel.h"
 #include "tree.h"
 
-#define JSON_SIMULTRON "simultron"
+#define JSON_SIMULTRON "simulator"
 
 Sequences * Sequence_simulate( Tree *tree, SubstitutionModel *m, SiteModel *sm, BranchModel *bm, DataType *datatype, unsigned len, bool keep_internal );
 

@@ -10,16 +10,22 @@
 #include "parameters.h"
 
 // One ordered output column. Exactly one of the two pointers is non-NULL:
-//   model     != NULL -> log this Model's logP        (JSON ref "@id")
+//   model     != NULL -> log this Model's logP, unless `quantity` is set, in
+//                        which case log the model's named loggable quantity via
+//                        its log_* interface  (JSON ref "@id")
 //   parameter != NULL -> log this Parameter's value(s) (JSON ref "&id" or "%id")
 // format is an optional per-column printf conversion; NULL falls back to the
 // logger-level format. name is an optional header/label override; NULL falls
-// back to the model/parameter's own name.
+// back to the model/parameter's own name. quantity (model columns only) names a
+// derived value to log instead of logP; loggable_count caches the model's
+// log_count for that quantity, resolved at parse time.
 typedef struct LogColumn{
 	Model* model;
 	Parameter* parameter;
 	char* format;
 	char* name;
+	char* quantity;
+	size_t loggable_count;
 }LogColumn;
 
 // Parse the "columns" array into a freshly allocated ordered array; returns the

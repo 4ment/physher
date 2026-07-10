@@ -1254,7 +1254,9 @@ size_t _TreeModel_log_count(Model* mtree, const char* quantity){
 
 void _TreeModel_log_name(Model* mtree, const char* quantity, size_t i,
                          struct StringBuffer* out){
-	StringBuffer_append_string(out, quantity);
+	// Prefix with the model id so columns stay unique across several trees,
+	// e.g. "tree.treeLength".
+	StringBuffer_append_format(out, "%s.%s", mtree->name, quantity);
 }
 
 void _TreeModel_log_value(Model* mtree, const char* quantity, size_t i,
@@ -1395,7 +1397,7 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	
 	json_node* newick_node = get_json_node(node, "newick");
 	json_node* file_node = get_json_node(node, "file");
-	json_node* init_node = get_json_node(node, "init");
+	json_node* init_node = get_json_node(node, "initializer");
 	json_node* transform_node = get_json_node(node, "transform");
 	json_node* taxaNode = get_json_node(node, "taxa");
 	bool time_tree = get_json_node_value_bool(node, "time", false);
