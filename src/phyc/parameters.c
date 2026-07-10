@@ -303,7 +303,9 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash) {
         {"upper", JSON_OPTIONAL, JSON_ANY},
         {"value", JSON_FORBIDDEN, JSON_ANY},
         {"values", JSON_FORBIDDEN, JSON_ANY},
-        {"x", JSON_REQUIRED, JSON_ANY}, // number, array of numbers, object (transform)
+        {"x", JSON_OPTIONAL, JSON_ANY}, // number, array of numbers, object (transform);
+                                        // may be omitted for a simplex with a
+                                        // "dimension" (defaults to equal values)
     };
 
     if (node->node_type == MJSON_STRING) {
@@ -344,7 +346,20 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash) {
 
     Transform* transform = NULL;
 
-    if (value_node->node_type == MJSON_OBJECT) {
+    if (value_node == NULL) {
+        // A simplex given only a "dimension" defaults to equal values (1/dim each).
+        if (type == NULL || strcasecmp(type, "simplex") != 0 || dim == 0) {
+            fprintf(stderr,
+                    "%s - parameter requires \"x\" (only a simplex with a "
+                    "\"dimension\" may omit it)\n",
+                    id != NULL ? id : "parameter");
+            exit(2);
+        }
+        values = dvector(dim);
+        for (size_t i = 0; i < dim; i++) {
+            values[i] = 1.0 / dim;
+        }
+    } else if (value_node->node_type == MJSON_OBJECT) {
         // p should have no constraints (-inf, inf)
         Parameter* unconstrained = new_Parameter_from_json(value_node, hash);
         Hashtable_add(hash, Parameter_name(unconstrained), unconstrained);
