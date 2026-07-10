@@ -610,7 +610,7 @@
       },
         {
             "id": "jacobian",
-            "type": "jacobiantransform",
+            "type": "jacobian",
             "parameters": ["&root.height", "&ratios", "&rate", "&n0"]
         },
         "@tree"

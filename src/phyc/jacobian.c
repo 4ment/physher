@@ -1,7 +1,7 @@
 // Copyright (C) 2010-2026 Mathieu Fourment
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#include "jacobiantransform.h"
+#include "jacobian.h"
 
 #include <stdlib.h>
 
@@ -64,8 +64,8 @@ static void _jacobian_model_accept(Model* self){
     }
 }
 
-Model* new_JacobianTransformModel(const char* id, Parameters* parameters) {
-    Model* model = new_Model(MODEL_JACOBIAN_TRANSFORM, id, parameters);
+Model* new_JacobianModel(const char* id, Parameters* parameters) {
+    Model* model = new_Model(MODEL_JACOBIAN, id, parameters);
     model->logP = _jacobian_model_logP;
     model->full_logP = _jacobian_model_logP;
     model->gradient = _jacobian_model_gradient;
@@ -76,7 +76,7 @@ Model* new_JacobianTransformModel(const char* id, Parameters* parameters) {
     return model;
 }
 
-Model* new_JacobianTransformModel_from_json(json_node* node, Hashtable* hash) {
+Model* new_JacobianModel_from_json(json_node* node, Hashtable* hash) {
     static const json_field schema[] = {
         {"parameters", JSON_REQUIRED, JSON_ANY},
     };
@@ -85,7 +85,7 @@ Model* new_JacobianTransformModel_from_json(json_node* node, Hashtable* hash) {
     Parameters* parameters = new_Parameters(1);
     grab_parameters(parametersNode, hash, parameters);
     const char* id = get_json_node_value_string(node, "id");
-    Model* model = new_JacobianTransformModel(id, parameters);
+    Model* model = new_JacobianModel(id, parameters);
     Hashtable_add(hash, id, model);
     return model;
 }

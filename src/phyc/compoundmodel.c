@@ -11,7 +11,7 @@
 #include "treelikelihood.h"
 #include "distmodelfactory.h"
 #include "demographicmodels.h"
-#include "jacobiantransform.h"
+#include "jacobian.h"
 #include "matrix.h"
 
 
@@ -511,10 +511,10 @@ Model* new_CompoundModel_from_json(json_node*node, Hashtable*hash){
 			cm->add(cm, coalescent);
 			coalescent->free(coalescent);
 		}
-		else if(model_type == MODEL_JACOBIAN_TRANSFORM){
+		else if(model_type == MODEL_JACOBIAN){
 			Model* jac = NULL;
 			if (child->node_type == MJSON_OBJECT) {
-				jac = new_JacobianTransformModel_from_json(child, hash);
+				jac = new_JacobianModel_from_json(child, hash);
 				char* id = get_json_node_value_string(child, "id");
 				Hashtable_add(hash, id, jac);
 			}

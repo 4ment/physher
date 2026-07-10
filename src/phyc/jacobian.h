@@ -7,6 +7,6 @@
 #include "mjson.h"
 #include "parameters.h"
 
-Model* new_JacobianTransformModel_from_json(json_node* node, Hashtable* hash);
+Model* new_JacobianModel_from_json(json_node* node, Hashtable* hash);
 
 #endif  // JACOBIAN_H

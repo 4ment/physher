@@ -11,7 +11,7 @@
 #include "demographicmodels.h"
 #include "compoundmodel.h"
 #include "distmodelfactory.h"
-#include "jacobiantransform.h"
+#include "jacobian.h"
 #include "parsimony.h"
 #include "tree.h"
 #include "treelikelihood.h"
@@ -39,7 +39,7 @@ Model* model_factory_from_json(json_node* node, Hashtable* hash){
         model = new_DistributionModel_from_json(node, hash);
     }
     else if (strcasecmp(type, "jacobian") == 0) {
-        model = new_JacobianTransformModel_from_json(node, hash);
+        model = new_JacobianModel_from_json(node, hash);
     }
     else if (strcasecmp(type, "parsimony") == 0) {
         model = new_ParsimonyModel_from_json(node, hash);
