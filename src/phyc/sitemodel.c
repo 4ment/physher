@@ -15,6 +15,7 @@
 #include "mathconstant.h"
 #include "gaussian.h"
 #include "distkumaraswamy.h"
+#include "transforms.h"
 
 #ifndef GSL_DISABLED
 #include <gsl/gsl_cdf.h>
@@ -370,8 +371,9 @@ double _gamma_inv_derivative( SiteModel *sm, const double* ingrad ){
 }
 
 double _gamma_derivative( SiteModel *sm, const double* ingrad, Parameter* p ){
-	// pinv
-	if(sm->proportions != NULL &&  Parameters_at(sm->rates, 0) != p){
+	// pinv (with no rate categories, p can only be the proportions parameter)
+	if(sm->proportions != NULL &&
+	   (Parameters_count(sm->rates) == 0 || Parameters_at(sm->rates, 0) != p)){
 		return _gamma_inv_derivative(sm, ingrad);
 	}
 	else{
@@ -444,8 +446,9 @@ double _weibull_inv_derivative( SiteModel *sm, const double* ingrad ){
 }
 
 double _weibull_derivative( SiteModel *sm, const double* ingrad, Parameter* p ){
-	// pinv
-	if(sm->proportions != NULL &&  Parameters_at(sm->rates, 0) != p){
+	// pinv (with no rate categories, p can only be the proportions parameter)
+	if(sm->proportions != NULL &&
+	   (Parameters_count(sm->rates) == 0 || Parameters_at(sm->rates, 0) != p)){
 		return _weibull_inv_derivative(sm, ingrad);
 	}
 	else{
@@ -1177,6 +1180,71 @@ void free_SiteModel( SiteModel *sm ){
 	free(sm);
 }
 
+// Build the internal 2-simplex X = [p, 1-p] the site model consumes, driven by
+// the proportion parameter S = p (in (0,1)) through the "proportions" (S -> X)
+// transform. X listens on S and is registered in the hashtable.
+static Parameter* _build_invariant_simplex(Parameter* proportion,
+                                           const char* simplex_id, Hashtable* hash){
+	Transform* transform =
+		new_SimplexTransform_with_parameter("proportions", proportion);
+	double* values = dvector(transform->dim);
+	transform->get(transform, values);
+	Parameter* simplex =
+		new_Parameter2(simplex_id, values, transform->dim, new_Constraint(0.0, 1.0));
+	simplex->transform = transform;
+	simplex->simplex = true;
+	proportion->listeners->add_parameter(proportion->listeners, simplex);
+	Hashtable_add(hash, Parameter_name(simplex), simplex);
+	free(values);
+	return simplex;
+}
+
+// "proportion_invariant" is sugar for the +I case: <id> always names the scalar
+// proportion of invariant sites S = p in (0,1) (so it logs as a single value and
+// can carry e.g. a Beta prior). The internal 2-simplex X = [p, 1-p] the site
+// model consumes is auto-named "<id>.simplex" and driven by S through the
+// "proportions" (S -> X) transform. S is supplied one of two ways (the two
+// feeding modes of S -> X):
+//
+//   - a raw box-constrained (0,1) leaf: a bare number, or {"lower":0,"upper":1,
+//     "x":p}. Optimized directly (box-respecting MLE, e.g. brent).
+//   - reparameterised through an unconstrained leaf: {..., "x":{...}} (logit) or
+//     a "&reference" to such a parameter. Gradient/VI/HMC-ready.
+//
+// Returns the simplex X (what the site model stores as its proportions).
+static Parameter* new_proportion_invariant_from_json(json_node* node, Hashtable* hash){
+	Parameter* proportion;
+	if (node->node_type == MJSON_STRING || node->node_type == MJSON_OBJECT) {
+		// new_Parameter_from_json handles both a raw (0,1) leaf ({lower,upper,x:p})
+		// and a logit-coupled scalar ({...,"x":{...}}), plus "&references".
+		proportion = new_Parameter_from_json(node, hash);
+		if (node->node_type == MJSON_OBJECT) {
+			Hashtable_add(hash, Parameter_name(proportion), proportion);
+		}
+	}
+	else {
+		// Bare number: a raw (0,1) leaf named "proportion_invariant".
+		double p = atof((char*)node->value);
+		proportion =
+			new_Parameter2("proportion_invariant", &p, 1, new_Constraint(0.0, 1.0));
+		Hashtable_add(hash, Parameter_name(proportion), proportion);
+	}
+
+	if (Parameter_size(proportion) != 1) {
+		fprintf(stderr, "proportion_invariant must be a scalar in (0,1)\n");
+		exit(2);
+	}
+	const double* pv = Parameter_values(proportion);
+	if (pv[0] <= 0.0 || pv[0] >= 1.0) {
+		fprintf(stderr, "proportion_invariant must be in (0,1), got %f\n", pv[0]);
+		exit(2);
+	}
+
+	char simplex_id[256];
+	snprintf(simplex_id, sizeof(simplex_id), "%s.simplex", Parameter_name(proportion));
+	return _build_invariant_simplex(proportion, simplex_id, hash);
+}
+
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	static const json_field schema[] = {
 		{"a", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},        // Kumaraswamy a
@@ -1189,6 +1257,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		{"invariant", JSON_OPTIONAL, JSON_BOOL},
 		{"mu", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"parameters", JSON_OPTIONAL, JSON_ANY},
+		{"proportion_invariant", JSON_OPTIONAL, JSON_OBJECT | JSON_NUMBER | JSON_STRING},
 		{"proportions", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"quadrature", JSON_OPTIONAL, JSON_STRING},
 		{"rates", JSON_OPTIONAL, JSON_ANY},
@@ -1245,7 +1314,20 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		
 		json_node* discretization_node = get_json_node(node, "quadrature");
 		
-		if (proportions_node != NULL) {
+		json_node* proportion_invariant_node = get_json_node(node, "proportion_invariant");
+		if (proportion_invariant_node != NULL && proportions_node != NULL) {
+			fprintf(stderr, "sitemodel: specify either \"proportions\" or "
+			                "\"proportion_invariant\", not both\n");
+			exit(2);
+		}
+
+		if (proportion_invariant_node != NULL) {
+			proportions = new_proportion_invariant_from_json(proportion_invariant_node, hash);
+			invariant = true;
+			Parameter_set_model(proportions, MODEL_SITEMODEL);
+			dimProportion = Parameter_size(proportions);
+		}
+		else if (proportions_node != NULL) {
 			if (proportions_node->node_type == MJSON_STRING) {
 				char* ref = (char*)proportions_node->value;
 				proportions = safe_get_reference_parameter(ref, hash, id);

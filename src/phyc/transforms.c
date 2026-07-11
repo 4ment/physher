@@ -406,6 +406,113 @@ static double _inverse_transform_gradient_log_jacobian_simplex_stan(
     return lp;
 }
 
+// --- Simplex parameterized by the break-fractions S in (0,1)^{K-1} (the
+// "S -> X" map), as opposed to the unconstrained "U -> X" _simplex_stan variant
+// above. The two are the fused vs. split forms of the same construction:
+//
+//     U --logit(+offset)--> S --stick-breaking--> X
+//
+// _simplex_stan fuses both stages; the functions below implement only the
+// offset-free S -> X (pure stick-breaking) half, so S can be fed either by a
+// logit-backed unconstrained leaf (composable, VI/HMC-ready) or by a raw
+// box-constrained (0,1) leaf (MLE).
+//
+// General K >= 2. NB for K > 2: a plain-logit U->S stage omits the _simplex_stan
+// centering offset log(K-k-1), so composing a logit leaf with this transform is a
+// *different* (but equally valid) unconstrained parameterization than
+// _simplex_stan. For K == 2 the offset is log 1 = 0 and the two coincide.
+
+// forward: simplex X (dim+1) -> break-fractions S (dim)
+void _transform_simplex_proportions(const double* x, double* y, size_t dim,
+                                    double lower, double upper) {
+    double sum = 0;
+    for (size_t i = 0; i < dim; i++) {
+        y[i] = x[i] / (1.0 - sum);
+        sum += x[i];
+    }
+}
+
+// inverse: break-fractions S (dim) -> simplex X (dim+1)
+void _inverse_transform_simplex_proportions(double* x, const double* y, size_t dim,
+                                            double lower, double upper) {
+    double stick = 1.0;
+    for (size_t k = 0; k < dim; k++) {
+        x[k] = stick * y[k];
+        stick -= x[k];
+    }
+    x[dim] = stick;
+}
+
+// dL/ds += sum_k dL/dx_k * dx_k/ds  (mirrors the stan version with the logit
+// derivative replaced by 1 and the break fraction taken directly from y = S)
+static void _backward_inverse_transform_simplex_proportions(double* grad,
+                                                            const double* y,
+                                                            const double* ingrad,
+                                                            size_t dim, double lower,
+                                                            double upper) {
+    double stickRemaining = 1.0;
+    for (size_t index = 0; index < dim; index++) {
+        double g = stickRemaining;  // dx_index/ds_index
+        grad[index] += ingrad[index] * g;
+        double cum = g;
+        for (size_t i = index + 1; i < dim; i++) {
+            g = -cum * y[i];
+            grad[index] += ingrad[i] * g;
+            cum += g;
+        }
+        grad[index] += ingrad[dim] * -cum;
+        stickRemaining -= stickRemaining * y[index];
+    }
+}
+
+// dx/ds; jacobian is dim x (dim+1)
+static void _inverse_transform_simplex_proportions_jacobian(double* jacobian,
+                                                            const double* y, size_t dim,
+                                                            double lower, double upper) {
+    memset(jacobian, 0.0, sizeof(double) * dim * (dim + 1));
+    double stickRemaining = 1.0;
+    size_t j = 0;
+    for (size_t index = 0; index < dim; index++, j++) {
+        j += index;
+        jacobian[j] = stickRemaining;  // dx_index/ds_index
+        double cum = jacobian[j];
+        j++;
+        for (size_t i = index + 1; i < dim; i++, j++) {
+            jacobian[j] = -cum * y[i];
+            cum += jacobian[j];
+        }
+        jacobian[j] = -cum;
+        stickRemaining -= stickRemaining * y[index];
+    }
+}
+
+// log|det dX/dS| = sum_k log(stickRemaining_k), the pure stick-breaking term
+// (the logit half of _simplex_stan's log-jacobian is dropped). 0 when K == 2.
+static double _inverse_transform_log_jacobian_simplex_proportions(double* res,
+                                                                  const double* y,
+                                                                  size_t dim,
+                                                                  double lower,
+                                                                  double upper) {
+    double sumLogDetJac = 0;
+    double stickRemaining = 1.0;
+    for (size_t k = 0; k < dim; k++) {
+        sumLogDetJac += log(stickRemaining);
+        stickRemaining -= stickRemaining * y[k];
+    }
+    return sumLogDetJac;
+}
+
+// d log|det dX/dS| / ds_m = -(K-2-m)/(1 - s_m)
+static double _inverse_transform_gradient_log_jacobian_simplex_proportions(
+    double* res, const double* y, size_t dim, double lower, double upper) {
+    if (res != NULL) {
+        for (size_t m = 0; m < dim; m++) {
+            res[m] += -((double)(dim - 1) - (double)m) / (1.0 - y[m]);
+        }
+    }
+    return 0;
+}
+
 // Lower bounded
 
 // y = T^{-1}(x)
@@ -748,14 +855,30 @@ Transform* new_SimplexTransform_with_parameter(const char* type, Parameter* para
     transform->gradient_log_det_jacobian = _gradient_log_det_jacobian;
     transform->jacobian = _jacobian;
 
-    transform->transform = _transform_simplex_stan;
-    transform->inverse_transform = _inverse_transform_simplex_stan;
-    transform->backward_inverse_transform = _backward_inverse_transform_simplex_stan;
-    transform->inverse_transform_log_det_jacobian =
-        _inverse_transform_log_jacobian_simplex_stan;
-    transform->inverse_transform_gradient_log_det_jacobian =
-        _inverse_transform_gradient_log_jacobian_simplex_stan;
-    transform->inverse_transform_jacobian = _inverse_transform_simplex_jacobian_stan;
+    // Two parameterizations of the same K-simplex (see the _simplex_proportions
+    // note above): "proportions" maps break-fractions S in (0,1)^{K-1} -> X;
+    // anything else maps the unconstrained U -> X (Stan stick-breaking).
+    if (type != NULL && strcasecmp(type, "proportions") == 0) {
+        transform->transform = _transform_simplex_proportions;
+        transform->inverse_transform = _inverse_transform_simplex_proportions;
+        transform->backward_inverse_transform =
+            _backward_inverse_transform_simplex_proportions;
+        transform->inverse_transform_log_det_jacobian =
+            _inverse_transform_log_jacobian_simplex_proportions;
+        transform->inverse_transform_gradient_log_det_jacobian =
+            _inverse_transform_gradient_log_jacobian_simplex_proportions;
+        transform->inverse_transform_jacobian =
+            _inverse_transform_simplex_proportions_jacobian;
+    } else {
+        transform->transform = _transform_simplex_stan;
+        transform->inverse_transform = _inverse_transform_simplex_stan;
+        transform->backward_inverse_transform = _backward_inverse_transform_simplex_stan;
+        transform->inverse_transform_log_det_jacobian =
+            _inverse_transform_log_jacobian_simplex_stan;
+        transform->inverse_transform_gradient_log_det_jacobian =
+            _inverse_transform_gradient_log_jacobian_simplex_stan;
+        transform->inverse_transform_jacobian = _inverse_transform_simplex_jacobian_stan;
+    }
     transform->dim = Parameter_size(parameter) + 1;
 
     return transform;

@@ -5,6 +5,7 @@
 
 #include "minunit.h"
 #include "phyc/parameters.h"
+#include "phyc/transforms.h"
 
 char* test_exp() {
     // clang-format off
@@ -212,11 +213,111 @@ char* test_simplex() {
     return NULL;
 }
 
+// The "proportions" simplex transform S -> X (pure stick-breaking from the
+// break-fractions S in (0,1)^{K-1}), verified two ways:
+//   (A) S fed by a raw box-constrained (0,1) leaf,
+//   (B) S fed by a logit-backed unconstrained leaf (U -> S -> X composition),
+// which must refresh X through the chain and backprop dL/dX all the way to U.
+// Reference numbers computed with numpy (finite differences).
+char* test_simplex_proportions() {
+    double initValues[4] = {0.2, 0.1, 0.4, 0.3};
+    double values[4] = {0.1, 0.2, 0.3, 0.4};
+    // break-fractions of [0.1, 0.2, 0.3, 0.4]: s_k = x_k / (1 - sum_{j<k} x_j)
+    double propValues[3] = {0.1, 0.22222222222222224, 0.4285714285714286};
+
+    // (A) raw (0,1) leaf S
+    Parameter* parameter =
+        new_Parameter2("s", propValues, 3, new_Constraint(0.0, 1.0));
+    Transform* transform =
+        new_SimplexTransform_with_parameter("proportions", parameter);
+    Parameter* simplex =
+        new_Parameter2("simplex", initValues, 4, new_Constraint(0.0, 1.0));
+    simplex->transform = transform;
+    transform->parameter->listeners->add_parameter(transform->parameter->listeners,
+                                                   simplex);
+    const double* values2 = Parameter_values(simplex);
+    for (size_t i = 0; i < Parameter_size(simplex); i++) {
+        mu_assert(fabs(values2[i] - values[i]) < 1.e-7,
+                  "simplex proportions: constrained values not matching");
+    }
+
+    double jacobian[12];
+    double trueJacobian[3][4] = {
+        {1.0, -0.22222222222222224, -0.33333333333333337, -0.4444444444444445},
+        {0.0, 0.9, -0.3857142857142857, -0.5142857142857143},
+        {0.0, 0.0, 0.7, -0.7}};
+    transform->jacobian(transform, jacobian);
+    for (size_t i = 0; i < 3; i++) {
+        for (size_t j = 0; j < 4; j++) {
+            mu_assert(fabs(jacobian[i * 4 + j] - trueJacobian[i][j]) < 1.e-7,
+                      "simplex proportions: jacobian not matching");
+        }
+    }
+
+    const double ingrad[4] = {1., 2., 3., 4.};
+    const double trueGradient[3] = {-2.2222222222222223, -1.4142857142857141, -0.7};
+    transform->backward(transform, ingrad);
+    for (size_t i = 0; i < 3; i++) {
+        mu_assert(fabs(parameter->grad[i] - trueGradient[i]) < 1.e-7,
+                  "simplex proportions: gradient not matching");
+    }
+
+    double trueLogDetJacobian = -0.46203545959655873;  // log(0.9) + log(0.7)
+    double logDetJacobian = transform->log_det_jacobian(transform);
+    mu_assert(fabs(trueLogDetJacobian - logDetJacobian) < 1.e-7,
+              "simplex proportions: log det Jacobian not matching");
+
+    double trueLogDetJacobianGradient[3] = {-2.2222222222222223, -1.2857142857142858,
+                                            0.0};
+    Parameter_zero_grad(parameter);
+    transform->gradient_log_det_jacobian(transform);
+    for (size_t i = 0; i < 3; i++) {
+        mu_assert(fabs(parameter->grad[i] - trueLogDetJacobianGradient[i]) < 1.e-7,
+                  "simplex proportions: log det Jacobian gradient not matching");
+    }
+
+    // (B) S fed by a logit-backed unconstrained leaf: U --logit--> S --S->X--> X.
+    // Seed U so that S matches propValues above.
+    double u[3] = {logit(propValues[0]), logit(propValues[1]), logit(propValues[2])};
+    Parameter* leaf =
+        new_Parameter2("u", u, 3, new_Constraint(-INFINITY, INFINITY));
+    Transform* logitT = new_Transform_with_parameter(NULL, 0.0, 1.0, leaf);
+    Parameter* s = new_Parameter2("s2", propValues, 3, new_Constraint(0.0, 1.0));
+    s->transform = logitT;
+    leaf->listeners->add_parameter(leaf->listeners, s);
+    Transform* sxT = new_SimplexTransform_with_parameter("proportions", s);
+    Parameter* x = new_Parameter2("x2", initValues, 4, new_Constraint(0.0, 1.0));
+    x->transform = sxT;
+    s->listeners->add_parameter(s->listeners, x);
+
+    // X must refresh through the whole U -> S -> X chain.
+    const double* xv = Parameter_values(x);
+    for (size_t i = 0; i < 4; i++) {
+        mu_assert(fabs(xv[i] - values[i]) < 1.e-7,
+                  "simplex proportions (chain): constrained values not matching");
+    }
+
+    // Backprop dL/dX -> dL/dS (into s->grad) -> dL/dU (into leaf->grad). The
+    // additive logit offset does not affect ds/du, so leaf->grad must equal the
+    // fused stan simplex backward for the same X (cf. test_simplex).
+    double trueLeafGradient[3] = {-0.2, -0.24444444444444446, -0.17142857142857149};
+    Parameter_zero_grad(leaf);
+    Parameter_zero_grad(s);
+    sxT->backward(sxT, ingrad);       // dL/dS into s->grad
+    logitT->backward(logitT, s->grad);  // dL/dS -> dL/dU into leaf->grad
+    for (size_t i = 0; i < 3; i++) {
+        mu_assert(fabs(leaf->grad[i] - trueLeafGradient[i]) < 1.e-7,
+                  "simplex proportions (chain): leaf gradient not matching");
+    }
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_exp);
     mu_run_test(test_sigmoid);
     mu_run_test(test_simplex);
+    mu_run_test(test_simplex_proportions);
     return NULL;
 }
 
