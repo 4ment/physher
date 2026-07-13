@@ -135,7 +135,7 @@ bool operator_vb_on_the_fly(Operator* op, double* logHR){
 	free_StringBuffer(buffer);
 	
 	double elbo = NAN;
-	opt_result result = opt_optimize(opt, NULL, &elbo);
+	opt_result result = opt_optimize(opt, &elbo);
 //	printf("elbo: %f %d\n", elbo, result);
 	
 	if(result == OPT_SUCCESS){

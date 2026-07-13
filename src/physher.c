@@ -179,7 +179,7 @@ int main(int argc, const char* argv[]){
 				checkpoint_apply(checkpoint, opt_parameters(opt));
 			}
 			double logP;
-			opt_optimize(opt, NULL, &logP);
+			opt_optimize(opt, &logP);
 			free_Optimizer(opt);
 		}
 		else if (strcasecmp(type, "logger") == 0) {
@@ -271,6 +271,10 @@ int main(int argc, const char* argv[]){
 			sampler->sample(sampler);
 			sampler->finalize(sampler);
 			sampler->free(sampler);
+		}
+		else {
+			fprintf(stderr, "Cannot not recognize run type %s\n", type);
+			exit(13);
 		}
     }
 	if(models != NULL){

@@ -1554,8 +1554,9 @@ double optimize_tripod(Model* model, Node* centralNode){
 		// optimize top node branch
 		Parameters_pop(parameters);
 		Parameters_add(parameters, centralNode->distance);
+		opt_set_parameters(opt_3bl, parameters);
 		tlk->node_upper = centralNode;
-		opt_result status = opt_maximize( opt_3bl, parameters, &spr_score);
+		opt_result status = opt_maximize( opt_3bl, &spr_score);
 		if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
 //		if(logit)printf("%s %f %e %e %e\n", centralNode->name, spr_score, centralNode->distance->value, centralNode->left->distance->value, centralNode->right->distance->value);
 		// make sure its matrices are updated
@@ -1568,8 +1569,9 @@ double optimize_tripod(Model* model, Node* centralNode){
 		// optimize left node
 		Parameters_pop(parameters);
 		Parameters_add(parameters, centralNode->left->distance);
+		opt_set_parameters(opt_3bl, parameters);
 		tlk->node_upper = centralNode->left;
-		status = opt_maximize( opt_3bl, parameters, &spr_score);
+		status = opt_maximize( opt_3bl, &spr_score);
 		if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
 //		if(logit)printf("%s %f %e %e %e\n", centralNode->left->name, spr_score, centralNode->distance->value, centralNode->left->distance->value, centralNode->right->distance->value);
 		
@@ -1582,8 +1584,9 @@ double optimize_tripod(Model* model, Node* centralNode){
 		// optimize right node
 		Parameters_pop(parameters);
 		Parameters_add(parameters, centralNode->right->distance);
+		opt_set_parameters(opt_3bl, parameters);
 		tlk->node_upper = centralNode->right;
-		status = opt_maximize( opt_3bl, parameters, &spr_score);
+		status = opt_maximize( opt_3bl, &spr_score);
 		if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
 
 		if (fabs(spr_score-lnl2) < 0.1) {

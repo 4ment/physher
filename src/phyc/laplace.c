@@ -309,7 +309,7 @@ double calculate_laplace_gamma(Laplace* laplace){
 				opt_set_objective_function(opt, _func_gamma_fixed_shape);
 				opt_set_parameters(opt, ps);
 				double min;
-				opt_optimize(opt, ps, &min);
+				opt_optimize(opt, &min);
 
 				shape = Parameters_value(ps, 0);
 
@@ -356,7 +356,7 @@ double calculate_laplace_gamma(Laplace* laplace){
 				opt_set_objective_function(opt, _func_gamma_fixed_mode);
 				opt_set_parameters(opt, ps);
 				double min;
-				opt_optimize(opt, ps, &min);
+				opt_optimize(opt, &min);
 
 				shape = Parameters_value(ps, 0);
 				rate = (shape - 1)/map;
@@ -465,7 +465,7 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 				opt_set_objective_function(opt, _func_gamma_fixed_shape);
 				opt_set_parameters(opt, ps);
 				double min;
-				opt_optimize(opt, ps, &min);
+				opt_optimize(opt, &min);
 				
 				shape = Parameters_value(ps, 0);
 				
@@ -512,7 +512,7 @@ double calculate_laplace_gamma2(Laplace* laplace, DistributionModel* dm){
 				opt_set_objective_function(opt, _func_gamma_fixed_mode);
 				opt_set_parameters(opt, ps);
 				double min;
-				opt_optimize(opt, ps, &min);
+				opt_optimize(opt, &min);
 				
 				shape = Parameters_value(ps, 0);
 				rate = (shape - 1)/map;
@@ -732,7 +732,7 @@ double calculate_laplace_lognormal(Laplace* laplace){
 					opt_set_objective_function(opt, _func_gamma_fixed_shape);
 					opt_set_parameters(opt, ps);
 					double min;
-					opt_optimize(opt, ps, &min);
+					opt_optimize(opt, &min);
 					
 					shape = Parameters_value(ps, 0);
 					
@@ -779,7 +779,7 @@ double calculate_laplace_lognormal(Laplace* laplace){
 					opt_set_objective_function(opt, _func_gamma_fixed_mode);
 					opt_set_parameters(opt, ps);
 					double min;
-					opt_optimize(opt, ps, &min);
+					opt_optimize(opt, &min);
 					
 					shape = Parameters_value(ps, 0);
 					rate = (shape - 1)/map;
@@ -887,7 +887,7 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 					opt_set_objective_function(opt, _func_gamma_fixed_shape);
 					opt_set_parameters(opt, ps);
 					double min;
-					opt_optimize(opt, ps, &min);
+					opt_optimize(opt, &min);
 					
 					shape = Parameters_value(ps, 0);
 					
@@ -934,7 +934,7 @@ double calculate_laplace_lognormal2(Laplace* laplace, DistributionModel* dm){
 					opt_set_objective_function(opt, _func_gamma_fixed_mode);
 					opt_set_parameters(opt, ps);
 					double min;
-					opt_optimize(opt, ps, &min);
+					opt_optimize(opt, &min);
 					
 					shape = Parameters_value(ps, 0);
 					rate = (shape - 1)/map;
@@ -1039,7 +1039,7 @@ double calculate_laplace_betaprime(Laplace* laplace){
 				opt_set_objective_function(opt, _func_betaprime);
 				opt_set_parameters(opt, ps);
 				double min;
-				opt_optimize(opt, ps, &min);
+				opt_optimize(opt, &min);
 
 				beta = Parameters_value(ps, 0);
 				alpha = map*(beta+1) + 1;

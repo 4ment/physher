@@ -100,11 +100,11 @@ void free_Optimizer( Optimizer *opt );
 Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters);
 
 
-opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin );
+opt_result opt_optimize( Optimizer *opt, double *fmin );
 
 opt_result opt_optimize_univariate( Optimizer *opt, Parameter *p, double *fmin );
 
-opt_result opt_maximize( Optimizer *opt, Parameters *ps, double *fmin );
+opt_result opt_maximize( Optimizer *opt, double *fmin );
 
 opt_result opt_maximize_univariate( Optimizer *opt, Parameter *p, double *fmin );
 

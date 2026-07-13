@@ -140,7 +140,8 @@ double * lm_tree( Tree *tree, bool forward, bool use_correlation ){
     
 	Parameters *ps = new_Parameters(1);
 	Parameters_move( ps, new_Parameter("root.pos", 0, new_Constraint(0, 0)) );
-	
+	opt_set_parameters(opt, ps);
+
 	Node **tips  = get_tips( tree, POSTORDER );
 	
     
@@ -168,7 +169,7 @@ double * lm_tree( Tree *tree, bool forward, bool use_correlation ){
 	
 	
 	double fret = 0;
-	double status = opt_optimize( opt, ps, &fret);
+	double status = opt_optimize( opt, &fret);
 	if( status == OPT_ERROR ) error("root.pos No SUCCESS!!!!!!!!!!!!\n");
 	
 	double min = Parameters_value(ps, 0);
@@ -305,6 +306,7 @@ double * lm_tree_cluster( Tree *tree, bool forward, int k ){
         Parameters_move( ps, new_Parameter(buffer->c, 0, new_Constraint(0, 0)) );
     }
     free_StringBuffer(buffer);
+    opt_set_parameters(opt, ps);
 	
 	
 	Node **tips  = get_tips( tree, POSTORDER );
@@ -338,7 +340,7 @@ double * lm_tree_cluster( Tree *tree, bool forward, int k ){
                 opt_data->index = Tree_root(tree)->postorder_idx;
                 
                 double fret = 0;
-                double status = opt_optimize( opt, ps, &fret);
+                double status = opt_optimize( opt, &fret);
                 if( status == OPT_ERROR ) error("root.pos No SUCCESS!!!!!!!!!!!!\n");
                 
                 //double min = Parameters_value(ps, 0);
@@ -384,7 +386,7 @@ double * lm_tree_cluster( Tree *tree, bool forward, int k ){
 	
 	
 	double fret = 0;
-	double status = opt_optimize( opt, ps, &fret);
+	double status = opt_optimize( opt, &fret);
 	if( status == OPT_ERROR ) error("root.pos No SUCCESS!!!!!!!!!!!!\n");
 	
 	double min = Parameters_value(ps, 0);

@@ -204,7 +204,7 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 					status = serial_brent_optimize_tree(opt->treelikelihood, opt->f, opt->data, &opt->stop, &fret);
 				}
 				else{
-					status = opt_optimize( opt, opt->parameters, &fret);
+					status = opt_optimize( opt, &fret);
 				}
 				bool stopit = schedule->post[i](schedule,local_fret, fret);
 				//				printf("%s %f %f -> %f (%f)\n", Parameters_name(parameters, 0), Parameters_value(parameters, 0), lnl, fret, local_fret);
@@ -428,6 +428,9 @@ void opt_set_parameters( Optimizer *opt, const Parameters *parameters ){
 				Parameters_set_name2(opt->parameters, Parameters_name2(parameters));
 			}
 		}
+		else{
+			Parameters_removeAll(opt->parameters);
+		}
 		Parameters_add_parameters(opt->parameters, parameters);
 	}
 }
@@ -609,22 +612,17 @@ opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx ){
 	return stopflag;
 }
 
-opt_result opt_optimize( Optimizer *opt, Parameters *ps, double *fmin ){
+opt_result opt_optimize( Optimizer *opt, double *fmin ){
 	if ( opt->stop.time_max != 0 ) {
 		time( &opt->stop.time_start );
 	}
 	opt_result result = OPT_SUCCESS;
-	
-	if(ps != NULL){
-		opt->dimension = Parameters_count(ps);
-	}
-	else if (opt->parameters != NULL){
-		opt->dimension = Parameters_size(opt->parameters);
-	}
-	else{
-		opt->dimension = 0;
-	}
-	
+
+	// The parameters to optimize always come from opt->parameters (set via
+	// opt_set_parameters); there is no longer a separate per-call parameter list.
+	Parameters *ps = opt->parameters;
+	opt->dimension = (ps != NULL) ? Parameters_size(ps) : 0;
+
 	// should probably moved somewhere else
 	if(opt->dimension > 0){
 		opt->stop.oldx = dvector(opt->dimension);
@@ -736,8 +734,8 @@ opt_result opt_optimize_univariate( Optimizer *opt, Parameter *p, double *fmin )
 	return result;
 }
 
-opt_result opt_maximize( Optimizer *opt, Parameters *ps, double *fmin ){
-	opt_result result = opt_optimize(opt, ps, fmin);
+opt_result opt_maximize( Optimizer *opt, double *fmin ){
+	opt_result result = opt_optimize(opt, fmin);
     *fmin = - *fmin;
 	return result;
 }

@@ -278,6 +278,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 #endif
                 double original_bl = Node_distance(node);
                 Parameters_add(oneparameter, node->distance);
+                opt_set_parameters(opt_bl, oneparameter);
 
                 
                 // NNI 1
@@ -299,7 +300,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
 				
                 double nni_1 = 0;
                 
-                status = opt_maximize( opt_bl, oneparameter, &nni_1);
+                status = opt_maximize( opt_bl, &nni_1);
                 if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
                 
                 double bl_1 = Node_distance(node);
@@ -324,7 +325,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
                 
                 double nni_2 = 0;
                 
-                status = opt_maximize( opt_bl, oneparameter, &nni_2);
+                status = opt_maximize( opt_bl, &nni_2);
                 if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
 
 				Parameters_pop(oneparameter);
@@ -477,7 +478,7 @@ double nni_optimize_bl( struct TopologyOptimizer * opt ){
                 time(&start_time);
 #endif
 				
-				status = opt_maximize( full_opt, NULL, &nni_lnl);
+				status = opt_maximize( full_opt, &nni_lnl);
 				if( status == OPT_ERROR ) error("OPT.DISTANCE No SUCCESS!!!!!!!!!!!!\n");
                 
 				if (opt->verbosity > 0) {
