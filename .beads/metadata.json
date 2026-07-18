@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "server",
-  "dolt_database": "physher",
-  "project_id": "ef3d291a-8d08-4259-a272-d0a53e30ed86"
-}
