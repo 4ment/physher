@@ -20,7 +20,7 @@
 	"substitutionmodel":{
 		"id":"sm",
 		"type":"substitutionmodel",
-		"model":"jc69",
+		"kind":"jc69",
 		"datatype":"nucleotide",
 		"frequencies":{
 			"id":"freqs",

@@ -29,7 +29,7 @@
         "substitutionmodel":{
           "id":"sm",
           "type":"substitutionmodel",
-          "model":"gtr",
+          "kind":"gtr",
           "datatype":"nucleotide",
           "frequencies":{
             "id":"freqs",
@@ -75,34 +75,34 @@
         "precision":0.00001,
         "iterations":10000,
         "min":100,
-        "model":"@treelikelihood",
+        "target":"@treelikelihood",
         "list":[
           {
             "id":"optbl",
             "type":"optimizer",
             "algorithm":"serial",
-            "model":"@treelikelihood",
+            "target":"@treelikelihood",
             "treelikelihood":"@treelikelihood"
           },
           {
             "id":"optrates",
             "type":"optimizer",
             "algorithm":"serial",
-            "model":"@treelikelihood",
+            "target":"@treelikelihood",
             "parameters":"&rates2"
           },
           {
             "id":"optfreqs",
             "type":"optimizer",
             "algorithm":"serial",
-            "model":"@treelikelihood",
+            "target":"@treelikelihood",
             "parameters":"&freqs2"
           },
           {
             "id":"optsite",
             "type":"optimizer",
             "algorithm":"serial",
-            "model":"@treelikelihood",
+            "target":"@treelikelihood",
             "parameters":"&alpha"
           }
         ]

@@ -1,73 +1,78 @@
 {
-"model":{
-	"id":"treelikelihood",
-	"type": "treelikelihood",
-	"sitepattern":{
-		"id":"patterns",
-		"type":"sitepattern",		
-		"datatype":"nucleotide",
-		"alignment":{
-			"id": "seqs",
-			"type": "alignment",
-			"file":"tiny.fa"
+	"model": {
+		"id": "treelikelihood",
+		"type": "treelikelihood",
+		"sitepattern": {
+			"id": "patterns",
+			"type": "sitepattern",
+			"datatype": "nucleotide",
+			"alignment": {
+				"id": "seqs",
+				"type": "alignment",
+				"file": "tiny.fa"
+			}
+		},
+		"sitemodel": {
+			"id": "sitemodel",
+			"type": "sitemodel"
+		},
+		"substitutionmodel": {
+			"id": "sm",
+			"type": "substitutionmodel",
+			"kind": "f81",
+			"datatype": "nucleotide",
+			"frequencies": {
+				"id": "freqs",
+				"type": "Simplex",
+				"x": [
+					0.25,
+					0.25,
+					0.25,
+					0.25
+				]
+			}
+		},
+		"tree": {
+			"id": "tree",
+			"type": "tree",
+			"parameters": "tree.distances",
+			"initializer": {
+				"id": "nj",
+				"algorithm": "nj",
+				"model": "jc69",
+				"sitepattern": "&patterns"
+			}
 		}
 	},
-	"sitemodel":{
-		"id": "sitemodel",
-		"type": "sitemodel",
-		"substitutionmodel":{
-			"id":"sm",
-			"type":"substitutionmodel",
-			"model":"f81",
-			"datatype":"nucleotide",
-			"frequencies":{
-				"id":"freqs",
-				"type":"Simplex",
-				"x":[0.25,0.25,0.25,0.25] 
-			}
-		}	
-	},
-	"tree":{
-		"id":"tree",
-		"type":"tree",
-		"parameters":"tree.distances",
-		"init":{
-			"id":"nj",
-			"algorithm":"nj",
-			"model":"jc69",
-			"sitepattern": "&patterns"
+	"physher": [
+		{
+			"id": "metaopt",
+			"type": "optimizer",
+			"algorithm": "meta",
+			"precision": 0.001,
+			"iterations": 10000,
+			"model": "@treelikelihood",
+			"list": [
+				{
+					"id": "optbl",
+					"type": "optimizer",
+					"algorithm": "serial",
+					"model": "@treelikelihood",
+					"treelikelihood": "@treelikelihood"
+				},
+				{
+					"id": "optfreqs",
+					"type": "optimizer",
+					"algorithm": "serial",
+					"model": "@treelikelihood",
+					"parameters": "$freqs"
+				}
+			]
 		},
-	}
-},
-"physher":[
-	{
-		"id":"metaopt",
-		"type":"optimizer",
-		"algorithm":"meta",
-		"precision":0.001,
-		"iterations": 10000,
-		"model":"@treelikelihood",
-		"list":[
-			{				
-				"id":"optbl",
-				"type":"optimizer",
-				"algorithm":"serial",
-				"model":"@treelikelihood",
-				"treelikelihood": "@treelikelihood"
-			},
-			{				
-				"id":"optfreqs",
-				"type":"optimizer",
-				"algorithm":"serial",
-				"model":"@treelikelihood",
-				"parameters":"$freqs"
-			}
-		]
-	},
-	{
-		"id": "log",
-		"type": "logger",
-		"tree": "@tree"
-	}
-]
+		{
+			"id": "log",
+			"type": "logger",
+			"tree": "@tree"
+		}
+	]
 }

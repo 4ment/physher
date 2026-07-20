@@ -21,7 +21,7 @@
         "substitutionmodel":{
             "id":"sm",
             "type":"substitutionmodel",
-            "model":"jc69",
+            "kind":"jc69",
             "datatype":"nucleotide",
             "frequencies":{
                 "id":"freqs",
@@ -550,7 +550,7 @@
         "branchmodel":{
             "id": "bm",
             "type": "branchmodel",
-            "model": "strict",
+            "kind": "strict",
             "tree": "@tree",
             "rate":	{"id":"rate", "type":"parameter", "x":0.001, "lower":0.0}
         }
@@ -577,7 +577,7 @@
         "substitutionmodel":{
             "id":"sm2",
             "type":"substitutionmodel",
-            "model":"jc69",
+            "kind":"jc69",
             "datatype":"nucleotide",
             "frequencies":{
                 "id":"freqs2",
@@ -1173,7 +1173,7 @@
         "branchmodel":{
             "id": "bm2",
             "type": "branchmodel",
-            "model": "strict",
+            "kind": "strict",
             "tree": "&tree2",
             "rate":	{
               "id":"rate2",

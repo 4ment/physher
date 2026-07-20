@@ -221,16 +221,19 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 	    {"generalized", JSON_OPTIONAL, JSON_BOOL},
 	    {"length", JSON_OPTIONAL, JSON_NUMBER},
 	    {"log", JSON_OPTIONAL, JSON_ARRAY},
-	    {"model", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
+	    {"model", JSON_FORBIDDEN, JSON_OBJECT | JSON_STRING},
 	    {"operators", JSON_REQUIRED, JSON_ARRAY},
+	    {"target", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 	    {"temperature", JSON_OPTIONAL, JSON_NUMBER},
 	    {"tuningfrequency", JSON_OPTIONAL, JSON_NUMBER},
 	    {"verbose", JSON_OPTIONAL, JSON_ANY},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
+
+	char* id = get_json_node_value_string(node, "id");
 	
 	MCMC* mcmc = malloc(sizeof(MCMC));
-	json_node* model_node = get_json_node(node, "model");
+	json_node* target_node = get_json_node(node, "target");
 	mcmc->operator_count = 0;
 	json_node* ops = get_json_node(node, "operators");
 	json_node* logs = get_json_node(node, "log");
@@ -245,23 +248,23 @@ MCMC* new_MCMC_from_json(json_node* node, Hashtable* hash){
 		exit(1);
 	}
 	
-	if(model_node->node_type == MJSON_OBJECT){
-		char* type = get_json_node_value_string(model_node, "type");
-		char* id = get_json_node_value_string(model_node, "id");
+	if(target_node->node_type == MJSON_OBJECT){
+		char* type = get_json_node_value_string(target_node, "type");
+		char* id = get_json_node_value_string(target_node, "id");
 		
 		if (strcasecmp(type, "compound") == 0) {
-			mcmc->model = new_CompoundModel_from_json(model_node, hash);
+			mcmc->model = new_CompoundModel_from_json(target_node, hash);
 		}
 		else if (strcasecmp(type, "treelikelihood") == 0) {
-			mcmc->model = new_TreeLikelihoodModel_from_json(model_node, hash);
+			mcmc->model = new_TreeLikelihoodModel_from_json(target_node, hash);
 		}
 		Hashtable_add(hash, id, mcmc->model);
 		// could be a parametric distribution
 	}
 	// ref
-	else if(model_node->node_type == MJSON_STRING){
-		char* model_string = model_node->value;
-		mcmc->model = Hashtable_get(hash, model_string+1);
+	else if(target_node->node_type == MJSON_STRING){
+		char* ref = target_node->value;
+		mcmc->model = safe_get_reference_model(ref, hash, id);
 		mcmc->model->ref_count++;
 	}
 	

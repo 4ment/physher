@@ -531,7 +531,7 @@
         "substitutionmodel": {
           "id": "substmodel",
           "type": "substitutionmodel",
-          "model": "hky",
+          "kind": "hky",
           "frequencies": {
             "id": "frequencies",
             "type": "simplex",
@@ -561,7 +561,7 @@
           "id": "branchmodel",
           "type": "branchmodel",
           "tree": "@tree",
-          "model": "strict",
+          "kind": "strict",
           "rate": {
             "id": "rate",
             "type": "parameter",
@@ -573,7 +573,7 @@
       {
         "id": "coalescent",
         "type": "coalescent",
-        "model": "constant",
+        "kind": "constant",
         "theta": {
             "id": "n0",
             "type": "parameter",
@@ -629,7 +629,7 @@
     {
       "id": "mcmc",
       "type": "mcmc",
-      "model": "@joint",
+      "target": "@joint",
       "length": 1000000,
       "log": [
         {

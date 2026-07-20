@@ -26,7 +26,7 @@
         "substitutionmodel": {
           "id": "sm",
           "type": "substitutionmodel",
-          "model": "jc69",
+          "kind": "jc69",
           "datatype": "nucleotide",
           "frequencies": {
             "id": "freqs",
@@ -559,7 +559,7 @@
         "branchmodel": {
           "id": "bm",
           "type": "branchmodel",
-          "model": "strict",
+          "kind": "strict",
           "tree": "@tree",
           "rate": {
             "id": "rate",
@@ -580,7 +580,7 @@
           {
             "id": "coalescent",
             "type": "coalescent",
-            "model": "constant",
+            "kind": "constant",
             "theta": {
               "id": "n0",
               "type": "parameter",
@@ -729,7 +729,7 @@
       "type": "optimizer",
       "tol": 1e-05,
       "eta": 0.1,
-      "model": "@gradelbo",
+      "target": "@gradelbo",
       "update": "adam",
       "logger":{
         "id": "logger",

@@ -21,7 +21,7 @@
       "substitutionmodel": {
         "id": "sm",
         "type": "substitutionmodel",
-        "model": "jc69",
+        "kind": "jc69",
         "datatype": "nucleotide",
         "frequencies": {
           "id": "freqs",
@@ -55,13 +55,13 @@
         "precision": 1e-05,
         "iterations": 10000,
         "min": 1,
-        "model": "@treelikelihood",
+        "target": "@treelikelihood",
         "list": [
           {
             "id": "optbl",
             "type": "optimizer",
             "algorithm": "serial",
-            "model": "@treelikelihood",
+            "target": "@treelikelihood",
             "_parameters":"&tree.distances",
             "treelikelihood": "@treelikelihood"
           }

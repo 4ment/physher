@@ -266,15 +266,16 @@ Model * new_BranchModel2( const char* name, BranchModel *bm, Model* tree, Model*
 Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 	static const json_field schema[] = {
 		{"indicators", JSON_OPTIONAL, JSON_ANY},
+		{"kind", JSON_REQUIRED, JSON_STRING},
 		{"location", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
-		{"model", JSON_REQUIRED, JSON_STRING},
+		{"model", JSON_FORBIDDEN, JSON_STRING},
 		{"rate", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 		{"scale", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"tree", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
-	char* model = get_json_node_value_string(node, "model");
+	char* model = get_json_node_value_string(node, "kind");
 	BranchModel* bm = NULL;
 	Model* mtree = NULL;
 	
@@ -380,7 +381,8 @@ Model* new_BranchModel_from_json(json_node*node, Hashtable*hash){
 			unsigned count = 0;
 			for (int i = 0; i < Tree_node_count(tree); i++) {
 				Node* n = Tree_node(tree, i);
-				if (!Node_isroot(n) && !(Node_isroot(Node_parent(n)) && Node_right(Node_parent(n)) == n)) {
+				// skips the root and the child of the root pinned to a zero branch
+				if (Node_has_distance(n)) {
 					bm->ssvs_map2[count] = Node_id(n);
 					bm->ssvs_map2[Node_id(n)] = count++;
 				}

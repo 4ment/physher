@@ -257,14 +257,15 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable* hash) {
         {"datatype", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
         {"frequencies", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
         {"init", JSON_OPTIONAL, JSON_OBJECT},
-        {"model", JSON_REQUIRED, JSON_ANY},
+		{"kind", JSON_REQUIRED, JSON_STRING},
+        {"model", JSON_FORBIDDEN, JSON_ANY},
         {"normalize", JSON_OPTIONAL, JSON_BOOL},
         {"rates", JSON_OPTIONAL, JSON_ANY},
         {"structure", JSON_OPTIONAL, JSON_ANY},
     };
     json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 
-    json_node* model_node = get_json_node(node, "model");
+    json_node* model_node = get_json_node(node, "kind");
     json_node* freqs_node = get_json_node(node, "frequencies");
     json_node* rates_node = get_json_node(node, "rates");
     json_node* datatype_node = get_json_node(node, "datatype");

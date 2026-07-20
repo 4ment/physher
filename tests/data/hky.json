@@ -19,7 +19,7 @@
 	"substitutionmodel":{
 		"id":"sm",
 		"type":"substitutionmodel",
-		"model":"hky",
+		"kind":"hky",
 		"datatype":"nucleotide",
 		"frequencies":{
 			"id":"freqs",
@@ -37,7 +37,7 @@
 		"init":{
 			"id":"nj",
 			"algorithm":"nj",
-			"model":"jc69",
+			"kind":"jc69",
 			"sitepattern": "&patterns"
 		}
 	}

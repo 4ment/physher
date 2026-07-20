@@ -362,14 +362,15 @@ Model* new_CoalescentModel_from_json(json_node* node, Hashtable* hash){
 		{"data", JSON_OPTIONAL, JSON_ANY},
 		{"groups", JSON_OPTIONAL, JSON_ANY},
 		{"growth", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
-		{"model", JSON_REQUIRED, JSON_STRING},
+		{"kind", JSON_REQUIRED, JSON_STRING},
+		{"model", JSON_FORBIDDEN, JSON_STRING},
 		{"theta", JSON_REQUIRED, JSON_OBJECT | JSON_STRING},
 		{"tree", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	json_validate_xor(node, "data", "tree", NULL);
 
-	char* model = get_json_node_value_string(node, "model");
+	char* model = get_json_node_value_string(node, "kind");
 	Coalescent* c = NULL;
 	
 	json_node* data_node = get_json_node(node, "data");
