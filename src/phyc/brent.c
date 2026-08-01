@@ -314,6 +314,9 @@ opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void
 	// double xmin = ( Parameter_flower(parameter) < Parameter_fupper(parameter) ? Parameter_flower(parameter) : Parameter_fupper(parameter));
 	// double xmax = ( Parameter_flower(parameter) > Parameter_fupper(parameter) ? Parameter_flower(parameter) : Parameter_fupper(parameter));
 	x = Parameter_value_at(parameter, index);
+	// Incoming value: a previously accepted, finite-objective point to fall back
+	// on if bracketing wanders the parameter into a non-finite region.
+	const double x_incoming = x;
 
 // // 	if(isinf(Parameter_lower(parameter)) && isinf(Parameter_upper(parameter))){
 // // 		if(x == 0.0){
@@ -399,6 +402,15 @@ opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void
 	find_bracket(f, data, parameter, index, &a, &x, &b, 1.618034, 100);
 	Parameter_set_value_at(parameter, x, index);
 	fx = f(NULL, NULL, data);
+
+	// Bracketing can leave the centre on a value where the objective is non-finite
+	// (NaN/Inf), e.g. a coordinate collapsing onto a boundary. Never let the search
+	// settle there: roll back to the incoming value and report it as the result.
+	if (!isfinite(fx)) {
+		Parameter_set_value_at(parameter, x_incoming, index);
+		*fminp = f(NULL, NULL, data);
+		return OPT_FAIL;
+	}
 	// if(isinf(a) || isinf(x) || isinf(b)|| a >= b || x <= a || x >= b || isinf(fx)){
 	// 	fprintf(stderr,"Brent optimization: invalid bracket fx: %e x: %e [%e, %e] for %s index %zu\n", fx, x, a, b, Parameter_name(parameter), index);
 	// 	exit(2);
@@ -459,7 +471,7 @@ opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void
 		fu = f(NULL, NULL, data);
         stop->f_eval_current++;
 		
-		if (fu <= fx) {
+		if (isfinite(fu) && fu <= fx) {
 			if (u >= x) a = x;
 			else b = x;
 			shift4(&v,&w,&x,u);
@@ -468,16 +480,22 @@ opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void
 		else {
 			if (u < x) a = u;
 			else b = u;
-			if (fu <= fw || w == x) {
-				//Now decide what to do with our function evaluation.
-				//Housekeeping follows:
-				v  = w;
-				w  = u;
-				fv = fw;
-				fw = fu;
-			} else if (fu <= fv || v == x || v == w) {
-				v  = u;
-				fv = fu;
+			// A non-finite fu (NaN/Inf) is treated as strictly worse than the
+			// current best: it contracts the bracket toward u but is never folded
+			// into the auxiliary points v/w, so it cannot poison later parabolic
+			// fits (fx-fw etc.) nor be accepted as the minimiser.
+			if (isfinite(fu)) {
+				if (fu <= fw || w == x) {
+					//Now decide what to do with our function evaluation.
+					//Housekeeping follows:
+					v  = w;
+					w  = u;
+					fv = fw;
+					fw = fu;
+				} else if (fu <= fv || v == x || v == w) {
+					v  = u;
+					fv = fu;
+				}
 			}
 		}
         (*iter)++;

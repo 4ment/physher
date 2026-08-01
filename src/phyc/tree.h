@@ -140,8 +140,6 @@ void Tree_vector_to_heights( const double *heights, Tree *tree );
 
 void Tree_restore_branch_length( Tree *tree, const Parameters *bl );
 
-double Tree_scale_total_length( Tree *tree, double total );
-
 void Tree_branch_length_to_vector( Tree *tree, double *distances );
 
 void Tree_vector_to_branch_length( Tree *tree, const double *distances );
@@ -222,6 +220,19 @@ double* Tree_lowers(Tree* tree);
 void init_heights_from_distances(Tree* atree);
 void init_heights_from_bls(Tree* atree);
 void Tree_init_branch_lengths(Tree* tree);
+
+// Recompute the node -> distance-vector index mapping. Called whenever the
+// topology or the distance vector changes.
+void Tree_update_branch_indices(Tree* tree);
+
+// Index of a node's branch in tree->distances, or NODE_NO_BRANCH if it owns none.
+size_t Tree_branch_index(const Tree* tree, const Node* node);
+
+// Child of the root pinned to a zero branch in an unrooted tree, NULL otherwise.
+Node* Tree_zero_branch_node(const Tree* tree);
+
+// Inverse of Tree_branch_index: the node owning a given distance-vector slot.
+Node* Tree_node_from_branch_index(const Tree* tree, size_t index);
 
 void Tree_backward(Tree* tree, Parameters* parameters, const double* ingrad);
 void Tree_height_backward(Tree* tree, Parameters* parameters, const double* ingrad);

@@ -17,6 +17,9 @@
 #define POSTFIX_HEIGHT   "height"
 #define CALIBRATION_TAG  "cal_height"
 
+// Sentinel for Node.branch_index: the node owns no entry in the distance vector.
+#define NODE_NO_BRANCH ((size_t)-1)
+
 typedef struct Node{
 	int id;
     char *name;
@@ -31,6 +34,12 @@ typedef struct Node{
 	int postorder_idx;
 	
 	Parameter *distance;
+	// Index of this node's branch in the shared distance vector. It is NOT the
+	// node id: an unrooted tree stored as a binary tree has 2n-2 branch-owning
+	// nodes but only 2n-3 free branch lengths, so the two children of the root
+	// share one entry. NODE_NO_BRANCH for the root and for the child of the root
+	// whose branch is pinned to zero. Maintained by Tree_update_branch_indices.
+	size_t branch_index;
 	Parameter *height; // constraint lower bound maximum of the 2 kids
 
 	int class_id;
@@ -59,6 +68,8 @@ double Node_time_elapsed( Node *node );
 void Node_set_distance( Node *node, const double value );
 
 double Node_distance( const Node *node );
+
+bool Node_has_distance( const Node *node );
 
 void Node_set_parent( Node *node, Node *parent );
 

@@ -29,6 +29,7 @@ Node * new_EmptyNode(){
 	n->name = NULL;
 	
 	n->distance = NULL;
+	n->branch_index = NODE_NO_BRANCH;
 	n->height   = NULL;
 	n->bl       = 0;
 
@@ -61,6 +62,7 @@ Node * new_Node( Node *parent, const char *nodename, const int counter ){
 	// Constraint_set_flower(n->distance->cnstr, BL_MIN);
 	// Constraint_set_fupper(n->distance->cnstr, BL_MAX);
 	n->distance = NULL;
+	n->branch_index = NODE_NO_BRANCH;
 	n->height   = new_Parameter_with_postfix(n->name, POSTFIX_HEIGHT, 0, new_Constraint(0,INFINITY));
 	n->height->model = MODEL_TREE;
 	// n->distance->model = MODEL_TREE;
@@ -106,6 +108,7 @@ Node * clone_Node( const Node *node){
 	n->height   = ( node->height == NULL ? NULL : clone_Parameter( node->height));
 	// n->distance = ( node->distance == NULL ? NULL : clone_Parameter( node->distance));
 	n->distance = NULL;
+	n->branch_index = node->branch_index;
 	
 	n->info = NULL;
 	if( node->info != NULL ) n->info = String_clone(node->info);
@@ -139,15 +142,31 @@ double Node_time_elapsed( Node *node ){
 	return (Node_height( Node_parent(node) ) - Node_height(node));
 }
 
+// Nodes without an entry in the distance vector (the root, and the child of the
+// root whose branch is pinned to zero in an unrooted tree) have no branch length
+// to set.
 void Node_set_distance( Node *node, const double value ){
-    Parameter_set_value_at(node->distance, value, node->id);
+	if(node->branch_index == NODE_NO_BRANCH){
+		fprintf(stderr, "Error: node %s owns no branch length\n",
+		        node->name == NULL ? "(root)" : node->name);
+		exit(13);
+	}
+    Parameter_set_value_at(node->distance, value, node->branch_index);
 }
 
-// should never be called on the root node
+bool Node_has_distance( const Node *node ){
+	return node->branch_index != NODE_NO_BRANCH;
+}
+
+// The root has no branch; the pinned child of the root has a branch of length 0
+// (its sibling carries the combined length of the two branches).
 double Node_distance( const Node *node ){
-	Node* parent = node->parent;
-	if(Node_isroot(parent) && parent->right == node) return 0;
-    return Parameter_value_at(node->distance, node->id);
+	if( Node_isroot(node) ){
+		fprintf(stderr, "Error: cannot get distance for root node\n");
+		exit(13);
+	}
+	if(node->branch_index == NODE_NO_BRANCH) return 0.0;
+    return Parameter_value_at(node->distance, node->branch_index);
 }
 
 void Node_set_parent( Node *node, Node *parent ){

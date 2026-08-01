@@ -18,6 +18,7 @@
 #include "node.h"
 
 #include "distancematrix.h"
+#include "parsimony.h"
 #include "treeio.h"
 #include "treetransform.h"
 
@@ -42,6 +43,13 @@ struct _Tree{
 	double* branchLengths;
 	double* storedBranchLengths;
 	bool* unknownLeaves;
+	// Child of the root whose branch is pinned to 0 in an unrooted tree; its
+	// sibling carries the combined length of the two branches. NULL when every
+	// non-root node owns its own entry in `distances` (time/rooted trees).
+	Node* zeroBranchNode;
+	// Inverse of Node.branch_index: distance-vector slot -> owning node. Sized
+	// Parameter_size(distances).
+	Node** branchToNode;
 };
 
 static void _Tree_count_nodes( Node *node, int *tips, int *nodes);
@@ -217,6 +225,70 @@ void init_indices_with_taxa(Tree* tree, char** taxa){
 	}
 }
 
+// Map every node onto its entry in tree->distances.
+//
+// A tree with n taxa is always stored as a rooted binary tree: 2n-1 nodes, so
+// 2n-2 of them own a branch. A time tree parameterises all 2n-2 of those, but an
+// unrooted tree only has 2n-3 free branch lengths - the two branches incident to
+// the (arbitrary) root are a single branch of the unrooted tree. We therefore
+// pin one child of the root to length 0 and let its sibling carry the combined
+// length; the pinned node gets no entry in `distances`.
+//
+// The pinned child is always the right child of the root, which is the
+// convention the rest of the codebase (notably the tree likelihood gradient and
+// Hessian kernels) already assumes. Slots are then assigned densely in id order,
+// so the mapping is the identity below the pinned node and shifts down by one
+// above it - it is only the identity throughout when the right child of the root
+// happens to hold the highest branch-owning id.
+void Tree_update_branch_indices(Tree* tree){
+	Node** nodes = Tree_get_nodes(tree, POSTORDER);
+	size_t nodeCount = Tree_node_count(tree);
+
+	tree->zeroBranchNode = NULL;
+	for(size_t i = 0; i < nodeCount; i++) nodes[i]->branch_index = NODE_NO_BRANCH;
+
+	// Tree_update_topology runs during construction before init_indices has
+	// assigned node ids; the constructors call us again once ids exist.
+	if(tree->distances == NULL || tree->nodes == NULL) return;
+
+	size_t branchCount = Parameter_size(tree->distances);
+	Node* root = Tree_root(tree);
+
+	if(branchCount + 2 == nodeCount){
+		tree->zeroBranchNode = Node_right(root);
+	}
+	else if(branchCount + 1 != nodeCount){
+		error("distance vector does not match the number of branches in the tree");
+	}
+
+	// Slots are assigned densely in id order: an id below the pinned node's id
+	// keeps its value, an id above it shifts down by one.
+	int pinnedID = tree->zeroBranchNode == NULL ? Node_id(root)
+	                                            : Node_id(tree->zeroBranchNode);
+	tree->branchToNode = realloc(tree->branchToNode, branchCount * sizeof(Node*));
+	assert(tree->branchToNode);
+	for(size_t i = 0; i < nodeCount; i++){
+		Node* node = nodes[i];
+		if(node == root || node == tree->zeroBranchNode) continue;
+		node->branch_index = Node_id(node) - (Node_id(node) > pinnedID ? 1 : 0);
+		assert(node->branch_index < branchCount);
+		tree->branchToNode[node->branch_index] = node;
+	}
+}
+
+size_t Tree_branch_index(const Tree* tree, const Node* node){
+	return node->branch_index;
+}
+
+Node* Tree_node_from_branch_index(const Tree* tree, size_t index){
+	assert(tree->branchToNode != NULL && index < Parameter_size(tree->distances));
+	return tree->branchToNode[index];
+}
+
+Node* Tree_zero_branch_node(const Tree* tree){
+	return tree->zeroBranchNode;
+}
+
 void init_parameter_arrays(Tree* atree){
 	Node **nodes = Tree_get_nodes(atree, POSTORDER);
 	atree->nodes = (Node**)malloc( atree->nNodes* sizeof(Node*) );
@@ -329,29 +401,15 @@ const double* Tree_branch_lengths(Tree* tree){
 		}
 		else{
 			Node* root = Tree_root(tree);
-			size_t leftNodeID = Node_left(root)->id;
-			size_t rightNodeID = Node_right(root)->id;
-			size_t parameterCount = Parameter_size(tree->distances);
 			for(size_t i = 0; i < tree->nNodes; i++){
-				if(nodes[i] == root) continue;
-				if(Node_parent(nodes[i]) == root){
-					if(Node_isleaf(Node_right(root))){
-						tree->branchLengths[leftNodeID] = Parameter_value_at(tree->distances, rightNodeID);
-					}
-					else{
-						tree->branchLengths[leftNodeID] = Parameter_value_at(tree->distances, leftNodeID);
-					}
-					tree->branchLengths[rightNodeID] = 0.0;
-				}
-				else{
-					if(nodes[i]->id < parameterCount){
-						tree->branchLengths[nodes[i]->id] = Parameter_value_at(tree->distances, nodes[i]->id);
-					}
-					else{
-						// the right child of the root is a leaf so its left child is not used
-						tree->branchLengths[nodes[i]->id] = Parameter_value_at(tree->distances, leftNodeID);
-					}
-				}
+				Node* node = nodes[i];
+				if(node == root) continue;
+				// the pinned child of the root carries a zero branch; its sibling
+				// carries the combined length of the two branches
+				tree->branchLengths[node->id] =
+				    node->branch_index == NODE_NO_BRANCH
+				        ? 0.0
+				        : Parameter_value_at(tree->distances, node->branch_index);
 			}
 		}
 		tree->needUpdateBranchLengths = false;
@@ -388,17 +446,20 @@ double* Tree_lowers(Tree* tree){
     return tree->tt->lowers;
 }
 
+// Fold the branch lengths parsed from the newick file (held in each node's
+// scratch `bl`) into the distance vector. The two branches incident to the root
+// are merged onto whichever child is not pinned.
 void Tree_init_branch_lengths(Tree* tree){
-	//distances is 2N-3 so left := left+right
 	Node* root = Tree_root(tree);
+	Node* pinned = tree->zeroBranchNode;
 	for(size_t i = 0; i < Tree_node_count(tree); i++){
 		Node* n = Tree_node(tree, i);
-		if(Node_isroot(n)) continue;
-		if(Node_parent(n) != root && !isinf(n->bl) && !isnan(n->bl)){
-			Parameter_set_value_at_quietly(tree->distances, n->bl, n->id);
-		}
+		if(Node_isroot(n) || n == pinned) continue;
+		double bl = n->bl;
+		if(pinned != NULL && Node_parent(n) == root) bl += pinned->bl;
+		if(isinf(bl) || isnan(bl)) continue;
+		Parameter_set_value_at_quietly(tree->distances, bl, n->branch_index);
 	}
-	Parameter_set_value_at_quietly(tree->distances, root->right->bl + root->left->bl, root->left->id);
 	Parameter_fire(tree->distances, -1);
 }
 
@@ -618,6 +679,8 @@ Tree * create_Tree( const char *nexus, bool containBL ){
 	atree->needUpdateBranchLengths = true;
 	atree->tt = NULL;
 	atree->distances = NULL;
+	atree->zeroBranchNode = NULL;
+	atree->branchToNode = NULL;
 
 	//printf("%s",nexus);
 	Node *current = NULL;
@@ -820,6 +883,8 @@ Tree * new_Tree_with_taxa( const char *nexus, Parameter* branchLengths, char** t
 
 	init_parameter_arrays(tree);
 
+	Tree_update_branch_indices(tree);
+
 	for(size_t i = 0; i < Tree_node_count(tree); i++){
 		Node* n = Tree_node(tree, i);
 		n->distance = tree->distances;
@@ -845,15 +910,17 @@ Tree * new_Tree( const char *nexus, Parameter* branchLengths, bool containBL ){
 	Tree_update_topology(tree);
 	
 	init_indices(tree);
-	
+
 	init_parameter_arrays(tree);
+
+	Tree_update_branch_indices(tree);
 
 	for(size_t i = 0; i < Tree_node_count(tree); i++){
 		Node* n = Tree_node(tree, i);
 		n->distance = tree->distances;
 		n->distance->refCount++;
 	}
-	
+
 	return tree;
 }
 
@@ -874,6 +941,9 @@ Tree * new_Tree2( Node *root, Parameter* branchLengths ){
     atree->need_update_height = false;
 	atree->needUpdateBranchLengths = true;
 	atree->tt = NULL;
+	atree->distances = NULL;
+	atree->zeroBranchNode = NULL;
+	atree->branchToNode = NULL;
 	
 	_Tree_count_nodes(root, &atree->nTips, &atree->nNodes);
 	
@@ -892,10 +962,9 @@ Tree * new_Tree2( Node *root, Parameter* branchLengths ){
 	// Distance-matrix builders (NJ/UPGMA) leave each node's freshly computed
 	// branch length in the scratch bl field. Wire every node to the shared
 	// distances vector (supplied by the caller, e.g. from a JSON branch_lengths
-	// node, or allocated here otherwise), then fold the bl values in (the branch
-	// to the right of the root is merged into the left, as for the unrooted
-	// newick path) so the tree behaves like one built with explicit branch
-	// lengths.
+	// node, or allocated here otherwise), then fold the bl values in (the two
+	// branches incident to the root are merged, as for the unrooted newick path)
+	// so the tree behaves like one built with explicit branch lengths.
 	if(branchLengths == NULL){
 		branchLengths = new_Parameter_full("", BL_DEFAULT, Tree_node_count(atree) - 2, new_Constraint(0.0, INFINITY));
 		Constraint_set_flower(branchLengths->cnstr, BL_MIN);
@@ -903,6 +972,7 @@ Tree * new_Tree2( Node *root, Parameter* branchLengths ){
 	}
 	atree->distances = branchLengths;
 	Parameter_set_model(atree->distances, MODEL_TREE);
+	Tree_update_branch_indices(atree);
 	for(size_t i = 0; i < Tree_node_count(atree); i++){
 		Node* n = Tree_node(atree, i);
 		n->distance = atree->distances;
@@ -1096,6 +1166,12 @@ void _tree_handle_change( Model *self, Model *model, Parameter* parameter, int i
 			self->listeners->fire( self->listeners, self, Node_left(node)->height, Node_id(Node_left(node)) );
 			self->listeners->fire( self->listeners, self, Node_right(node)->height, Node_id(Node_right(node)) );
 		}
+	}
+	else if(index >= 0 && parameter == tree->distances){
+		// Downstream listeners (partials, transition matrices, update_nodes) are
+		// all indexed by node id, but `index` addresses the distance vector,
+		// which is one shorter than the number of branch-owning nodes.
+		index = Node_id(Tree_node_from_branch_index(tree, index));
 	}
 	self->listeners->fire( self->listeners, self, parameter, index );
 }
@@ -1608,6 +1684,34 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 				Tree_constraint_heights(tree);
 			}
 		}
+		// Parsimony branch-length initialiser. Unlike nj/upgma (which build a tree
+		// from a distance matrix) parsimony needs the topology loaded above from
+		// the newick/file; here we only overwrite its branch lengths with the
+		// parsimony estimates (see Parsimony_init_branch_lengths).
+		if(init_node != NULL &&
+		   strcasecmp(get_json_node_value_string(init_node, "algorithm"), "parsimony") == 0){
+			if(branchLengths == NULL){
+				error("Parsimony initializer requires a branch-length (unrooted) tree\n");
+			}
+			json_node* patterns_node = get_json_node(init_node, "sitepattern");
+			SitePattern* patterns = NULL;
+			if(patterns_node->node_type == MJSON_STRING){
+				char* ref = (char*)patterns_node->value;
+				patterns = Hashtable_get(hash, ref+1);
+				patterns->ref_count++;
+			}
+			else{
+				char* spid = get_json_node_value_string(patterns_node, "id");
+				patterns = new_SitePattern_from_json(patterns_node, hash);
+				Hashtable_add(hash, spid, patterns);
+			}
+			double min_length = get_json_node_value_double(init_node, "min", BL_MIN);
+			Parsimony* parsimony = new_Parsimony(patterns, tree);
+			Parsimony_init_branch_lengths(parsimony, min_length);
+			free_Parsimony(parsimony);
+			free_SitePattern(patterns);
+		}
+
 		char* id = get_json_node_value_string(node, "id");
 		mtree = new_TreeModel2(id, tree, mtt);
 
@@ -1689,12 +1793,12 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		}
 		
 	}
-	if (!Tree_rooted(mtree->obj) && Node_distance(Tree_root(mtree->obj)->right) != 0) {
-		Tree* tree = mtree->obj;
-		double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
-		Node_set_distance(Tree_root(tree)->right, 0);
-		Node_set_distance(Tree_root(tree)->left, tot);
-	}
+	// The "right child of the root carries a zero branch, left carries the sum"
+	// convention is enforced structurally by Tree_branch_lengths (and by
+	// Tree_init_branch_lengths when keep_branch_lengths is set), so there is
+	// nothing to fix up here. Doing it via Node_distance/Node_set_distance would
+	// index tree->distances at the root's right child id, which is out of bounds
+	// for an unrooted tree whose distances vector has 2n-3 entries.
 	return mtree;
 }
 
@@ -1729,13 +1833,8 @@ Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* 
 	else{
 		mtree = new_TreeModel("treemodel", tree);
 	}
-	
-	if (!Tree_rooted(mtree->obj) && Node_distance(Tree_root(mtree->obj)->right) != 0) {
-		Tree* tree = mtree->obj;
-		double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
-		Node_set_distance(Tree_root(tree)->right, 0);
-		Node_set_distance(Tree_root(tree)->left, tot);
-	}
+	// see note in new_TreeModel_from_json: the zero-length right root branch is
+	// enforced by Tree_branch_lengths, not fixed up here.
 	return mtree;
 }
 
@@ -1765,9 +1864,9 @@ Model* new_TimeTreeModel_from_newick(const char* newick, char** taxa, const doub
 	tree->rooted = true;
 	for(size_t i = 0; i < Tree_node_count(tree); i++){
 		Node* n = Tree_node(tree, i);
-		if(Node_isroot(n)) continue;
+		if(!Node_has_distance(n)) continue;
 		if(!isinf(n->bl) && !isnan(n->bl)){
-			Parameter_set_value_at_quietly(tree->distances, n->bl, n->id);
+			Parameter_set_value_at_quietly(tree->distances, n->bl, n->branch_index);
 		}
 	}
 	init_heights_from_distances(tree);
@@ -1800,6 +1899,7 @@ void free_Tree_for_model( Tree *t){
 	free(t->branchLengths);
 	free(t->storedBranchLengths);
 	free(t->unknownLeaves);
+	free(t->branchToNode);
 	free(t);
 }
 
@@ -1846,6 +1946,9 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
     newTree->nodes = NULL;
 	newTree->stored_nodes = NULL;
 	newTree->unknownLeaves = NULL;
+	newTree->distances = NULL;
+	newTree->zeroBranchNode = NULL;
+	newTree->branchToNode = NULL;
 
 	newTree->rooted = tree->rooted;
 	
@@ -2163,6 +2266,8 @@ void Tree_update_topology( Tree *tree ){
     tree->topology_changed = false;
     _update_order_nodes( tree );
     Tree_init_depth(tree);
+    // rerooting/NNI can change which node the root's children are
+    Tree_update_branch_indices( tree );
 }
 
 void create_node_list( Tree *atree, treeorder order ){
@@ -2348,26 +2453,24 @@ bool check_tree_topology(Tree* tree){
 
 // assume no bounds
 void Tree_scale_distance( Tree *tree, double scale ){
-	Node **nodes = Tree_nodes( tree );
-	for (int i = 0; i < Tree_node_count(tree); i++) {
-        if( Node_isroot(nodes[i]) ) continue;
-		Node_set_distance(nodes[i], Node_distance( nodes[i] )*scale);
+	double* values = tree->distances->value;
+	for (size_t i = 0; i < tree->distances->dim; i++) {
+        values[i] *= scale;
 	}
+	if(tree->distances->transform != NULL){
+		tree->distances->transform->set(tree->distances->transform, values);
+	}
+	Parameter_fire(tree->distances, -1);
 }
 
 void Tree_branch_length_to_vector( Tree *tree, double *distances ){
-	Node **nodes = Tree_nodes( tree );
-	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
-		distances[i] = Node_distance(nodes[i]);
-	}
+	const double* branch_lengths = Parameter_values(tree->distances);
+	memcpy(distances, branch_lengths, Parameter_size(tree->distances)*sizeof(double));
 }
 
 
 void Tree_vector_to_branch_length( Tree *tree, const double *distances ){
-	Node **nodes = Tree_nodes( tree );
-	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
-		Node_set_distance(nodes[i], distances[i]);
-	}
+	Parameter_set_values(tree->distances, distances);
 }
 
 double Tree_distance_to_root( const Node *node ){
@@ -2393,9 +2496,9 @@ double Tree_distance_between_nodes( const Node *node, const Node *ancestor ){
 
 double Tree_length( const Tree *tree ){
 	double len = 0;
-	Node **nodes = Tree_nodes((Tree *)tree);
 	if(tree->time_mode){
 		Tree_update_heights((Tree *)tree);
+		Node **nodes = Tree_nodes((Tree *)tree);
 		for (size_t i = 0; i < Tree_node_count(tree); i++) {
 			if( Node_isroot(nodes[i]) ) continue;
 			len += Node_time_elapsed(nodes[i]);
@@ -2403,34 +2506,17 @@ double Tree_length( const Tree *tree ){
 		return len;
 	}
 	else{
-		for (size_t i = 0; i < Tree_node_count(tree); i++) {
-			if( Node_isroot(nodes[i]) ) continue;
-			len += Node_distance(nodes[i]);
+		const double* branch_lengths = Parameter_values(tree->distances);
+		for (size_t i = 0; i < tree->distances->dim; i++) {
+			len += branch_lengths[i];
 		}
 	}
 	return len;
 }
 
-// Scale tree length to total length
-// Ignore constraints
-double Tree_scale_total_length( Tree *tree, double total ){
-	double len = 0;
-	Node **nodes = Tree_nodes(tree);
-	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
-        if( Node_isroot(nodes[i]) ) continue;
-		len += Node_distance(nodes[i]);
-	}
-	for ( int i = 0; i < Tree_node_count(tree); i++ ) {
-        if( Node_isroot(nodes[i]) ) continue;
-		Node_set_distance(nodes[i], Node_distance(nodes[i])*total/len );
-	}
-	return len;
-}
-
-
 static void _Tree_copy_distances_aux( Node *src, Node *dst){
     if(src == NULL ) return;
-    Node_set_distance( dst, Node_distance(src) );
+    if( Node_has_distance(dst) ) Node_set_distance( dst, Node_distance(src) );
     _Tree_copy_distances_aux(Node_left(src),Node_left(dst));
     _Tree_copy_distances_aux(Node_right(src),Node_right(dst));
 }
@@ -3179,8 +3265,13 @@ void gradient_heights_from_branch_lengths_gradient(Tree* tree, const double* bra
 void Tree_backward(Tree* tree, Parameters* parameters, const double* ingrad){
 	if(!tree->time_mode){
 		double* branchLengthGrad = tree->distances->grad;
-		for(size_t i = 0; i < tree->nNodes - 2; i++){
-			branchLengthGrad[i] += ingrad[i];
+		Node** nodes = Tree_nodes(tree);
+		// ingrad is indexed by node id, the gradient by branch index; the pinned
+		// child of the root contributes nothing since its length is fixed at 0
+		for(size_t i = 0; i < tree->nNodes; i++){
+			Node* node = nodes[i];
+			if(node->branch_index == NODE_NO_BRANCH) continue;
+			branchLengthGrad[node->branch_index] += ingrad[node->id];
 		}
 		Parameter* xx = Parameters_depends(parameters, tree->distances);
 		if(xx != tree->distances){
