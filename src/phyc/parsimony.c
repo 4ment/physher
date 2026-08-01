@@ -815,6 +815,87 @@ double _score_fitch_4_sse(Parsimony *parsimony){
 }
 #endif
 
+void Parsimony_init_branch_lengths( Parsimony *parsimony, double min_length ){
+    Tree *tree = parsimony->tree;
+    SitePattern *sp = parsimony->sp;
+    const int nstate = sp->nstate;
+    const int count = sp->count;
+    const int node_count = Tree_node_count(tree);
+
+    // Make sure the Fitch first pass has populated stateSets for every node.
+    Parsimony_update_all_nodes(parsimony);
+    parsimony->calculate(parsimony);
+
+    // Single most-parsimonious state assignment per node/pattern, computed
+    // root-to-tip. A substitution is counted on the branch above a node whenever
+    // the parent's assigned state is not contained in the node's Fitch set. Using
+    // the Fitch set (rather than a reconstructed single state) means ambiguous or
+    // gapped tips only contribute a change when the parent state is genuinely
+    // incompatible with every state they allow.
+    uint8_t *mpr = malloc(sizeof(uint8_t) * (size_t)node_count * count);
+    assert(mpr);
+    double *changes = calloc(node_count, sizeof(double));
+    assert(changes);
+
+    Node **nodes = Tree_get_nodes(tree, PREORDER); // parent before its children
+    for ( int i = 0; i < node_count; i++ ) {
+        Node *node = nodes[i];
+        int id = Node_id(node);
+        const int8_t *set = parsimony->stateSets[id];
+        uint8_t *node_mpr = mpr + (size_t)id * count;
+
+        if ( Node_isroot(node) ) {
+            for ( int p = 0; p < count; p++ ) {
+                int s = 0;
+                while ( s < nstate && set[p * nstate + s] == 0 ) s++;
+                node_mpr[p] = (s < nstate) ? (uint8_t)s : 0;
+            }
+        }
+        else {
+            const uint8_t *parent_mpr =
+                mpr + (size_t)Node_id(Node_parent(node)) * count;
+            double node_changes = 0.0;
+            for ( int p = 0; p < count; p++ ) {
+                uint8_t ps = parent_mpr[p];
+                if ( ps < nstate && set[p * nstate + ps] ) {
+                    node_mpr[p] = ps; // parent state conserved: no substitution
+                }
+                else {
+                    int s = 0;
+                    while ( s < nstate && set[p * nstate + s] == 0 ) s++;
+                    node_mpr[p] = (s < nstate) ? (uint8_t)s : 0;
+                    node_changes += sp->weights[p]; // one substitution on this branch
+                }
+            }
+            changes[id] = node_changes;
+        }
+    }
+
+    // In an unrooted (distance) tree the two branches incident to the root form a
+    // single edge; the pinned child carries length 0, so fold its changes onto
+    // the sibling that owns the combined branch.
+    Node *zbn = Tree_zero_branch_node(tree);
+    if ( zbn != NULL ) {
+        Node *root = Tree_root(tree);
+        Node *sibling = (Node_left(root) == zbn) ? Node_right(root) : Node_left(root);
+        changes[Node_id(sibling)] += changes[Node_id(zbn)];
+    }
+
+    double nsites = 0.0;
+    for ( int p = 0; p < count; p++ ) nsites += sp->weights[p];
+
+    for ( int i = 0; i < node_count; i++ ) {
+        Node *node = nodes[i];
+        if ( Tree_branch_index(tree, node) == NODE_NO_BRANCH ) continue;
+        double bl = changes[Node_id(node)] / nsites;
+        if ( bl < min_length ) bl = min_length;
+        Node_set_distance(node, bl);
+    }
+
+    free(mpr);
+    free(changes);
+}
+
 #pragma mark -
 #pragma mark ParsimonyModel
 

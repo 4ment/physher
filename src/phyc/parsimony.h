@@ -48,4 +48,9 @@ void Parsimony_update_node( Parsimony *parsimony, Node *node );
 
 void Parsimony_update_all_nodes( Parsimony *parsimony );
 
+// Set every branch length of the tree to its parsimony estimate (number of
+// substitutions inferred on the branch divided by the number of sites), floored
+// at min_length. Intended as a warm start for maximum-likelihood optimisation.
+void Parsimony_init_branch_lengths( Parsimony *parsimony, double min_length );
+
 #endif

@@ -78,6 +78,70 @@ char* test_exp() {
     }
     return NULL;
 }
+// The optimizer works on the unconstrained parameter, so the soft (f) bounds set
+// on the constrained parameter must be pushed through the transform onto the
+// unconstrained leaf. y = log(x - lower) is increasing, so lower maps to lower
+// and upper maps to upper.
+char* test_exp_fbounds() {
+    double unConstrainedValues[3] = {log(0.1), log(0.2), log(0.3)};
+    double initValues[3] = {0.1, 0.2, 0.3};
+
+    // lower = 0: y = log(x)
+    Parameter* leaf = new_Parameter2("a", unConstrainedValues, 3,
+                                     new_Constraint(-INFINITY, INFINITY));
+    Transform* transform = new_Transform_with_parameter(NULL, 0, INFINITY, leaf);
+    Parameter* positive =
+        new_Parameter2("positive", initValues, 3, new_Constraint(0.0, INFINITY));
+    positive->transform = transform;
+    transform->parameter->listeners->add_parameter(transform->parameter->listeners,
+                                                   positive);
+
+    Parameter_set_fupper(positive, 10.0);
+    mu_assert(fabs(Parameter_fupper(positive) - 10.0) < 1.e-7,
+              "exp bounds: fupper not set on constrained parameter");
+    mu_assert(fabs(Parameter_fupper(leaf) - log(10.0)) < 1.e-7,
+              "exp bounds: fupper not transformed onto unconstrained parameter");
+
+    Parameter_set_flower(positive, 0.01);
+    mu_assert(fabs(Parameter_flower(positive) - 0.01) < 1.e-7,
+              "exp bounds: flower not set on constrained parameter");
+    mu_assert(fabs(Parameter_flower(leaf) - log(0.01)) < 1.e-7,
+              "exp bounds: flower not transformed onto unconstrained parameter");
+
+    // the hard bounds are untouched by the f setters
+    mu_assert(Parameter_lower(positive) == 0.0 && isinf(Parameter_upper(positive)),
+              "exp bounds: hard bounds of constrained parameter modified");
+    mu_assert(isinf(Parameter_lower(leaf)) && isinf(Parameter_upper(leaf)),
+              "exp bounds: hard bounds of unconstrained parameter modified");
+
+    // flower == lower is the edge of the support: log(0) = -infinity
+    Parameter_set_flower(positive, 0.0);
+    mu_assert(isinf(Parameter_flower(leaf)) && Parameter_flower(leaf) < 0,
+              "exp bounds: flower at the bound is not -infinity");
+
+    // shifted support lower = 2: y = log(x - 2)
+    double shiftedValues[2] = {log(1.0), log(3.0)};
+    double shiftedInit[2] = {3.0, 5.0};
+    Parameter* shiftedLeaf =
+        new_Parameter2("b", shiftedValues, 2, new_Constraint(-INFINITY, INFINITY));
+    Transform* shiftedTransform =
+        new_Transform_with_parameter(NULL, 2.0, INFINITY, shiftedLeaf);
+    Parameter* shifted =
+        new_Parameter2("shifted", shiftedInit, 2, new_Constraint(2.0, INFINITY));
+    shifted->transform = shiftedTransform;
+    shiftedTransform->parameter->listeners->add_parameter(
+        shiftedTransform->parameter->listeners, shifted);
+
+    Parameter_set_flower(shifted, 2.5);
+    Parameter_set_fupper(shifted, 10.0);
+    mu_assert(fabs(Parameter_flower(shiftedLeaf) - log(0.5)) < 1.e-7,
+              "exp bounds: shifted flower not transformed onto unconstrained parameter");
+    mu_assert(fabs(Parameter_fupper(shiftedLeaf) - log(8.0)) < 1.e-7,
+              "exp bounds: shifted fupper not transformed onto unconstrained parameter");
+
+    return NULL;
+}
+
 char* test_sigmoid() {
     // clang-format off
     /*
@@ -315,6 +379,7 @@ char* test_simplex_proportions() {
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_exp);
+    mu_run_test(test_exp_fbounds);
     mu_run_test(test_sigmoid);
     mu_run_test(test_simplex);
     mu_run_test(test_simplex_proportions);

@@ -203,6 +203,16 @@ void Parameter_set_upper( Parameter *p, const double value );
 
 void Parameter_set_lower( Parameter *p, const double value );
 
+void Constraint_set_fupper( Constraint *c, const double fupper );
+
+void Constraint_set_flower( Constraint *c, const double flower );
+
+// unlike Parameter_set_upper/lower, these propagate the bound through the
+// transform onto the unconstrained parameter the optimizer sees
+void Parameter_set_fupper( Parameter *p, const double value );
+
+void Parameter_set_flower( Parameter *p, const double value );
+
 void Parameter_set_bounds( Parameter *p, const double lower, const double upper );
 
 void Parameter_allocate_grad(Parameter* p);

@@ -664,6 +664,78 @@ char* test_treelikelihood_branch_hessian() {
     return NULL;
 }
 
+// Validate the branch-length gradient against central finite differences on an
+// unrooted tree. The distance vector holds 2n-3 free branch lengths while the
+// tree is stored with 2n-2 branch-owning nodes, so one child of the root is
+// pinned to a zero branch and its sibling carries the combined length. Gradients
+// come back indexed by node id and have to be scattered by branch index; getting
+// that mapping wrong misplaces exactly one entry, which is why this runs on both
+// a topology whose root has an internal right child and one whose root has a tip
+// on the right (the two cases that used to be handled by different code paths).
+static char* _fd_branch_gradient(const char* file) {
+    Hashtable* hash = new_Hashtable_string(10);
+    hashtable_set_key_ownership(hash, false);
+    hashtable_set_value_ownership(hash, false);
+
+    char* content = load_file(file);
+    json_node* json = create_json_tree(content);
+    free(content);
+
+    json_node* child = get_json_node(json, "model");
+    Model* model = new_TreeLikelihoodModel_from_json(child, hash);
+    Model** models = (Model**)model->data;
+    Model* mtree = models[0];
+
+    Parameter* distances = _find_distances(mtree);
+    mu_assert(distances != NULL, "could not find tree.distances parameter");
+
+    size_t dim = Parameter_size(distances);
+    for (size_t i = 0; i < dim; i++) {
+        Parameter_set_value_at(distances, 0.1, i);
+    }
+
+    Parameters* parameters = new_Parameters(1);
+    Parameters_add(parameters, distances);
+
+    Parameter_zero_grad(distances);
+    model->logP(model);
+    model->gradient(model, parameters);
+
+    double h = 1.e-6;
+    double worst = 0.0;
+    for (size_t i = 0; i < dim; i++) {
+        double v0 = Parameter_value_at(distances, i);
+        double hh = h * (1.0 + fabs(v0));
+        Parameter_set_value_at(distances, v0 + hh, i);
+        double lp = model->logP(model);
+        Parameter_set_value_at(distances, v0 - hh, i);
+        double lm = model->logP(model);
+        Parameter_set_value_at(distances, v0, i);
+        double fd = (lp - lm) / (2.0 * hh);
+        double err = fabs(fd - distances->grad[i]) / (1.0 + fabs(fd));
+        if (err > worst) worst = err;
+        mu_assert(err < 1.e-5,
+                  "branch-length gradient does not match finite difference");
+    }
+    printf("  [%s] branch gradient worst relative FD error = %.3e\n", file, worst);
+
+    free_Parameters(parameters);
+    model->free(model);
+    free_Hashtable(hash);
+    json_free_tree(json);
+    return NULL;
+}
+
+// root's right child is an internal node
+char* test_treelikelihood_branch_gradient_fd() {
+    return _fd_branch_gradient("jc69-distance.json");
+}
+
+// root's right child is a tip, so the pinned zero branch is the left child
+char* test_treelikelihood_branch_gradient_tipright_fd() {
+    return _fd_branch_gradient("jc69-distance-tipright.json");
+}
+
 char* test_treelikelihood_time_gradient_fd() {
     return _fd_time_gradient("jc69-time.json", 67);
 }
@@ -731,6 +803,8 @@ char* all_tests() {
     // mu_run_test(test_treelikelihood_time);
     mu_run_test(test_treelikelihood_time_unconstrained);
     mu_run_test(test_treelikelihood_branch_hessian);
+    mu_run_test(test_treelikelihood_branch_gradient_fd);
+    mu_run_test(test_treelikelihood_branch_gradient_tipright_fd);
     mu_run_test(test_treelikelihood_time_gradient_fd);
     mu_run_test(test_treelikelihood_time_leaf_gradient_fd);
 

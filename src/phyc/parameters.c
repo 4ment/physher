@@ -822,15 +822,47 @@ double Parameter_upper( const Parameter *p ){
 }
 
 double Parameter_lower( const Parameter *p ){
-	return Constraint_lower( p->cnstr );	
+	return Constraint_lower( p->cnstr );
 }
 
 void Parameter_set_upper( Parameter *p, const double value ){
-	Constraint_set_upper( p->cnstr, value );
+	Constraint_set_upper(p->cnstr, value);
+	if(p->transform != NULL) {
+		double y = 0;
+		Transform* transform = p->transform;
+		transform->transform(&value, &y, 1, transform->lower, transform->upper);
+		Parameter_set_upper(transform->parameter, y);
+	}
 }
 
 void Parameter_set_lower( Parameter *p, const double value ){
-	Constraint_set_lower( p->cnstr, value );	
+	Constraint_set_lower( p->cnstr, value );
+	if(p->transform != NULL) {
+		double y = 0;
+		Transform* transform = p->transform;
+		transform->transform(&value, &y, 1, transform->lower, transform->upper);
+		Parameter_set_lower(transform->parameter, y);
+	}
+}
+
+void Parameter_set_fupper(Parameter *p, const double value){
+	Constraint_set_fupper(p->cnstr, value);
+	if(p->transform != NULL) {
+		double y = 0;
+		Transform* transform = p->transform;
+		transform->transform(&value, &y, 1, transform->lower, transform->upper);
+		Parameter_set_fupper(transform->parameter, y);
+	}
+}
+
+void Parameter_set_flower(Parameter *p, const double value){
+	Constraint_set_flower(p->cnstr, value);
+	if(p->transform != NULL) {
+		double y = 0;
+		Transform* transform = p->transform;
+		transform->transform(&value, &y, 1, transform->lower, transform->upper);
+		Parameter_set_flower(transform->parameter, y);
+	}
 }
 
 void Parameter_set_bounds( Parameter *p, const double lower, const double upper ){
