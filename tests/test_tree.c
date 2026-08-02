@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "minunit.h"
@@ -128,10 +129,99 @@ char* test_tree_shift_unknown_leaf() {
     return NULL;
 }
 
+// Collect the unrooted tree as a map from split to branch length. A split is the
+// set of leaf ids on one side of a branch, canonicalized by keeping whichever
+// side does not contain leaf 0 so that the two orientations of a branch agree.
+// The root is a degree-2 artifact of the rooted storage: its two branches are a
+// single branch of the unrooted tree and their splits are complementary, hence
+// canonicalize to the same key, so accumulating lengths per key merges them.
+static void collect_splits(Tree* tree, uint64_t* splits, double* lengths,
+                           size_t* count) {
+    Node** nodes = Tree_get_nodes(tree, POSTORDER);
+    size_t nodeCount = Tree_node_count(tree);
+    const double* bls = Tree_branch_lengths(tree);
+    uint64_t* below = calloc(nodeCount, sizeof(uint64_t));
+    uint64_t all = 0;
+    *count = 0;
+
+    for (size_t i = 0; i < nodeCount; i++) {
+        Node* n = nodes[i];
+        below[Node_id(n)] = Node_isleaf(n)
+                                ? (uint64_t)1 << Node_id(n)
+                                : below[Node_id(Node_left(n))] | below[Node_id(Node_right(n))];
+        if (Node_isleaf(n)) all |= (uint64_t)1 << Node_id(n);
+    }
+
+    for (size_t i = 0; i < nodeCount; i++) {
+        Node* n = nodes[i];
+        if (Node_isroot(n)) continue;
+        uint64_t key = below[Node_id(n)];
+        if (key & 1) key = all & ~key;  // side without leaf 0
+        size_t j = 0;
+        while (j < *count && splits[j] != key) j++;
+        if (j == *count) {
+            splits[j] = key;
+            lengths[j] = 0.0;
+            (*count)++;
+        }
+        lengths[j] += bls[Node_id(n)];
+    }
+    free(below);
+}
+
+// Rerooting must leave the unrooted tree untouched: same splits, same lengths.
+// It is the operation that changes which node is the right child of the root,
+// and therefore which node is pinned to a zero-length branch and how every other
+// node maps onto an entry of the distance vector, so a bookkeeping mistake shows
+// up here as branch lengths attached to the wrong split.
+char* test_tree_reroot() {
+    size_t tipCount = 6;
+    size_t branchCount = 2 * tipCount - 3;
+    Parameter* bls = new_Parameter_full("bl", 0.1, branchCount, NULL);
+    Tree* tree = new_Tree(
+        "(A:0.11,B:0.22,((C:0.33,D:0.44):0.55,(E:0.66,F:0.77):0.88):0.99);", bls, true);
+    Tree_init_branch_lengths(tree);
+
+    size_t nodeCount = Tree_node_count(tree);
+    uint64_t expectedSplits[16];
+    double expectedLengths[16];
+    size_t expectedCount = 0;
+    collect_splits(tree, expectedSplits, expectedLengths, &expectedCount);
+    mu_assert(expectedCount == branchCount, "unrooted tree must have 2n-3 branches");
+
+    uint64_t splits[16];
+    double lengths[16];
+    size_t count = 0;
+
+    for (size_t i = 0; i < nodeCount; i++) {
+        Tree_reroot(tree, Tree_node(tree, i));
+
+        Node* root = Tree_root(tree);
+        mu_assert(Tree_zero_branch_node(tree) == Node_right(root),
+                  "the pinned node must be the right child of the root");
+        mu_assert(Tree_branch_lengths(tree)[Node_id(Node_right(root))] == 0.0,
+                  "the pinned branch must have length zero");
+
+        collect_splits(tree, splits, lengths, &count);
+        mu_assert(count == expectedCount, "rerooting changed the number of branches");
+        for (size_t j = 0; j < expectedCount; j++) {
+            size_t k = 0;
+            while (k < count && splits[k] != expectedSplits[j]) k++;
+            mu_assert(k < count, "rerooting changed the topology");
+            mu_assert(fabs(lengths[k] - expectedLengths[j]) < 1.e-10,
+                      "rerooting changed a branch length");
+        }
+    }
+
+    free_Tree(tree);  // releases bls, which the tree took a reference to
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_tree_serial);
     mu_run_test(test_tree_shift_unknown_leaf);
+    mu_run_test(test_tree_reroot);
     return NULL;
 }
 

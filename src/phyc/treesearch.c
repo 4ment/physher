@@ -7,18 +7,13 @@
 #include "treesearch.h"
 #include "treeio.h"
 
-void printall(Tree* tree){
-	for (int i = 0; i < Tree_node_count(tree); i++) {
-		Node* node = Tree_node(tree, i);
-		printf("%s %s %s %s\n", node->name, (node->parent!=NULL?node->parent->name:"NULL"),
-			   (node->left!=NULL?node->left->name:"NULL"),
-			   (node->right!=NULL?node->right->name:"NULL"));
-	}
-}
 
 // root is the root node => its parent must be NULL
 void _reroot(Node* root, Node* node){
-	Node newroot = {0, NULL, NULL, node->parent, node, 0,0.0,0,0,NULL, NULL, 0, NULL, BL_DEFAULT, NULL, false};
+	Node newroot = {.right = node->parent,
+	                .left = node,
+	                .branch_index = NODE_NO_BRANCH,
+	                .bl = BL_DEFAULT};
 	
 	double branchLength = Node_distance(node->parent); // save branch length
 	double midpoint = Node_distance(node)/2;

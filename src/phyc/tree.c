@@ -3325,83 +3325,119 @@ Node* Tree_node_from_parameter(Tree* tree, const Parameter* p){
 }
 
 //FIXME: should also update height parameters...
+// Move the root onto the branch above `node`.
 void Tree_reroot( Tree *tree, Node *node ){
 	// node is already the root
 	if ( Node_isroot(node)) {
 		return;
 	}
-	// node is just below the root, just choose the middle of the branch
+	size_t nodeCount = Tree_node_count(tree);
+	// an unrooted tree has 2n-3 branches for 2n-1 nodes: one child of the root
+	// is pinned and the root itself owns no branch
+	bool unrooted = Parameter_size(tree->distances) + 2 == nodeCount;
+
+	// node is just below the root: the unrooted topology does not change. Where
+	// the root sits along that branch is not representable once one of the two
+	// branches incident to the root is pinned to zero, so this is a no-op for an
+	// unrooted tree.
 	if( Node_isroot( Node_parent(node) ) ){
-		double midpoint = Node_distance(node)/2;
-		Node_set_distance(node, Node_distance(node)-midpoint);
-		
-		Node *sibling = ( node == node->parent->left ? node->parent->right : node->parent->left);
-		Node_set_distance(sibling, Node_distance(sibling)+midpoint);
+		if( !unrooted ){
+			double midpoint = Node_distance(node)/2;
+			Node_set_distance(node, Node_distance(node)-midpoint);
+			Node_set_distance(Node_sibling(node), Node_distance(Node_sibling(node))+midpoint);
+		}
+		return;
+	}
+
+	// lengths[id] is the length of the branch above the node with that id
+	double *lengths = dvector(nodeCount);
+	for ( size_t i = 0; i < nodeCount; i++ ) {
+		Node *n = Tree_node(tree, i);
+		lengths[Node_id(n)] = Node_isroot(n) ? 0.0 : Node_distance(n);
+	}
+
+	// scratch node standing in for the new root until the old root is recycled
+	// into its place below; it never escapes this function
+	Node newroot = {.right = Node_parent(node),
+	                .left = node,
+	                .branch_index = NODE_NO_BRANCH,
+	                .bl = BL_DEFAULT};
+
+	double splitLength = lengths[Node_id(node)];  // branch the new root sits on
+	double branchLength = lengths[Node_id(Node_parent(node))];  // save branch length
+
+	Node *n = node->parent;     // the node to which we need to add its parent as a child recurssively
+	Node *nparent = n->parent;  // the parent which is a ref to the rest of the old tree
+
+	Node_removeChild(nparent, n);
+	Node_removeChild(n, node);
+
+	node->parent = &newroot;
+	n->parent = &newroot;
+
+	// every edge on the path from node to the old root changes direction, so the
+	// branch above each node on the path is now the one that was below it
+	while ( !Node_isroot(nparent) ) {
+		Node_addChild(n, nparent);
+
+		Node *temp = nparent->parent;
+		double bl = lengths[Node_id(nparent)];
+		lengths[Node_id(nparent)] = branchLength;
+		branchLength = bl;
+
+		nparent->parent = n;
+
+		n = nparent;
+		nparent = temp;
+
+		Node_removeChild(nparent, n);
+	}
+
+	// the old root stops being a vertex of the tree: its two branches become a
+	// single branch owned by whichever of its children is now the lower one
+	if( nparent->left == NULL){
+		nparent = nparent->right;
 	}
 	else {
-		
-		Node *newroot = new_Node(NULL, "node0", 0);
-		
-		Node_addChild(newroot, node);
-		Node_addChild(newroot, node->parent);
-		
-		double branchLength = Node_distance(node->parent); // save branch length
-		double midpoint = Node_distance(node)/2;
-		
-		Node_set_distance(node, midpoint);
-		Node_set_distance(node->parent, midpoint);
-		
-		Node *n = node->parent;     // the node to which we need to add its parent as a child recurssively
-		Node *nparent = n->parent;  // the parent which is a ref to the rest of the old tree
-		
-		Node_removeChild(nparent, n);
-		Node_removeChild(n, node);
-		
-		node->parent = newroot;
-		n->parent = newroot;
-        
-		while ( !Node_isroot(nparent) ) {
-			Node_addChild(n, nparent);
-			
-			Node *temp = nparent->parent;
-			double bl = Node_distance(nparent);
-			Node_set_distance(nparent, branchLength);
-			branchLength = bl;
-			
-			nparent->parent = n;
-			
-			n = nparent;
-			nparent = temp;
-			
-			Node_removeChild(nparent, n);
-		}
-		
-		if( nparent->left == NULL){
-			nparent = nparent->right;
-		}
-		else {
-			nparent = nparent->left;
-		}
-		Node_set_distance(nparent, Node_distance(nparent) + branchLength );
-		Node_addChild(n, nparent);
-		nparent->parent = n;
-		
-        /*newroot->id = tree->root->id;
-        
-		free_Node(tree->root);
-		tree->root = newroot;*/
-
-        // new
-        // The old root is reused
-        Node *root = Tree_root(tree);
-        Node_set_distance(root, -1);
-        root->left = newroot->left;
-        root->right = newroot->right;
-        Node_set_parent(root->left, root);
-        Node_set_parent(root->right, root);
-        free_Node(newroot);
-
+		nparent = nparent->left;
 	}
-	
-    Tree_set_topology_changed(tree);
+	lengths[Node_id(nparent)] += branchLength;
+	Node_addChild(n, nparent);
+	nparent->parent = n;
+
+	// The old root node is reused as the new root
+	Node *root = Tree_root(tree);
+	root->left = newroot.left;
+	root->right = newroot.right;
+	Node_set_parent(root->left, root);
+	Node_set_parent(root->right, root);
+	lengths[Node_id(root)] = 0;
+
+	// the new right child of the root is the one Tree_update_branch_indices will
+	// pin, so it must carry no length and its sibling the whole branch
+	if( unrooted ){
+		lengths[Node_id(root->left)] = splitLength;
+		lengths[Node_id(root->right)] = 0;
+	}
+	else {
+		lengths[Node_id(root->left)] = splitLength/2;
+		lengths[Node_id(root->right)] = splitLength - splitLength/2;
+	}
+
+	// rebuild the node lists and the node -> distance slot mapping for the new
+	// root before writing the lengths back
+	Tree_update_topology(tree);
+
+	for ( size_t i = 0; i < nodeCount; i++ ) {
+		Node *n = Tree_node(tree, i);
+		if( Node_isroot(n) || n->branch_index == NODE_NO_BRANCH ){
+			assert(lengths[Node_id(n)] == 0);
+			continue;
+		}
+		Parameter_set_value_at_quietly(tree->distances, lengths[Node_id(n)], n->branch_index);
+	}
+	Parameter_fire(tree->distances, -1);
+	free(lengths);
+
+	Tree_set_topology_changed(tree);
 }

@@ -961,19 +961,18 @@ void _calculate_rates_discrete_cumsum( SiteModel *sm ) {
 		sm->need_update = false;
 		return;
 	}
-	Parameter* parameter_simplex = Parameters_at(sm->rates, 0);
-	const double* cat_rates = Parameter_values(parameter_simplex);
+	Parameter* rates = Parameters_at(sm->rates, 0);
+	const double* cat_rates = Parameter_values(rates);
 	sm->cat_rates[0] = cat_rates[0];
 	
-	double norm = 0;
+	double norm = cat_rates[0]*sm->cat_proportions[0];
 	for (size_t i = 1; i < cat_count; i++ ) {
 		sm->cat_rates[i] = cat_rates[i] + sm->cat_rates[i-1];
 		norm += sm->cat_rates[i]*sm->cat_proportions[i];
 	}
-	
+
 	for (size_t i = 0; i < cat_count; i++ ) {
 		sm->cat_rates[i] /= norm;
-		// printf("cat_rates[%zu] = %f\n", i, sm->cat_rates[i]);
 	}
 	sm->need_update = false;
 }
@@ -1343,7 +1342,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		
 		if(discretization_node != NULL && distribution != DISTRIBUTION_DISCRETE){
 			char* method = discretization_node->value;
-			if(strcasecmp("laguerre", method) == 0){
+			if(strcasecmp("gausslaguerre", method) == 0){
 				quad = QUADRATURE_GAUSS_LAGUERRE;
 				if (proportions_node != NULL) {
 					fprintf(stderr, "Gauss-Laguerre quadrature does not need proportions to be specified (%s)\n", proportions_node->key);
@@ -1396,7 +1395,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			}
 		}
 		// Weibull with I
-		else if (discretization_node == NULL && dimProportion == 2) {
+		else if ((distribution == DISTRIBUTION_GAMMA || distribution == DISTRIBUTION_WEIBULL) && discretization_node == NULL && dimProportion == 2) {
 			invariant = true;
 		}
 		
@@ -1476,8 +1475,8 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 
 	if(distribution == DISTRIBUTION_GAMMA || distribution == DISTRIBUTION_WEIBULL){
 		Parameter* p = Parameters_at(rates, 0);
-		Constraint_set_flower(p->cnstr, SITEMODEL_ALPHA_MIN);
-		Constraint_set_fupper(p->cnstr, SITEMODEL_ALPHA_MAX);
+		Parameter_set_flower(p, SITEMODEL_ALPHA_MIN);
+		Parameter_set_fupper(p, SITEMODEL_ALPHA_MAX);
 	}
 	
 	SiteModel* sm = NULL;
