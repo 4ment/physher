@@ -154,17 +154,13 @@ opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptS
 	tlk->use_upper = true;
 	tlk->update_upper = true;
 
-	// if(Node_distance(Tree_root(tree)->right) != 0){
-	// 	double tot = Node_distance(Tree_root(tree)->right) + Node_distance(Tree_root(tree)->left);
-	// 	Node_set_distance(Tree_root(tree)->right, 0);
-	// 	Node_set_distance(Tree_root(tree)->left, tot);
-	// }
 	// initialize lower and upper
 	SingleTreeLikelihood_update_uppers(tlk);
 	//for(int j = 0; j < stop->iter_min; j++)
 	for(int i = 0; i < Tree_node_count(tree); i++){
-		Node* node = nodes[i];//Tree_node(tree, i);
-		if(Node_isroot(node) || (Node_isroot(Node_parent(node)) && Node_right(Node_parent(node)) == node)) continue;
+		Node* node = nodes[i];
+		// skips the root and the child of the root pinned to a zero branch
+		if(!Node_has_distance(node)) continue;
 		if(tlk->node_upper == NULL) tlk->node_upper = node;
 
 		stop->iter = 0;
@@ -808,10 +804,11 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	    {"max", JSON_FORBIDDEN, JSON_ANY},
 	    {"maximize", JSON_OPTIONAL, JSON_ANY},
 	    {"min", JSON_OPTIONAL, JSON_ANY},
-	    {"model", JSON_REQUIRED, JSON_STRING|JSON_OBJECT},
+	    {"model", JSON_FORBIDDEN, JSON_STRING|JSON_OBJECT},
 	    {"parameters", JSON_OPTIONAL, JSON_ANY},
 	    {"precision", JSON_OPTIONAL, JSON_NUMBER},
 	    {"rounds", JSON_OPTIONAL, JSON_ANY},
+		{"target", JSON_REQUIRED, JSON_STRING|JSON_OBJECT},
 	    {"threads", JSON_OPTIONAL, JSON_NUMBER},
 	    {"tol", JSON_OPTIONAL, JSON_NUMBER},
 	    {"treelikelihood", JSON_OPTIONAL, JSON_STRING},
@@ -917,14 +914,14 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	opt_set_max_iteration(opt, iterations);
 	opt_set_min_iteration(opt, min);
 
-	json_node* model_node = get_json_node(node, "model");
+	json_node* target_node = get_json_node(node, "target");
 	Model* model = NULL;
-	if(model_node->node_type == MJSON_STRING){
-		const char* ref = (char*)model_node->value;
+	if(target_node->node_type == MJSON_STRING){
+		const char* ref = (char*)target_node->value;
 		model = safe_get_reference_model(ref, hash, id);
 	}
 	else{
-		model = model_factory_from_json(model_node, hash);
+		model = model_factory_from_json(target_node, hash);
 	}
 	opt_set_data(opt, model);
 	

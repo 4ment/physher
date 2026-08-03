@@ -38,6 +38,10 @@ struct _SingleTreeLikelihood{
 	
 	int cat_count;
 	int pattern_count;
+	// Number of patterns every buffer was allocated for. Equal to pattern_count
+	// unless a smaller SitePattern has been swapped in (bootstrap replicates,
+	// see SingleTreeLikelihood_set_sitepattern), which may only shrink it.
+	int pattern_capacity;
 	bool use_tip_states;
 	
 	int *mapping; // index of node to index of sequence (-1 if no sequence)
@@ -143,6 +147,18 @@ double SingleTreeLikelihood_calculate_at_node( SingleTreeLikelihood *tlk, const 
 
 
 void SingleTreeLikelihood_update_all_nodes( SingleTreeLikelihood *tlk );
+
+// The pattern weights of tlk->sp were overwritten in place. Per-pattern
+// likelihoods do not depend on the weights, only their weighted sum does, so no
+// node is marked dirty: the next calculate() reuses every partial and redoes
+// the reduction alone.
+void SingleTreeLikelihood_update_weights( SingleTreeLikelihood *tlk );
+
+// Point the likelihood at another SitePattern over the same taxa, in the same
+// order. Its pattern count may not exceed tlk->pattern_capacity, so all buffers
+// stay as allocated. Rebuilds the tip partials (their layout is strided by
+// pattern_count) and marks every node dirty.
+void SingleTreeLikelihood_set_sitepattern( SingleTreeLikelihood *tlk, SitePattern *sp );
 
 void SingleTreeLikelihood_update_one_node( SingleTreeLikelihood *tlk, const Node *node );
 

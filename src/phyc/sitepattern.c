@@ -419,6 +419,82 @@ SitePattern * clone_SitePattern( const SitePattern *sp ){
     return newsp;
 }
 
+SitePattern * new_SitePattern_view( const SitePattern *original ){
+	SitePattern *view = (SitePattern *)malloc( sizeof(SitePattern) );
+	assert(view);
+
+	view->id = original->id;
+	view->datatype = original->datatype;      // borrowed, no ref_count bump
+	view->names = original->names;            // borrowed
+	view->get_partials = original->get_partials;
+	view->nstate = original->nstate;
+	view->size = original->size;
+	view->count = original->count;
+	view->nsites = original->nsites;
+	// The site -> pattern map cannot be carried over: the sites of a replicate
+	// are not the sites of the alignment. Consumers of `indexes` (ppsites) are
+	// meaningless mid-replicate anyway.
+	view->indexes = NULL;
+	view->alignment = NULL;
+	view->ref_count = 1;
+
+	view->patterns = NULL;
+	view->partials = NULL;
+	if( original->patterns != NULL ){
+		view->patterns = ui8matrix(original->size, original->count);
+	}
+	if( original->partials != NULL ){
+		view->partials = dmatrix(original->size, original->count * original->nstate);
+	}
+	view->weights = dvector(original->count);
+	return view;
+}
+
+void free_SitePattern_view( SitePattern *view ){
+	if( view->patterns != NULL ) free_ui8matrix(view->patterns, view->size);
+	if( view->partials != NULL ) free_dmatrix(view->partials, view->size);
+	free(view->weights);
+	free(view);
+}
+
+void SitePattern_compact_into( const SitePattern *original, const double *counts,
+                               SitePattern *view ){
+	size_t kept = 0;
+	for ( int j = 0; j < original->count; j++ ) {
+		if( counts[j] != 0.0 ){
+			view->weights[kept++] = counts[j];
+		}
+	}
+
+	// Row-major gather so both source and destination are walked sequentially.
+	if( original->patterns != NULL ){
+		for ( int i = 0; i < original->size; i++ ) {
+			size_t k = 0;
+			for ( int j = 0; j < original->count; j++ ) {
+				if( counts[j] != 0.0 ){
+					view->patterns[i][k++] = original->patterns[i][j];
+				}
+			}
+		}
+	}
+	if( original->partials != NULL ){
+		size_t nstate = original->nstate;
+		for ( int i = 0; i < original->size; i++ ) {
+			size_t k = 0;
+			for ( int j = 0; j < original->count; j++ ) {
+				if( counts[j] != 0.0 ){
+					memcpy(view->partials[i] + k*nstate, original->partials[i] + j*nstate,
+					       sizeof(double)*nstate);
+					k++;
+				}
+			}
+		}
+	}
+
+	view->count = kept;
+	view->nsites = original->nsites;
+}
+
 
 //SitePattern * SitePattern_subset( const SitePattern *original, const int *indexes, int size ){
 //	SitePattern *sp = (SitePattern *)malloc( sizeof(SitePattern) );

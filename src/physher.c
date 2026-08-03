@@ -37,6 +37,7 @@
 #include "phyc/checkpoint.h"
 #include "phyc/optimizer.h"
 #include "phyc/sampler.h"
+#include "phyc/bootstrap.h"
 
 #include "phyc/physhercmd.h"
 
@@ -265,6 +266,11 @@ int main(int argc, const char* argv[]){
 		}
 		else if(strcasecmp(type, "cat") == 0){
 			cat_estimator_from_json(child, hash2);
+		}
+		else if (strcasecmp(type, "bootstrap") == 0) {
+			Bootstrap* bootstrap = new_Bootstrap_from_json(child, hash2);
+			bootstrap->run(bootstrap);
+			bootstrap->free(bootstrap);
 		} else if (strcasecmp(type, "sampler") == 0) {
 			Sampler* sampler = new_Sampler_from_json(child, hash2);
 			sampler->initialize(sampler);

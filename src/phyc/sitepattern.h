@@ -82,6 +82,24 @@ void free_SitePattern( SitePattern *sp );
 SitePattern * clone_SitePattern( const SitePattern *sp );
 
 
+// A view borrows `names`, `datatype` and `get_partials` from `original` and
+// owns only the mutable per-pattern storage (`patterns`/`partials`/`weights`),
+// allocated for original->count patterns. A resampled replicate can never
+// contain a pattern absent from the original alignment, so that count is an
+// upper bound and the buffers are allocated once and reused.
+// Release with free_SitePattern_view, never with free_SitePattern: the latter
+// would free the borrowed names and datatype.
+SitePattern * new_SitePattern_view( const SitePattern *original );
+
+void free_SitePattern_view( SitePattern *view );
+
+// Gather into `view` every pattern of `original` whose multiplicity in `counts`
+// (length original->count) is non-zero. view->weights receives those
+// multiplicities and view->count the number of patterns kept.
+void SitePattern_compact_into( const SitePattern *original, const double *counts,
+                               SitePattern *view );
+
+
 Sequences * SitePattern_to_Sequences( const SitePattern *sp  );
 
 int get_sequence_index( const SitePattern *sp, const char *name );

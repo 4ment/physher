@@ -36,8 +36,7 @@ double random_double2(double n ){
 
 //[0,n)
 double random_double3(double n ){
-	//return rand() / (((double)RAND_MAX + 1) / n);
-	return n * (genrand_int32() / (double)RAND_MAX32 + 1);
+	return n * (genrand_int32() / ((double)RAND_MAX32 + 1));
 }
 
 // [l,u]

@@ -562,6 +562,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *
 	tlk->bm = bm;
 	
 	tlk->pattern_count = tlk->sp->count;
+	tlk->pattern_capacity = tlk->sp->count;
 	if(tlk->sm->site_category == NULL){
 		tlk->cat_count = sm->cat_count;
 	}
@@ -824,6 +825,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	
 	newtlk->cat_count = tlk->cat_count;
 	newtlk->pattern_count = tlk->pattern_count;
+	newtlk->pattern_capacity = tlk->pattern_capacity;
 	newtlk->use_tip_states = tlk->use_tip_states;
 	
 	newtlk->mapping = clone_ivector(tlk->mapping, Tree_node_count(tlk->tree));
@@ -835,10 +837,10 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	newtlk->scaling_factors = NULL;
 	if ( tlk->scaling_factors != NULL ){
 		newtlk->scaling_factors = (double***)malloc(2*sizeof(double**));
-		newtlk->scaling_factors[0] = clone_dmatrix( tlk->scaling_factors[0], tlk->partials_dim, tlk->sp->count );
+		newtlk->scaling_factors[0] = clone_dmatrix( tlk->scaling_factors[0], tlk->partials_dim, tlk->pattern_capacity );
         newtlk->scaling_factors[1] = NULL;
         if(tlk->scaling_factors[1] != NULL){
-            newtlk->scaling_factors[1] = clone_dmatrix( tlk->scaling_factors[1], tlk->partials_dim, tlk->sp->count );
+            newtlk->scaling_factors[1] = clone_dmatrix( tlk->scaling_factors[1], tlk->partials_dim, tlk->pattern_capacity );
         }
 	}
 	
@@ -959,14 +961,17 @@ bool SingleTreeLikelihood_rescaling( SingleTreeLikelihood *tlk ){
 void SingleTreeLikelihood_use_rescaling( SingleTreeLikelihood *tlk, bool use ){
 	tlk->scale = use;
 	if ( tlk->scaling_factors == NULL && use ) {
+		// Sized for the capacity, not the pattern set currently installed:
+		// rescaling can be switched on while a smaller set is in place (a
+		// bootstrap replicate) and must survive the larger one coming back.
 		tlk->scaling_factors = (double***)malloc(2*sizeof(double**));
-		tlk->scaling_factors[0] = dmatrix(tlk->partials_dim, tlk->sp->count );
+		tlk->scaling_factors[0] = dmatrix(tlk->partials_dim, tlk->pattern_capacity );
 		for(size_t i = 0; i < tlk->partials_dim; i++){
-			memset(tlk->scaling_factors[0][i], 0.0, sizeof(double)*tlk->sp->count);
+			memset(tlk->scaling_factors[0][i], 0.0, sizeof(double)*tlk->pattern_capacity);
 		}
         tlk->scaling_factors[1] = NULL;
         if(tlk->partials[1] != NULL){
-            tlk->scaling_factors[1] = clone_dmatrix( tlk->scaling_factors[0], tlk->partials_dim, tlk->sp->count );
+            tlk->scaling_factors[1] = clone_dmatrix( tlk->scaling_factors[0], tlk->partials_dim, tlk->pattern_capacity );
         }
 	}
 }
@@ -1321,6 +1326,56 @@ void SingleTreeLikelihood_update_all_nodes( SingleTreeLikelihood *tlk ){
 	tlk->update = true;
 	tlk->update_upper = true;
 	tlk->node_upper = NULL; // does not hurt to set it even if we don't use upper likelihoods
+}
+
+// The pattern weights changed but the patterns themselves did not: every
+// partial and every pattern likelihood stays valid, only the weighted sum has
+// to be redone. No node is flagged, so _calculate_partials walks the tree
+// without recomputing anything.
+void SingleTreeLikelihood_update_weights( SingleTreeLikelihood *tlk ){
+	tlk->update = true;
+	tlk->update_upper = true;
+}
+
+// Swap in a different pattern set. Buffers are sized for pattern_capacity
+// patterns and the new set may only be smaller, so nothing is reallocated;
+// partials_size, root_partials_size, pattern_lk_size and the scaling factors
+// deliberately keep their capacity-sized values (store/restore just copies some
+// slack), while the offsets derived live from sp->count shrink with it.
+void SingleTreeLikelihood_set_sitepattern( SingleTreeLikelihood *tlk, SitePattern *sp ){
+	if( sp->count > tlk->pattern_capacity ){
+		fprintf(stderr, "SingleTreeLikelihood_set_sitepattern: %d patterns exceeds the allocated capacity of %d\n",
+		        sp->count, tlk->pattern_capacity);
+		exit(2);
+	}
+	tlk->sp = sp;
+	tlk->pattern_count = sp->count;
+
+	// With tip states the cores index sp->patterns directly and there is
+	// nothing to rebuild. With tip partials the leaf partials were baked in at
+	// construction, replicated across rate categories with a pattern_count
+	// stride, so a new pattern set invalidates all of them.
+	if( !tlk->use_tip_states ){
+		Node **nodes = Tree_get_nodes( tlk->tree, POSTORDER );
+		size_t block = tlk->m->nstate * tlk->pattern_count;
+		for ( size_t i = 0; i < Tree_node_count(tlk->tree); i++ ) {
+			if( !Node_isleaf(nodes[i]) ) continue;
+			int nodeID = Node_id(nodes[i]);
+			// Leaf partials are never ping-ponged, but the store buffer holds a
+			// copy once it has been allocated: refresh both so a restore cannot
+			// resurrect partials of the previous pattern set.
+			for ( size_t b = 0; b < 2; b++ ) {
+				if( tlk->partials[b] == NULL ) continue;
+				double *partials = tlk->partials[b][nodeID];
+				sp->get_partials(sp, tlk->mapping[nodeID], partials);
+				for ( size_t k = 1; k < tlk->sm->cat_count; k++ ) {
+					memcpy(partials + k*block, partials, sizeof(double)*block);
+				}
+			}
+		}
+	}
+
+	SingleTreeLikelihood_update_all_nodes(tlk);
 }
 
 // update 1 node

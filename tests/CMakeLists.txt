@@ -38,6 +38,9 @@ target_link_libraries(test_mcmc phyc)
 add_executable(test_parsimony test_parsimony.c)
 target_link_libraries(test_parsimony phyc)
 
+add_executable(test_bootstrap test_bootstrap.c)
+target_link_libraries(test_bootstrap phyc)
+
 
 # Refresh test fixtures on every build (not just at configure time) so that
 # added/edited files under data/ are picked up by an existing build tree.
@@ -98,6 +101,10 @@ add_test (NAME Test_mcmc
 add_test (NAME Test_parsimony
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_parsimony)
+
+add_test (NAME Test_bootstrap
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_bootstrap)
 
 
 find_program(VALGRIND "valgrind")
