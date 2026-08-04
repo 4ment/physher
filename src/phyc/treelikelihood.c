@@ -3327,8 +3327,8 @@ void gradient_discrete_sitemodel(SingleTreeLikelihood* tlk, Parameters* paramete
 	
 	// derivative wrt pinv
 	if(tlk->sm->proportions != NULL){
-		// Parameter* p0 = ((Simplex*)tlk->sm->proportions->model_obj->obj)->parameter;
-		Parameter* px = Parameters_depends(parameters, tlk->sm->proportions);
+		Parameter* proportions = tlk->sm->proportions;
+		Parameter* px = Parameters_depends(parameters, proportions);
 		if(px != NULL){
 			double grad;
 			if(Parameters_count(tlk->sm->rates) == 0){
@@ -3337,9 +3337,15 @@ void gradient_discrete_sitemodel(SingleTreeLikelihood* tlk, Parameters* paramete
 			else{
 				grad = gradient_pinv_W_sitemodel(tlk, branch_gradient, branch_lengths);
 			}
-			tlk->sm->proportions->grad[0] += grad;
-			if(px != tlk->sm->proportions){
-				tlk->sm->proportions->transform->backward(tlk->sm->proportions->transform, &grad);
+			proportions->grad[0] += grad;
+			if(px != proportions){
+				// dL/dX for the 2-simplex X = [p_inv, 1-p_inv]; the X[1] = 1-X[0]
+				// coupling is applied inside the transform's backward. Passing a
+				// proper length-2 vector also avoids reading past a scalar.
+				// backward walks the whole chain down to the unconstrained leaf,
+				// so a reparameterised proportion (X <- S <- U) needs nothing extra.
+				double dX[2] = {grad, 0.0};
+				proportions->transform->backward(proportions->transform, dX);
 			}
 		}
 	}

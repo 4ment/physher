@@ -35,8 +35,19 @@ option(USE_OPENMP_SUPPORT   "Use OpenMP if available"                     OFF)
 option(USE_PTHREAD_SUPPORT  "Use pthreads if available (overrides OpenMP)" ON)
 
 option(LIBRARY_ONLY         "Build the library only (no physher binary)"  OFF)
+option(BUILD_LIBRARY        "Build/install libphyc (OFF: physher only)"   ON)
 option(DISABLE_GSL          "Build without GSL"                           OFF)
 option(ENABLE_ASAN          "Enable AddressSanitizer"                     OFF)
+
+if(NOT BUILD_LIBRARY)
+    if(LIBRARY_ONLY)
+        message(FATAL_ERROR "LIBRARY_ONLY and -DBUILD_LIBRARY=off are mutually exclusive")
+    endif()
+    if(BUILD_CPP_WRAPPER)
+        message(FATAL_ERROR "BUILD_CPP_WRAPPER needs libphyc; drop -DBUILD_LIBRARY=off")
+    endif()
+    message(STATUS "Building the physher executable only (no libphyc)")
+endif()
 
 set(DEFAULT_SSE_LEVEL "sse3")
 
@@ -130,6 +141,9 @@ if(NOT DISABLE_GSL)
     list(APPEND PHYC_LINK_LIBRARIES GSL::gsl GSL::gslcblas)
 else()
     list(APPEND PHYC_COMPILE_DEFINITIONS GSL_DISABLED)
+    if(NOT BUILD_LIBRARY)
+        message(FATAL_ERROR "DISABLE_GSL builds the library only; drop -DBUILD_LIBRARY=off")
+    endif()
     set(LIBRARY_ONLY ON)
 endif()
 
@@ -270,16 +284,27 @@ list(APPEND HEADER_FILES
 #####################################################################
 # Library target
 #####################################################################
-add_library(phyc ${SRC_FILES})
+# Without BUILD_LIBRARY the sources still go through a target (so the flags,
+# includes and test wiring below are shared), but as an OBJECT library: no
+# .a/.so is emitted, the objects are linked straight into each executable.
+if(BUILD_LIBRARY)
+    add_library(phyc ${SRC_FILES})
+else()
+    add_library(phyc OBJECT ${SRC_FILES})
+endif()
 add_library(phyc::phyc ALIAS phyc)
 
 set_target_properties(phyc PROPERTIES
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
-    VERSION ${PHYC_VERSION}
-    SOVERSION ${PHYC_SOVERSION}
     CLEAN_DIRECT_OUTPUT 1
 )
+if(BUILD_LIBRARY)
+    set_target_properties(phyc PROPERTIES
+        VERSION ${PHYC_VERSION}
+        SOVERSION ${PHYC_SOVERSION}
+    )
+endif()
 
 target_include_directories(phyc
     PUBLIC
@@ -337,10 +362,12 @@ endif()
 #####################################################################
 # Install
 #####################################################################
-install(TARGETS phyc DESTINATION lib EXPORT phyc-targets)
-install(FILES ${HEADER_FILES} DESTINATION include/phyc)
-install(EXPORT phyc-targets DESTINATION lib/phyc)
-install(FILES phyc-config.cmake DESTINATION lib/phyc)
+if(BUILD_LIBRARY)
+    install(TARGETS phyc DESTINATION lib EXPORT phyc-targets)
+    install(FILES ${HEADER_FILES} DESTINATION include/phyc)
+    install(EXPORT phyc-targets DESTINATION lib/phyc)
+    install(FILES phyc-config.cmake DESTINATION lib/phyc)
+endif()
 
 add_custom_target(uninstall COMMAND xargs rm -vf < install_manifest.txt)
 

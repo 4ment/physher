@@ -173,7 +173,7 @@ opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptS
 		printf("brent\n");
 #endif
 		// printf("%s %f %f %f\n", node->distance->name, node->distance->value[node->id], Constraint_lower(node->distance->cnstr), Constraint_upper(node->distance->cnstr));
-		opt_result status = brent_optimize2(node->distance, node->id, f, data, stop, fmin);
+		opt_result status = brent_optimize2(node->distance, node->branch_index, f, data, stop, fmin);
 		// printf(" %d %f %f\n",  node->id, node->distance->value[node->id], *fmin);
 #ifdef UPPER_PARTIALS
 		printf("%f %s\n", -*fmin, nodes[i]->name);
@@ -777,6 +777,14 @@ bool fxStop( double fx, double *fxold, const double tolfx){
 }
 
 
+// algorithms that call opt->grad_f and therefore differentiate the target model
+// with respect to opt->parameters. META is not one of them: each of its children
+// is built by its own new_Optimizer_from_json call and checked there.
+static bool opt_algorithm_uses_gradient(opt_algorithm algorithm){
+	return algorithm == OPT_BFGS || algorithm == OPT_CG_PR || algorithm == OPT_CG_FR ||
+	       algorithm == OPT_SG || algorithm == OPT_SG_ADAM;
+}
+
 Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 
 	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
@@ -936,6 +944,9 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	opt->reset = _reset;
     
 	if(parametersNode != NULL){
+		if(opt_algorithm_uses_gradient(opt->algorithm)){
+			Parameters_check_leaves(parameters, id);
+		}
 		opt_set_parameters(opt, parameters);
 	}
 

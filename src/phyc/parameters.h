@@ -331,6 +331,14 @@ void check_constraints(Parameters* rates, double lower, double upper, double flo
 
 bool Parameters_contains(const Parameters *parameters, const Parameter *p);
 
+// exit with an error unless every parameter is an unconstrained leaf (no
+// transform), the only kind of parameter a gradient is accumulated into
+void Parameters_check_leaves(const Parameters *parameters, const char *id);
+
+// exit with an error unless every parameter is transformed, i.e. actually has a
+// log Jacobian determinant
+void Parameters_check_transformed(const Parameters *parameters, const char *id);
+
 void Parameters_zero_grad(Parameters *parameters);
 
 size_t Parameters_size(const Parameters *ps);

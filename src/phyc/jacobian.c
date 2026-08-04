@@ -85,6 +85,7 @@ Model* new_JacobianModel_from_json(json_node* node, Hashtable* hash) {
     Parameters* parameters = new_Parameters(1);
     grab_parameters(parametersNode, hash, parameters);
     const char* id = get_json_node_value_string(node, "id");
+    Parameters_check_transformed(parameters, id);
     Model* model = new_JacobianModel(id, parameters);
     Hashtable_add(hash, id, model);
     return model;

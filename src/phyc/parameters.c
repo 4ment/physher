@@ -1364,6 +1364,48 @@ Parameter* Parameters_depends(const Parameters* parameters, const Parameter* x) 
     return NULL;
 }
 
+// bottom of the transform chain: the unconstrained parameter every backward()
+// call ultimately accumulates into
+static Parameter* _parameter_leaf(const Parameter* p) {
+    while (p->transform != NULL) {
+        p = p->transform->parameter;
+    }
+    return (Parameter*)p;
+}
+
+// Gradients are only ever accumulated into unconstrained leaves; the grad of a
+// transformed parameter is scratch that backward() clears on its way down. Asking
+// for the gradient of a non-leaf therefore yields a value nobody maintains, so
+// reject it at configuration time instead of silently optimizing on garbage.
+void Parameters_check_leaves(const Parameters* parameters, const char* id) {
+    for (size_t i = 0; i < Parameters_count(parameters); i++) {
+        Parameter* p = Parameters_at(parameters, i);
+        if (p->transform != NULL) {
+            Parameter* leaf = _parameter_leaf(p);
+            fprintf(stderr,
+                    "%s - parameter %s is transformed, so no gradient is calculated "
+                    "for it. Use its unconstrained parameter %s instead.\n",
+                    id, Parameter_name(p), Parameter_name(leaf));
+            exit(2);
+        }
+    }
+}
+
+// The mirror image of Parameters_check_leaves: a Jacobian adjustment only exists
+// for a transformed parameter, and a leaf has no transform to dereference.
+void Parameters_check_transformed(const Parameters* parameters, const char* id) {
+    for (size_t i = 0; i < Parameters_count(parameters); i++) {
+        Parameter* p = Parameters_at(parameters, i);
+        if (p->transform == NULL) {
+            fprintf(stderr,
+                    "%s - parameter %s is not transformed so it has no log Jacobian "
+                    "determinant.\n",
+                    id, Parameter_name(p));
+            exit(2);
+        }
+    }
+}
+
 void Parameters_zero_grad(Parameters* ps) {
     for (size_t i = 0; i < ps->count; i++) {
         Parameter_zero_grad(ps->list[i]);

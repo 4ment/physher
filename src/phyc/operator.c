@@ -510,7 +510,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	    {"coalescent", JSON_OPTIONAL, JSON_STRING},
 	    {"delay", JSON_OPTIONAL, JSON_NUMBER},
 	    {"parameters", JSON_OPTIONAL, JSON_ANY},
-	    {"target", JSON_OPTIONAL, JSON_NUMBER},
+	    {"target_acceptance_probability", JSON_OPTIONAL, JSON_NUMBER},
 	    {"tree", JSON_OPTIONAL, JSON_ANY},
 	    {"weight", JSON_OPTIONAL, JSON_NUMBER},
 	    {"x", JSON_OPTIONAL, JSON_ANY},
@@ -743,7 +743,7 @@ Operator* new_Operator_from_json(json_node* node, Hashtable* hash){
 	op->accepted_at_delay = 0;
 	op->count_at_delay = 0;
 	op->tuning_started = false;
-	op->target = get_json_node_value_double(node, "target", 0.24);
+	op->target = get_json_node_value_double(node, "target_acceptance_probability", 0.24);
 	return op;
 }
 

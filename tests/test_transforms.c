@@ -361,18 +361,27 @@ char* test_simplex_proportions() {
                   "simplex proportions (chain): constrained values not matching");
     }
 
-    // Backprop dL/dX -> dL/dS (into s->grad) -> dL/dU (into leaf->grad). The
-    // additive logit offset does not affect ds/du, so leaf->grad must equal the
-    // fused stan simplex backward for the same X (cf. test_simplex).
+    // A single backward call must walk the whole chain: dL/dX -> dL/dS (scratch in
+    // s->grad) -> dL/dU (accumulated in leaf->grad). The additive logit offset does
+    // not affect ds/du, so leaf->grad must equal the fused stan simplex backward for
+    // the same X (cf. test_simplex).
     double trueLeafGradient[3] = {-0.2, -0.24444444444444446, -0.17142857142857149};
     Parameter_zero_grad(leaf);
-    Parameter_zero_grad(s);
-    sxT->backward(sxT, ingrad);       // dL/dS into s->grad
-    logitT->backward(logitT, s->grad);  // dL/dS -> dL/dU into leaf->grad
+    sxT->backward(sxT, ingrad);
     for (size_t i = 0; i < 3; i++) {
         mu_assert(fabs(leaf->grad[i] - trueLeafGradient[i]) < 1.e-7,
                   "simplex proportions (chain): leaf gradient not matching");
     }
+
+    // Calling it twice must accumulate on the leaf, not on the intermediate: the
+    // scratch s->grad is cleared by each pass so the second call adds the same
+    // contribution rather than a doubled one.
+    sxT->backward(sxT, ingrad);
+    for (size_t i = 0; i < 3; i++) {
+        mu_assert(fabs(leaf->grad[i] - 2.0 * trueLeafGradient[i]) < 1.e-7,
+                  "simplex proportions (chain): leaf gradient not accumulating");
+    }
+
     return NULL;
 }
 

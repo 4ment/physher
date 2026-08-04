@@ -173,11 +173,12 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"algorithm", JSON_REQUIRED, JSON_STRING},
 	    {"delay", JSON_OPTIONAL, JSON_NUMBER},
-	    {"model", JSON_REQUIRED, JSON_STRING},
+	    {"model", JSON_FORBIDDEN, JSON_STRING},
 	    {"parameters", JSON_OPTIONAL, JSON_ANY},
 	    {"stepsize", JSON_OPTIONAL, JSON_NUMBER},
 	    {"steps", JSON_OPTIONAL, JSON_NUMBER},
-	    {"target", JSON_OPTIONAL, JSON_NUMBER},
+	    {"target", JSON_REQUIRED, JSON_NUMBER},
+	    {"target_acceptance_probability", JSON_OPTIONAL, JSON_NUMBER},
 	    {"weight", JSON_OPTIONAL, JSON_NUMBER},
 	    {"x", JSON_REQUIRED, JSON_ANY},
 	};
@@ -190,9 +191,11 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	
 	op->x = new_Parameters(1);
 	get_parameters_references2(node, hash, op->x, "x");
+	// hamiltonian dynamics are run on the gradient of the posterior wrt x
+	Parameters_check_leaves(op->x, id_string);
 	op->models = malloc(sizeof(Model*));
 	// posterior model
-	json_node* model_node = get_json_node(node, "model");
+	json_node* model_node = get_json_node(node, "target");
 	const char* ref = (char*)model_node->value;
 	op->models[0] = safe_get_reference_model(ref, hash, id_string);
 	op->models[0]->ref_count++;
@@ -214,7 +217,7 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	op->count_at_delay = 0;
 	op->tuning_started = false;
 	op->all = false;
-	op->target = get_json_node_value_double(node, "target", 0.8);
+	op->target = get_json_node_value_double(node, "target_acceptance_probability", 0.8);
 	op->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return op;
 }

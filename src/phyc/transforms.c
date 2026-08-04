@@ -771,17 +771,20 @@ static double _log_det_jacobian(Transform* self) {
 }
 
 static double _gradient_log_det_jacobian(Transform* self) {
-    const double* y = Parameter_values(self->parameter);
-    return self->inverse_transform_gradient_log_det_jacobian(
-        self->parameter->grad, y, Parameter_size(self->parameter), self->lower,
-        self->upper);
-}
-
+// Push dL/dx one layer down and, when the layer below is itself transformed, keep
+// going until the unconstrained leaf. Only the leaf accumulates: an intermediate's
+// grad is scratch, so it is cleared before backward_inverse_transform adds into it.
+// This assumes the gradient is only ever requested at a leaf, i.e. no parameter in
+// the middle of a chain is an optimization target.
 static void _backward(Transform* self, const double* ingrad) {
-    const double* y = Parameter_values(self->parameter);
-    self->backward_inverse_transform(self->parameter->grad, y, ingrad,
-                                     Parameter_size(self->parameter), self->lower,
+    Parameter* p = self->parameter;
+    const double* y = Parameter_values(p);
+    if (p->transform != NULL) Parameter_zero_grad(p);
+    self->backward_inverse_transform(p->grad, y, ingrad, Parameter_size(p), self->lower,
                                      self->upper);
+    if (p->transform != NULL) {
+        p->transform->backward(p->transform, p->grad);
+    }
 }
 
 static void _jacobian(Transform* self, double* jacobian) {
