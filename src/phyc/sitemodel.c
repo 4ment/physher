@@ -313,7 +313,7 @@ double _gamma_shape_derivative( SiteModel *sm, const double* ingrad ){
 		temp[i+variableCat] = qgamma( prob, shape, shape);
 #endif
 		temp[i] = (plus - minus)/(xp-xm);
-		if(isnan(plus) || isnan(minus) || isnan(temp[i+variableCat])){
+		if(!isfinite(plus) || !isfinite(minus) || !isfinite(temp[i+variableCat])){
 			break;
 		}
 		
@@ -747,7 +747,10 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 			for ( ; i < sm->cat_count - cat; i++) {
 				sm->cat_rates[i + cat] = gsl_cdf_gamma_Qinv( quantiles[i+cat], alpha, 1.0/alpha );
 				// printf("quantiles[%d] = %f, alpha = %f, sm->cat_rates[%d] = %f, sm->cat_proportions[%d] = %f\n", i+cat, quantiles[i+cat], alpha, i+cat, sm->cat_rates[i + cat], i+cat, sm->cat_proportions[i + cat]);
-				if(isnan(sm->cat_rates[i + cat])){
+				// A failing quantile shows up as +Inf at least as often as NaN, and an
+				// Inf survives to poison the mean below (Inf/Inf = NaN) instead of
+				// being caught here, so test for any non-finite value.
+				if(!isfinite(sm->cat_rates[i + cat])){
 					break;
 				}
 			}
@@ -755,7 +758,7 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 #else
 			for ( ; i < sm->cat_count - cat; i++) {
 				sm->cat_rates[i + cat] = qgamma( quantiles[i+cat], alpha, alpha );
-				if(isnan(sm->cat_rates[i + cat])){
+				if(!isfinite(sm->cat_rates[i + cat])){
 					break;
 				}
 			}
@@ -767,7 +770,7 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 				// sm->cat_rates[i + cat] = gsl_cdf_weibull_Qinv( sm->cat_proportions[i + cat], alpha, 1.0/exp(gammln(1.0 + 1.0/alpha)) );
 				// Fix lambda:=1
 				sm->cat_rates[i + cat] = icdf_weibull_1( quantiles[i+cat], alpha);
-				if(isnan(sm->cat_rates[i + cat])){
+				if(!isfinite(sm->cat_rates[i + cat])){
 					break;
 				}
 

@@ -136,7 +136,10 @@ double gcf( double *gammcf, double a, double x ){
 	c = 1.0/FPMIN;
 	d = 1.0/b;
 	h = d; 
-	for ( i = 0; i < ITMAX; i++ ) { // Iterate to convergence.
+	// Lentz's method indexes the continued fraction from 1: starting at i=0 makes
+	// the first term an=0, which forces del==1 exactly and breaks out of the loop
+	// with h still at the zeroth convergent 1/(x+1-a).
+	for ( i = 1; i <= ITMAX; i++ ) { // Iterate to convergence.
 		an = -i*(i-a);
 		b += 2.0; 
 		d = an*d+b;

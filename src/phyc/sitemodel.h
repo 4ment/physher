@@ -9,7 +9,15 @@
 #include "distmodel.h"
 #include "sitepattern.h"
 
-#define SITEMODEL_ALPHA_MIN 0.001
+// Lower bound on the Gamma/Weibull shape. The inverse CDFs are evaluated at
+// quantiles clamped to [quantile_eps, 1-quantile_eps] (see _gamma_approx_quantile),
+// and the unit-scale Weibull quantile exp(ln(-ln(1-p))/shape) overflows a double
+// once shape < ln(-ln(quantile_eps))/ln(DBL_MAX) = 4.7e-3. gsl_cdf_gamma_Qinv is
+// no better: below shape ~ 3.2e-3 it returns +Inf for the deepest quantile when
+// there are >= 16 categories, and it is already quantitatively wrong (deep-tail
+// quantiles floored around 5e-9) below ~1e-2. 0.01 clears both with margin and is
+// far below any shape a real alignment supports.
+#define SITEMODEL_ALPHA_MIN 0.01
 #define SITEMODEL_ALPHA_MAX 100
 
 typedef enum quadrature_t {
