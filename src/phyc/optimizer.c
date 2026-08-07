@@ -10,6 +10,7 @@
 #include <time.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/time.h>
 
 #include "parameters.h"
 #include "brent.h"
@@ -239,7 +240,151 @@ opt_progress opt_check_progress( OptStopCriterion *stop, double before, double a
 // after this many sweeps every entry drops to one round.
 #define META_MULTIROUND_SWEEPS 2
 
-opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double *fmin, OptimizerSchedule* schedule, int verbosity ){
+
+// ---------------------------------------------------------------------------
+// Progress table for the meta optimizer
+//
+// One row per schedule entry per sweep, then a total row closing the sweep.
+// The point of the table is to show where the gain in the objective comes from
+// and what each entry costs, so every row carries the value the entry left the
+// objective at, what it gained, and how much work that took. Columns are
+// plain ASCII and fixed width, like the operator summary in mcmc.c.
+// ---------------------------------------------------------------------------
+
+#define META_NAME_WIDTH_MAX 24
+#define META_ALGO_WIDTH 11  // "BRENTSERIAL"
+
+// Label a schedule entry. The topology test comes first: a topology entry can
+// also carry a tree likelihood, and it does not optimize branch lengths.
+static const char* meta_entry_name(const Optimizer* opt){
+	if (opt->algorithm == OPT_TOPOLOGY) return "topology";
+	if (opt->treelikelihood != NULL) return "branches";
+	if (opt->parameters != NULL && Parameters_count(opt->parameters) > 0){
+		const char* group = Parameters_name2(opt->parameters);
+		if (group != NULL) return group;
+		return Parameters_name(opt->parameters, 0);
+	}
+	return "(unnamed)";
+}
+
+// Whatever an entry can say about itself beyond the objective: the number of
+// moves the topology optimizer accepted, the value the parameters landed on.
+// `name` is the label already in the Component column, so a single parameter
+// named after its own entry contributes its value alone.
+static void meta_entry_detail(const Optimizer* opt, const char* name, char* buffer, size_t size){
+	if (opt->algorithm == OPT_TOPOLOGY){
+		TopologyOptimizer* topopt = opt->data;
+		snprintf(buffer, size, "%d move%s", topopt->moves, topopt->moves == 1 ? "" : "s");
+	}
+	else if (opt->parameters != NULL && Parameters_count(opt->parameters) > 0){
+		size_t count = Parameters_count(opt->parameters);
+		const char* first = Parameters_name(opt->parameters, 0);
+		double value = Parameters_value(opt->parameters, 0);
+		if (count == 1 && strcmp(first, name) == 0){
+			snprintf(buffer, size, "%.6g", value);
+		}
+		else if (count == 1){
+			snprintf(buffer, size, "%s = %.6g", first, value);
+		}
+		else{
+			snprintf(buffer, size, "%zu parameters, %s = %.6g", count, first, value);
+		}
+	}
+	else{
+		buffer[0] = '\0';
+	}
+}
+
+static int meta_name_width(const OptimizerSchedule* schedule){
+	size_t width = strlen("Component");
+	for (int i = 0; i < schedule->count; i++){
+		size_t len = strlen(meta_entry_name(schedule->optimizers[i]));
+		if (len > width) width = len;
+	}
+	if (width > META_NAME_WIDTH_MAX) width = META_NAME_WIDTH_MAX;
+	return (int)width;
+}
+
+static double meta_elapsed(const struct timeval* start){
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	return (now.tv_sec - start->tv_sec) + (now.tv_usec - start->tv_usec)*1.0e-6;
+}
+
+// Right-aligned in the Elapsed column, in whichever unit keeps the number
+// readable: 0.42s, 12.3s, 4m18s.
+static void meta_format_duration(double seconds, char* buffer, size_t size){
+	if (seconds < 60.0){
+		snprintf(buffer, size, "%.2fs", seconds);
+	}
+	else if (seconds < 3600.0){
+		snprintf(buffer, size, "%dm%02ds", (int)(seconds/60), (int)fmod(seconds, 60.0));
+	}
+	else{
+		snprintf(buffer, size, "%dh%02dm", (int)(seconds/3600), (int)fmod(seconds/60, 60.0));
+	}
+}
+
+// How the run ended, for the closing line of the table.
+static const char* meta_outcome(opt_result result){
+	switch (result) {
+		case OPT_SUCCESS: return "Converged";
+		case OPT_MAXITER: return "Stopped on the sweep limit";
+		case OPT_MAXEVAL: return "Stopped on the evaluation limit";
+		case OPT_MAXTIME: return "Stopped on the time limit";
+		case OPT_FAIL:    return "Ended worse than it started";
+		default:          return "Ended";
+	}
+}
+
+static void meta_print_row(int name_width, size_t sweep, const char* name, const char* algorithm,
+                           double logL, double gain, size_t evals, double seconds, const char* detail){
+	char duration[32];
+	meta_format_duration(seconds, duration, sizeof(duration));
+	printf("  %5zu  %-*.*s  %-*s  %15.4f  %+12.4f  %8zu  %8s", sweep, name_width, name_width,
+	       name, META_ALGO_WIDTH, algorithm, logL, gain, evals, duration);
+	if (detail != NULL && detail[0] != '\0') printf("  %s", detail);
+	putchar('\n');
+}
+
+// Spans every column except the free-width Detail one: the fixed columns are
+// 5 + name_width + 11 + 15 + 12 + 8 + 8 wide with a two-space gutter between them.
+static void meta_print_rule(int name_width){
+	printf("  ");
+	for (int i = 0; i < 71 + name_width; i++) putchar('-');
+	putchar('\n');
+}
+
+// `logL` is the objective before any entry of the schedule has run: sweep 0 of
+// the table, so every Delta below it can be read against the point the run
+// started from. It costs the one evaluation already charged to the run.
+static void meta_print_header(const OptimizerSchedule* schedule, const OptStopCriterion* stop,
+                              int name_width, bool maximize, double logL){
+	printf("\nMeta optimizer: %d component%s, up to %zu sweep%s, tolerance %g\n",
+	       schedule->count, schedule->count == 1 ? "" : "s",
+	       stop->iter_max, stop->iter_max == 1 ? "" : "s", stop->tolfx);
+	printf("  %5s  %-*s  %-*s  %15s  %12s  %8s  %8s  %s\n", "Sweep", name_width, "Component",
+	       META_ALGO_WIDTH, "Algorithm", maximize ? "logL" : "f", "Delta", "Evals", "Elapsed",
+	       "Detail");
+	meta_print_rule(name_width);
+	printf("  %5zu  %-*s  %-*s  %15.4f  %12s  %8zu\n", (size_t)0, name_width, "start",
+	       META_ALGO_WIDTH, "", logL, "-", (size_t)1);
+}
+
+static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
+	opt_func f = opt_meta->f;
+	void* data = opt_meta->data;
+	OptStopCriterion* stop = &opt_meta->stop;
+	OptimizerSchedule* schedule = opt_meta->schedule;
+	const int verbosity = opt_meta->verbosity;
+	// The objective is the negative log-likelihood when the run maximizes, so
+	// every value the table reports is negated back to a log-likelihood. A
+	// minimizing run reports the objective itself.
+	const double sign = opt_meta->maximize ? -1.0 : 1.0;
+	const int name_width = meta_name_width(schedule);
+	struct timeval time_start;
+	gettimeofday(&time_start, NULL);
+
 	double lnl = f(NULL, NULL, data);
 	const double lnl_start = lnl;
 	double fret = lnl;
@@ -249,10 +394,20 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 	stop->f_eval_current = 1;
 	opt_result result = OPT_MAXITER;
 
+	if (verbosity > 0) meta_print_header(schedule, stop, name_width, opt_meta->maximize, sign*lnl_start);
+
 	for (size_t sweep = 0; sweep < stop->iter_max; sweep++) {
 		double lnl_current = lnl;
+		const size_t evals_before = stop->f_eval_current;
+		struct timeval sweep_start;
+		gettimeofday(&sweep_start, NULL);
 		for (int i = 0; i < schedule->count; i++) {
 			Optimizer* opt = schedule->optimizers[i];
+			const double lnl_before = lnl;
+			size_t entry_evals = 0;
+			bool entry_failed = false;
+			struct timeval entry_start;
+			gettimeofday(&entry_start, NULL);
 			// Read the round count, do not overwrite it. This used to assign
 			// schedule->rounds[i] = 1 on the third sweep, which permanently
 			// rewrote the schedule: an Optimizer reused across bootstrap
@@ -276,6 +431,7 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 					status = opt_optimize( opt, &fret);
 				}
 				stop->f_eval_current += opt->stop.f_eval_current;
+				entry_evals += opt->stop.f_eval_current;
 				// A failed child has not necessarily written fret -- scaler_optimize
 				// returns OPT_FAIL without touching it -- so the sweep would carry
 				// the previous entry's value forward as if this one had run. Resync
@@ -285,26 +441,27 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 				if (status == OPT_FAIL || status == OPT_ERROR) {
 					fret = f(NULL, NULL, data);
 					stop->f_eval_current++;
-					if (verbosity > 0) {
-						fprintf(stderr, "meta: optimizer %d of the schedule failed (status %d)\n", i, status);
-					}
+					entry_evals++;
+					entry_failed = true;
 				}
 			}
-
-			// Optimizing branches efficiently
-			if(opt->treelikelihood != NULL){
-				if(opt->verbosity > 0) printf("branches %f %f\n", -fret, -lnl);
-			}
-			// Optimizing any parameters
-			else if(opt->parameters != NULL){
-				if(opt->verbosity > 0) printf("%s %f %f (%f)\n", Parameters_name(opt->parameters, 0), -fret, -lnl, Parameters_value(opt->parameters, 0));
-			}
-			// Optimizing topology
-			else if(opt->algorithm == OPT_TOPOLOGY){
-				TopologyOptimizer* topopt = opt->data;
-				if(opt->verbosity > 0) printf("topology %f %f (%d)\n", -fret, -lnl, topopt->moves);
-			}
 			lnl = fret;
+
+			if (verbosity > 0) {
+				char detail[128];
+				const char* name = meta_entry_name(opt);
+				meta_entry_detail(opt, name, detail, sizeof(detail));
+				if (entry_failed) {
+					// Reported in the row rather than on stderr so it stays next
+					// to the sweep it happened in.
+					size_t used = strlen(detail);
+					snprintf(detail + used, sizeof(detail) - used, "%s[failed]",
+					         used > 0 ? "  " : "");
+				}
+				meta_print_row(name_width, sweep + 1, name,
+				               OPT_ALGORITHMS[opt->algorithm], sign*lnl, sign*(lnl - lnl_before),
+				               entry_evals, meta_elapsed(&entry_start), detail);
+			}
 		}
 
 		// Rescaling is switched on inside the likelihood when the partials
@@ -335,12 +492,27 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 		*fmin = lnl;
 
 		opt_progress convergence = opt_check_progress(stop, lnl_current, lnl);
-		if (convergence == OPT_PROGRESS_WORSE && verbosity > 0) {
-			fprintf(stderr, "meta: sweep %zu left the objective worse (%f -> %f)\n",
-			        sweep + 1, -lnl_current, -lnl);
+
+		if (verbosity > 0) {
+			char detail[64] = "";
+			if (convergence == OPT_PROGRESS_CONVERGED) {
+				snprintf(detail, sizeof(detail), "converged");
+			}
+			else if (convergence == OPT_PROGRESS_WORSE) {
+				snprintf(detail, sizeof(detail), "worse than the previous sweep");
+			}
+			else if (stop->stall > 0) {
+				// Flat sweeps so far against the number `patience` demands before
+				// the run is called converged.
+				snprintf(detail, sizeof(detail), "flat %zu/%zu", stop->stall, stop->patience);
+			}
+			meta_print_row(name_width, sweep + 1, "= sweep", "", sign*lnl,
+			               sign*(lnl - lnl_current), stop->f_eval_current - evals_before,
+			               meta_elapsed(&sweep_start), detail);
+			putchar('\n');
 		}
+
 		if (convergence == OPT_PROGRESS_CONVERGED) {
-			if(verbosity) printf("\n%f %f\n\n", -lnl, -lnl_current);
 			result = OPT_SUCCESS;
 			break;
 		}
@@ -351,16 +523,9 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 		// finishes on the same sweep it runs out of budget still reports success.
 		opt_result limit = opt_check_limits(stop);
 		if (limit != OPT_KEEP_GOING) {
-			if (verbosity > 0) {
-				const char* why = limit == OPT_MAXTIME ? "the time limit"
-				                : limit == OPT_MAXEVAL ? "the evaluation limit"
-				                                       : "the iteration limit";
-				fprintf(stderr, "meta: stopping after %zu sweeps on %s\n", sweep + 1, why);
-			}
 			result = limit;
 			break;
 		}
-		if(verbosity) printf("\n");
 	}
 
 	// Converging is not the same as improving. The schedule has no way to roll
@@ -368,11 +533,17 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 	// branch-length entry owns none -- so the best it can do is refuse to call a
 	// net regression a success.
 	if (result == OPT_SUCCESS && lnl > lnl_start + stop->tolfx * fmax(1.0, fabs(lnl_start))) {
-		if (verbosity > 0) {
-			fprintf(stderr, "meta: converged to a worse point than it started from (%f -> %f)\n",
-			        -lnl_start, -lnl);
-		}
 		result = OPT_FAIL;
+	}
+
+	if (verbosity > 0) {
+		char duration[32];
+		meta_format_duration(meta_elapsed(&time_start), duration, sizeof(duration));
+		meta_print_rule(name_width);
+		printf("  %s after %zu sweep%s: %s %.4f -> %.4f (%+.4f) in %zu evaluations, %s\n\n",
+		       meta_outcome(result), stop->iter, stop->iter == 1 ? "" : "s",
+		       opt_meta->maximize ? "logL" : "f", sign*lnl_start, sign*lnl,
+		       sign*(lnl - lnl_start), stop->f_eval_current, duration);
 	}
 	return result;
 }
@@ -787,7 +958,7 @@ opt_result opt_optimize( Optimizer *opt, double *fmin ){
 	
 	switch (opt->algorithm ) {
 		case OPT_META:{
-			result = meta_optimize( opt->f, opt->data, &opt->stop, fmin, opt->schedule, opt->verbosity );
+			result = meta_optimize( opt, fmin );
 			break;
 		}
 		case OPT_POWELL:{
