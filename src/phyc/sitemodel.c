@@ -23,9 +23,10 @@
 
 static bool _gamma_approx_quantile( SiteModel *sm );
 static void _calculate_rates_discrete( SiteModel *sm );
-static void _calculate_rates_discrete_simplex( SiteModel *sm );
-static void _calculate_rates_discrete_cumsum( SiteModel *sm );
-static void _calculate_rates_discrete_prop( SiteModel *sm );
+static void _calculate_rates_discrete_rate_shape( SiteModel *sm );
+static void _calculate_rates_discrete_mean_contribution( SiteModel *sm );
+static void _calculate_rates_discrete_increments( SiteModel *sm );
+static void _calculate_rates_discrete_ratios( SiteModel *sm );
 
 static double _get_rate( SiteModel *sm, const int index );
 static double _get_proportion( SiteModel *sm, const int index );
@@ -479,17 +480,18 @@ bool _update_nothing(SiteModel *sm){
 
 // (Gamma or/and Invariant) or one rate
 // should not be used directly
-SiteModel * new_SiteModel_with_parameters( const Parameters *params, Parameter* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad){
+SiteModel * new_SiteModel_with_parameters( const Parameters *params, Parameter* proportions, const size_t cat_count, distribution_t distribution, bool invariant, quadrature_t quad, rate_parameterization_t rate_parameterization){
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
 	sm->site_category = NULL;
 	sm->sp = NULL;
 	sm->get_site_category = _get_site_category;
-	
+
 	sm->distribution = distribution;
 	sm->invariant = invariant;
 	sm->quadrature = quad;
-	
+	sm->rate_parameterization = rate_parameterization;
+
 	sm->cat_count = cat_count;
 	if (invariant) sm->cat_count++;
 	
@@ -547,9 +549,16 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Parameter* 
 		sm->update = _update_gamma_approx_quantile;
 	}
     
-	// Discrete gamma or prop of invariant or both
+	// Discrete gamma or prop of invariant or both.
+	// The DISTRIBUTION_DISCRETE case is the pure +I model, whose only parameter is
+	// the invariant proportion (_weibull_inv_derivative then takes its "+I only"
+	// branch). A discrete model with free rates only happens to share the shape of
+	// that model when it has two categories; none of the free-rate
+	// parameterizations has an analytic derivative here, so it must keep
+	// _no_gradient like every other category count.
 	if (distribution == DISTRIBUTION_WEIBULL ||
-		(distribution == DISTRIBUTION_DISCRETE && Parameter_size(sm->proportions) == 2)) {
+		(distribution == DISTRIBUTION_DISCRETE && Parameters_count(sm->rates) == 0 &&
+		 Parameter_size(sm->proportions) == 2)) {
 		sm->gradient = _weibull_gradient;
 		sm->derivative = _weibull_derivative;
 	}
@@ -720,6 +729,18 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 	   sm->quadrature == QUADRATURE_BETA ||	sm->quadrature == QUADRATURE_KUMARASWAMY){
 		sm->cat_rates[0] = 0;
 		size_t i = 0;
+		// Clamp quantile probabilities away from {0,1} before feeding them to the
+		// inverse-CDFs below. When the Beta/Kumaraswamy quadrature collapses (e.g.
+		// the Kumaraswamy "a" driven towards 0 during optimization) the interior
+		// quantiles underflow to exactly 0.0, and gsl_cdf_gamma_Qinv(0,...) returns
+		// +Inf. That Inf later multiplies a 0 category proportion in the mean,
+		// producing a NaN that silently poisons the likelihood. Clamping keeps the
+		// rate large but finite; categories with ~0 proportion then contribute ~0.
+		const double quantile_eps = 1e-12;
+		for (size_t j = cat; j < (size_t)sm->cat_count; j++) {
+			if (quantiles[j] < quantile_eps) quantiles[j] = quantile_eps;
+			else if (quantiles[j] > 1.0 - quantile_eps) quantiles[j] = 1.0 - quantile_eps;
+		}
 		if(sm->distribution == DISTRIBUTION_GAMMA){
 #ifndef GSL_DISABLED
 			gsl_error_handler_t* handler = gsl_set_error_handler_off();
@@ -867,11 +888,31 @@ void SiteModel_set_mu(SiteModel *sm, Parameter* mu){
 
 static void _update_rates_discrete(SiteModel *sm) {
     if (!sm->need_update) return;
+    switch (sm->rate_parameterization) {
+        case RATE_PARAMETERIZATION_RATE_SHAPE:
+            _calculate_rates_discrete_rate_shape(sm);
+            return;
+        case RATE_PARAMETERIZATION_MEAN_CONTRIBUTION:
+            _calculate_rates_discrete_mean_contribution(sm);
+            return;
+        case RATE_PARAMETERIZATION_RATE_INCREMENTS:
+            _calculate_rates_discrete_increments(sm);
+            return;
+        case RATE_PARAMETERIZATION_RATE_RATIOS:
+            _calculate_rates_discrete_ratios(sm);
+            return;
+        case RATE_PARAMETERIZATION_AUTO:
+            break;
+    }
+    // Infer the parameterization from the shape of "rates". A simplex is a rate
+    // shape, a plain vector a sequence of increments, and a pair of parameters the
+    // ratios and the top rate they hang off. The mean-contribution simplex is not
+    // reachable this way: its parameter looks exactly like a rate shape.
     if (Parameters_count(sm->rates) == 1) {
-        if (Parameters_at(sm->rates, 0)->simplex) _calculate_rates_discrete_simplex(sm);
-        else _calculate_rates_discrete_cumsum(sm);
+        if (Parameters_at(sm->rates, 0)->simplex) _calculate_rates_discrete_rate_shape(sm);
+        else _calculate_rates_discrete_increments(sm);
     } else {
-        _calculate_rates_discrete_prop(sm);
+        _calculate_rates_discrete_ratios(sm);
     }
 }
 
@@ -923,7 +964,14 @@ void _calculate_rates_discrete( SiteModel *sm ) {
 	sm->need_update = false;
 }
 
-void _calculate_rates_discrete_simplex( SiteModel *sm ) {
+// Rate-shape simplex ("rate_shape"; see docs/models/sitemodel.md). The free
+// parameter is the simplex x of relative rates; the unit mean is imposed
+// afterwards by dividing by the weighted mean,
+//
+//     r_k = x_k / sum_j p_j x_j .
+//
+// Compare _calculate_rates_discrete_mean_contribution, its dual.
+void _calculate_rates_discrete_rate_shape( SiteModel *sm ) {
 	int cat_count = Parameter_size(sm->proportions);
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
 	const double* cat_proportions = Parameter_values(sm->proportions);
@@ -950,7 +998,62 @@ void _calculate_rates_discrete_simplex( SiteModel *sm ) {
 	sm->need_update = false;
 }
 
-void _calculate_rates_discrete_cumsum( SiteModel *sm ) {
+// Mean-contribution simplex ("mean_contribution"; see docs/models/sitemodel.md).
+// The free parameter is the simplex s of per-category contributions to the mean,
+// s_k = p_k r_k. Because sum_k s_k = 1 by construction, so is the unit mean
+// sum_k p_k r_k, and the rates are recovered by dividing by the individual
+// proportions:
+//
+//     r_k = s_k / p_k .
+//
+// This is the dual of _calculate_rates_discrete_rate_shape, where the rate *shape*
+// is the simplex and the unit mean is imposed afterwards by dividing by the
+// weighted mean sum_j p_j x_j. Here there is no such denominator, so r_k depends
+// on s_k and p_k alone rather than on every other category, and the small-
+// denominator blow-up of that parameterization cannot occur.
+//
+// With an invariant class category 0 is held at r_0 = 0 and contributes nothing
+// to the mean, so the constraint reads sum_{k>0} p_k r_k = 1 and s covers only
+// the cat_count-1 variable categories.
+void _calculate_rates_discrete_mean_contribution( SiteModel *sm ) {
+	size_t cat_count = sm->cat_count;
+	const double* cat_proportions = Parameter_values(sm->proportions);
+	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
+	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
+
+	if(Parameters_count(sm->rates) == 0){
+		sm->cat_rates[1] = 1.0/sm->cat_proportions[1];
+		sm->need_update = false;
+		return;
+	}
+
+	size_t cat = (sm->invariant ? 1 : 0);
+	const double* contributions = Parameter_values(Parameters_at(sm->rates, 0));
+	for (size_t i = cat; i < cat_count; i++ ) {
+		sm->cat_rates[i] = contributions[i - cat]/sm->cat_proportions[i];
+	}
+	sm->need_update = false;
+}
+
+// Ordered increments ("rate_increments"; see docs/models/sitemodel.md). The free
+// parameter is the vector of gaps between consecutive categories, so the raw
+// rates are its running sum and the unit mean is imposed afterwards as in
+// _calculate_rates_discrete_rate_shape:
+//
+//     rt_1 = theta_1,  rt_k = rt_{k-1} + theta_k,  r_k = rt_k / sum_j p_j rt_j .
+//
+// Positive gaps make the rates strictly increasing, which breaks the K!
+// label-switching symmetry of the unordered parameterizations. The Jacobian of
+// the raw map is the lower-triangular matrix of ones whatever the parameter
+// values, so nothing compounds -- better conditioned than the equivalent chain
+// of multiplicative factors in _calculate_rates_discrete_ratios.
+//
+// Note that theta has K elements for K-1 degrees of freedom: the normalisation
+// is scale-free, so the likelihood is exactly flat along theta -> c*theta. Pin
+// the scale (fix one element, or put theta on a simplex) before reading anything
+// curvature-based off a fit. No invariant class: the running sum starts at
+// category 0, which +I would need pinned at rate 0.
+void _calculate_rates_discrete_increments( SiteModel *sm ) {
 	int cat_count = Parameter_size(sm->proportions);
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
 	const double* cat_proportions = Parameter_values(sm->proportions);
@@ -977,7 +1080,27 @@ void _calculate_rates_discrete_cumsum( SiteModel *sm ) {
 	sm->need_update = false;
 }
 
-void _calculate_rates_discrete_prop( SiteModel *sm ) {
+// Ordered ratios ("rate_ratios"; also inferred from a two-element "rates" array).
+// The free parameters are a vector theta of K-1 ratios of each category to the next one
+// up, and a scalar for the top raw rate, from which the sequence is built
+// downwards and then normalised:
+//
+//     rt_{K-1} = top,  rt_{k-1} = theta_{k-1} * rt_k,
+//     r_k = rt_k / sum_j p_j rt_j .
+//
+// With theta in (0,1) the rates increase, so this is ordered like
+// _calculate_rates_discrete_increments; it is the multiplicative counterpart,
+// and its parameters are the scale-free ratios between adjacent categories
+// rather than absolute gaps. That also makes it the descending form of the
+// cumulative-product construction of _calculate_rates_discrete.
+//
+// The trade-off against the increments is conditioning: the raw
+// derivatives are products of the other ratios, so they grow or shrink
+// geometrically in K. The top rate is redundant for the same reason the
+// increments carry a spare degree of freedom -- normalisation cancels it -- so
+// the same caveat applies. No invariant class either: the chain runs down to
+// category 0.
+void _calculate_rates_discrete_ratios( SiteModel *sm ) {
 	int cat_count = Parameter_size(sm->proportions);
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
 	const double* cat_proportions = Parameter_values(sm->proportions);
@@ -1036,9 +1159,10 @@ SiteModel * new_CATSiteModel_with_parameters( const Parameters *params,  const s
 	sm->distribution = -1;
 	sm->invariant = false;
 	sm->quadrature = -1;
-	
+	sm->rate_parameterization = RATE_PARAMETERIZATION_AUTO;
+
 	sm->cat_count = cat_count;
-	
+
 	sm->cat_rates = dvector(sm->cat_count);
 	sm->cat_proportions = NULL;
 	sm->proportions = NULL;
@@ -1111,7 +1235,8 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm ){
 	newsm->distribution = sm->distribution;
 	newsm->invariant = sm->invariant;
 	newsm->quadrature = sm->quadrature;
-	
+	newsm->rate_parameterization = sm->rate_parameterization;
+
 	newsm->gradient = sm->gradient;
 	newsm->derivative = sm->derivative;
 
@@ -1126,7 +1251,8 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* pro
 	newsm->distribution = sm->distribution;
 	newsm->invariant = sm->invariant;
 	newsm->quadrature = sm->quadrature;
-	
+	newsm->rate_parameterization = sm->rate_parameterization;
+
 	newsm->rates = NULL;
 	
 	newsm->cat_count = sm->cat_count;
@@ -1244,6 +1370,102 @@ static Parameter* new_proportion_invariant_from_json(json_node* node, Hashtable*
 	return _build_invariant_simplex(proportion, simplex_id, hash);
 }
 
+static const char* rate_parameterization_strings[] = {
+	"auto", "rate_shape", "mean_contribution", "rate_increments", "rate_ratios"
+};
+
+static rate_parameterization_t _infer_rate_parameterization(const Parameters* rates){
+	if (Parameters_count(rates) == 1) {
+		return Parameters_at(rates, 0)->simplex ? RATE_PARAMETERIZATION_RATE_SHAPE
+		                                        : RATE_PARAMETERIZATION_RATE_INCREMENTS;
+	}
+	return RATE_PARAMETERIZATION_RATE_RATIOS;
+}
+
+static void _check_rate_parameterization(rate_parameterization_t parameterization,
+                                         const Parameters* rates,
+                                         const Parameter* proportions,
+                                         distribution_t distribution, size_t cat,
+                                         bool invariant){
+	char prefix[64];
+	snprintf(prefix, sizeof(prefix), "sitemodel: parameterization \"%s\"",
+	         rate_parameterization_strings[parameterization]);
+	if (distribution != DISTRIBUTION_DISCRETE) {
+		fprintf(stderr, "%s requires \"distribution\": \"discrete\"\n", prefix);
+		exit(2);
+	}
+	if (proportions == NULL) {
+		fprintf(stderr, "%s requires a \"proportions\" simplex\n", prefix);
+		exit(2);
+	}
+	// Only the mean-contribution simplex holds category 0 at rate 0; the others
+	// write their first rate there, so an invariant class would be overwritten.
+	if (invariant && parameterization != RATE_PARAMETERIZATION_MEAN_CONTRIBUTION) {
+		fprintf(stderr, "%s does not support an invariant category\n", prefix);
+		exit(2);
+	}
+	size_t dim = cat + (invariant ? 1 : 0);
+	if (Parameter_size(proportions) != dim) {
+		fprintf(stderr, "%s expects a proportions simplex of dimension %zu, got %zu\n",
+		        prefix, dim, Parameter_size(proportions));
+		exit(2);
+	}
+
+	size_t expected = dim;
+	switch (parameterization) {
+		case RATE_PARAMETERIZATION_MEAN_CONTRIBUTION:
+			// The invariant class contributes nothing to the mean, so the simplex
+			// covers the variable categories only.
+			expected = cat;
+			// fall through
+		case RATE_PARAMETERIZATION_RATE_SHAPE:
+			if (Parameters_count(rates) != 1 || !Parameters_at(rates, 0)->simplex) {
+				fprintf(stderr, "%s expects \"rates\" to be a single simplex parameter\n",
+				        prefix);
+				exit(2);
+			}
+			if (Parameter_size(Parameters_at(rates, 0)) != expected) {
+				fprintf(stderr, "%s expects a rates simplex of dimension %zu, got %zu\n",
+				        prefix, expected, Parameter_size(Parameters_at(rates, 0)));
+				exit(2);
+			}
+			break;
+		case RATE_PARAMETERIZATION_RATE_INCREMENTS:
+			if (Parameters_count(rates) != 1 || Parameters_at(rates, 0)->simplex) {
+				fprintf(stderr, "%s expects \"rates\" to be a single plain (non-simplex) "
+				                "vector parameter\n", prefix);
+				exit(2);
+			}
+			if (Parameter_size(Parameters_at(rates, 0)) != expected) {
+				fprintf(stderr, "%s expects %zu increments, got %zu\n", prefix, expected,
+				        Parameter_size(Parameters_at(rates, 0)));
+				exit(2);
+			}
+			break;
+		case RATE_PARAMETERIZATION_RATE_RATIOS:
+			if (Parameters_count(rates) != 2) {
+				fprintf(stderr, "%s expects \"rates\" to be an array of two parameters: "
+				                "the ratios between consecutive categories, and the rate "
+				                "of the last category\n", prefix);
+				exit(2);
+			}
+			if (Parameter_size(Parameters_at(rates, 0)) != expected - 1) {
+				fprintf(stderr, "%s expects %zu ratios, got %zu\n", prefix, expected - 1,
+				        Parameter_size(Parameters_at(rates, 0)));
+				exit(2);
+			}
+			if (Parameter_size(Parameters_at(rates, 1)) != 1) {
+				fprintf(stderr, "%s expects the rate of the last category to be a scalar, "
+				                "got %zu elements\n", prefix,
+				        Parameter_size(Parameters_at(rates, 1)));
+				exit(2);
+			}
+			break;
+		case RATE_PARAMETERIZATION_AUTO:
+			break;
+	}
+}
+
 Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	static const json_field schema[] = {
 		{"a", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},        // Kumaraswamy a
@@ -1252,9 +1474,9 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		{"beta", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},     // Beta beta
 		{"categories", JSON_OPTIONAL, JSON_NUMBER},
 		{"distribution", JSON_OPTIONAL, JSON_STRING},
-		// {"epsilon", JSON_OPTIONAL, JSON_NUMBER},
 		{"invariant", JSON_OPTIONAL, JSON_BOOL},
 		{"mu", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+		{"parameterization", JSON_OPTIONAL, JSON_STRING},
 		{"parameters", JSON_OPTIONAL, JSON_ANY},
 		{"proportion_invariant", JSON_OPTIONAL, JSON_OBJECT | JSON_NUMBER | JSON_STRING},
 		{"proportions", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
@@ -1282,10 +1504,34 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	
 	distribution_t distribution = DISTRIBUTION_UNIFORM;
 	quadrature_t quad = QUADRATURE_QUANTILE_MEDIAN;
+	rate_parameterization_t rate_parameterization = RATE_PARAMETERIZATION_AUTO;
 	bool invariant = false;
-	
+
 	if (distribution_node != NULL) {
 		invariant = get_json_node_value_bool(node, "invariant", false);
+
+		char* parameterization_name = get_json_node_value_string(node, "parameterization");
+		if (parameterization_name != NULL) {
+			if (strcasecmp(parameterization_name, "rate_shape") == 0) {
+				rate_parameterization = RATE_PARAMETERIZATION_RATE_SHAPE;
+			}
+			else if (strcasecmp(parameterization_name, "mean_contribution") == 0) {
+				rate_parameterization = RATE_PARAMETERIZATION_MEAN_CONTRIBUTION;
+			}
+			else if (strcasecmp(parameterization_name, "rate_increments") == 0) {
+				rate_parameterization = RATE_PARAMETERIZATION_RATE_INCREMENTS;
+			}
+			else if (strcasecmp(parameterization_name, "rate_ratios") == 0) {
+				rate_parameterization = RATE_PARAMETERIZATION_RATE_RATIOS;
+			}
+			else{
+				fprintf(stderr, "Cannot recognize parameterization %s (expected "
+				                "\"rate_shape\", \"mean_contribution\", "
+				                "\"rate_increments\" or \"rate_ratios\")\n",
+				        parameterization_name);
+				exit(13);
+			}
+		}
 
 		proportions_node = get_json_node(node, "proportions");
 		cat = get_json_node_value_int(node, "categories", 4);
@@ -1458,14 +1704,58 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			else if(quad == QUADRATURE_KUMARASWAMY){
 				json_node* a_node = get_json_node(node, "a");
 				Parameter* a_parameter = new_Parameter_from_json(a_node, hash);
-				Parameters_move(rates, a_parameter);
 
 				json_node* b_node = get_json_node(node, "b");
 				Parameter* b_parameter = new_Parameter_from_json(b_node, hash);
+
+				// As "a" -> 0 the interior quantile B(1/K)^(1/a) of the Kumaraswamy
+				// inverse-CDF underflows to exactly 0, and the downstream inverse-CDF
+				// (e.g. gsl_cdf_gamma_Qinv(0,...)) returns +Inf, poisoning the
+				// likelihood with a NaN. Unless the user pinned an explicit positive
+				// lower bound, set one a few times above that underflow cliff. The
+				// cliff depends on the category count K and on b: the smallest CDF
+				// base is B(1/K) = 1 - (1 - 1/K)^(1/b), and B^(1/a) underflows once
+				// (1/a)*ln(B) < ln(DBL_MIN) ~ -700. The clamp in
+				// _gamma_approx_quantile remains the ultimate safety net.
+				if (Parameter_lower(a_parameter) <= 0.0) {
+					const double K = (double)cat;
+					const double b_init = Parameter_value(b_parameter);
+					double base_min = 1.0 - pow(1.0 - 1.0 / K, 1.0 / b_init);
+					base_min = fmax(base_min, 1e-300);
+					const double a_cliff = -log(base_min) / 700.0;
+					double a_lower = fmin(fmax(5.0 * a_cliff, 1e-3), 0.1);
+					Parameter_set_lower(a_parameter, a_lower);
+					if (Parameter_value(a_parameter) < a_lower) {
+						Parameter_set_value(a_parameter, a_lower);
+					}
+				}
+
+				Parameters_move(rates, a_parameter);
 				Parameters_move(rates, b_parameter);
 			}
 		}
-		
+
+		if (rate_parameterization == RATE_PARAMETERIZATION_MEAN_CONTRIBUTION &&
+			dimProportion == cat + 1) {
+			// Same convention as the "discrete" quadrature: a proportions simplex one
+			// element longer than "categories" prepends the invariant class, whose
+			// rate is pinned at 0 and which therefore has no mean contribution.
+			invariant = true;
+		}
+		// A parameterization named in the JSON is checked whatever the model it was
+		// attached to. An inferred one is resolved here, the way
+		// _update_rates_discrete would resolve it, and checked too -- so that a
+		// mis-sized "rates" is a parse error rather than a read off the end of the
+		// parameter. The pure +I model has no rate parameter to parameterise.
+		if (rate_parameterization != RATE_PARAMETERIZATION_AUTO ||
+			(distribution == DISTRIBUTION_DISCRETE && Parameters_count(rates) > 0)) {
+			if (rate_parameterization == RATE_PARAMETERIZATION_AUTO) {
+				rate_parameterization = _infer_rate_parameterization(rates);
+			}
+			_check_rate_parameterization(rate_parameterization, rates, proportions,
+			                             distribution, cat, invariant);
+		}
+
 		for (int i = 0; i < Parameters_count(rates); i++) {
 			Parameter* p = Parameters_at(rates, i);
 			Parameter_set_model(p, MODEL_SITEMODEL);
@@ -1494,7 +1784,7 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		sm = new_CATSiteModel_with_parameters(rates, cat, sp);
 	}
 	else {
-		sm = new_SiteModel_with_parameters(rates, proportions, cat, distribution, invariant, quad);
+		sm = new_SiteModel_with_parameters(rates, proportions, cat, distribution, invariant, quad, rate_parameterization);
 	}
 	
 	
@@ -1508,11 +1798,9 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
 	}
-	// sm->epsilon = get_json_node_value_double(node, "epsilon", 1.e-6);
 	
 	Model* msm = new_SiteModel2(id, sm);
 	
-	// if(mprops_simplex != NULL) mprops_simplex->free(mprops_simplex);
 	msm->print = _SiteModel_print;
 	free_Parameters(rates);
 	return msm;
