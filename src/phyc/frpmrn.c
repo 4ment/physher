@@ -47,7 +47,7 @@ void extract_gradient( Parameters *params, double *grad ){
 	}
 }
 // Nonlinear conjugate gradient optimizer
-opt_result frprmn_optimize( Parameters *parameters, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion stop, double *fmin, opt_algorithm algorithm ){
+opt_result frprmn_optimize( Parameters *parameters, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion *stop, double *fmin, opt_algorithm algorithm ){
 // int conjugate_gradient(opt_func f, opt_grad_func grad, void* data, Parameters* parameters, double tol, int max_iter) {
 	size_t n = Parameters_size(parameters);
     double *g = malloc(n * sizeof(double));
@@ -72,14 +72,15 @@ opt_result frprmn_optimize( Parameters *parameters, opt_func f, opt_grad_func gr
     double gnorm = sqrt(dot(g, g, n));
 	double previousAlpha = 1.0;
     size_t iter = 0;
-	size_t *numFun = &stop.f_eval_current;
+	size_t *numFun = &stop->f_eval_current;
 	(*numFun)++;
 	// init stop condition
-	opt_check_stop( &stop, parameters, fx );
+	opt_check_stop( stop, parameters, fx );
 	printf("Initial function value: %f\n", fx);
 
     // while (gnorm > tol && iter < max_iter) {
 	while(status == OPT_KEEP_GOING) {
+        (*numFun)++;
         double f0 = f(parameters, NULL, data);
         // Strong-Wolfe line search. CG requires the curvature condition (and a
         // tight c2, < 0.5) to keep generating descent directions; a plain
@@ -91,7 +92,7 @@ opt_result frprmn_optimize( Parameters *parameters, opt_func f, opt_grad_func gr
 
         // p was not a descent direction: restart with steepest descent and retry.
         if (ls.status == 2 || alpha == 0.0) {
-            if (sqrt(dot(g, g, n)) <= stop.tolg) {
+            if (sqrt(dot(g, g, n)) <= stop->tolg) {
                 status = OPT_SUCCESS;
                 break;
             }
@@ -105,6 +106,7 @@ opt_result frprmn_optimize( Parameters *parameters, opt_func f, opt_grad_func gr
 		}
 		Parameters_restore_value(parameters, x_new);
 
+		(*numFun)++;
 		fx = f(parameters, NULL, data);
 		printf("Function value: %f\n", fx);
         grad_f(parameters, g_new, data);
@@ -159,13 +161,17 @@ opt_result frprmn_optimize( Parameters *parameters, opt_func f, opt_grad_func gr
         // Converge on a small gradient norm rather than only on a small change
         // in function value: tiny line-search steps can make |fx - fxold| fall
         // below tolfx far from the optimum.
-        if (gnorm <= stop.tolg) {
+        if (gnorm <= stop->tolg) {
             status = OPT_SUCCESS;
             break;
         }
 
 		// test for for convergence
-		if ( (status = opt_check_stop( &stop, parameters, fx )) != OPT_KEEP_GOING ){
+		// opt_check_stop reads stop->iter but never advances it, so the
+		// OPT_MAXITER branch was unreachable and the JSON `iterations` key had
+		// no effect on this algorithm.
+		stop->iter++;
+		if ( (status = opt_check_stop( stop, parameters, fx )) != OPT_KEEP_GOING ){
 			//fprintf(stderr, "opt_check_stop status %d iter = %d\n", status, stop.iter_current );
 			break;
 		}

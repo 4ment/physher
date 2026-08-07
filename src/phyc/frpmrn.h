@@ -10,6 +10,6 @@
 
 //typedef enum cg_algorithm {FLETCHER_REEVES, POLAK_RIBIERE, BEALE_SORENSON_HESTENES_STIEFEL} cg_algorithm;
 
-opt_result frprmn_optimize( Parameters *x, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion stop, double *fmin, opt_algorithm algorithm );
+opt_result frprmn_optimize( Parameters *x, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion *stop, double *fmin, opt_algorithm algorithm );
 
 #endif

@@ -18,7 +18,7 @@ void free_Powell( Powell *powell);
 
 
 
-opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriterion stop, double *fmin, opt_update_data uf );
+opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriterion *stop, double *fmin, opt_update_data uf );
 
 
 

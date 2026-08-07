@@ -64,13 +64,29 @@ typedef struct OptStopCriterion{
 	double tolfx;
 	double tolx;
 	double tolg; // gradient tolerance
-	
+
+	// Number of consecutive checks that must fall below tolfx before the run is
+	// called converged. 1 reproduces a single-check criterion.
+	size_t patience;
+	// Consecutive checks so far whose gain was below tolfx.
+	size_t stall;
+
+	// Reference value the next check is measured against: the objective at the
+	// last check that made real progress, NOT simply the previous check.
 	double oldfx;
 	double *oldx;
-	
+
 	int count;
 	size_t frequency_check; // iter%frequency_check == 0 then check convergence
 }OptStopCriterion;
+
+// Verdict on one step of an optimizer -- one sweep of a meta schedule, one
+// Powell direction set, one conjugate-gradient iteration. See opt_check_progress.
+typedef enum opt_progress{
+	OPT_PROGRESS_ONGOING   = 0,
+	OPT_PROGRESS_CONVERGED = 1,
+	OPT_PROGRESS_WORSE     = 2  // the step ended higher than it started
+}opt_progress;
 
 
 typedef double (*opt_func)( Parameters *x, double *gradient, void *data );
@@ -81,11 +97,8 @@ typedef bool (*opt_update_data)( void *data, Parameters *p);
 struct _OptimizerSchedule;
 typedef struct _OptimizerSchedule OptimizerSchedule;
 
-typedef bool(*OptimizerSchedule_post)(OptimizerSchedule*, double before, double after);
-
 struct _OptimizerSchedule{
 	Optimizer** optimizers;
-	OptimizerSchedule_post* post;
 	int* rounds;
 	int count;
 	int capacity;
@@ -118,6 +131,12 @@ void opt_set_max_evaluation( Optimizer *opt, const size_t maxeval );
 
 void opt_set_max_iteration( Optimizer *opt, const size_t maxiter );
 
+void opt_set_min_iteration( Optimizer *opt, const size_t miniter );
+
+void opt_set_patience( Optimizer *opt, const size_t patience );
+
+void opt_set_verbosity( Optimizer *opt, const int verbosity );
+
 void opt_set_treelikelihood( Optimizer *opt, Model* likelihood);
 
 void opt_set_time_max( Optimizer *opt, const double maxtime );
@@ -146,6 +165,14 @@ Parameters* opt_parameters( Optimizer *opt );
 void opt_set_update_data_function( Optimizer *opt, opt_update_data uf );
 
 opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx );
+
+// Wall-clock / evaluation / iteration budgets only. `f_eval_current` is counted
+// by the Brent family and the conjugate-gradient optimizer; BFGS, Powell and the
+// stochastic-gradient backends do not maintain it, so an evaluation budget has
+// no effect on those.
+opt_result opt_check_limits( OptStopCriterion *stop );
+
+opt_progress opt_check_progress( OptStopCriterion *stop, double before, double after );
 
 void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt);
 

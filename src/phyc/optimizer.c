@@ -5,6 +5,7 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 #include <time.h>
 #include <string.h>
@@ -110,7 +111,6 @@ static void _reset(void* data){
 static bool dummy_update_data( void *data, Parameters *p){return false;}
 
 static bool xStop( const Parameters *x,  double *xold, const double tolx);
-static bool fxStop(double fx, double *fxold, const double tolfx);
 
 struct _Optimizer{
 	opt_algorithm algorithm;
@@ -163,12 +163,12 @@ opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptS
 		if(!Node_has_distance(node)) continue;
 		if(tlk->node_upper == NULL) tlk->node_upper = node;
 
+		// iter is Brent's own inner-loop counter and restarts per branch. The
+		// evaluation count and the clock must not: they are budgets over the
+		// whole call, and restarting them here gave every branch a fresh
+		// allowance and reported only the last branch's work.
 		stop->iter = 0;
-		stop->f_eval_current = 0;
 		stop->count = 0;
-		if ( stop->time_max != 0 ) {
-			time( &stop->time_start );
-		}
 #ifdef UPPER_PARTIALS
 		printf("brent\n");
 #endif
@@ -185,33 +185,114 @@ opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptS
 	return OPT_SUCCESS;
 }
 
-opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double *fmin, OptimizerSchedule* schedule, bool verbosity ){
+// Judge one step of an optimizer: a sweep of a meta schedule, a Powell direction
+// set, a conjugate-gradient iteration. `before` and `after` are the objective at
+// the start and end of the step; it is a negative log-likelihood, so smaller is
+// better and `before - after` is the gain. The caller decides what `before` is --
+// meta passes the value at the head of the sweep, opt_check_stop passes the value
+// at the last check that made progress.
+//
+// Three things distinguish this from the `before - after < tolfx` test it
+// replaces:
+//
+//  - `iter_min` (the JSON `min` key) is honoured. It was parsed and then never
+//    read by anything, so a single flat sweep ended the run. That is exactly the
+//    case a schedule needs to push through: sweeps can crawl along a curved
+//    ridge before an optimizer further down the list breaks out of it.
+//  - `patience` requires several consecutive flat steps rather than one.
+//  - a step that ends *higher* than it started is reported as OPT_PROGRESS_WORSE.
+//    The
+//    old test folded it into the "gain below tolerance" branch, because a
+//    negative gain is also less than tolfx, and returned OPT_SUCCESS from a
+//    point worse than the one the sweep started at.
+//
+// The tolerance stays absolute. A log-likelihood difference carries the same
+// meaning whatever the total, so `tolfx` is a number of log units, not a
+// fraction of the objective -- scaling it by the magnitude would ask a run whose
+// likelihood is -1e6 to accept a gain of tens of units as convergence. The only
+// scaling applied is a floor at the representable resolution of `after`, so a
+// tolerance smaller than an ulp cannot demand a difference doubles cannot express.
+//
+// `stop->stall` carries the number of consecutive steps whose gain was below
+// tolerance; the caller zeroes it before the first step.
+opt_progress opt_check_progress( OptStopCriterion *stop, double before, double after ){
+	double tol = fmax(stop->tolfx, 8.0*DBL_EPSILON*fabs(after));
+	double gain = before - after;
+
+	if (gain < -tol) {
+		stop->stall = 0;
+		return OPT_PROGRESS_WORSE;
+	}
+	if (gain > tol) {
+		stop->stall = 0;
+		return OPT_PROGRESS_ONGOING;
+	}
+	stop->stall++;
+	if (stop->stall < stop->patience || stop->iter < stop->iter_min) {
+		return OPT_PROGRESS_ONGOING;
+	}
+	return OPT_PROGRESS_CONVERGED;
+}
+
+// Sweeps over which a schedule entry's configured `rounds` are honoured. The
+// extra rounds only pay off while the parameters are far from the optimum;
+// after this many sweeps every entry drops to one round.
+#define META_MULTIROUND_SWEEPS 2
+
+opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double *fmin, OptimizerSchedule* schedule, int verbosity ){
 	double lnl = f(NULL, NULL, data);
+	const double lnl_start = lnl;
 	double fret = lnl;
-	for (stop->iter = 0; stop->iter < stop->iter_max; stop->iter++) {
+	*fmin = lnl;
+	stop->stall = 0;
+	stop->iter = 0;
+	stop->f_eval_current = 1;
+	opt_result result = OPT_MAXITER;
+
+	for (size_t sweep = 0; sweep < stop->iter_max; sweep++) {
 		double lnl_current = lnl;
 		for (int i = 0; i < schedule->count; i++) {
 			Optimizer* opt = schedule->optimizers[i];
+			// Read the round count, do not overwrite it. This used to assign
+			// schedule->rounds[i] = 1 on the third sweep, which permanently
+			// rewrote the schedule: an Optimizer reused across bootstrap
+			// replicates ran the configured rounds for replicate 0 and a single
+			// round for every replicate after it.
+			int rounds = (sweep < META_MULTIROUND_SWEEPS) ? schedule->rounds[i] : 1;
 			double local_fret;
-			for (int k = 0; k < schedule->rounds[i]; k++){
+			for (int k = 0; k < rounds; k++){
 				local_fret = fret;
 				opt_result status;
+				// Entries report how many times they evaluated the objective;
+				// zero the counter first so what comes back is this call's work
+				// and not an accumulation over every sweep so far.
+				// serial_brent_optimize_tree does not go through opt_optimize, so
+				// it would otherwise never be reset.
+				opt->stop.f_eval_current = 0;
 				if(opt->treelikelihood != NULL && opt->algorithm != OPT_TOPOLOGY){
 					status = serial_brent_optimize_tree(opt->treelikelihood, opt->f, opt->data, &opt->stop, &fret);
 				}
 				else{
 					status = opt_optimize( opt, &fret);
 				}
-				bool stopit = schedule->post[i](schedule,local_fret, fret);
-				//				printf("%s %f %f -> %f (%f)\n", Parameters_name(parameters, 0), Parameters_value(parameters, 0), lnl, fret, local_fret);
-				if(stopit) break;
+				stop->f_eval_current += opt->stop.f_eval_current;
+				// A failed child has not necessarily written fret -- scaler_optimize
+				// returns OPT_FAIL without touching it -- so the sweep would carry
+				// the previous entry's value forward as if this one had run. Resync
+				// on the target instead of trusting the report. The run itself is
+				// not abandoned: Brent legitimately reports OPT_FAIL when it rolls
+				// back to its incoming value.
+				if (status == OPT_FAIL || status == OPT_ERROR) {
+					fret = f(NULL, NULL, data);
+					stop->f_eval_current++;
+					if (verbosity > 0) {
+						fprintf(stderr, "meta: optimizer %d of the schedule failed (status %d)\n", i, status);
+					}
+				}
 			}
-			if(stop->iter == 2) schedule->rounds[i] = 1;
+
 			// Optimizing branches efficiently
 			if(opt->treelikelihood != NULL){
-//				SingleTreeLikelihood_update_all_nodes(opt->treelikelihood->obj);
-//				fret = _logP(NULL, NULL, data);
-				//printf("-== %f\n", _logP(NULL, NULL, data));
 				if(opt->verbosity > 0) printf("branches %f %f\n", -fret, -lnl);
 			}
 			// Optimizing any parameters
@@ -225,21 +306,75 @@ opt_result meta_optimize( opt_func f, void *data, OptStopCriterion *stop, double
 			}
 			lnl = fret;
 		}
-		if(  lnl_current-lnl < stop->tolfx ){
-			if(verbosity) printf("\n%f %f\n\n", -lnl, -lnl_current);
-			*fmin = lnl;
-			return OPT_SUCCESS;
-		}
-		if(schedule->optimizers[0]->treelikelihood != NULL){
-			SingleTreeLikelihood* tlk = schedule->optimizers[0]->treelikelihood->obj;
+
+		// Rescaling is switched on inside the likelihood when the partials
+		// underflow; turn it back off once a sweep so the cheaper unscaled path
+		// is used again whenever the parameters allow it. Any entry of the
+		// schedule may be the one holding the tree -- this used to look only at
+		// optimizers[0], so a schedule that did not list the branch-length
+		// optimizer first never reached it.
+		for (int i = 0; i < schedule->count; i++) {
+			if (schedule->optimizers[i]->treelikelihood == NULL) continue;
+			SingleTreeLikelihood* tlk = schedule->optimizers[i]->treelikelihood->obj;
 			if (tlk->scale) {
 				SingleTreeLikelihood_use_rescaling(tlk, false);
 				SingleTreeLikelihood_update_all_nodes( tlk );
 			}
 		}
+
+		// Re-evaluate the target rather than trusting whatever the last entry of
+		// the schedule reported. Serial Brent reports an upper-partial likelihood,
+		// the topology optimizer reports its own accounting, and the rescaling
+		// toggle above has just invalidated every partial -- so the two numbers
+		// the criterion compares could otherwise come from different code paths.
+		// One full evaluation per sweep is negligible next to the hundreds the
+		// schedule itself performs.
+		lnl = fret = f(NULL, NULL, data);
+		stop->f_eval_current++;
+		stop->iter = sweep + 1;
+		*fmin = lnl;
+
+		opt_progress convergence = opt_check_progress(stop, lnl_current, lnl);
+		if (convergence == OPT_PROGRESS_WORSE && verbosity > 0) {
+			fprintf(stderr, "meta: sweep %zu left the objective worse (%f -> %f)\n",
+			        sweep + 1, -lnl_current, -lnl);
+		}
+		if (convergence == OPT_PROGRESS_CONVERGED) {
+			if(verbosity) printf("\n%f %f\n\n", -lnl, -lnl_current);
+			result = OPT_SUCCESS;
+			break;
+		}
+
+		// Budgets are enforced at sweep granularity: an entry of the schedule
+		// cannot be interrupted once it is running, so a limit is honoured to
+		// within one sweep. Checked after the convergence test so a run that
+		// finishes on the same sweep it runs out of budget still reports success.
+		opt_result limit = opt_check_limits(stop);
+		if (limit != OPT_KEEP_GOING) {
+			if (verbosity > 0) {
+				const char* why = limit == OPT_MAXTIME ? "the time limit"
+				                : limit == OPT_MAXEVAL ? "the evaluation limit"
+				                                       : "the iteration limit";
+				fprintf(stderr, "meta: stopping after %zu sweeps on %s\n", sweep + 1, why);
+			}
+			result = limit;
+			break;
+		}
 		if(verbosity) printf("\n");
 	}
-	return OPT_MAXITER;
+
+	// Converging is not the same as improving. The schedule has no way to roll
+	// the model back -- its entries own disjoint parameter sets and the
+	// branch-length entry owns none -- so the best it can do is refuse to call a
+	// net regression a success.
+	if (result == OPT_SUCCESS && lnl > lnl_start + stop->tolfx * fmax(1.0, fabs(lnl_start))) {
+		if (verbosity > 0) {
+			fprintf(stderr, "meta: converged to a worse point than it started from (%f -> %f)\n",
+			        -lnl_start, -lnl);
+		}
+		result = OPT_FAIL;
+	}
+	return result;
 }
 
 
@@ -271,7 +406,9 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->stop.tolfx = 0;
 	opt->stop.tolx = OPT_XTOL;
 	opt->stop.tolg = 1.e-5;
-	
+	opt->stop.patience = 1;
+	opt->stop.stall = 0;
+
 	opt->stop.oldx = NULL;
 	opt->stop.oldfx = 0;
 	
@@ -319,7 +456,9 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 	clone->stop.tolfx = opt->stop.tolfx;
 	clone->stop.tolx = opt->stop.tolx;
 	clone->stop.tolg = opt->stop.tolg;
-	
+	clone->stop.patience = opt->stop.patience;
+	clone->stop.stall = opt->stop.stall;
+
 	clone->stop.oldx = opt->stop.oldx;
 	clone->stop.oldfx = opt->stop.oldfx;
 	
@@ -340,13 +479,11 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 		clone->schedule->capacity = opt->schedule->capacity;
 		clone->schedule->count = opt->schedule->count;
 		clone->schedule->optimizers = (Optimizer**)calloc(opt->schedule->capacity, sizeof(Optimizer*));
-		clone->schedule->post = (OptimizerSchedule_post*)calloc(opt->schedule->capacity, sizeof(OptimizerSchedule_post));
 		clone->schedule->rounds = ivector(opt->schedule->capacity);
 		memcpy(clone->schedule->rounds, opt->schedule->rounds, sizeof(int)*opt->schedule->count);
 		
 		for (int i = 0; i < clone->schedule->count; i++) {
 			clone->schedule->optimizers[i] = clone_Optimizer(opt->schedule->optimizers[i], data, parameters);
-			clone->schedule->post[i] = opt->schedule->post[i];
 			
 			if(Parameters_count(opt->parameters) > 0){
 				opt->parameters = new_Parameters(Parameters_count(opt->parameters));
@@ -392,7 +529,6 @@ void free_Optimizer( Optimizer *opt ){
 		}
 		free(opt->schedule->optimizers);
 		free(opt->schedule->rounds);
-		free(opt->schedule->post);
 		free(opt->schedule);
 	}
 	if(opt->checkpoint_file != NULL){
@@ -450,6 +586,18 @@ void opt_set_max_iteration( Optimizer *opt, const size_t maxiter ){
 void opt_set_min_iteration( Optimizer *opt, const size_t miniter ){
 	if( opt != NULL ){
 		opt->stop.iter_min = miniter;
+	}
+}
+
+void opt_set_patience( Optimizer *opt, const size_t patience ){
+	if( opt != NULL ){
+		opt->stop.patience = patience;
+	}
+}
+
+void opt_set_verbosity( Optimizer *opt, const int verbosity ){
+	if( opt != NULL ){
+		opt->verbosity = verbosity;
 	}
 }
 
@@ -521,10 +669,6 @@ Parameters* opt_parameters( Optimizer *opt ){
 }
 // Meta optimizer
 
-bool opt_post(OptimizerSchedule* schedule, double before, double after){
-	return false;
-}
-
 void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt){
 	if(opt_meta->schedule == NULL){
 		opt_get_schedule(opt_meta);
@@ -533,11 +677,9 @@ void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt){
 		opt_meta->schedule->capacity++;
 		opt_meta->schedule->optimizers = (Optimizer**)realloc(opt_meta->schedule->optimizers, sizeof(Optimizer*)*opt_meta->schedule->capacity);
 		opt_meta->schedule->rounds = (int*)realloc(opt_meta->schedule->rounds, sizeof(int)*opt_meta->schedule->capacity);
-		opt_meta->schedule->post = (OptimizerSchedule_post*)realloc(opt_meta->schedule->post, sizeof(OptimizerSchedule_post)*opt_meta->schedule->capacity);
 	}
 	opt_meta->schedule->optimizers[opt_meta->schedule->count] = opt;
 	opt_meta->schedule->rounds[opt_meta->schedule->count] = 1;
-	opt_meta->schedule->post[opt_meta->schedule->count] = opt_post;
 	opt_meta->schedule->count++;
 }
 
@@ -545,7 +687,6 @@ OptimizerSchedule* opt_get_schedule(Optimizer *opt_meta){
 	if(opt_meta->schedule == NULL){
 		opt_meta->schedule = (OptimizerSchedule*)malloc(sizeof(OptimizerSchedule));
 		opt_meta->schedule->optimizers = (Optimizer**)malloc(sizeof(Optimizer*));
-		opt_meta->schedule->post = (OptimizerSchedule_post*)malloc(sizeof(OptimizerSchedule_post));
 		opt_meta->schedule->rounds = ivector(1);
 		opt_meta->schedule->capacity = 1;
 		opt_meta->schedule->count = 0;
@@ -554,10 +695,37 @@ OptimizerSchedule* opt_get_schedule(Optimizer *opt_meta){
 }
 
 
+// The resource half of opt_check_stop: the wall-clock, iteration and evaluation
+// budgets, with no reference to the objective value. Split out so a caller that
+// brings its own convergence test -- the meta optimizer -- can honour the
+// budgets without also inheriting the value-based test. A zero budget means
+// "no limit".
+//
+// The three are reported in order of urgency rather than being allowed to
+// overwrite one another: the old inline version evaluated all three in sequence,
+// so an evaluation budget that was still fine erased an already-detected
+// timeout and the run kept going.
+opt_result opt_check_limits( OptStopCriterion *stop ){
+	if( stop->time_max != 0 ){
+		time( &stop->time_current );
+		if( difftime( stop->time_current, stop->time_start ) > stop->time_max ){
+			return OPT_MAXTIME;
+		}
+	}
+
+	if ( stop->f_eval_max != 0 && stop->f_eval_current + 1 > stop->f_eval_max ) {
+		return OPT_MAXEVAL;
+	}
+
+	if ( stop->iter_max != 0 && stop->iter > stop->iter_max ) {
+		return OPT_MAXITER;
+	}
+
+	return OPT_KEEP_GOING;
+}
+
 // At least one of these conditions is sufficient to stop the optimization
 opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx ){
-	opt_result stopflag = OPT_KEEP_GOING;
-	
 	if ( stop->count == 0 ) {
 		if(stop->oldx == NULL){
 			stop->oldx = dvector(Parameters_size(x));
@@ -565,46 +733,34 @@ opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx ){
 		Parameters_store_value(x, stop->oldx);
 		stop->oldfx = fx;
 		stop->count++;
-		return stopflag;
+		return OPT_KEEP_GOING;
 	}
-	
-	if( stop->time_max != 0 ){
-		time( &stop->time_current );
-		bool stop_time = ( difftime( stop->time_current, stop->time_start ) > stop->time_max );
-		if( stop_time ){
-			stopflag = OPT_MAXTIME;
-			//fprintf(stderr, "time max\n");
-		}
-		//if(stop_time) fprintf(stderr, "Max time reached %f (max=%f)\n", difftime( stop->time_current, stop->time_start), stop->time_max );
-		
-	}
-	
-	if ( stop->iter_max != 0 ) {
-		bool stop_eval = ( stop->iter > stop->iter_max );
-		if( stop_eval ){//fprintf(stderr, "iter max\n");
-			stopflag = OPT_MAXITER;
-			//fprintf(stderr, "Max iteration reached %d (max=%d)\n", stop->iter, stop->iter_max );
-		}
-		
-	}
-	if ( stop->f_eval_max != 0 ) {
-		bool stop_eval = ( stop->f_eval_current+1 > stop->f_eval_max );
-		if( stop_eval ){//fprintf(stderr, "f eval max\n");
-			stopflag = OPT_MAXEVAL;
-			//fprintf(stderr, "Max eval reached %d (max=%d)\n", stop->f_eval_current, stop->f_eval_max );
-		}
-		
-	}
-	
+
+	opt_result stopflag = opt_check_limits(stop);
+
 //	if( xStop( x, stop->oldx, stop->tolx) ){
 //		fprintf(stderr, "tolx criterion: %f\n",stop->tolx);
 //		return OPT_SUCCESS;
 //	}
-    
-	if( fxStop(fx, &stop->oldfx, stop->tolfx) ){
+
+	opt_progress progress = opt_check_progress(stop, stop->oldfx, fx);
+
+	// Advance the reference only when the step actually moved the objective --
+	// opt_check_progress zeroes the stall counter exactly then. The test this
+	// replaces overwrote the reference on every call, which made it "no change
+	// since the previous check" rather than "no cumulative progress": a run creeping
+	// downhill at just under tolfx per step read as flat at every check while
+	// still descending, and raising `patience` did not help because each of the
+	// N checks was measured from a fresh reference. Holding it lets the drift
+	// accumulate, so a genuine creep is eventually seen as the progress it is.
+	if (stop->stall == 0) {
+		stop->oldfx = fx;
+	}
+
+	if (progress == OPT_PROGRESS_CONVERGED) {
 		return OPT_SUCCESS;
 	}
-	
+
 	return stopflag;
 }
 
@@ -626,6 +782,7 @@ opt_result opt_optimize( Optimizer *opt, double *fmin ){
     opt->stop.iter = 0;
     opt->stop.f_eval_current = 0;
     opt->stop.count = 0;
+    opt->stop.stall = 0;
 	OptimizerCheckpoint checkpointer = {opt->checkpoint_file, opt->checkpoint_frequency};
 	
 	switch (opt->algorithm ) {
@@ -634,7 +791,7 @@ opt_result opt_optimize( Optimizer *opt, double *fmin ){
 			break;
 		}
 		case OPT_POWELL:{
-			result = powell_optimize( ps, opt->f, opt->data, opt->stop, fmin, opt->update );
+			result = powell_optimize( ps, opt->f, opt->data, &opt->stop, fmin, opt->update );
 			break;
 		}
 		case OPT_BRENT:{
@@ -651,15 +808,15 @@ opt_result opt_optimize( Optimizer *opt, double *fmin ){
 			break;
 		}
 		case OPT_BFGS:{
-			result = dfpmin_optimize( opt->parameters, opt->f, opt->grad_f, opt->data, opt->stop, fmin, opt->etas[0]);
+			result = dfpmin_optimize( opt->parameters, opt->f, opt->grad_f, opt->data, &opt->stop, fmin, opt->etas[0]);
 			break;
 		}
 		case OPT_CG_FR:{
-			result = frprmn_optimize( opt->parameters, opt->f, opt->grad_f, opt->data, opt->stop, fmin, OPT_CG_FR );
+			result = frprmn_optimize( opt->parameters, opt->f, opt->grad_f, opt->data, &opt->stop, fmin, OPT_CG_FR );
 			break;
         }
         case OPT_CG_PR:{
-            result = frprmn_optimize( opt->parameters, opt->f, opt->grad_f, opt->data, opt->stop, fmin, OPT_CG_PR );
+            result = frprmn_optimize( opt->parameters, opt->f, opt->grad_f, opt->data, &opt->stop, fmin, OPT_CG_PR );
             break;
         }
 		case OPT_SG: case OPT_SG_ADAM:{
@@ -697,6 +854,7 @@ opt_result opt_optimize( Optimizer *opt, double *fmin ){
 	}
 	if(opt->stop.oldx != NULL){
 		free(opt->stop.oldx);
+		opt->stop.oldx = NULL;  // reused across calls (bootstrap replicates, meta sweeps)
 	}
 	return result;
 }
@@ -714,6 +872,7 @@ opt_result opt_optimize_univariate( Optimizer *opt, Parameter *p, double *fmin )
     opt->stop.iter = 0;
     opt->stop.f_eval_current = 0;
     opt->stop.count = 0;
+    opt->stop.stall = 0;
     
     if( opt->algorithm != OPT_BRENT ){
         error("optimize_univariate only works with Brent algorithm\n");
@@ -726,6 +885,7 @@ opt_result opt_optimize_univariate( Optimizer *opt, Parameter *p, double *fmin )
     free_Parameters(ps);
 	if(opt->stop.oldx != NULL){
 		free(opt->stop.oldx);
+		opt->stop.oldx = NULL;  // reused across calls (bootstrap replicates, meta sweeps)
 	}
 	return result;
 }
@@ -764,17 +924,6 @@ bool xStop( const Parameters *x, double *xold, const double tolx){
 	return stop;
 }
 
-bool fxStop( double fx, double *fxold, const double tolfx){
-	// printf("%f %f %f\n", fx, *fxold, tolfx);
-	if ( fabs(fx - *fxold) > tolfx ){
-		*fxold = fx;
-		return false;
-	}
-	else{
-		*fxold = fx;
-		return true;
-	}
-}
 
 
 // algorithms that call opt->grad_f and therefore differentiate the target model
@@ -805,6 +954,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	    {"checkpoint", JSON_OPTIONAL, JSON_ANY},
 	    {"checkpoint_frequency", JSON_OPTIONAL, JSON_NUMBER},
 	    {"eta", JSON_OPTIONAL, JSON_NUMBER},
+	    {"evaluations", JSON_OPTIONAL, JSON_NUMBER},
 	    {"frequency_check", JSON_OPTIONAL, JSON_NUMBER},
 	    {"iterations", JSON_OPTIONAL, JSON_NUMBER},
 	    {"list", JSON_OPTIONAL, JSON_ANY},
@@ -814,10 +964,12 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	    {"min", JSON_OPTIONAL, JSON_ANY},
 	    {"model", JSON_FORBIDDEN, JSON_STRING|JSON_OBJECT},
 	    {"parameters", JSON_OPTIONAL, JSON_ANY},
+	    {"patience", JSON_OPTIONAL, JSON_NUMBER},
 	    {"precision", JSON_OPTIONAL, JSON_NUMBER},
 	    {"rounds", JSON_OPTIONAL, JSON_ANY},
 		{"target", JSON_REQUIRED, JSON_STRING|JSON_OBJECT},
 	    {"threads", JSON_OPTIONAL, JSON_NUMBER},
+	    {"time", JSON_OPTIONAL, JSON_NUMBER},
 	    {"tol", JSON_OPTIONAL, JSON_NUMBER},
 	    {"treelikelihood", JSON_OPTIONAL, JSON_STRING},
 	    {"update", JSON_OPTIONAL, JSON_STRING},
@@ -863,6 +1015,9 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		opt->etas = dvector(1);
 		// Quasi-Newton: try the full Newton step (alpha = 1) first.
 		opt->etas[0] = get_json_node_value_double(node, "alpha", 1.0);
+		// clone_Optimizer copies etas by eta_count; leaving it at 0 handed the
+		// clone a NULL etas that dfpmin_optimize then dereferences.
+		opt->eta_count = 1;
 	}
 	// Conjugate gradient
 	else if (strcasecmp(algorithm_string, "cg") == 0) {
@@ -918,9 +1073,26 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		}
     }
 	
+	// Every branch above may leave opt NULL: an algorithm string that matches
+	// none of them used to fall straight through to the dereference below.
+	if (opt == NULL) {
+		fprintf(stderr, "%s - unknown optimizer algorithm `%s'\n", id, algorithm_string);
+		exit(13);
+	}
+
 	opt->maximize = maximize;
 	opt_set_max_iteration(opt, iterations);
 	opt_set_min_iteration(opt, min);
+	opt->stop.patience = get_json_node_value_size_t(node, "patience", 1);
+
+	// Resource budgets. Both default to 0, meaning no limit. The meta optimizer
+	// enforces them between sweeps of its schedule, so they are honoured to
+	// within one sweep; "evaluations" only counts what the schedule's entries
+	// report (see opt_check_limits).
+	double time_max = get_json_node_value_double(node, "time", 0);
+	if (time_max > 0) opt_set_time_max(opt, time_max);
+	size_t max_evaluations = get_json_node_value_size_t(node, "evaluations", 0);
+	if (max_evaluations > 0) opt_set_max_evaluation(opt, max_evaluations);
 
 	json_node* target_node = get_json_node(node, "target");
 	Model* model = NULL;

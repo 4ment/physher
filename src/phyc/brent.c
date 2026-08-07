@@ -21,8 +21,10 @@ opt_result serial_brent_optimize( Parameters *ps, opt_func f, void *data, OptSto
 	//for(int j = 0; j < stop->iter_min; j++)
 	for(int i = 0; i < Parameters_count(ps); i++){
 		Parameter* parameter = Parameters_at(ps, i);
+		// iter is Brent's own inner-loop counter and must restart per coordinate;
+		// the evaluation count must not -- it is a budget over the whole call, and
+		// resetting it here reported only the last coordinate's work.
 		stop->iter = 0;
-		stop->f_eval_current = 0;
 		for(size_t j = 0; j < Parameter_size(parameter); j++){
 			opt_result status = brent_optimize2(parameter, j, f, data, stop, fmin);
 		}
@@ -44,9 +46,12 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
  * Works for domains (0,1), [0,∞), (-∞,∞), etc.
  * Detects boundary minima and gracefully handles x at a boundary.
  */
+// `nfun` accumulates the number of objective evaluations. Bracketing can take
+// dozens of them -- more than the Brent loop that follows -- so a run under an
+// evaluation budget cannot afford to leave them uncounted.
 void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
                   double *a, double *b, double *c,
-                  double step_factor, int max_iter)
+                  double step_factor, int max_iter, size_t *nfun)
 {
     if (step_factor <= 1.0){
         step_factor = 1.618034;  // golden ratio default
@@ -87,12 +92,14 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
     // --- 1️⃣ Handle cases where x is at or near a boundary ---
 	if (x <= lower + eps * width) {
 		// printf("x at lower boundary %e %e %s\n", x, lower, Parameter_name(xx));
+		(*nfun)++;
 		double f0 = f(NULL, NULL, data);
 		
         // double delta = 0.1 * (isinf(upper) ? fmax(1.0, fabs(x)) : width);
 		double delta = 10 * fabs(x);
         double x1 = fmin(upper, x + delta);
 		Parameter_set_value_at(xx, x1, index);
+        (*nfun)++;
         double f1 = f(NULL, NULL, data);
 
         if (f0 <= f1) {
@@ -112,6 +119,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 				x = x1;
 				x1 = fabs(x1)*10.0;
 				Parameter_set_value_at(xx, x1, index);
+        		(*nfun)++;
         		f1 = f(NULL, NULL, data);
 			}
 			*b = x;
@@ -135,11 +143,13 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 		// printf("x at upper boundary %e %e %s\n", x, upper, Parameter_name(xx));
         // x = upper;
 		// Parameter_set_value_at(xx, x, index);
+        (*nfun)++;
         double f0 = f(NULL, NULL, data);
         // double delta = 0.1 * (isinf(lower) ? fmax(1.0, fabs(x)) : width);
 		double delta = 0.1 * fabs(x);
         double x1 = fmax(lower, x - delta);
 		Parameter_set_value_at(xx, x1, index);
+        (*nfun)++;
         double f1 = f(NULL, NULL, data);
 
         if (f0 <= f1) {
@@ -163,6 +173,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 				x = x1;
 				x1 = fabs(x1)*0.1;
 				Parameter_set_value_at(xx, x1, index);
+        		(*nfun)++;
         		f1 = f(NULL, NULL, data);
 			}
 			*b = x;
@@ -201,10 +212,13 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 	// fprintf(stderr, "Initial bracket: a=%g b=%g c=%g\n", *a, *b, *c);
 
 	Parameter_set_value_at(xx, *a, index);
+    (*nfun)++;
     double fa = f(NULL, NULL, data);
 	Parameter_set_value_at(xx, *b, index);
+    (*nfun)++;
     double fb = f(NULL, NULL, data);
 	Parameter_set_value_at(xx, *c, index);
+    (*nfun)++;
     double fc = f(NULL, NULL, data);
 
     // --- 3️⃣ Check for boundary minima (both finite sides) ---
@@ -265,6 +279,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
             delta *= step_factor;
             *c = fmin(upper, *b + delta);
 			Parameter_set_value_at(xx, *c, index);
+            (*nfun)++;
             fc = f(NULL, NULL, data);
             if (fb < fa && fb < fc) return;
             if (isinf(upper) && (fb - fc <= flat_tol || *b > x + MAX_REACH)) {
@@ -283,6 +298,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
             delta *= step_factor;
             *a = fmax(lower, *b - delta);
 			Parameter_set_value_at(xx, *a, index);
+            (*nfun)++;
             fa = f(NULL, NULL, data);
             if (fb < fa && fb < fc) return;
             if (isinf(lower) && (fb - fa <= flat_tol || *b < x - MAX_REACH)) {
@@ -399,9 +415,10 @@ opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void
 //     Parameter_set_value_at(parameter, x, index);
 // // }
 
-	find_bracket(f, data, parameter, index, &a, &x, &b, 1.618034, 100);
+	find_bracket(f, data, parameter, index, &a, &x, &b, 1.618034, 100, &stop->f_eval_current);
 	Parameter_set_value_at(parameter, x, index);
 	fx = f(NULL, NULL, data);
+	stop->f_eval_current++;
 
 	// Bracketing can leave the centre on a value where the objective is non-finite
 	// (NaN/Inf), e.g. a coordinate collapsing onto a boundary. Never let the search
@@ -409,6 +426,7 @@ opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void
 	if (!isfinite(fx)) {
 		Parameter_set_value_at(parameter, x_incoming, index);
 		*fminp = f(NULL, NULL, data);
+		stop->f_eval_current++;
 		return OPT_FAIL;
 	}
 	// if(isinf(a) || isinf(x) || isinf(b)|| a >= b || x <= a || x >= b || isinf(fx)){
@@ -419,9 +437,7 @@ opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void
 	x = w = v = x;
 	fw = fv = fx;
 
-    stop->f_eval_current = 1;
-	
-    stop->iter = 0;
+	stop->iter = 0;
     
 	while ( *iter <= stop->iter_max ) {
         

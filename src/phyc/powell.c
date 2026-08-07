@@ -26,7 +26,7 @@
  * xi is the then-current direction set, fret is the returned function value at p, and iter is the number of iterations taken. The routine linmin is used.
  */
 
-opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriterion stop, double *fmin, opt_update_data uf ){
+opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriterion *stop, double *fmin, opt_update_data uf ){
 	
 	opt_result status = OPT_KEEP_GOING;
 	int i, ibig, j;
@@ -42,7 +42,10 @@ opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 	fret = f(p, NULL, data);
 	
 	// init stop condition
-	opt_check_stop( &stop, p, *fmin );
+	// Seed the criterion with the value actually computed at the starting
+	// point. This used to pass *fmin, which the caller has not written yet, so
+	// the first real check below compared fret against an uninitialised double.
+	opt_check_stop( stop, p, fret );
 	
 	// currently active variables
 	bool *active = bvector(n);
@@ -70,7 +73,7 @@ opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 	for ( j = 0; j < n; j++ ) pt[j] = Parameters_value(p, j); // Save the initial point
 	
 	while( status == OPT_KEEP_GOING ){
-		if(POWELL_DEBUG) fprintf(stdout, "\nPowell iteration #%lu (lk=%f)\n", (stop.iter+1), fret);
+		if(POWELL_DEBUG) fprintf(stdout, "\nPowell iteration #%lu (lk=%f)\n", (stop->iter+1), fret);
 		fp   = fret;
 		ibig = 0;   // Index of the biggest function decrease
 		del  = 0.0; // Will be the biggest function decrease.
@@ -91,7 +94,11 @@ opt_result powell_optimize( Parameters *p, opt_func f, void *data, OptStopCriter
 		} 
 		
 		//Termination criterion.
-		if ( (status = opt_check_stop( &stop, p, fret )) != OPT_KEEP_GOING ){
+		// opt_check_stop reads stop->iter but never advances it, so the
+		// OPT_MAXITER branch was unreachable and the JSON `iterations` key had
+		// no effect on this algorithm.
+		stop->iter++;
+		if ( (status = opt_check_stop( stop, p, fret )) != OPT_KEEP_GOING ){
 			break;
 		}
 		

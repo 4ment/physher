@@ -22,18 +22,18 @@
  * in fmin. Bounds are enforced with an active set (coordinates pinned on a bound
  * whose gradient points outward are frozen) together with clamping in the line
  * search (lnsrch). Stops on a small relative step (TOLX), a small projected
- * gradient (stop.tolg), or after stop.iter_max iterations.
+ * gradient (stop->tolg), or after stop->iter_max iterations.
  */
 
-opt_result dfpmin_optimize( Parameters *p, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion stop, double *fmin, double alpha){
+opt_result dfpmin_optimize( Parameters *p, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion *stop, double *fmin, double alpha){
 
 	int i,its,j;
 	double den,fac,fad,fae,fp,stpmax,sum=0.0,sumdg,sumxi,temp,test;
 
 	opt_result status = OPT_SUCCESS;
 
-	int maxeval = stop.iter_max;
-	double gtol = stop.tolg;
+	int maxeval = stop->iter_max;
+	double gtol = stop->tolg;
 
 	size_t n = Parameters_size(p);
 	size_t paramCount = Parameters_count(p);
@@ -247,7 +247,7 @@ opt_result dfpmin_optimize( Parameters *p, opt_func f, opt_grad_func grad_f, voi
 	if ( its == maxeval ) {
 		status = OPT_MAXEVAL;
 	}
-	stop.iter = its;
+	stop->iter = its;
 
 	return status;
 }

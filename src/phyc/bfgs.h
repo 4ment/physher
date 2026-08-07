@@ -7,6 +7,6 @@
 #include "parameters.h"
 #include "optimizer.h"
 
-opt_result dfpmin_optimize( Parameters *p, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion stop, double *fmin, double alpha);
+opt_result dfpmin_optimize( Parameters *p, opt_func f, opt_grad_func grad_f, void *data, OptStopCriterion *stop, double *fmin, double alpha);
 
 #endif
