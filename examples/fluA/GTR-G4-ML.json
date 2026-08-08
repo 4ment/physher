@@ -72,9 +72,8 @@
         "id":"mlopt",
         "type":"optimizer",
         "algorithm":"meta",
-        "precision":0.00001,
+        "precision":0.001,
         "iterations":10000,
-        "min":100,
         "target":"@treelikelihood",
         "list":[
           {
@@ -110,14 +109,17 @@
       {
         "id":"log",
         "type":"logger",
-        "columns":["@treelikelihood"]
-      },
-      {
-        "id":"log",
-        "type":"logger",
         "columns":[
-          "&alpha", "&rates", "&freqs", "&rates2", "&freqs2"
-        ]
+          "@treelikelihood",
+          {
+            "ref": "@sitemodel",
+            "quantity": "rates"
+          },
+          {
+            "ref": "@sitemodel",
+            "quantity": "proportions"
+          },
+          "&alpha", "&rates", "&freqs"]
       },
       {
         "id":"log",

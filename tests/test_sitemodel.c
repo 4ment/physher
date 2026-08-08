@@ -43,9 +43,9 @@ char* test_mean_contribution() {
     const char* json =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
         "\"distribution\":\"discrete\","
-        "\"parameterization\":\"mean_contribution\","
         "\"categories\":4,"
-        "\"rates\":{\"id\":\"s\",\"type\":\"simplex\",\"x\":[0.4,0.3,0.2,0.1]},"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"simplex\","
+        "\"x\":[0.4,0.3,0.2,0.1]},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
     Hashtable* hash = _new_hash();
@@ -91,10 +91,9 @@ char* test_mean_contribution() {
 char* test_mean_contribution_invariant() {
     const char* json =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
-        "\"distribution\":\"discrete\","
-        "\"parameterization\":\"mean_contribution\","
+        "\"distribution\":\"discrete\",\"invariant\":true,"
         "\"categories\":3,"
-        "\"rates\":{\"id\":\"s\",\"type\":\"simplex\",\"x\":[0.2,0.3,0.5]},"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"simplex\",\"x\":[0.2,0.3,0.5]},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.25,0.15,0.25,0.35]}}";
     Hashtable* hash = _new_hash();
@@ -104,7 +103,8 @@ char* test_mean_contribution_invariant() {
     const double s[3] = {0.2, 0.3, 0.5};
     const double p[4] = {0.25, 0.15, 0.25, 0.35};
 
-    // The proportions simplex being one longer than "categories" turns on +I.
+    // "invariant" turns on +I, and "categories" counts the variable categories
+    // only, so the proportions simplex is one longer than it.
     mu_assert(sm->invariant, "mean contribution +I: invariant class not detected");
     mu_assert(sm->cat_count == 4, "mean contribution +I: wrong number of categories");
     mu_assert(sm->get_rate(sm, 0) == 0.0,
@@ -134,18 +134,17 @@ char* test_mean_contribution_dual() {
     const char* mean_contribution =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
         "\"distribution\":\"discrete\","
-        "\"parameterization\":\"mean_contribution\","
         "\"categories\":4,"
-        "\"rates\":{\"id\":\"s\",\"type\":\"simplex\",\"x\":[0.4,0.3,0.2,0.1]},"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"simplex\","
+        "\"x\":[0.4,0.3,0.2,0.1]},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
     // x_k = (s_k/p_k) / sum_j (s_j/p_j), i.e. the same rates up to scale.
     const char* rate_shape =
         "{\"id\":\"sitemodel2\",\"type\":\"sitemodel\","
         "\"distribution\":\"discrete\","
-        "\"parameterization\":\"rate_shape\","
         "\"categories\":4,"
-        "\"rates\":{\"id\":\"x\",\"type\":\"simplex\","
+        "\"rate_shape\":{\"id\":\"x\",\"type\":\"simplex\","
         "\"x\":[0.6233766233766234,0.23376623376623376,0.1038961038961039,"
         "0.03896103896103896]},"
         "\"proportions\":{\"id\":\"p2\",\"type\":\"simplex\","
@@ -177,9 +176,8 @@ char* test_rate_increments() {
     const char* json =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
         "\"distribution\":\"discrete\","
-        "\"parameterization\":\"rate_increments\","
         "\"categories\":4,"
-        "\"rates\":{\"id\":\"gaps\",\"type\":\"parameter\","
+        "\"rate_increments\":{\"id\":\"gaps\",\"type\":\"parameter\","
         "\"x\":[1.0,1.0,1.0,1.0],\"lower\":0},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
@@ -222,11 +220,10 @@ char* test_rate_ratios() {
     const char* json =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
         "\"distribution\":\"discrete\","
-        "\"parameterization\":\"rate_ratios\","
         "\"categories\":4,"
-        "\"rates\":[{\"id\":\"ratios\",\"type\":\"parameter\","
+        "\"rate_ratios\":{\"id\":\"ratios\",\"type\":\"parameter\","
         "\"x\":[0.5,0.5,0.5],\"lower\":1.e-8,\"upper\":0.99},"
-        "{\"id\":\"top\",\"type\":\"parameter\",\"x\":8.0,\"lower\":0}],"
+        "\"top_rate\":{\"id\":\"top\",\"type\":\"parameter\",\"x\":8.0,\"lower\":0},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
     Hashtable* hash = _new_hash();
@@ -256,49 +253,60 @@ char* test_rate_ratios() {
     return NULL;
 }
 
-// Naming a parameterization that the parser would have inferred anyway must not
-// change what is computed: a plain vector infers the increments, a pair of
-// parameters the ratios.
-char* test_rate_parameterization_inferred() {
-    const char* increments =
+// The key selects the parameterization, so the same simplex means different things
+// under "rate_shape" and "mean_contribution": x_k/sum_j p_j x_j against x_k/p_k.
+// These two are indistinguishable by shape, which is exactly what the key resolves.
+char* test_rate_parameterization_key_selects() {
+    const char* shape =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
         "\"distribution\":\"discrete\",\"categories\":4,"
-        "\"rates\":{\"id\":\"gaps\",\"type\":\"parameter\","
-        "\"x\":[0.5,1.0,1.5,2.0],\"lower\":0},"
+        "\"rate_shape\":{\"id\":\"x\",\"type\":\"simplex\",\"x\":[0.4,0.3,0.2,0.1]},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
-    const char* named =
+    const char* contribution =
         "{\"id\":\"sitemodel2\",\"type\":\"sitemodel\","
-        "\"distribution\":\"discrete\","
-        "\"parameterization\":\"rate_increments\",\"categories\":4,"
-        "\"rates\":{\"id\":\"gaps2\",\"type\":\"parameter\","
-        "\"x\":[0.5,1.0,1.5,2.0],\"lower\":0},"
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"simplex\","
+        "\"x\":[0.4,0.3,0.2,0.1]},"
         "\"proportions\":{\"id\":\"p2\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
 
     Hashtable* hash = _new_hash();
-    Model* model_inferred = _sitemodel_from_string(increments, hash);
-    Model* model_named = _sitemodel_from_string(named, hash);
-    SiteModel* sm_inferred = model_inferred->obj;
-    SiteModel* sm_named = model_named->obj;
+    Model* model_shape = _sitemodel_from_string(shape, hash);
+    Model* model_contribution = _sitemodel_from_string(contribution, hash);
+    SiteModel* sm_shape = model_shape->obj;
+    SiteModel* sm_contribution = model_contribution->obj;
 
+    const double x[4] = {0.4, 0.3, 0.2, 0.1};
+    const double p[4] = {0.1, 0.2, 0.3, 0.4};
+    // sum_j p_j x_j = 0.04+0.06+0.06+0.04 = 0.2
+    bool differ = false;
     for (size_t i = 0; i < 4; i++) {
-        mu_assert(fabs(sm_inferred->get_rate(sm_inferred, i) -
-                       sm_named->get_rate(sm_named, i)) < TOL,
-                  "increments: inferred and named parameterizations disagree");
+        mu_assert(fabs(sm_shape->get_rate(sm_shape, i) - x[i] / 0.2) < TOL,
+                  "rate shape: rates are not x_k normalised by the weighted mean");
+        mu_assert(
+            fabs(sm_contribution->get_rate(sm_contribution, i) - x[i] / p[i]) < TOL,
+                  "mean contribution: rates are not s_k/p_k");
+        differ |= fabs(sm_shape->get_rate(sm_shape, i) -
+                       sm_contribution->get_rate(sm_contribution, i)) > TOL;
     }
-    mu_assert(fabs(_weighted_mean(sm_inferred) - 1.0) < TOL,
-              "increments: inferred rates do not have unit weighted mean");
+    mu_assert(differ,
+              "the two simplex parameterizations should not agree on this simplex");
+    mu_assert(fabs(_weighted_mean(sm_shape) - 1.0) < TOL,
+              "rate shape: rates do not have unit weighted mean");
+    mu_assert(fabs(_weighted_mean(sm_contribution) - 1.0) < TOL,
+              "mean contribution: rates do not have unit weighted mean");
 
-    model_named->free(model_named);
-    model_inferred->free(model_inferred);
+    model_contribution->free(model_contribution);
+    model_shape->free(model_shape);
     free_Hashtable(hash);
     return NULL;
 }
 
-// Parse a site model in a forked child and report its exit status, so the tests
-// can check that a malformed "parameterization" is rejected instead of silently
-// reading the wrong number of simplex elements.
+// Parse a site model in a forked child and report its exit status, so the tests can
+// check that a malformed rate parameterization is rejected instead of silently
+// reading the wrong number of simplex elements. json_die exits 12; the semantic
+// checks in _check_rate_parameterization exit 2.
 static int _parse_status(const char* json) {
     fflush(stdout);
     fflush(stderr);
@@ -321,32 +329,44 @@ char* test_mean_contribution_rejects() {
     const char* good =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
         "\"distribution\":\"discrete\","
-        "\"parameterization\":\"mean_contribution\","
         "\"categories\":4,"
-        "\"rates\":{\"id\":\"s\",\"type\":\"simplex\",\"x\":[0.4,0.3,0.2,0.1]},"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"simplex\","
+        "\"x\":[0.4,0.3,0.2,0.1]},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
     mu_assert(_parse_status(good) == 0, "mean contribution: valid model should parse");
 
-    // Unknown parameterization name.
+    // An unknown parameterization is now an unknown key rather than an unknown
+    // string, so the schema rejects it before anything is built.
     const char* unknown =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
-        "\"distribution\":\"discrete\",\"parameterization\":\"cumprod\","
-        "\"categories\":4,"
-        "\"rates\":{\"id\":\"s\",\"type\":\"simplex\",\"x\":[0.4,0.3,0.2,0.1]},"
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"cumprod\":{\"id\":\"s\",\"type\":\"simplex\",\"x\":[0.4,0.3,0.2,0.1]},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
-    mu_assert(_parse_status(unknown) == 13,
-              "mean contribution: unknown parameterization should die");
+    mu_assert(_parse_status(unknown) == 12,
+              "mean contribution: unknown parameterization key should die");
+
+    // The keys are alternative coordinate systems on the same rates, not layers.
+    const char* two_keys =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"simplex\","
+        "\"x\":[0.4,0.3,0.2,0.1]},"
+        "\"rate_shape\":{\"id\":\"x\",\"type\":\"simplex\",\"x\":[0.4,0.3,0.2,0.1]},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.1,0.2,0.3,0.4]}}";
+    mu_assert(_parse_status(two_keys) == 12,
+              "two parameterization keys at once should die");
 
     // s must be a simplex: a plain positive vector does not sum to one, so the
     // unit mean would not hold.
     const char* not_simplex =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
         "\"distribution\":\"discrete\","
-        "\"parameterization\":\"mean_contribution\","
         "\"categories\":4,"
-        "\"rates\":{\"id\":\"s\",\"type\":\"parameter\",\"x\":[0.4,0.3,0.2,0.1]},"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"parameter\","
+        "\"x\":[0.4,0.3,0.2,0.1]},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
     mu_assert(_parse_status(not_simplex) == 2,
@@ -356,9 +376,8 @@ char* test_mean_contribution_rejects() {
     const char* wrong_dim =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
         "\"distribution\":\"discrete\","
-        "\"parameterization\":\"mean_contribution\","
         "\"categories\":4,"
-        "\"rates\":{\"id\":\"s\",\"type\":\"simplex\",\"x\":[0.5,0.3,0.2]},"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"simplex\",\"x\":[0.5,0.3,0.2]},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
     mu_assert(_parse_status(wrong_dim) == 2,
@@ -368,49 +387,102 @@ char* test_mean_contribution_rejects() {
     // whose categories come from a quantile function.
     const char* not_discrete =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
-        "\"distribution\":\"gamma\","
-        "\"parameterization\":\"mean_contribution\","
-        "\"categories\":4,"
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"simplex\","
+        "\"x\":[0.4,0.3,0.2,0.1]},"
         "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0}}";
     mu_assert(_parse_status(not_discrete) == 2,
               "mean contribution: non-discrete distribution should die");
 
+    // Nor is it silently ignored on a model that declares no distribution at all.
+    const char* no_distribution =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\",\"categories\":4,"
+        "\"mean_contribution\":{\"id\":\"s\",\"type\":\"simplex\","
+        "\"x\":[0.4,0.3,0.2,0.1]}}";
+    mu_assert(_parse_status(no_distribution) == 12,
+              "mean contribution: no \"distribution\" should die");
+
     return NULL;
 }
 
-// Neither ordered parameterization checked the size of "rates" before: the
-// category count
-// comes from the proportions simplex, so a short vector was read off the end.
+// "proportions" is checked against "categories" wherever it is accepted: it is
+// copied straight into cat_proportions, which is sized from "categories" (plus the
+// invariant class), so a mis-sized simplex runs off the end of that buffer.
+char* test_proportions_rejects() {
+    // One weight per category...
+    const char* long_proportions =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"quadrature\":\"discrete\","
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.2,0.2,0.2,0.2,0.2]}}";
+    mu_assert(_parse_status(long_proportions) == 2,
+              "proportions: a simplex longer than \"categories\" should die");
+
+    // ...and one more for the invariant class when there is one, no fewer.
+    const char* short_proportions_invariant =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,\"invariant\":true,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"quadrature\":\"discrete\","
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.25,0.25,0.25,0.25]}}";
+    mu_assert(_parse_status(short_proportions_invariant) == 2,
+              "proportions +I: a simplex of \"categories\" elements should die");
+
+    const char* good_invariant =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,\"invariant\":true,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"quadrature\":\"discrete\","
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.2,0.2,0.2,0.2,0.2]}}";
+    mu_assert(_parse_status(good_invariant) == 0,
+              "proportions +I: \"categories\"+1 elements should parse");
+
+    // The weights weight the categories of a rate distribution. With no
+    // distribution there is one category of weight 1 and nothing to weight.
+    const char* no_distribution =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\",\"categories\":4,"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.1,0.2,0.3,0.4]}}";
+    mu_assert(_parse_status(no_distribution) == 12,
+              "proportions: no \"distribution\" should die");
+
+    // Two spellings of the same weights.
+    const char* both =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"proportion_invariant\":0.2,"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\",\"x\":[0.2,0.8]}}";
+    mu_assert(_parse_status(both) == 2,
+              "\"proportions\" and \"proportion_invariant\" together should die");
+
+    return NULL;
+}
+
+// The category count comes from the proportions simplex, so a parameter of the
+// wrong size would be read off the end. Every shape is checked against the key
+// that named it.
 char* test_rate_parameterization_rejects() {
-    // One increment per category, whether the parameterization was named...
+    // One increment per category, no more, no less.
     const char* short_increments =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
-        "\"distribution\":\"discrete\","
-        "\"parameterization\":\"rate_increments\",\"categories\":4,"
-        "\"rates\":{\"id\":\"gaps\",\"type\":\"parameter\","
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"rate_increments\":{\"id\":\"gaps\",\"type\":\"parameter\","
         "\"x\":[1.0,1.0,1.0],\"lower\":0},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
     mu_assert(_parse_status(short_increments) == 2,
-              "increments: mismatched rates dimension should die");
+              "increments: mismatched dimension should die");
 
-    // ...or inferred from the shape of "rates".
-    const char* short_inferred =
-        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
-        "\"distribution\":\"discrete\",\"categories\":4,"
-        "\"rates\":{\"id\":\"gaps\",\"type\":\"parameter\","
-        "\"x\":[1.0,1.0,1.0],\"lower\":0},"
-        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
-        "\"x\":[0.1,0.2,0.3,0.4]}}";
-    mu_assert(_parse_status(short_inferred) == 2,
-              "increments: mismatched rates dimension should die when inferred");
-
-    // A simplex is a rate shape, not a sequence of increments.
+    // A simplex is a rate shape, not a sequence of increments. Under the old
+    // shape-inferred scheme this silently built a rate-shape model instead.
     const char* simplex_increments =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
-        "\"distribution\":\"discrete\","
-        "\"parameterization\":\"rate_increments\",\"categories\":4,"
-        "\"rates\":{\"id\":\"gaps\",\"type\":\"simplex\",\"x\":[0.4,0.3,0.2,0.1]},"
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"rate_increments\":{\"id\":\"gaps\",\"type\":\"simplex\","
+        "\"x\":[0.4,0.3,0.2,0.1]},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
     mu_assert(_parse_status(simplex_increments) == 2,
@@ -419,42 +491,122 @@ char* test_rate_parameterization_rejects() {
     // This parameterization needs the ratios *and* the rate they hang off.
     const char* lone_ratios =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
-        "\"distribution\":\"discrete\","
-        "\"parameterization\":\"rate_ratios\",\"categories\":4,"
-        "\"rates\":{\"id\":\"ratios\",\"type\":\"parameter\","
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"rate_ratios\":{\"id\":\"ratios\",\"type\":\"parameter\","
         "\"x\":[0.5,0.5,0.5],\"lower\":0},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
-    mu_assert(_parse_status(lone_ratios) == 2,
-              "ratios: a single rates parameter should die");
+    mu_assert(_parse_status(lone_ratios) == 12,
+              "ratios: \"rate_ratios\" without \"top_rate\" should die");
+
+    // ...and the rate they hang off means nothing on its own.
+    const char* lone_top =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"top_rate\":{\"id\":\"top\",\"type\":\"parameter\",\"x\":8.0,\"lower\":0},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.1,0.2,0.3,0.4]}}";
+    mu_assert(_parse_status(lone_top) == 12,
+              "ratios: \"top_rate\" without \"rate_ratios\" should die");
 
     // K-1 ratios for K categories.
     const char* wrong_ratios =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
-        "\"distribution\":\"discrete\","
-        "\"parameterization\":\"rate_ratios\",\"categories\":4,"
-        "\"rates\":[{\"id\":\"ratios\",\"type\":\"parameter\","
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"rate_ratios\":{\"id\":\"ratios\",\"type\":\"parameter\","
         "\"x\":[0.5,0.5,0.5,0.5],\"lower\":0},"
-        "{\"id\":\"top\",\"type\":\"parameter\",\"x\":8.0,\"lower\":0}],"
+        "\"top_rate\":{\"id\":\"top\",\"type\":\"parameter\",\"x\":8.0,\"lower\":0},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
     mu_assert(_parse_status(wrong_ratios) == 2,
               "ratios: mismatched ratio count should die");
 
-    // Both ordered parameterizations write their first rate into category 0,
-    // which an
-    // invariant class would need pinned at 0.
-    const char* increments_invariant =
+    // The rate the chain hangs off is a single rate, not a vector.
+    const char* vector_top =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
-        "\"distribution\":\"discrete\",\"invariant\":true,"
-        "\"parameterization\":\"rate_increments\",\"categories\":3,"
-        "\"rates\":{\"id\":\"gaps\",\"type\":\"parameter\","
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"rate_ratios\":{\"id\":\"ratios\",\"type\":\"parameter\","
+        "\"x\":[0.5,0.5,0.5],\"lower\":0},"
+        "\"top_rate\":{\"id\":\"top\",\"type\":\"parameter\","
+        "\"x\":[8.0,8.0],\"lower\":0},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.1,0.2,0.3,0.4]}}";
+    mu_assert(_parse_status(vector_top) == 2,
+              "ratios: a vector \"top_rate\" should die");
+
+    // With an invariant class there is one increment per *variable* category, one
+    // fewer than the proportions simplex.
+    const char* increments_invariant_wrong_dim =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"discrete\",\"invariant\":true,\"categories\":3,"
+        "\"rate_increments\":{\"id\":\"gaps\",\"type\":\"parameter\","
+        "\"x\":[1.0,1.0,1.0,1.0],\"lower\":0},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.1,0.2,0.3,0.4]}}";
+    mu_assert(_parse_status(increments_invariant_wrong_dim) == 2,
+              "increments +I: an increment for the invariant category should die");
+
+    // The ratio chain still runs down to category 0, which +I needs pinned at 0.
+    const char* ratios_invariant =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"discrete\",\"invariant\":true,\"categories\":3,"
+        "\"rate_ratios\":{\"id\":\"ratios\",\"type\":\"parameter\","
+        "\"x\":[0.5,0.5,0.5],\"lower\":0},"
+        "\"top_rate\":{\"id\":\"top\",\"type\":\"parameter\",\"x\":8.0,\"lower\":0},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.1,0.2,0.3,0.4]}}";
+    mu_assert(_parse_status(ratios_invariant) == 2,
+              "ratios: an invariant category should die");
+
+    return NULL;
+}
+
+// An invariant class can be prepended to the increments, as to the mean-contribution
+// simplex: category 0 is pinned at rate 0 and contributes nothing to the mean, so the
+// running sum starts at category 1 and theta carries one element per variable
+// category.
+char* test_rate_increments_invariant() {
+    const char* json =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"discrete\",\"invariant\":true,\"categories\":3,"
+        "\"rate_increments\":{\"id\":\"gaps\",\"type\":\"parameter\","
         "\"x\":[1.0,1.0,1.0],\"lower\":0},"
         "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
         "\"x\":[0.1,0.2,0.3,0.4]}}";
-    mu_assert(_parse_status(increments_invariant) == 2,
-              "increments: an invariant category should die");
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
 
+    mu_assert(sm->invariant, "increments +I: invariant class not detected");
+    mu_assert(sm->cat_count == 4, "increments +I: wrong number of categories");
+    mu_assert(sm->get_rate(sm, 0) == 0.0,
+              "increments +I: invariant category is not rate 0");
+
+    // Raw rates 0,1,2,3 with weighted mean 0.2*1 + 0.3*2 + 0.4*3 = 2.
+    const double expected[4] = {0.0, 0.5, 1.0, 1.5};
+    for (size_t i = 0; i < 4; i++) {
+        mu_assert(fabs(sm->get_rate(sm, i) - expected[i]) < TOL,
+                  "increments +I: rates not matching");
+    }
+    for (size_t i = 2; i < 4; i++) {
+        mu_assert(sm->get_rate(sm, i) > sm->get_rate(sm, i - 1),
+                  "increments +I: positive gaps must give increasing rates");
+    }
+    // The invariant category contributes nothing, so the mean over all categories
+    // is still 1.
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "increments +I: rates do not have unit weighted mean");
+
+    // Still scale-free, and the invariant category stays pinned across a change.
+    const double doubled[3] = {2.0, 2.0, 2.0};
+    Parameter_set_values(Hashtable_get(hash, "gaps"), doubled);
+    for (size_t i = 0; i < 4; i++) {
+        mu_assert(fabs(sm->get_rate(sm, i) - expected[i]) < TOL,
+                  "increments +I: rates are not invariant to the scale of the gaps");
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
     return NULL;
 }
 
@@ -465,9 +617,11 @@ char* all_tests() {
     mu_run_test(test_mean_contribution_dual);
     mu_run_test(test_mean_contribution_rejects);
     mu_run_test(test_rate_increments);
+    mu_run_test(test_rate_increments_invariant);
     mu_run_test(test_rate_ratios);
-    mu_run_test(test_rate_parameterization_inferred);
+    mu_run_test(test_rate_parameterization_key_selects);
     mu_run_test(test_rate_parameterization_rejects);
+    mu_run_test(test_proportions_rejects);
     return NULL;
 }
 

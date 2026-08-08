@@ -34,10 +34,13 @@ typedef enum quadrature_t {
 // sum_k p_k r_k = 1; they differ in conditioning and in the induced prior.
 // See docs/models/sitemodel.md.
 typedef enum rate_parameterization_t {
-	// Inferred from the shape of the "rates" entry: a simplex selects the rate
-	// shape, a plain vector the increments, an array of two parameters the ratios.
-	// The mean-contribution simplex has the same shape as the rate shape and so
-	// can only be reached by naming it.
+	// Inferred from the shape of the rate parameters: a simplex selects the rate
+	// shape, a plain vector the increments, a pair of parameters the ratios. The
+	// mean-contribution simplex has the same shape as the rate shape and so cannot
+	// be reached this way. This is a convenience for C API callers only -- a site
+	// model built from JSON always names its parameterization, because the JSON key
+	// holding the free parameter *is* the parameterization (see
+	// new_SiteModel_from_json and docs/models/sitemodel.md).
 	RATE_PARAMETERIZATION_AUTO,
 	// Rate shape x is a simplex, normalised by the weighted mean:
 	// r_k = x_k / sum_j p_j x_j.

@@ -675,13 +675,15 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 	if(sm->quadrature == QUADRATURE_DISCRETE){
 #endif
 		const double* values = Parameter_values(sm->proportions);
-		double sum = 0;
-		for (int i = 0; i < sm->cat_count-cat; i++) {
-			quantiles[i+cat] = sum + values[i+cat]/2.0; // pick midpoint
-			sum += values[i];
-			// printf("%f ", values[i]);
+		propVariable = 0;
+		for (int i = cat; i < sm->cat_count; i++) {
+			propVariable += values[i];
 		}
-		// printf("\n");
+		double sum = 0;
+		for (int i = cat; i < sm->cat_count; i++) {
+			quantiles[i] = (sum + values[i]/2.0)/propVariable; // pick midpoint
+			sum += values[i];
+		}
 		memcpy(sm->cat_proportions, values, sizeof(double)*Parameter_size(sm->proportions));
 	}
 	// if the dimension of the simplex is then only pinv is estimated
@@ -907,10 +909,12 @@ static void _update_rates_discrete(SiteModel *sm) {
         case RATE_PARAMETERIZATION_AUTO:
             break;
     }
-    // Infer the parameterization from the shape of "rates". A simplex is a rate
-    // shape, a plain vector a sequence of increments, and a pair of parameters the
-    // ratios and the top rate they hang off. The mean-contribution simplex is not
-    // reachable this way: its parameter looks exactly like a rate shape.
+    // A C API caller may leave the parameterization unset, in which case it is
+    // inferred from the shape of the rate parameters: a simplex is a rate shape, a
+    // plain vector a sequence of increments, and a pair of parameters the ratios and
+    // the top rate they hang off. The mean-contribution simplex is not reachable this
+    // way -- its parameter looks exactly like a rate shape -- which is why the JSON
+    // parser names the parameterization instead of inferring it.
     if (Parameters_count(sm->rates) == 1) {
         if (Parameters_at(sm->rates, 0)->simplex) _calculate_rates_discrete_rate_shape(sm);
         else _calculate_rates_discrete_increments(sm);
@@ -941,12 +945,6 @@ void _calculate_rates_discrete( SiteModel *sm ) {
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
 	const double* cat_proportions = Parameter_values(sm->proportions);
 	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
-	
-	if(Parameters_count(sm->rates) == 0){
-		sm->cat_rates[1] = 1.0/sm->cat_proportions[1];
-		sm->need_update = false;
-		return;
-	}
 
 	sm->cat_rates[cat] = Parameters_value(sm->rates, j++);
 	sm->cat_rates[cat+1] = 1;
@@ -979,12 +977,7 @@ void _calculate_rates_discrete_rate_shape( SiteModel *sm ) {
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
 	const double* cat_proportions = Parameter_values(sm->proportions);
 	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
-	
-	if(Parameters_count(sm->rates) == 0){
-		sm->cat_rates[1] = 1.0/sm->cat_proportions[1];
-		sm->need_update = false;
-		return;
-	}
+
 	Parameter* parameter_simplex = Parameters_at(sm->rates, 0);
 	const double* cat_rates = Parameter_values(parameter_simplex);
 	memcpy(sm->cat_rates, cat_rates, sizeof(double)*cat_count);
@@ -1024,12 +1017,6 @@ void _calculate_rates_discrete_mean_contribution( SiteModel *sm ) {
 	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
 
-	if(Parameters_count(sm->rates) == 0){
-		sm->cat_rates[1] = 1.0/sm->cat_proportions[1];
-		sm->need_update = false;
-		return;
-	}
-
 	size_t cat = (sm->invariant ? 1 : 0);
 	const double* contributions = Parameter_values(Parameters_at(sm->rates, 0));
 	for (size_t i = cat; i < cat_count; i++ ) {
@@ -1054,39 +1041,40 @@ void _calculate_rates_discrete_mean_contribution( SiteModel *sm ) {
 // Note that theta has K elements for K-1 degrees of freedom: the normalisation
 // is scale-free, so the likelihood is exactly flat along theta -> c*theta. Pin
 // the scale (fix one element, or put theta on a simplex) before reading anything
-// curvature-based off a fit. No invariant class: the running sum starts at
-// category 0, which +I would need pinned at rate 0.
+// curvature-based off a fit.
+//
+// An invariant class can be prepended, as for the mean-contribution simplex: the
+// running sum then starts at category 1 and category 0 is left pinned at rate 0,
+// so theta carries one element per *variable* category -- one fewer than the
+// proportions simplex. The invariant class contributes nothing to the weighted
+// mean, so the constraint reads sum_{k>0} p_k r_k = 1 and the normalisation is
+// unchanged.
 void _calculate_rates_discrete_increments( SiteModel *sm ) {
 	int cat_count = Parameter_size(sm->proportions);
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
 	const double* cat_proportions = Parameter_values(sm->proportions);
 	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
-	
-	if(Parameters_count(sm->rates) == 0){
-		sm->cat_rates[1] = 1.0/sm->cat_proportions[1];
-		sm->need_update = false;
-		return;
-	}
+
 	Parameter* rates = Parameters_at(sm->rates, 0);
 	const double* cat_rates = Parameter_values(rates);
-	sm->cat_rates[0] = cat_rates[0];
-	
-	double norm = cat_rates[0]*sm->cat_proportions[0];
-	for (size_t i = 1; i < cat_count; i++ ) {
-		sm->cat_rates[i] = cat_rates[i] + sm->cat_rates[i-1];
+	size_t first = (sm->invariant ? 1 : 0);
+	sm->cat_rates[first] = cat_rates[0];
+
+	double norm = sm->cat_rates[first]*sm->cat_proportions[first];
+	for (size_t i = first + 1; i < cat_count; i++ ) {
+		sm->cat_rates[i] = cat_rates[i - first] + sm->cat_rates[i-1];
 		norm += sm->cat_rates[i]*sm->cat_proportions[i];
 	}
 
-	for (size_t i = 0; i < cat_count; i++ ) {
+	for (size_t i = first; i < cat_count; i++ ) {
 		sm->cat_rates[i] /= norm;
 	}
 	sm->need_update = false;
 }
 
-// Ordered ratios ("rate_ratios"; also inferred from a two-element "rates" array).
-// The free parameters are a vector theta of K-1 ratios of each category to the next one
-// up, and a scalar for the top raw rate, from which the sequence is built
-// downwards and then normalised:
+// Ordered ratios ("rate_ratios" plus "top_rate"). The free parameters are a vector
+// theta of K-1 ratios of each category to the next one up, and a scalar for the top
+// raw rate, from which the sequence is built downwards and then normalised:
 //
 //     rt_{K-1} = top,  rt_{k-1} = theta_{k-1} * rt_k,
 //     r_k = rt_k / sum_j p_j rt_j .
@@ -1108,12 +1096,7 @@ void _calculate_rates_discrete_ratios( SiteModel *sm ) {
 	memset(sm->cat_rates, 0, sizeof(double)*cat_count);
 	const double* cat_proportions = Parameter_values(sm->proportions);
 	memcpy(sm->cat_proportions, cat_proportions, sizeof(double)*cat_count);
-	
-	if(Parameters_count(sm->rates) == 0){
-		sm->cat_rates[1] = 1.0/sm->cat_proportions[1];
-		sm->need_update = false;
-		return;
-	}
+
 	Parameter* prop_parameter = Parameters_at(sm->rates, 0);
 	Parameter* last_parameter = Parameters_at(sm->rates, 1);
 	const double* prop_rates = Parameter_values(prop_parameter);
@@ -1377,33 +1360,41 @@ static const char* rate_parameterization_strings[] = {
 	"auto", "rate_shape", "mean_contribution", "rate_increments", "rate_ratios"
 };
 
-static rate_parameterization_t _infer_rate_parameterization(const Parameters* rates){
-	if (Parameters_count(rates) == 1) {
-		return Parameters_at(rates, 0)->simplex ? RATE_PARAMETERIZATION_RATE_SHAPE
-		                                        : RATE_PARAMETERIZATION_RATE_INCREMENTS;
-	}
-	return RATE_PARAMETERIZATION_RATE_RATIOS;
-}
+// The JSON key holding the free rate parameter of a "discrete" site model *is* the
+// parameterization it drives, so a key name and a parameterization name are the same
+// string and exactly one of these keys may appear. That leaves nothing to infer from
+// the shape of the parameter: the shape is checked against the key
+// (_check_rate_parameterization) rather than used to guess what the key meant, so a
+// simplex handed to "rate_increments" is an error instead of a silently different
+// model. "rate_ratios" additionally needs "top_rate", the rate its chain hangs off.
+static const struct {
+	const char* key;
+	rate_parameterization_t parameterization;
+} rate_parameterization_keys[] = {
+	{"rate_shape", RATE_PARAMETERIZATION_RATE_SHAPE},
+	{"mean_contribution", RATE_PARAMETERIZATION_MEAN_CONTRIBUTION},
+	{"rate_increments", RATE_PARAMETERIZATION_RATE_INCREMENTS},
+	{"rate_ratios", RATE_PARAMETERIZATION_RATE_RATIOS},
+};
+#define RATE_PARAMETERIZATION_KEY_COUNT \
+	(sizeof(rate_parameterization_keys) / sizeof(rate_parameterization_keys[0]))
 
 static void _check_rate_parameterization(rate_parameterization_t parameterization,
                                          const Parameters* rates,
-                                         const Parameter* proportions,
-                                         distribution_t distribution, size_t cat,
+                                         const Parameter* proportions, size_t cat,
                                          bool invariant){
 	char prefix[64];
-	snprintf(prefix, sizeof(prefix), "sitemodel: parameterization \"%s\"",
+	snprintf(prefix, sizeof(prefix), "sitemodel: \"%s\"",
 	         rate_parameterization_strings[parameterization]);
-	if (distribution != DISTRIBUTION_DISCRETE) {
-		fprintf(stderr, "%s requires \"distribution\": \"discrete\"\n", prefix);
-		exit(2);
-	}
 	if (proportions == NULL) {
 		fprintf(stderr, "%s requires a \"proportions\" simplex\n", prefix);
 		exit(2);
 	}
-	// Only the mean-contribution simplex holds category 0 at rate 0; the others
-	// write their first rate there, so an invariant class would be overwritten.
-	if (invariant && parameterization != RATE_PARAMETERIZATION_MEAN_CONTRIBUTION) {
+	// The mean-contribution simplex and the ordered increments start at category 1
+	// and leave category 0 pinned at rate 0; the other two write their first rate
+	// there, so an invariant class would be overwritten.
+	if (invariant && parameterization != RATE_PARAMETERIZATION_MEAN_CONTRIBUTION &&
+		parameterization != RATE_PARAMETERIZATION_RATE_INCREMENTS) {
 		fprintf(stderr, "%s does not support an invariant category\n", prefix);
 		exit(2);
 	}
@@ -1423,20 +1414,22 @@ static void _check_rate_parameterization(rate_parameterization_t parameterizatio
 			// fall through
 		case RATE_PARAMETERIZATION_RATE_SHAPE:
 			if (Parameters_count(rates) != 1 || !Parameters_at(rates, 0)->simplex) {
-				fprintf(stderr, "%s expects \"rates\" to be a single simplex parameter\n",
-				        prefix);
+				fprintf(stderr, "%s expects a simplex parameter\n", prefix);
 				exit(2);
 			}
 			if (Parameter_size(Parameters_at(rates, 0)) != expected) {
-				fprintf(stderr, "%s expects a rates simplex of dimension %zu, got %zu\n",
+				fprintf(stderr, "%s expects a simplex of dimension %zu, got %zu\n",
 				        prefix, expected, Parameter_size(Parameters_at(rates, 0)));
 				exit(2);
 			}
 			break;
 		case RATE_PARAMETERIZATION_RATE_INCREMENTS:
+			// As for the mean-contribution simplex, the invariant class is not part of
+			// the running sum, so there is one increment per variable category.
+			expected = cat;
 			if (Parameters_count(rates) != 1 || Parameters_at(rates, 0)->simplex) {
-				fprintf(stderr, "%s expects \"rates\" to be a single plain (non-simplex) "
-				                "vector parameter\n", prefix);
+				fprintf(stderr, "%s expects a plain (non-simplex) vector parameter\n",
+				        prefix);
 				exit(2);
 			}
 			if (Parameter_size(Parameters_at(rates, 0)) != expected) {
@@ -1447,9 +1440,13 @@ static void _check_rate_parameterization(rate_parameterization_t parameterizatio
 			break;
 		case RATE_PARAMETERIZATION_RATE_RATIOS:
 			if (Parameters_count(rates) != 2) {
-				fprintf(stderr, "%s expects \"rates\" to be an array of two parameters: "
-				                "the ratios between consecutive categories, and the rate "
-				                "of the last category\n", prefix);
+				fprintf(stderr, "%s requires \"top_rate\", the rate of the last\n"
+				                "category its chain hangs off\n", prefix);
+				exit(2);
+			}
+			if (Parameters_at(rates, 0)->simplex) {
+				fprintf(stderr, "%s expects a plain (non-simplex) vector parameter\n",
+				        prefix);
 				exit(2);
 			}
 			if (Parameter_size(Parameters_at(rates, 0)) != expected - 1) {
@@ -1458,14 +1455,48 @@ static void _check_rate_parameterization(rate_parameterization_t parameterizatio
 				exit(2);
 			}
 			if (Parameter_size(Parameters_at(rates, 1)) != 1) {
-				fprintf(stderr, "%s expects the rate of the last category to be a scalar, "
-				                "got %zu elements\n", prefix,
+				fprintf(stderr, "%s expects \"top_rate\" to be a scalar, got %zu "
+				                "elements\n", prefix,
 				        Parameter_size(Parameters_at(rates, 1)));
 				exit(2);
 			}
 			break;
 		case RATE_PARAMETERIZATION_AUTO:
 			break;
+	}
+}
+
+// The key holding the parameter of a parametric distribution or of a Beta/Kumaraswamy
+// quadrature cannot be marked JSON_REQUIRED in the schema, because which one is
+// required depends on "distribution" and "quadrature". Enforce it here instead, so a
+// missing key is a parse error naming the key and what asked for it, rather than a
+// NULL dereference inside new_Parameter_from_json.
+static json_node* _get_required_json_node(json_node* node, const char* key,
+                                          const char* selector,
+                                          const char* selector_value){
+	json_node* child = get_json_node(node, key);
+	if (child == NULL) {
+		json_die(node, "\"%s\" is required for \"%s\": \"%s\"", key, selector,
+		         selector_value);
+	}
+	return child;
+}
+
+// "categories" counts the *variable* categories, so the weights simplex carries one
+// more element when an invariant class is prepended to them. Checked wherever a
+// "proportions" is accepted: its elements are copied into cat_proportions, which is
+// sized from "categories", so a longer one is a write past the end of that buffer and
+// a shorter one leaves the tail categories uninitialised.
+static void _check_proportions_dimension(const Parameter* proportions, size_t cat,
+                                         bool invariant){
+	size_t dim = cat + invariant;
+	if (Parameter_size(proportions) != dim) {
+		fprintf(stderr,
+		        "sitemodel: \"proportions\" expects a simplex of dimension %zu "
+		        "(\"categories\": %zu%s), got %zu\n",
+		        dim, cat, invariant ? ", plus one for the invariant class" : "",
+		        Parameter_size(proportions));
+		exit(2);
 	}
 }
 
@@ -1478,67 +1509,80 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		{"categories", JSON_OPTIONAL, JSON_NUMBER},
 		{"distribution", JSON_OPTIONAL, JSON_STRING},
 		{"invariant", JSON_OPTIONAL, JSON_BOOL},
+		{"mean_contribution", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},  // discrete
 		{"mu", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
-		{"parameterization", JSON_OPTIONAL, JSON_STRING},
 		{"parameters", JSON_OPTIONAL, JSON_ANY},
 		{"proportion_invariant", JSON_OPTIONAL, JSON_OBJECT | JSON_NUMBER | JSON_STRING},
 		{"proportions", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"quadrature", JSON_OPTIONAL, JSON_STRING},
-		{"rates", JSON_OPTIONAL, JSON_ANY},
+		{"rates", JSON_FORBIDDEN, JSON_ANY},
+		{"rate_increments", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},    // discrete
+		{"rate_ratios", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},        // discrete
+		{"rate_shape", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},         // discrete
 		{"scale", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},    // lognormal scale
 		{"shape", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},    // gamma/Weibull shape
 		{"sitepattern", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+		{"top_rate", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING}, // with rate_ratios
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
-	
+	// The ratios build their sequence downwards from the rate of the last category,
+	// so neither key means anything without the other.
+	json_validate_co_required(node, "rate_ratios", "top_rate", NULL);
+
 	char* id = get_json_node_value_string(node, "id");
 	json_node* distribution_node = get_json_node(node, "distribution");
 	json_node* mu_node = get_json_node(node, "mu");
 	char* sp_ref = get_json_node_value_string(node, "sitepattern");
-	json_node* proportions_node = NULL;
-	
+	json_node* proportions_node = get_json_node(node, "proportions");
+	json_node* proportion_invariant_node = get_json_node(node, "proportion_invariant");
+	json_node* discretization_node = get_json_node(node, "quadrature");
+
 	size_t cat = 1;
 	
 	Parameters* rates = new_Parameters(1);
 	Parameter* proportions = NULL;
-	size_t dimProportion = 0;
-	// Simplex* props_simplex = NULL;
-	// Model* mprops_simplex = NULL;
 	
 	distribution_t distribution = DISTRIBUTION_UNIFORM;
 	quadrature_t quad = QUADRATURE_QUANTILE_MEDIAN;
 	rate_parameterization_t rate_parameterization = RATE_PARAMETERIZATION_AUTO;
 	bool invariant = false;
 
-	if (distribution_node != NULL) {
-		invariant = get_json_node_value_bool(node, "invariant", false);
 
-		char* parameterization_name = get_json_node_value_string(node, "parameterization");
-		if (parameterization_name != NULL) {
-			if (strcasecmp(parameterization_name, "rate_shape") == 0) {
-				rate_parameterization = RATE_PARAMETERIZATION_RATE_SHAPE;
-			}
-			else if (strcasecmp(parameterization_name, "mean_contribution") == 0) {
-				rate_parameterization = RATE_PARAMETERIZATION_MEAN_CONTRIBUTION;
-			}
-			else if (strcasecmp(parameterization_name, "rate_increments") == 0) {
-				rate_parameterization = RATE_PARAMETERIZATION_RATE_INCREMENTS;
-			}
-			else if (strcasecmp(parameterization_name, "rate_ratios") == 0) {
-				rate_parameterization = RATE_PARAMETERIZATION_RATE_RATIOS;
-			}
-			else{
-				fprintf(stderr, "Cannot recognize parameterization %s (expected "
-				                "\"rate_shape\", \"mean_contribution\", "
-				                "\"rate_increments\" or \"rate_ratios\")\n",
-				        parameterization_name);
-				exit(13);
-			}
+	// Both name the same weights: "proportion_invariant" is the scalar p of the
+	// 2-element simplex [p, 1-p] the parser builds from it, "proportions" is the
+	// simplex spelled out. Rejected here rather than in the distribution branch so
+	// that a model declaring no distribution does not quietly keep one and drop the
+	// other.
+	if (proportion_invariant_node != NULL && proportions_node != NULL) {
+		fprintf(stderr, "sitemodel: specify either \"proportions\" or "
+		                "\"proportion_invariant\", not both\n");
+		exit(2);
+	}
+
+	// Which of the mutually exclusive rate keys was given, if any -- none is the pure
+	// +I model. Read before anything is built so that a key meant for "discrete" can
+	// be rejected on any other model rather than silently ignored.
+	json_node* rates_node = NULL;
+	for (size_t i = 0; i < RATE_PARAMETERIZATION_KEY_COUNT; i++) {
+		json_node* candidate = get_json_node(node, rate_parameterization_keys[i].key);
+		if (candidate == NULL) continue;
+		if (rates_node != NULL) {
+			json_die(node, "\"%s\" and \"%s\" are alternative parameterizations of the "
+			               "same category rates; define at most one",
+			         rate_parameterization_strings[rate_parameterization],
+			         rate_parameterization_keys[i].key);
 		}
+		rates_node = candidate;
+		rate_parameterization = rate_parameterization_keys[i].parameterization;
+	}
+	json_node* top_rate_node = get_json_node(node, "top_rate");
+	if (rates_node != NULL && distribution_node == NULL) {
+		json_die(node, "\"%s\" parameterizes the free rates of \"distribution\": "
+		               "\"discrete\", which this site model does not declare",
+		         rate_parameterization_strings[rate_parameterization]);
+	}
 
-		proportions_node = get_json_node(node, "proportions");
-		cat = get_json_node_value_int(node, "categories", 4);
-
+	if (distribution_node != NULL) {
 		char* distribution_name = get_json_node_value_string(node, "distribution");
 		if (strcasecmp(distribution_name, "gamma") == 0){
 			distribution = DISTRIBUTION_GAMMA;
@@ -1559,23 +1603,29 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			fprintf(stderr, "Cannot not recognize distribution %s\n", distribution_name);
 			exit(13);
 		}
-		
-		json_node* discretization_node = get_json_node(node, "quadrature");
-		
-		json_node* proportion_invariant_node = get_json_node(node, "proportion_invariant");
-		if (proportion_invariant_node != NULL && proportions_node != NULL) {
-			fprintf(stderr, "sitemodel: specify either \"proportions\" or "
-			                "\"proportion_invariant\", not both\n");
+
+		if(get_json_node(node, "categories") == NULL){
+			fprintf(stderr, "sitemodel: \"categories\" must be specified for distribution %s\n", distribution_name);
 			exit(2);
 		}
-
+		else{
+			cat = get_json_node_value_size_t(node, "categories", 4);
+		}
+		
+		// +G/W/L+I or +I
 		if (proportion_invariant_node != NULL) {
 			proportions = new_proportion_invariant_from_json(proportion_invariant_node, hash);
 			invariant = true;
 			Parameter_set_model(proportions, MODEL_SITEMODEL);
-			dimProportion = Parameter_size(proportions);
+			if(distribution == DISTRIBUTION_DISCRETE){
+				cat = 1; // +I
+			}
 		}
+		// +R or +R+I or +G+I+D
+		// We need to specify invariant=true for +R+I
 		else if (proportions_node != NULL) {
+			invariant = get_json_node_value_bool(node, "invariant", false);
+
 			if (proportions_node->node_type == MJSON_STRING) {
 				char* ref = (char*)proportions_node->value;
 				proportions = safe_get_reference_parameter(ref, hash, id);
@@ -1586,7 +1636,8 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				Hashtable_add(hash, Parameter_name(proportions), proportions);
 			}
 			Parameter_set_model(proportions, MODEL_SITEMODEL);
-			dimProportion = Parameter_size(proportions);
+
+			_check_proportions_dimension(proportions, cat, invariant);
 		}
 		
 		if(discretization_node != NULL && distribution != DISTRIBUTION_DISCRETE){
@@ -1604,111 +1655,86 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			}
 			else if(strcasecmp("median", method) == 0){
 				quad = QUADRATURE_QUANTILE_MEDIAN;
-				if (dimProportion != 0 && cat > dimProportion) {
-					invariant = true;
-				}
 			}
 			else if(strcasecmp("mean", method) == 0){
 				quad = QUADRATURE_QUANTILE_MEAN;
-				if (dimProportion != 0 && cat > dimProportion) {
-					invariant = true;
-				}
 			}
 			else if(strcasecmp("discrete", method) == 0){
 				quad = QUADRATURE_DISCRETE;
-				if (cat < dimProportion) {
-					invariant = true;
-				}
 			}
-			else if(strcasecmp("beta", method) == 0 || strcasecmp("kumaraswamy", method) == 0){
-				if(strcasecmp("beta", method) == 0){
-					quad = QUADRATURE_BETA;
-				}
-				else if(strcasecmp("kumaraswamy", method) == 0){
-					quad = QUADRATURE_KUMARASWAMY;
-				}
-				else{
-					fprintf(stderr, "Could not recognize quadrature type. It should be beta or kumaraswamy");
-				}
-				if (dimProportion > 0) {
-					if(dimProportion != 2){
-						fprintf(stderr, "QUADRATURE_BETA: simplex should be of dimension 2 or no simplex at all\n");
-						exit(2);
-					}
-					invariant = true;
-				}
+			else if(strcasecmp("beta", method) == 0){
+				quad = QUADRATURE_BETA;
+			}
+			else if(strcasecmp("kumaraswamy", method) == 0){
+				quad = QUADRATURE_KUMARASWAMY;
 			}
 			else{
 				fprintf(stderr, "Cannot not recognize quadrature method %s\n", method);
 				exit(13);
 			}
 		}
-		// Weibull with I
-		else if ((distribution == DISTRIBUTION_GAMMA || distribution == DISTRIBUTION_WEIBULL) && discretization_node == NULL && dimProportion == 2) {
-			invariant = true;
-		}
 		
 		if (distribution == DISTRIBUTION_DISCRETE) {
-			json_node* rates_node = get_json_node(node, "rates");
 			if(rates_node != NULL){
-				if (rates_node->node_type == MJSON_OBJECT) {
-					Parameter* rates_parameter = new_Parameter_from_json(rates_node, hash);
-					Parameters_move(rates, rates_parameter);
-				}
-				else if (rates_node->node_type == MJSON_ARRAY) {
-					for (size_t i = 0; i < rates_node->child_count; i++) {
-						json_node* child = rates_node->children[i];
-						Parameter* rate_parameter = new_Parameter_from_json(child, hash);
-						Parameters_move(rates, rate_parameter);
-					}
-					
-					// Parameters_set_bounds(rates, 0, 1.e-8, 0.99);
-					// for (size_t i = 1; i < Parameters_count(rates); i++) {
-					// 	Parameters_set_bounds(rates, i, 1, 100);
-					// }
-					// Parameters_set_bounds(rates, 0, 0.001, 100);
-					// Parameters_set_bounds(rates, 1, 1.e-8, 0.99);
+				Parameters_move(rates, new_Parameter_from_json(rates_node, hash));
+				// The ratios alone do not pin the sequence: it is built downwards from
+				// the rate of the last category, which lives under its own key rather
+				// than in a positional slot alongside them.
+				if (rate_parameterization == RATE_PARAMETERIZATION_RATE_RATIOS &&
+					top_rate_node != NULL) {
+					Parameters_move(rates,
+					                new_Parameter_from_json(top_rate_node, hash));
 				}
 			}
-			else{
-				invariant = true;
-				// simple +I model
-				cat = 1; // cat will be incremented in the constructor to include invariant
-			}
-			/*if (parameters_node == NULL || Parameters_count(rates) == dimProportion) {
-				invariant = true;
-				// simple +I model
-				if (parameters_node == NULL || Parameters_count(rates) == 0){
-					cat = 1; // cat will be incremented in the constructor to include invariant
-				}
-			}*/
 		}
 		else{
+			if (rates_node != NULL) {
+				fprintf(stderr, "sitemodel: \"%s\" parameterizes the free rates of "
+				                "\"distribution\": \"discrete\"; the categories of a\n"
+				                "\"%s\" model come from its quantile function "
+				                "instead\n",
+				        rate_parameterization_strings[rate_parameterization],
+				        distribution_name);
+				exit(2);
+			}
 			if(distribution == DISTRIBUTION_GAMMA || distribution == DISTRIBUTION_WEIBULL){
-				json_node* shape_node = get_json_node(node, "shape");
+				json_node* shape_node = _get_required_json_node(node, "shape",
+				                                                "distribution",
+				                                                distribution_name);
 				Parameter* shape_parameter = new_Parameter_from_json(shape_node, hash);
 				Parameters_move(rates, shape_parameter);
 			}
 			else if(distribution == DISTRIBUTION_LOGNORMAL){
-				json_node* scale_node = get_json_node(node, "scale");
+				json_node* scale_node = _get_required_json_node(node, "scale",
+				                                                "distribution",
+				                                                distribution_name);
 				Parameter* scale_parameter = new_Parameter_from_json(scale_node, hash);
 				Parameters_move(rates, scale_parameter);
 			}
 
+			// quad is only set when "quadrature" is present, so the node naming the
+			// method the parameters are missing from is there to be quoted back.
+			const char* method =
+				(discretization_node == NULL ? "" : (char*)discretization_node->value);
+
 			if(quad == QUADRATURE_BETA){
-				json_node* alpha_node = get_json_node(node, "alpha");
+				json_node* alpha_node = _get_required_json_node(node, "alpha",
+				                                                "quadrature", method);
 				Parameter* alpha_parameter = new_Parameter_from_json(alpha_node, hash);
 				Parameters_move(rates, alpha_parameter);
 
-				json_node* beta_node = get_json_node(node, "beta");
+				json_node* beta_node = _get_required_json_node(node, "beta",
+				                                               "quadrature", method);
 				Parameter* beta_parameter = new_Parameter_from_json(beta_node, hash);
 				Parameters_move(rates, beta_parameter);
 			}
 			else if(quad == QUADRATURE_KUMARASWAMY){
-				json_node* a_node = get_json_node(node, "a");
+				json_node* a_node = _get_required_json_node(node, "a", "quadrature",
+				                                            method);
 				Parameter* a_parameter = new_Parameter_from_json(a_node, hash);
 
-				json_node* b_node = get_json_node(node, "b");
+				json_node* b_node = _get_required_json_node(node, "b", "quadrature",
+				                                            method);
 				Parameter* b_parameter = new_Parameter_from_json(b_node, hash);
 
 				// As "a" -> 0 the interior quantile B(1/K)^(1/a) of the Kumaraswamy
@@ -1738,25 +1764,13 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			}
 		}
 
-		if (rate_parameterization == RATE_PARAMETERIZATION_MEAN_CONTRIBUTION &&
-			dimProportion == cat + 1) {
-			// Same convention as the "discrete" quadrature: a proportions simplex one
-			// element longer than "categories" prepends the invariant class, whose
-			// rate is pinned at 0 and which therefore has no mean contribution.
-			invariant = true;
-		}
-		// A parameterization named in the JSON is checked whatever the model it was
-		// attached to. An inferred one is resolved here, the way
-		// _update_rates_discrete would resolve it, and checked too -- so that a
-		// mis-sized "rates" is a parse error rather than a read off the end of the
-		// parameter. The pure +I model has no rate parameter to parameterise.
-		if (rate_parameterization != RATE_PARAMETERIZATION_AUTO ||
-			(distribution == DISTRIBUTION_DISCRETE && Parameters_count(rates) > 0)) {
-			if (rate_parameterization == RATE_PARAMETERIZATION_AUTO) {
-				rate_parameterization = _infer_rate_parameterization(rates);
-			}
-			_check_rate_parameterization(rate_parameterization, rates, proportions,
-			                             distribution, cat, invariant);
+		// The shape of the parameter is checked against the key that named it, so a
+		// mis-sized or mis-typed one is a parse error rather than a read off the end
+		// of the parameter or a silently different model. The pure +I model has no
+		// rate parameter to parameterise.
+		if (rates_node != NULL) {
+			_check_rate_parameterization(rate_parameterization, rates, proportions, cat,
+			                             invariant);
 		}
 
 		for (int i = 0; i < Parameters_count(rates); i++) {
@@ -1764,6 +1778,20 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			Parameter_set_model(p, MODEL_SITEMODEL);
 			Hashtable_add(hash, Parameters_name(rates, i), p);
 		}
+	}
+	// allow +I only without distribution=discrete
+	else if (proportion_invariant_node != NULL) {
+		proportions = new_proportion_invariant_from_json(proportion_invariant_node, hash);
+		invariant = true;
+		Parameter_set_model(proportions, MODEL_SITEMODEL);
+		distribution = DISTRIBUTION_DISCRETE;
+	}
+	// The weights belong to the categories of a rate distribution, and "categories"
+	// is only read when one is declared. Without it there is a single category of
+	// weight 1 and the simplex would be dropped on the floor.
+	else if (proportions_node != NULL) {
+		json_die(node, "\"proportions\" gives the weight of each category of a "
+		               "\"distribution\", which this site model does not declare");
 	}
 
 	if(distribution == DISTRIBUTION_GAMMA || distribution == DISTRIBUTION_WEIBULL){
