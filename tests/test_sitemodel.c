@@ -610,8 +610,241 @@ char* test_rate_increments_invariant() {
     return NULL;
 }
 
+// Conditional mean of a unit-mean exponential (a Weibull of shape 1) over the k-th
+// equal-probability bin, times K. With e^{-u_j} = 1 - j/K at the bin boundaries
+// u_j = -log(1 - j/K), the partial expectation collapses to a closed form, which
+// gives an independent check on the incomplete-gamma construction.
+static double _exponential_bin_mean(size_t k, size_t K) {
+    // int_a^b r e^{-r} dr = (1 + a) e^{-a} - (1 + b) e^{-b}, and 1 + u_j is
+    // 1 - log(e^{-u_j}) with e^{-u_j} = 1 - j/K. The last bin runs to infinity.
+    double lower_mass = 1.0 - (double)(k - 1) / K;
+    double upper_mass = 1.0 - (double)k / K;
+    double lower = (1.0 - log(lower_mass)) * lower_mass;
+    double upper = (k == K ? 0.0 : (1.0 - log(upper_mass)) * upper_mass);
+    return K * (lower - upper);
+}
+
+// Mean quadrature places category k at the conditional mean of its equal-probability
+// bin rather than at the bin's median. For the Weibull the substitution u = r^alpha
+// turns that partial expectation into an incomplete gamma of order 1 + 1/alpha
+// evaluated at fixed boundaries, so the rates come out with unit mean by
+// construction and are never renormalized.
+char* test_weibull_mean_quadrature() {
+    const char* json =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"weibull\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":1.0,\"lower\":0}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
+
+    mu_assert(sm->cat_count == 4, "weibull mean: wrong number of categories");
+    for (size_t i = 0; i < 4; i++) {
+        mu_assert(fabs(sm->get_proportion(sm, i) - 0.25) < TOL,
+                  "weibull mean: bins are not equiprobable");
+        mu_assert(fabs(sm->get_rate(sm, i) - _exponential_bin_mean(i + 1, 4)) < TOL,
+                  "weibull mean: shape 1 rates are not the exponential bin means");
+    }
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "weibull mean: rates do not have unit weighted mean");
+
+    // Away from the exponential there is no closed form; these are the same
+    // integrals K * int r f(r) dr evaluated numerically outside physher.
+    const double expected_half[4] = {0.012812320429430, 0.120440304532478,
+                                     0.519546986081804, 3.347200388955839};
+    const double quad_tol = 1.e-9;  // accuracy of the numerical reference
+    sm->set_rate(sm, 0, 0.5);
+    for (size_t i = 0; i < 4; i++) {
+        mu_assert(fabs(sm->get_rate(sm, i) - expected_half[i]) < quad_tol,
+                  "weibull mean: rates not matching after a change of shape");
+        if (i > 0) {
+            mu_assert(sm->get_rate(sm, i) > sm->get_rate(sm, i - 1),
+                      "weibull mean: rates are not increasing");
+        }
+    }
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "weibull mean: unit weighted mean lost after a change of shape");
+
+    // The boundaries are constants in u and the shape only moves the order of the
+    // incomplete gamma, so nothing can overflow the way a Weibull *quantile* does at
+    // a small shape: the discretization degenerates to a single fast category
+    // instead of returning NaN.
+    sm->set_rate(sm, 0, 0.01);
+    for (size_t i = 0; i < 4; i++) {
+        mu_assert(isfinite(sm->get_rate(sm, i)),
+                  "weibull mean: rate is not finite at the smallest allowed shape");
+    }
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "weibull mean: unit weighted mean lost at the smallest allowed shape");
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// The invariant class contributes nothing to the weighted mean, so the constraint
+// still reads sum_{k>0} p_k r_k = 1 with p_k = (1 - p_inv)/K: the conditional means
+// are scaled up by the variable proportion.
+char* test_weibull_mean_quadrature_invariant() {
+    const char* json =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"weibull\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":1.0,\"lower\":0},"
+        "\"proportion_invariant\":{\"id\":\"pinv\",\"type\":\"parameter\","
+        "\"x\":0.2,\"lower\":0.0,\"upper\":1.0}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
+
+    mu_assert(sm->invariant, "weibull mean +I: invariant class not detected");
+    mu_assert(sm->cat_count == 5, "weibull mean +I: wrong number of categories");
+    mu_assert(sm->get_rate(sm, 0) == 0.0,
+              "weibull mean +I: invariant category is not rate 0");
+    mu_assert(fabs(sm->get_proportion(sm, 0) - 0.2) < TOL,
+              "weibull mean +I: invariant proportion not matching");
+    for (size_t i = 1; i < 5; i++) {
+        mu_assert(fabs(sm->get_proportion(sm, i) - 0.8 / 4.0) < TOL,
+                  "weibull mean +I: variable categories do not share 1 - p_inv");
+        mu_assert(fabs(sm->get_rate(sm, i) - _exponential_bin_mean(i, 4) / 0.8) < TOL,
+                  "weibull mean +I: rates are not scaled by the variable proportion");
+    }
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "weibull mean +I: rates do not have unit weighted mean");
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// A synthetic objective L = sum_k p_k c_k r_k^2 over the category rates, in the
+// convention treelikelihood.c passes gradients back in: ingrad[k] is dL/dr_k with the
+// category weight p_k factored out, and ingrad[0] is the part of dL/dp_inv that runs
+// through the proportions rather than through the rates.
+static const double _grad_weights[5] = {0.3, 1.1, -0.7, 2.3, 0.5};
+
+static double _quadratic_objective(SiteModel* sm) {
+    double L = 0;
+    for (size_t i = 0; i < sm->cat_count; i++) {
+        double r = sm->get_rate(sm, i);
+        L += sm->get_proportion(sm, i) * _grad_weights[i] * r * r;
+    }
+    return L;
+}
+
+static void _fill_rate_gradient(SiteModel* sm, double* ingrad) {
+    for (size_t i = 0; i < sm->cat_count; i++) {
+        ingrad[i] = _grad_weights[i] * 2.0 * sm->get_rate(sm, i);
+    }
+}
+
+// The mean-quadrature rates are partial expectations, not quantiles, so they need a
+// derivative of their own -- the median-quadrature formulas would return a plausible
+// but wrong number. Check both parameters against central differences of the same
+// objective.
+static char* _check_mean_quadrature_gradient(const char* json, bool invariant) {
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
+    double ingrad[5];
+
+    Parameter* shape = Parameters_at(sm->rates, 0);
+    double alpha = Parameter_value(shape);
+    _fill_rate_gradient(sm, ingrad);
+    double analytic = sm->derivative(sm, ingrad, shape);
+
+    double h = 1.e-6 * alpha;
+    sm->set_rate(sm, 0, alpha + h);
+    double plus = _quadratic_objective(sm);
+    sm->set_rate(sm, 0, alpha - h);
+    double minus = _quadratic_objective(sm);
+    sm->set_rate(sm, 0, alpha);
+    mu_assert(fabs(analytic - (plus - minus) / (2.0 * h)) < 1.e-6,
+              "mean quadrature: shape derivative does not match finite differences");
+
+    if (invariant) {
+        Parameter* pinv = sm->proportions->transform->parameter;
+        double p0 = Parameter_value(pinv);
+        // dp_0/dp_inv = 1 and dp_k/dp_inv = -1/K for the variable categories.
+        double through_proportions = 0;
+        for (size_t i = 0; i < sm->cat_count; i++) {
+            double r = sm->get_rate(sm, i);
+            double dp = (i == 0 ? 1.0 : -1.0 / (sm->cat_count - 1));
+            through_proportions += dp * _grad_weights[i] * r * r;
+        }
+        _fill_rate_gradient(sm, ingrad);
+        ingrad[0] = through_proportions;
+        analytic = sm->derivative(sm, ingrad, pinv);
+
+        h = 1.e-6;
+        Parameter_set_value(pinv, p0 + h);
+        plus = _quadratic_objective(sm);
+        Parameter_set_value(pinv, p0 - h);
+        minus = _quadratic_objective(sm);
+        Parameter_set_value(pinv, p0);
+        mu_assert(fabs(analytic - (plus - minus) / (2.0 * h)) < 1.e-6,
+                  "mean quadrature: p_inv derivative does not match finite differences");
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+char* test_mean_quadrature_gradient() {
+    char* result = _check_mean_quadrature_gradient(
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"weibull\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.7,\"lower\":0}}",
+        false);
+    if (result != NULL) return result;
+
+    result = _check_mean_quadrature_gradient(
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"weibull\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.7,\"lower\":0},"
+        "\"proportion_invariant\":{\"id\":\"pinv\",\"type\":\"parameter\","
+        "\"x\":0.2,\"lower\":0.0,\"upper\":1.0}}",
+        true);
+    if (result != NULL) return result;
+
+    // The gamma shares the construction, differing only in that its bin boundaries
+    // move with the shape.
+    result = _check_mean_quadrature_gradient(
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.9,\"lower\":0},"
+        "\"proportion_invariant\":{\"id\":\"pinv\",\"type\":\"parameter\","
+        "\"x\":0.3,\"lower\":0.0,\"upper\":1.0}}",
+        true);
+    return result;
+}
+
+// The conditional mean of a bin is derived per family; only the gamma and the Weibull
+// have one here, and the others must be rejected rather than silently discretized as
+// a gamma.
+char* test_mean_quadrature_rejects() {
+    const char* weibull =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"weibull\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0}}";
+    mu_assert(_parse_status(weibull) == 0, "mean quadrature: weibull should parse");
+
+    const char* lognormal =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"lognormal\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"scale\":{\"id\":\"sigma\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0}}";
+    mu_assert(_parse_status(lognormal) == 12,
+              "mean quadrature: lognormal should die");
+
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
+    mu_run_test(test_weibull_mean_quadrature);
+    mu_run_test(test_weibull_mean_quadrature_invariant);
+    mu_run_test(test_mean_quadrature_gradient);
+    mu_run_test(test_mean_quadrature_rejects);
     mu_run_test(test_mean_contribution);
     mu_run_test(test_mean_contribution_invariant);
     mu_run_test(test_mean_contribution_dual);

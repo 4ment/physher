@@ -47,6 +47,9 @@ static double *_get_proportions_discrete( SiteModel *sm );
 
 static double icdf_weibull_1(double p, double k);
 
+static bool _cumulative_partial_means(distribution_t distribution, double alpha,
+                                      size_t cat_count, double* masses);
+
 static void _site_model_handle_change( Model *self, Model *model, Parameter* parameter, int index ){
 	SiteModel *sm = (SiteModel*)self->obj;
 	// printf("_site_model_handle_change\n");
@@ -467,6 +470,69 @@ void _weibull_gradient( SiteModel *sm, const double* ingrad, double* grad ){
 	}
 }
 
+// Mean quadrature places category k at the conditional mean of its bin,
+// r_k = K (c_k - c_{k-1})/propVariable, where the c_i are the cumulative partial
+// expectations of the rate distribution. Neither family gives an elementary
+// derivative of c_i with respect to the shape -- the gamma boundary is an inverse
+// CDF, and the Weibull shape enters the order of an incomplete gamma -- so the
+// masses are differentiated by a central difference, the same treatment the median
+// quadrature gives the gamma quantile. Unlike the median rates these need no
+// renormalization, so there is no quotient rule here.
+double _mean_quadrature_shape_derivative( SiteModel *sm, const double* ingrad ){
+	size_t catCount = sm->cat_count;
+	size_t variableCat = sm->proportions != NULL ? catCount - 1 : catCount;
+	double* proportions = sm->get_proportions(sm);
+	double propVariable = sm->proportions != NULL ? 1.0 - proportions[0] : 1.0;
+	double shape = Parameters_value(sm->rates, 0);
+	const double eps = pow(DBL_EPSILON, 1.0/3.0);
+	double xp = shape*(1.0 + eps);
+	double xm = shape*(1.0 - eps);
+
+	double* plus = dvector(variableCat + 1);
+	double* minus = dvector(variableCat + 1);
+	double shape_gradient = NAN;
+	if(_cumulative_partial_means(sm->distribution, xp, variableCat, plus) &&
+	   _cumulative_partial_means(sm->distribution, xm, variableCat, minus)){
+		shape_gradient = 0.0;
+		size_t j = (variableCat == catCount ? 0 : 1); // ignore category 0 with r_0=0
+		for (size_t i = 0; i < variableCat; i++, j++) {
+			double deriv_rate = variableCat*((plus[i+1] - plus[i]) - (minus[i+1] - minus[i]))
+			                    /((xp - xm)*propVariable);
+			shape_gradient += ingrad[j] * deriv_rate * proportions[j];
+		}
+	}
+	free(plus);
+	free(minus);
+	return shape_gradient;
+}
+
+double _mean_quadrature_inv_derivative( SiteModel *sm, const double* ingrad ){
+	double* proportions = sm->get_proportions(sm);
+	// The invariant proportion only scales the conditional means, r_k = K (c_k -
+	// c_{k-1})/(1 - p0), so dr_k/dp0 = r_k/(1 - p0).
+	double propVariable = 1.0 - proportions[0];
+	double pinv_gradient = 0;
+	for (size_t i = 1; i < sm->cat_count; i++) {
+		pinv_gradient += ingrad[i] * sm->cat_rates[i] * proportions[i]/propVariable;
+	}
+	return ingrad[0] + pinv_gradient;
+}
+
+double _mean_quadrature_derivative( SiteModel *sm, const double* ingrad, Parameter* p ){
+	if(sm->proportions != NULL && Parameters_at(sm->rates, 0) != p){
+		return _mean_quadrature_inv_derivative(sm, ingrad);
+	}
+	return _mean_quadrature_shape_derivative(sm, ingrad);
+}
+
+void _mean_quadrature_gradient( SiteModel *sm, const double* ingrad, double* grad ){
+	size_t offset = 0;
+	grad[offset++] = _mean_quadrature_shape_derivative(sm, ingrad);
+	if(sm->proportions != NULL){
+		grad[offset] = _mean_quadrature_inv_derivative(sm, ingrad);
+	}
+}
+
 bool _update_gamma_approx_quantile(SiteModel *sm){
 	if ( sm->need_update ) {
         return _gamma_approx_quantile(sm);
@@ -556,7 +622,15 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Parameter* 
 	// that model when it has two categories; none of the free-rate
 	// parameterizations has an analytic derivative here, so it must keep
 	// _no_gradient like every other category count.
-	if (distribution == DISTRIBUTION_WEIBULL ||
+	// Mean quadrature builds its categories from partial expectations rather than
+	// quantiles, so both families share a derivative of their own; the median
+	// formulas below would silently return the wrong number for it.
+	if (quad == QUADRATURE_QUANTILE_MEAN &&
+		(distribution == DISTRIBUTION_GAMMA || distribution == DISTRIBUTION_WEIBULL)) {
+		sm->gradient = _mean_quadrature_gradient;
+		sm->derivative = _mean_quadrature_derivative;
+	}
+	else if (distribution == DISTRIBUTION_WEIBULL ||
 		(distribution == DISTRIBUTION_DISCRETE && Parameters_count(sm->rates) == 0 &&
 		 Parameter_size(sm->proportions) == 2)) {
 		sm->gradient = _weibull_gradient;
@@ -611,6 +685,44 @@ double icdf_weibull(double p, double lambda, double k){
 
 double icdf_weibull_1(double p, double k){
 	return pow(-log(1.0 - p), 1.0/k);
+}
+
+// Cumulative partial expectations c_i = \int_0^{b_i} r f(r) dr of a unit-mean rate
+// distribution at the equal-probability bin boundaries b_i = F^{-1}(i/K), for
+// i = 0..K, so that c_0 = 0, c_K = 1 and the conditional mean of bin k is
+// K (c_k - c_{k-1}). Those rates satisfy the unit-mean constraint by construction:
+// the sum telescopes. Returns false if any mass came out non-finite, which the
+// caller reports rather than propagating into the likelihood.
+bool _cumulative_partial_means(distribution_t distribution, double alpha,
+                               size_t cat_count, double* masses){
+	masses[0] = 0.0;
+	masses[cat_count] = 1.0;
+	if(distribution == DISTRIBUTION_GAMMA){
+		// For Gamma(alpha, 1/alpha) the partial expectation is the regularized
+		// incomplete gamma one shape up, P(alpha+1, alpha b), and the boundary b
+		// itself has to be found by inverting the CDF at every alpha.
+		for (size_t i = 1; i < cat_count; i++) {
+			double boundary = qgamma((double)i/cat_count, alpha, alpha);
+			if(!isfinite(boundary)) return false;
+			masses[i] = gammp(alpha + 1.0, boundary*alpha);
+		}
+	}
+	else{
+		// The substitution u = (r/lambda)^alpha maps the Weibull to a standard
+		// exponential, under which the boundaries u_i = -log(1 - i/K) are constants
+		// and the unit-mean scale lambda = 1/Gamma(1 + 1/alpha) cancels. The shape
+		// only enters through the order 1 + 1/alpha of the incomplete gamma, so no
+		// quantile inversion is needed -- and, unlike the Weibull median rates, no
+		// quantile can overflow on the way.
+		double order = 1.0 + 1.0/alpha;
+		for (size_t i = 1; i < cat_count; i++) {
+			masses[i] = gammp(order, -log1p(-(double)i/cat_count));
+		}
+	}
+	for (size_t i = 1; i < cat_count; i++) {
+		if(!isfinite(masses[i])) return false;
+	}
+	return true;
 }
 
 bool _gamma_approx_quantile( SiteModel *sm ) {
@@ -820,22 +932,26 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 			sm->cat_rates[i + cat] /= mean;
 		}
 	}
-	// mean
+	// mean: category k is represented by the conditional mean of the distribution over
+	// its bin instead of by a quantile. The unit-mean constraint then holds by
+	// construction, so there is no renormalization by the sample mean.
 	else{
-		for (int i = 0; i < nCat - 1; i++){
-			sm->cat_proportions[i+cat] = qgamma((i + 1.0) / nCat, alpha, alpha);
-			sm->cat_proportions[i+cat] = gammp(alpha + 1, sm->cat_proportions[i+cat] * alpha);
+		double* masses = dvector(nCat + 1);
+		bool ok = _cumulative_partial_means(sm->distribution, alpha, nCat, masses);
+		if(ok){
+			sm->cat_rates[0] = 0;
+			for (int i = 0; i < nCat; i++) {
+				// The invariant class contributes nothing to the weighted mean, so the
+				// constraint reads sum_{k>0} p_k r_k = 1 with p_k = propVariable/K and
+				// the conditional means are scaled up by the variable proportion.
+				sm->cat_rates[i + cat] = (masses[i + 1] - masses[i])*nCat/propVariable;
+				sm->cat_proportions[i + cat] = propVariable/nCat;
+			}
 		}
-		
-		sm->cat_rates[cat] = sm->cat_proportions[cat]*nCat;
-		for (int i = cat+1; i < nCat - 1; i++){
-			sm->cat_rates[i] = (sm->cat_proportions[i] - sm->cat_proportions[i - 1])*nCat;
-		}
-		sm->cat_rates[nCat - 1] = (1 - sm->cat_proportions[nCat - 2])*nCat;
-		
-		for (int i = 0; i < nCat; i++){
-			sm->cat_proportions[i + cat] = propVariable/nCat;
-		}
+		free(masses);
+		free(quantiles);
+		sm->need_update = false;
+		return ok;
 	}
 	free(quantiles);
 	sm->need_update = false;
@@ -1658,6 +1774,16 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 			}
 			else if(strcasecmp("mean", method) == 0){
 				quad = QUADRATURE_QUANTILE_MEAN;
+				// The conditional mean of a bin is a partial expectation, not a
+				// quantile: it is derived per family and only the gamma and the
+				// Weibull have one here. Without this the other families would
+				// silently be discretized as a gamma.
+				if(distribution != DISTRIBUTION_GAMMA && distribution != DISTRIBUTION_WEIBULL){
+					json_die(node, "\"quadrature\": \"mean\" places each category at the "
+					               "conditional mean of its bin, which is only "
+					               "implemented for \"gamma\" and \"weibull\", not "
+					               "\"%s\"", distribution_name);
+				}
 			}
 			else if(strcasecmp("discrete", method) == 0){
 				quad = QUADRATURE_DISCRETE;
