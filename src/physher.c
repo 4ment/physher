@@ -40,17 +40,15 @@
 #include "phyc/bootstrap.h"
 
 #include "phyc/physhercmd.h"
+#include "phyc/utils.h"
 
 
 int main(int argc, const char* argv[]){
-	time_t start_time;
-	time_t beginning_of_time;
-	time_t end_time;
-	double diff_time;
-	
-	time(&start_time);
-	beginning_of_time = start_time;
-	
+	// Monotonic, so the reported runtime survives the clock being stepped
+	// (NTP, an operator) part way through a long run.
+	struct timespec start_time;
+	time_monotonic(&start_time);
+
 	json_node* json = NULL;
 
     if (argc == 1 || args_contains(argc, (char**)argv, "--help") || args_contains(argc, (char**)argv, "-h")) {
@@ -295,9 +293,7 @@ int main(int argc, const char* argv[]){
 	json_free_tree(json);
 	gsl_rng_free(r);
 	
-	time(&end_time);
-	diff_time = difftime(end_time, start_time);
 	fprintf(stdout, "\nTotal runtime ");
-	print_pretty_time(stdout, diff_time);
+	print_pretty_time(stdout, time_elapsed(&start_time));
 	return 0;
 }

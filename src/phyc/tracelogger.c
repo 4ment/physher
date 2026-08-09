@@ -238,8 +238,8 @@ void log_columns(Trace* logger, size_t iter){
 
 	if (logger->filename == NULL) {
 		if(iter > 0){
-			gettimeofday(&logger->end, NULL);
-			double diff_time = (double)(logger->end.tv_usec - logger->start.tv_usec) / 1000000 + (double)(logger->end.tv_sec - logger->start.tv_sec);
+			time_monotonic(&logger->end);
+			double diff_time = time_difference(&logger->start, &logger->end);
 			double speed = diff_time/logger->every*1e6;
 			if (speed < 1) {
 				fprintf(logger->file, "  %.2f sec/million", speed);
@@ -555,7 +555,7 @@ Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 	logger->write = log_columns;
 	logger->file = stdout;
 	logger->filename = NULL;
-	gettimeofday(&logger->start, NULL);
+	time_monotonic(&logger->start);
 	logger->tree = false;
 	logger->format = NULL;
 	char* format = get_json_node_value_string(node, "format");

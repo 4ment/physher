@@ -5,7 +5,7 @@
 #define tracelogger_h
 
 #include <stdio.h>
-#include <sys/time.h>
+#include <time.h>
 
 #include "parameters.h"
 
@@ -62,8 +62,8 @@ typedef struct Trace{
 	bool tree;
 	char* format;
 	bool force;// force calculation of model (i.e. do not use stored lnl)
-	struct timeval start;
-	struct timeval end;
+	struct timespec start;
+	struct timespec end;
 }Trace;
 	
  Trace* new_Trace_from_json(json_node* node, Hashtable* hash);

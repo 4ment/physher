@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 
 #include <stdbool.h>
 
@@ -156,6 +157,22 @@ bool isFloat( const char *str );
 bool isFloat2( const char *str );
 
 void print_pretty_time( FILE *file, double dseconds );
+
+#pragma mark -
+#pragma mark timing
+
+// Timestamp from a monotonic clock, for measuring how long something took.
+// Unlike time()/gettimeofday() it cannot be stepped by NTP or by the operator
+// setting the clock, so a duration can never come back short or negative. It is
+// not a wall-clock date: its zero is arbitrary and only differences are meaningful.
+void time_monotonic( struct timespec *now );
+
+// Seconds since `start`, which must come from time_monotonic().
+double time_elapsed( const struct timespec *start );
+
+// Seconds between two time_monotonic() timestamps. For a caller that keeps the
+// end of one interval as the start of the next.
+double time_difference( const struct timespec *start, const struct timespec *end );
 
 
 void * aligned16_malloc( size_t size );

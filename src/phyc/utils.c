@@ -7,6 +7,7 @@
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 #include "random.h"
 #include "matrix.h"
@@ -552,7 +553,43 @@ void print_pretty_time( FILE *file, double dseconds ){
 		fprintf(file, "%d min%s: ", minutes, (minutes==1 ? "" : "s") );
 	}
 	
-	fprintf(file, "%d sec%s\n", secs, (secs==1 ? "" : "s")  );
+	// A sub-minute duration keeps two decimals so a run that takes 0.4 seconds
+	// does not print "0 secs". Past a minute the fraction is noise, and callers
+	// timing with whole-second resolution have none to show anyway.
+	if ( seconds < 60 && dseconds != (double)seconds ) {
+		fprintf(file, "%.2f secs\n", dseconds );
+	}
+	else {
+		fprintf(file, "%d sec%s\n", secs, (secs==1 ? "" : "s")  );
+	}
+}
+
+#pragma mark -
+#pragma mark timing
+
+void time_monotonic( struct timespec *now ){
+#if defined (CLOCK_MONOTONIC)
+	// Slew-corrected but never stepped: the clock the kernel offers for
+	// measuring intervals. Present on Linux and on macOS since 10.12.
+	if ( clock_gettime(CLOCK_MONOTONIC, now) == 0 ) return;
+#endif
+	// Last resort on a platform without a monotonic clock: the settable wall
+	// clock, which is what this code used everywhere before.
+	struct timeval fallback;
+	gettimeofday(&fallback, NULL);
+	now->tv_sec = fallback.tv_sec;
+	now->tv_nsec = fallback.tv_usec * 1000L;
+}
+
+double time_difference( const struct timespec *start, const struct timespec *end ){
+	return (double)(end->tv_sec - start->tv_sec) +
+	       (double)(end->tv_nsec - start->tv_nsec) * 1.0e-9;
+}
+
+double time_elapsed( const struct timespec *start ){
+	struct timespec now;
+	time_monotonic(&now);
+	return time_difference(start, &now);
 }
 
 

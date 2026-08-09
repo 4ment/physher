@@ -10,9 +10,9 @@
 #include <time.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/time.h>
 
 #include "parameters.h"
+#include "utils.h"
 #include "brent.h"
 #include "matrix.h"
 #include "powell.h"
@@ -305,12 +305,6 @@ static int meta_name_width(const OptimizerSchedule* schedule){
 	return (int)width;
 }
 
-static double meta_elapsed(const struct timeval* start){
-	struct timeval now;
-	gettimeofday(&now, NULL);
-	return (now.tv_sec - start->tv_sec) + (now.tv_usec - start->tv_usec)*1.0e-6;
-}
-
 // Right-aligned in the Elapsed column, in whichever unit keeps the number
 // readable: 0.42s, 12.3s, 4m18s.
 static void meta_format_duration(double seconds, char* buffer, size_t size){
@@ -382,8 +376,8 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 	// minimizing run reports the objective itself.
 	const double sign = opt_meta->maximize ? -1.0 : 1.0;
 	const int name_width = meta_name_width(schedule);
-	struct timeval time_start;
-	gettimeofday(&time_start, NULL);
+	struct timespec time_start;
+	time_monotonic(&time_start);
 
 	double lnl = f(NULL, NULL, data);
 	const double lnl_start = lnl;
@@ -399,15 +393,15 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 	for (size_t sweep = 0; sweep < stop->iter_max; sweep++) {
 		double lnl_current = lnl;
 		const size_t evals_before = stop->f_eval_current;
-		struct timeval sweep_start;
-		gettimeofday(&sweep_start, NULL);
+		struct timespec sweep_start;
+		time_monotonic(&sweep_start);
 		for (int i = 0; i < schedule->count; i++) {
 			Optimizer* opt = schedule->optimizers[i];
 			const double lnl_before = lnl;
 			size_t entry_evals = 0;
 			bool entry_failed = false;
-			struct timeval entry_start;
-			gettimeofday(&entry_start, NULL);
+			struct timespec entry_start;
+			time_monotonic(&entry_start);
 			// Read the round count, do not overwrite it. This used to assign
 			// schedule->rounds[i] = 1 on the third sweep, which permanently
 			// rewrote the schedule: an Optimizer reused across bootstrap
@@ -460,7 +454,7 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 				}
 				meta_print_row(name_width, sweep + 1, name,
 				               OPT_ALGORITHMS[opt->algorithm], sign*lnl, sign*(lnl - lnl_before),
-				               entry_evals, meta_elapsed(&entry_start), detail);
+				               entry_evals, time_elapsed(&entry_start), detail);
 			}
 		}
 
@@ -508,7 +502,7 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 			}
 			meta_print_row(name_width, sweep + 1, "= sweep", "", sign*lnl,
 			               sign*(lnl - lnl_current), stop->f_eval_current - evals_before,
-			               meta_elapsed(&sweep_start), detail);
+			               time_elapsed(&sweep_start), detail);
 			putchar('\n');
 		}
 
@@ -538,7 +532,7 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 
 	if (verbosity > 0) {
 		char duration[32];
-		meta_format_duration(meta_elapsed(&time_start), duration, sizeof(duration));
+		meta_format_duration(time_elapsed(&time_start), duration, sizeof(duration));
 		meta_print_rule(name_width);
 		printf("  %s after %zu sweep%s: %s %.4f -> %.4f (%+.4f) in %zu evaluations, %s\n\n",
 		       meta_outcome(result), stop->iter, stop->iter == 1 ? "" : "s",
