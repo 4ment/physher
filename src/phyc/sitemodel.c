@@ -50,6 +50,18 @@ static double icdf_weibull_1(double p, double k);
 static bool _cumulative_partial_means(distribution_t distribution, double alpha,
                                       size_t cat_count, double* masses);
 
+// Indexed by rate_parameterization_t. Doubles as the set of JSON keys naming a
+// parameterization (rate_parameterization_keys) and as what error messages quote
+// back, so a new parameterization must be added to the enum and here together.
+static const char* rate_parameterization_strings[] = {
+	"auto", "rate_shape", "mean_contribution", "rate_increments", "rate_ratios"
+};
+
+const char* SiteModel_rate_parameterization_name(
+	rate_parameterization_t parameterization){
+	return rate_parameterization_strings[parameterization];
+}
+
 static void _site_model_handle_change( Model *self, Model *model, Parameter* parameter, int index ){
 	SiteModel *sm = (SiteModel*)self->obj;
 	// printf("_site_model_handle_change\n");
@@ -1472,10 +1484,6 @@ static Parameter* new_proportion_invariant_from_json(json_node* node, Hashtable*
 	return _build_invariant_simplex(proportion, simplex_id, hash);
 }
 
-static const char* rate_parameterization_strings[] = {
-	"auto", "rate_shape", "mean_contribution", "rate_increments", "rate_ratios"
-};
-
 // The JSON key holding the free rate parameter of a "discrete" site model *is* the
 // parameterization it drives, so a key name and a parameterization name are the same
 // string and exactly one of these keys may appear. That leaves nothing to infer from
@@ -1922,6 +1930,8 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 
 	if(distribution == DISTRIBUTION_GAMMA || distribution == DISTRIBUTION_WEIBULL){
 		Parameter* p = Parameters_at(rates, 0);
+		// double lower = fmax(Parameter_lower(p), SITEMODEL_ALPHA_MIN);
+		// double upper = fmin(Parameter_upper(p), SITEMODEL_ALPHA_MAX);
 		Parameter_set_flower(p, SITEMODEL_ALPHA_MIN);
 		Parameter_set_fupper(p, SITEMODEL_ALPHA_MAX);
 	}

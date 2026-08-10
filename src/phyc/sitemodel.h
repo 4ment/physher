@@ -112,4 +112,10 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* pro
 
 void SiteModel_set_mu(SiteModel *sm, Parameter* mu);
 
+// Name of a rate parameterization, for error messages. Indexed by the enum, so a
+// new parameterization must be added to rate_parameterization_t and to the table
+// behind this together.
+const char* SiteModel_rate_parameterization_name(
+	rate_parameterization_t parameterization);
+
 #endif

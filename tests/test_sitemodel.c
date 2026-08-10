@@ -7,9 +7,13 @@
 #include <unistd.h>
 
 #include "minunit.h"
+#include "phyc/em.h"
+#include "phyc/filereader.h"
 #include "phyc/hashtable.h"
+#include "phyc/matrix.h"
 #include "phyc/parameters.h"
 #include "phyc/sitemodel.h"
+#include "phyc/treelikelihood.h"
 
 #define TOL 1.e-10
 
@@ -839,8 +843,152 @@ char* test_mean_quadrature_rejects() {
     return NULL;
 }
 
+// ---------------------------------------------------------------------------
+// EM for free rates (+R)
+
+static Model* _treelikelihood_from_file(const char* file, Hashtable* hash) {
+    char* content = load_file(file);
+    json_node* json = create_json_tree(content);
+    free(content);
+    Model* model = new_TreeLikelihoodModel_from_json(json->children[0], hash);
+    json_free_tree(json);
+    return model;
+}
+
+// Everything the parameterization guarantees and EM must not break: rates
+// increasing (so the increments stay positive), weights a simplex, unit weighted
+// mean.
+static char* _check_freerate_invariants(SiteModel* sm) {
+    double sum = 0;
+    for (size_t i = 0; i < sm->cat_count; i++) {
+        double p = sm->get_proportion(sm, i);
+        mu_assert(p > 0.0 && p < 1.0, "EM: a weight left the simplex");
+        sum += p;
+        if (i > 0) {
+            mu_assert(sm->get_rate(sm, i) >= sm->get_rate(sm, i - 1),
+                      "EM: the rates are no longer increasing");
+        }
+    }
+    mu_assert(fabs(sum - 1.0) < 1.e-8, "EM: the weights do not sum to 1");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < 1.e-8,
+              "EM: the rates lost their unit weighted mean");
+    return NULL;
+}
+
+// Each step is a full E/M sweep and must not decrease the likelihood -- the one
+// property EM is bought for. Run them one at a time so every step is checked,
+// rather than only the endpoints.
+static char* _check_freerate_em(const char* file) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file(file, hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+
+    double logP = model->logP(model);
+    char* result = _check_freerate_invariants(sm);
+    if (result != NULL) return result;
+
+    double start = logP;
+    for (int step = 0; step < 6; step++) {
+        SiteModelEM em = SiteModel_optimize_freerate_EM(tlk, 1, 1.e-8);
+        mu_assert(!isnan(em.logP), "EM refused a model it is meant to handle");
+        mu_assert(em.steps == 1, "EM did not run the step it was asked for");
+        // What it reports is what it leaves behind.
+        mu_assert(fabs(model->logP(model) - em.logP) < 1.e-8,
+                  "EM: the reported logP is not the model's");
+        mu_assert(em.logP > logP - 1.e-6, "EM: a step decreased the log-likelihood");
+        logP = em.logP;
+        result = _check_freerate_invariants(sm);
+        if (result != NULL) return result;
+    }
+    mu_assert(logP > start + 1.0, "EM: six steps bought nothing");
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+char* test_freerate_em() { return _check_freerate_em("jc69-freerate.json"); }
+
+// Weights-only EM (§5.3): with the increments fixed, the closed-form weight
+// update still moves the normalized rates, so the branch-length rescaling has to
+// happen here too or the step is not monotone.
+char* test_freerate_em_fixed_rates() {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-freerate.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+    Parameter* increments = Parameters_at(sm->rates, 0);
+    Parameter_set_estimate(increments, false);
+
+    double* before = clone_dvector(Parameter_values(increments),
+                                  Parameter_size(increments));
+    double logP = model->logP(model);
+    for (int step = 0; step < 4; step++) {
+        SiteModelEM em = SiteModel_optimize_freerate_EM(tlk, 1, 1.e-8);
+        mu_assert(!isnan(em.logP), "EM refused a weights-only model");
+        mu_assert(em.logP > logP - 1.e-6,
+                  "EM: a weights-only step decreased the log-likelihood");
+        logP = em.logP;
+    }
+    const double* after = Parameter_values(increments);
+    for (size_t i = 0; i < Parameter_size(increments); i++) {
+        mu_assert(after[i] == before[i], "EM moved increments it was told to fix");
+    }
+    char* result = _check_freerate_invariants(sm);
+    if (result != NULL) return result;
+
+    free(before);
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// With an invariant class, category 0 is pinned at rate 0 and outside the
+// running sum of the increments; EM estimates its weight and nothing else.
+char* test_freerate_em_invariant() {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-freerate-invariant.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+
+    double before = model->logP(model);
+    SiteModelEM em = SiteModel_optimize_freerate_EM(tlk, 20, 1.e-5);
+    mu_assert(!isnan(em.logP), "EM refused a +R+I model");
+    mu_assert(em.logP > before, "EM did not improve a +R+I model");
+    mu_assert(sm->get_rate(sm, 0) == 0.0, "EM moved the invariant category off 0");
+    char* result = _check_freerate_invariants(sm);
+    if (result != NULL) return result;
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// Anything that is not a free-rate mixture on ordered increments has to come
+// back untouched rather than have some other parameter optimized in its place.
+char* test_freerate_em_rejects() {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-distance.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    double before = model->logP(model);
+    SiteModelEM em = SiteModel_optimize_freerate_EM(tlk, 10, 1.e-5);
+    mu_assert(isnan(em.logP), "EM accepted a single-category site model");
+    mu_assert(em.steps == 0, "EM did work on a model it rejected");
+    mu_assert(model->logP(model) == before, "EM changed a model it rejected");
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
+    mu_run_test(test_freerate_em);
+    mu_run_test(test_freerate_em_fixed_rates);
+    mu_run_test(test_freerate_em_invariant);
+    mu_run_test(test_freerate_em_rejects);
     mu_run_test(test_weibull_mean_quadrature);
     mu_run_test(test_weibull_mean_quadrature_invariant);
     mu_run_test(test_mean_quadrature_gradient);

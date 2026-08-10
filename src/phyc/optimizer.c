@@ -14,6 +14,7 @@
 #include "parameters.h"
 #include "utils.h"
 #include "brent.h"
+#include "em.h"
 #include "matrix.h"
 #include "powell.h"
 #include "bfgs.h"
@@ -147,6 +148,30 @@ opt_result topology_optimize(TopologyOptimizer* topopt, double *fmin){
 	return OPT_SUCCESS;
 }
 
+// EM has no parameter list and no objective of its own: it reads the free-rate
+// site model off `opt->treelikelihood` and updates it in place (see em.h). The
+// value reported back is the *target*'s, evaluated through opt->f so the sign
+// convention matches every other entry -- which also means a target carrying
+// priors is scored, but not maximized, by this step: EM maximizes the likelihood
+// alone.
+static opt_result em_optimize( Optimizer *opt, double *fmin ){
+	if (opt->treelikelihood == NULL) {
+		fprintf(stderr, "EM has no tree likelihood to read the mixture off\n");
+		return OPT_ERROR;
+	}
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)opt->treelikelihood->obj;
+	SiteModelEM em = SiteModel_optimize_freerate_EM(tlk, opt->stop.iter_max,
+	                                                opt->stop.tolx);
+	*fmin = opt->f(NULL, NULL, opt->data);
+	opt->stop.iter = em.steps;
+	// What the per-class M-steps spent, plus one E-step traversal per step. Both
+	// are full traversals, so the sum is comparable with what the other entries
+	// of a meta schedule report.
+	opt->stop.f_eval_current += em.evaluations + em.steps;
+	if (isnan(em.logP)) return OPT_ERROR;
+	return em.converged ? OPT_SUCCESS : OPT_MAXITER;
+}
+
 opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptStopCriterion *stop, double *fmin ){
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)mtlk->obj;
 	Tree* tree = tlk->tree;
@@ -258,6 +283,9 @@ opt_progress opt_check_progress( OptStopCriterion *stop, double before, double a
 // also carry a tree likelihood, and it does not optimize branch lengths.
 static const char* meta_entry_name(const Optimizer* opt){
 	if (opt->algorithm == OPT_TOPOLOGY) return "topology";
+	if (opt->algorithm == OPT_EM) return "free rates";
+	// Every other algorithm holding a tree likelihood is there to sweep its
+	// branch lengths.
 	if (opt->treelikelihood != NULL) return "branches";
 	if (opt->parameters != NULL && Parameters_count(opt->parameters) > 0){
 		const char* group = Parameters_name2(opt->parameters);
@@ -418,7 +446,11 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 				// serial_brent_optimize_tree does not go through opt_optimize, so
 				// it would otherwise never be reset.
 				opt->stop.f_eval_current = 0;
-				if(opt->treelikelihood != NULL && opt->algorithm != OPT_TOPOLOGY){
+				// A tree likelihood on an entry means "sweep its branch lengths"
+				// -- except for the two algorithms that hold one for their own
+				// reasons and dispatch through opt_optimize like everything else.
+				if(opt->treelikelihood != NULL && opt->algorithm != OPT_TOPOLOGY &&
+				   opt->algorithm != OPT_EM){
 					status = serial_brent_optimize_tree(opt->treelikelihood, opt->f, opt->data, &opt->stop, &fret);
 				}
 				else{
@@ -1013,6 +1045,10 @@ opt_result opt_optimize( Optimizer *opt, double *fmin ){
 			result = topology_optimize(opt->data, fmin);
 			break;
 		}
+		case OPT_EM:{
+			result = em_optimize(opt, fmin);
+			break;
+		}
 		default:
 			result = -100;
 			break;
@@ -1206,6 +1242,25 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 			}
 		}
 		opt_set_tolx(opt, precision);
+	}
+	// EM for a free-rate site model. "treelikelihood" is not optional here as it
+	// is for serial Brent: it is where the mixture being split lives, and there
+	// is no parameter list to fall back on -- EM decides for itself which
+	// parameters it moves.
+	else if (strcasecmp(algorithm_string, "em") == 0) {
+		json_node* treelike_node = get_json_node(node, "treelikelihood");
+		if (treelike_node == NULL) {
+			json_die(node, "\"algorithm\": \"em\" needs the \"treelikelihood\" whose "
+			               "site model holds the mixture to split");
+		}
+		opt = new_Optimizer(OPT_EM);
+		opt->treelikelihood = safe_get_reference_model((char*)treelike_node->value,
+		                                               hash, id);
+		opt_set_tolx(opt, precision);
+		// "iterations" defaults to 1000, which is meaningless here: one EM step
+		// already contains a full Brent run per category. Left at 0, EM applies
+		// its own default of one step per category (IQ-TREE's).
+		if (get_json_node(node, "iterations") == NULL) iterations = 0;
 	}
     // stochastic gradient
     else if(strcasecmp(algorithm_string, "sg") == 0){

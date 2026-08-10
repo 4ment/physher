@@ -49,8 +49,12 @@ opt_result brent_optimize( Parameters *ps, opt_func f, void *data, OptStopCriter
 // `nfun` accumulates the number of objective evaluations. Bracketing can take
 // dozens of them -- more than the Brent loop that follows -- so a run under an
 // evaluation budget cannot afford to leave them uncounted.
+//
+// `fb` receives f(*b). Every exit already holds it, and the caller would
+// otherwise spend a whole extra objective evaluation re-deriving it -- which for
+// a tree likelihood is a full traversal.
 void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
-                  double *a, double *b, double *c,
+                  double *a, double *b, double *c, double *fb_out,
                   double step_factor, int max_iter, size_t *nfun)
 {
     if (step_factor <= 1.0){
@@ -109,6 +113,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 			*a = x;
 			*b = x;
             *c = x1;
+            *fb_out = f0;
             return;
         } else {
             // Move into interior and expand upward
@@ -124,6 +129,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 			}
 			*b = x;
 			*c = x1;
+			*fb_out = f0;
 			// printf("%e %e %e == %e < %e\n\n", *a, *b, *c, f0, f1);
             // *a = lower;
             // *b = x1;
@@ -160,6 +166,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 			*a = x1;
 			*b = x;
             *c = x;
+            *fb_out = f0;
         } else {
             // Move into interior and expand downward
 			// printf("upper f0 > f1 %e > %e x0: %e x1: %e\n", f0, f1, x, x1);
@@ -178,6 +185,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 			}
 			*b = x;
 			*a = x1;
+			*fb_out = f0;
         }
 
 		assert(f0 < f1);
@@ -250,6 +258,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
     // }
 
     // --- 4️⃣ Already bracketed? ---
+    *fb_out = fb;
     if (fb < fa && fb < fc)
         return;
 
@@ -281,6 +290,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 			Parameter_set_value_at(xx, *c, index);
             (*nfun)++;
             fc = f(NULL, NULL, data);
+            *fb_out = fb;
             if (fb < fa && fb < fc) return;
             if (isinf(upper) && (fb - fc <= flat_tol || *b > x + MAX_REACH)) {
                 // Asymptotic minimum against the +inf bound: pin at best point.
@@ -300,6 +310,7 @@ void find_bracket(opt_func f, void* data, Parameter *xx, size_t index,
 			Parameter_set_value_at(xx, *a, index);
             (*nfun)++;
             fa = f(NULL, NULL, data);
+            *fb_out = fb;
             if (fb < fa && fb < fc) return;
             if (isinf(lower) && (fb - fa <= flat_tol || *b < x - MAX_REACH)) {
                 // Asymptotic minimum against the -inf bound: pin at best point.
@@ -415,10 +426,12 @@ opt_result brent_optimize2( Parameter *parameter, size_t index, opt_func f, void
 //     Parameter_set_value_at(parameter, x, index);
 // // }
 
-	find_bracket(f, data, parameter, index, &a, &x, &b, 1.618034, 100, &stop->f_eval_current);
+	// find_bracket hands back f at the centre it chose, so the objective is not
+	// evaluated a second time at a point it has just visited. The parameter is
+	// still written: bracketing left it wherever its last probe was.
+	find_bracket(f, data, parameter, index, &a, &x, &b, &fx, 1.618034, 100,
+	             &stop->f_eval_current);
 	Parameter_set_value_at(parameter, x, index);
-	fx = f(NULL, NULL, data);
-	stop->f_eval_current++;
 
 	// Bracketing can leave the centre on a value where the objective is non-finite
 	// (NaN/Inf), e.g. a coordinate collapsing onto a boundary. Never let the search
