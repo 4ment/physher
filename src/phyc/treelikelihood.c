@@ -491,6 +491,10 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 #pragma mark -
 // MARK: SingleTreeLikelihood
 
+static int matrix_cat_count(const SingleTreeLikelihood* tlk){
+    return imax(tlk->sm->cat_count, tlk->cat_capacity);
+}
+
 void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
     Tree* tree = tlk->tree;
     size_t nodeCount = Tree_node_count(tree);
@@ -520,8 +524,8 @@ void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
         tlk->matrices = (double***)malloc( 2*sizeof(double**) );
         tlk->matrices[0] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
         tlk->matrices[1] = NULL;
-        
-        int mat_len = tlk->matrix_size*tlk->sm->cat_count;
+
+        int mat_len = tlk->matrix_size*matrix_cat_count(tlk);
         for ( int i = 0; i < tlk->matrix_dim; i++ ) {
             tlk->matrices[0][i] = aligned16_malloc( mat_len * sizeof(double) );
         }
@@ -543,8 +547,8 @@ void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
             tlk->partials[1][i] = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
         }
         tlk->matrices[1] = (double**)malloc( tlk->matrix_dim*sizeof(double*) );
-        
-        int mat_len = tlk->matrix_size*tlk->sm->cat_count;
+
+        int mat_len = tlk->matrix_size*matrix_cat_count(tlk);
         for ( int i = 0; i < tlk->matrix_dim; i++ ) {
             tlk->matrices[1][i] = aligned16_malloc( mat_len * sizeof(double) );
         }
@@ -569,6 +573,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *
 	else{
 		tlk->cat_count = 1;
 	}
+	tlk->cat_capacity = tlk->cat_count;
 	tlk->use_tip_states = use_tip_states;
 	
 	Node **nodes = Tree_get_nodes( tree, POSTORDER );
@@ -826,6 +831,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	newtlk->cat_count = tlk->cat_count;
 	newtlk->pattern_count = tlk->pattern_count;
 	newtlk->pattern_capacity = tlk->pattern_capacity;
+	newtlk->cat_capacity = tlk->cat_capacity;
 	newtlk->use_tip_states = tlk->use_tip_states;
 	
 	newtlk->mapping = clone_ivector(tlk->mapping, Tree_node_count(tlk->tree));
@@ -1374,6 +1380,20 @@ void SingleTreeLikelihood_set_sitepattern( SingleTreeLikelihood *tlk, SitePatter
 			}
 		}
 	}
+
+	SingleTreeLikelihood_update_all_nodes(tlk);
+}
+
+void SingleTreeLikelihood_set_sitemodel( SingleTreeLikelihood *tlk, SiteModel *sm ){
+	int cat_count = (sm->site_category == NULL ? (int)sm->cat_count : 1);
+	if( cat_count > tlk->cat_capacity ){
+		fprintf(stderr, "SingleTreeLikelihood_set_sitemodel: %d categories exceeds the allocated capacity of %d\n",
+		        cat_count, tlk->cat_capacity);
+		exit(2);
+	}
+	tlk->sm = sm;
+	tlk->cat_count = cat_count;
+	sm->need_update = true;
 
 	SingleTreeLikelihood_update_all_nodes(tlk);
 }

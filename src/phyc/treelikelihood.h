@@ -42,6 +42,11 @@ struct _SingleTreeLikelihood{
 	// unless a smaller SitePattern has been swapped in (bootstrap replicates,
 	// see SingleTreeLikelihood_set_sitepattern), which may only shrink it.
 	int pattern_capacity;
+	// Number of rate categories every buffer was allocated for. Equal to
+	// cat_count unless a SiteModel with fewer categories has been swapped in
+	// (the free-rate EM M-step, see SingleTreeLikelihood_set_sitemodel), which
+	// may only shrink it.
+	int cat_capacity;
 	bool use_tip_states;
 	
 	int *mapping; // index of node to index of sequence (-1 if no sequence)
@@ -159,6 +164,11 @@ void SingleTreeLikelihood_update_weights( SingleTreeLikelihood *tlk );
 // stay as allocated. Rebuilds the tip partials (their layout is strided by
 // pattern_count) and marks every node dirty.
 void SingleTreeLikelihood_set_sitepattern( SingleTreeLikelihood *tlk, SitePattern *sp );
+
+// Point the likelihood at another SiteModel over the same alignment. Its
+// category count may not exceed tlk->cat_capacity, so all buffers stay as
+// allocated. Marks every node dirty.
+void SingleTreeLikelihood_set_sitemodel( SingleTreeLikelihood *tlk, SiteModel *sm );
 
 void SingleTreeLikelihood_update_one_node( SingleTreeLikelihood *tlk, const Node *node );
 

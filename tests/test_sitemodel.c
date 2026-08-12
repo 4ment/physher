@@ -983,12 +983,54 @@ char* test_freerate_em_rejects() {
     return NULL;
 }
 
+// The M-step evaluates through the mixture's own likelihood with a one-category
+// site model swapped in for tlk->sm and the posterior counts w_ic swapped in for
+// the pattern weights. Both have to be put back: what EM borrows it does not own,
+// and the caller's next calculate() must be the mixture's, not the last class's.
+char* test_freerate_em_restores_likelihood() {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-freerate.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    model->logP(model);
+    SiteModel* sm = tlk->sm;
+    int cat_count = tlk->cat_count;
+    int cat_capacity = tlk->cat_capacity;
+    bool use_upper = tlk->use_upper;
+    int node_id = tlk->node_id;
+    double* weights = clone_dvector(tlk->sp->weights, tlk->sp->count);
+
+    SiteModelEM em = SiteModel_optimize_freerate_EM(tlk, 4, 1.e-8);
+    mu_assert(!isnan(em.logP), "EM refused a model it is meant to handle");
+    mu_assert(em.evaluations > 0, "EM ran no M-step, so nothing was swapped");
+
+    mu_assert(tlk->sm == sm, "EM left its one-category site model installed");
+    mu_assert(tlk->cat_count == cat_count, "EM did not restore cat_count");
+    mu_assert(tlk->cat_capacity == cat_capacity, "EM moved the buffer capacity");
+    mu_assert(tlk->use_upper == use_upper, "EM did not restore use_upper");
+    mu_assert(tlk->node_id == node_id, "EM did not restore node_id");
+    for (int i = 0; i < tlk->sp->count; i++) {
+        mu_assert(tlk->sp->weights[i] == weights[i],
+                  "EM left a class's posterior counts in the pattern weights");
+    }
+    // The partials the M-step overwrote are the mixture's, so a plain recompute
+    // has to agree with what EM reported rather than with the last class.
+    mu_assert(fabs(tlk->calculate(tlk) - em.logP) < 1.e-8,
+              "EM left the likelihood holding a one-category value");
+
+    free(weights);
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_freerate_em);
     mu_run_test(test_freerate_em_fixed_rates);
     mu_run_test(test_freerate_em_invariant);
     mu_run_test(test_freerate_em_rejects);
+    mu_run_test(test_freerate_em_restores_likelihood);
     mu_run_test(test_weibull_mean_quadrature);
     mu_run_test(test_weibull_mean_quadrature_invariant);
     mu_run_test(test_mean_quadrature_gradient);

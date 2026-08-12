@@ -47,81 +47,125 @@
 // the window edge simply moves again on the next one.
 #define SITEMODEL_EM_RATE_WINDOW 2.0
 
-// The single-class problem the M-step hands to Brent: `tlk` is a one-category
-// likelihood whose only rate is `rate`, over the same tree, substitution model
-// and alignment as the mixture, and whose pattern weights are the posterior
-// counts w_ic of the class being optimized.
+// The single-class problem the M-step hands to Brent (em_algorithm.md §5): the
+// mixture's own likelihood, with a one-category site model whose only rate is
+// `rate` swapped in for `mixture`, and the mixture's pattern weights overwritten
+// by the posterior counts w_ic of the class being optimized.
+//
+// The auxiliary likelihood is the mixture's rather than a second
+// SingleTreeLikelihood of its own so that the two cannot disagree. Everything
+// the mixture was configured with -- rescaling, root frequencies, whether SSE
+// kernels are used, thread count -- is shared by construction instead of being
+// copied field by field into a scratch object that a later field would silently
+// be left out of.
 typedef struct {
     SingleTreeLikelihood* tlk;
     Parameter* rate;
     size_t evaluations;
+    // The one-category site model, owned here and installed only for the
+    // M-step; and everything the swap has to put back.
+    SiteModel* single;
+    SiteModel* mixture;
+    double* weights;  // the alignment's pattern counts n_i
+    int cat_count;
+    bool use_upper;
+    int node_id;
+    size_t recompute_count;
+    bool swapped;
 } FreeRateMStep;
 
 static double _em_rate_objective(Parameters* x, double* grad, void* data) {
     FreeRateMStep* m = (FreeRateMStep*)data;
     m->evaluations++;
-    // The scratch rate is a bare Parameter with no listeners, so the value Brent
+    // The M-step rate is a bare Parameter with no listeners, so the value Brent
     // just wrote marked nothing dirty: every transition matrix has to be redone
-    // by hand. The scratch never stores, so partials[1] is NULL and the
-    // ping-pong flip in _calculate_partials is skipped.
+    // by hand.
     SingleTreeLikelihood_update_all_nodes(m->tlk);
     return -m->tlk->calculate(m->tlk);
 }
 
-// A pattern set whose weights the M-step may overwrite. Every pattern of the
-// alignment is carried over: the posterior counts are non-zero almost
-// everywhere, so unlike a bootstrap replicate nothing is compacted away and the
-// pattern indices of the view and of the mixture are the same.
-static SitePattern* _em_new_pattern_view(const SitePattern* sp) {
-    SitePattern* view = new_SitePattern_view(sp);
-    if (sp->patterns != NULL) {
-        for (int i = 0; i < sp->size; i++) {
-            memcpy(view->patterns[i], sp->patterns[i], sizeof(uint8_t) * sp->count);
-        }
-    }
-    if (sp->partials != NULL) {
-        for (int i = 0; i < sp->size; i++) {
-            memcpy(view->partials[i], sp->partials[i],
-                   sizeof(double) * sp->count * sp->nstate);
-        }
-    }
-    memcpy(view->weights, sp->weights, sizeof(double) * sp->count);
-    return view;
-}
-
-// The auxiliary single-class likelihood of em_algorithm.md §5, built once
-// outside the EM loop. It borrows the tree, the substitution model and the
-// branch model -- it only ever reads them -- and owns a one-category uniform
-// site model whose rate is `rate` (_get_rate of a uniform model is exactly mu).
-static SingleTreeLikelihood* _em_new_single_class(const SingleTreeLikelihood* tlk,
-                                                  SitePattern* sp, Parameter* rate) {
+// Build the one-category uniform site model the M-step evaluates through, and
+// the buffer its swap needs. Done once, outside the EM loop; the swap itself is
+// _em_enter/_em_leave.
+static void _em_mstep_init(FreeRateMStep* m, SingleTreeLikelihood* tlk,
+                           Parameter* rate) {
     Parameters* empty = new_Parameters(1);
-    SiteModel* sm = new_SiteModel_with_parameters(empty, NULL, 1, DISTRIBUTION_UNIFORM,
-                                                  false, QUADRATURE_QUANTILE_MEDIAN,
-                                                  RATE_PARAMETERIZATION_AUTO);
+    m->single = new_SiteModel_with_parameters(empty, NULL, 1, DISTRIBUTION_UNIFORM,
+                                              false, QUADRATURE_QUANTILE_MEDIAN,
+                                              RATE_PARAMETERIZATION_AUTO);
     free_Parameters(empty);
-    SiteModel_set_mu(sm, rate);
+    // _get_rate of a uniform model is exactly mu, and its single proportion is 1,
+    // so integrating the root partials against it is the plain one-class density.
+    SiteModel_set_mu(m->single, rate);
 
-    SingleTreeLikelihood* scratch = new_SingleTreeLikelihood(
-        tlk->tree, tlk->m, sm, sp, tlk->bm, tlk->use_tip_states);
-    SingleTreeLikelihood_use_rescaling(scratch, tlk->scale);
-    // Both halves of the E/M split have to score the root the same way, so the
-    // mixture's choice of root frequencies is carried over.
-    scratch->get_root_frequencies = tlk->get_root_frequencies;
-    if (tlk->root_frequencies != NULL) {
-        scratch->root_frequencies =
-            clone_dvector(tlk->root_frequencies, tlk->m->nstate);
-    }
-    return scratch;
+    m->tlk = tlk;
+    m->rate = rate;
+    m->evaluations = 0;
+    m->mixture = tlk->sm;
+    m->weights = clone_dvector(tlk->sp->weights, tlk->sp->count);
+    m->swapped = false;
 }
 
-// free_SingleTreeLikelihood_internals frees the struct itself but neither the
-// borrowed tree/substitution/branch models nor the site model and pattern view,
-// so the site model is grabbed first and the view is left to its owner.
-static void _em_free_single_class(SingleTreeLikelihood* scratch) {
-    SiteModel* sm = scratch->sm;
-    free_SingleTreeLikelihood_internals(scratch);
-    free_SiteModel(sm);
+static void _em_mstep_free(FreeRateMStep* m) {
+    free_SiteModel(m->single);
+    free(m->weights);
+}
+
+// Install the one-category model. Bracketed around the M-step alone rather than
+// the whole EM run, so the E-step and _em_refresh always see the mixture and
+// which site model tlk carries is answerable line by line.
+static void _em_enter(FreeRateMStep* m) {
+    SingleTreeLikelihood* tlk = m->tlk;
+    m->cat_count = tlk->cat_count;
+    m->use_upper = tlk->use_upper;
+    m->node_id = tlk->node_id;
+    m->recompute_count = tlk->recompute_count;
+
+    // The upper fast path returns a likelihood computed from partials the
+    // one-category pass is about to invalidate, and node_id restricts the
+    // traversal to a subtree. Both have to be off, exactly as they were on the
+    // freshly constructed likelihood this used to allocate. Clearing use_upper
+    // also disables the tripod path in _calculate.
+    tlk->use_upper = false;
+    tlk->node_id = -1;
+    // Suppress the partials/matrices ping-pong flip for the whole M-step. A
+    // proposal that has already stored leaves partials[1] allocated for good,
+    // and _calculate_partials flips into it whenever recompute_count == 1 --
+    // which would hand the M-step's throwaway one-category partials to a later
+    // restore. Holding the counter above the threshold pins every evaluation to
+    // the current slot, and the slot is made good again by the _em_refresh that
+    // follows the write-back. Same device as the rescaling re-pass in
+    // _calculate_simple.
+    tlk->recompute_count = 2;
+
+    SingleTreeLikelihood_set_sitemodel(tlk, m->single);
+    m->swapped = true;
+}
+
+static void _em_leave(FreeRateMStep* m) {
+    if (!m->swapped) return;
+    SingleTreeLikelihood* tlk = m->tlk;
+    // The pattern weights are the alignment's again before anything can read a
+    // weighted sum off them.
+    memcpy(tlk->sp->weights, m->weights, sizeof(double) * tlk->sp->count);
+    SingleTreeLikelihood_set_sitemodel(tlk, m->mixture);
+    // set_sitemodel derives this and should land on the same number; restoring
+    // what was actually saved is what makes "left exactly as found" a promise
+    // rather than a coincidence.
+    tlk->cat_count = m->cat_count;
+    tlk->use_upper = m->use_upper;
+    tlk->node_id = m->node_id;
+    tlk->recompute_count = m->recompute_count;
+    m->swapped = false;
+}
+
+// Make the weighted objective of class c an ordinary one by injecting the
+// posterior counts w_ic as the pattern weights. No node is dirtied: per-pattern
+// likelihoods do not depend on the weights, only their sum does, and the rate
+// change that follows dirties everything anyway.
+static void _em_set_class_weights(FreeRateMStep* m, const double* w) {
+    memcpy(m->tlk->sp->weights, w, sizeof(double) * m->tlk->sp->count);
+    SingleTreeLikelihood_update_weights(m->tlk);
 }
 
 // Fill `out[c*P + i]` with log f_c(D_i), the per-pattern likelihood of category
@@ -278,9 +322,8 @@ SiteModelEM SiteModel_optimize_freerate_EM(SingleTreeLikelihood* tlk, size_t max
     // The auxiliary single-class machinery, built once outside the loop.
     Parameter* rate = new_Parameter("sitemodel.em.rate", 1.0,
                                     new_Constraint(SITEMODEL_EM_MIN_RATE, INFINITY));
-    SitePattern* view = _em_new_pattern_view(tlk->sp);
-    SingleTreeLikelihood* scratch = _em_new_single_class(tlk, view, rate);
-    FreeRateMStep mstep = {scratch, rate, 0};
+    FreeRateMStep mstep;
+    _em_mstep_init(&mstep, tlk, rate);
     Optimizer* opt = new_Optimizer(OPT_BRENT);
     opt_set_objective_function(opt, _em_rate_objective);
     opt_set_data(opt, &mstep);
@@ -369,9 +412,9 @@ SiteModelEM SiteModel_optimize_freerate_EM(SingleTreeLikelihood* tlk, size_t max
         // pattern weights of the single-class likelihood turns the weighted
         // objective into an ordinary one, so plain Brent solves it.
         if (free_rates) {
+            _em_enter(&mstep);
             for (size_t c = first; c < cat_count; c++) {
-                memcpy(view->weights, weights + c * pattern_count,
-                       sizeof(double) * pattern_count);
+                _em_set_class_weights(&mstep, weights + c * pattern_count);
                 // sum_c pi_c r_c = 1 with every rate positive, so no single rate
                 // can exceed 1/pi_c; within that, search a window around where the
                 // class currently sits.
@@ -391,6 +434,7 @@ SiteModelEM SiteModel_optimize_freerate_EM(SingleTreeLikelihood* tlk, size_t max
                 opt_maximize_univariate(opt, rate, &fmax_c);
                 rates[c] = Parameter_value(rate);
             }
+            _em_leave(&mstep);
             _em_sort_rates(rates + first, props + first, cat_count - first);
         }
 
@@ -463,8 +507,7 @@ SiteModelEM SiteModel_optimize_freerate_EM(SingleTreeLikelihood* tlk, size_t max
     free(theta);
     free(work);
     free_Optimizer(opt);
-    _em_free_single_class(scratch);
-    free_SitePattern_view(view);
+    _em_mstep_free(&mstep);
     free_Parameter(rate);
     return result;
 }
