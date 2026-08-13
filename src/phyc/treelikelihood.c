@@ -3332,6 +3332,17 @@ double gradient_shape_W_sitemodel(SingleTreeLikelihood* tlk, const double* branc
 }
 
 void gradient_discrete_sitemodel(SingleTreeLikelihood* tlk, Parameters* parameters, const double* branch_gradient, const double* branch_lengths){
+	// The derivatives below are the +I ones: they assume category 0 sits at rate 0
+	// and that the variable categories carry the whole unit mean. A free class
+	// (+F) breaks both, and the site model answers _no_derivative for it -- which
+	// would reach a gradient-based optimizer as a zero, indistinguishable from a
+	// converged parameter. Say so instead.
+	if(tlk->sm->class_rate != NULL){
+		fprintf(stderr, "sitemodel: a free rate class (+F) has no analytic gradient; "
+		                "use a derivative-free optimizer, or drop the site model "
+		                "parameters from the gradient\n");
+		exit(2);
+	}
 	// derivative wrt shape of Weibull
 	if(Parameters_count(tlk->sm->rates) == 1){
 		Parameter* shape = Parameters_at(tlk->sm->rates, 0);

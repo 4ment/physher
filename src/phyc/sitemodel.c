@@ -80,6 +80,9 @@ static void _site_model_store(Model* self){
 		if (sm->mu != NULL) {
 			Parameter_store(sm->mu);
 		}
+		if (sm->class_rate != NULL) {
+			Parameter_store(sm->class_rate);
+		}
 		self->stored = true;
 	}
 }
@@ -95,6 +98,9 @@ static void _site_model_restore(Model* self){
 		if (sm->mu != NULL) {
 			Parameter_restore(sm->mu);
 		}
+		if (sm->class_rate != NULL) {
+			Parameter_restore(sm->class_rate);
+		}
 		self->stored = false;
 	}
 }
@@ -107,6 +113,9 @@ static void _site_model_accept(Model* self){
 		if(Parameters_count(sm->rates) > 0) Parameters_accept(sm->rates);
 		if (sm->mu != NULL) {
 			Parameter_accept(sm->mu);
+		}
+		if (sm->class_rate != NULL) {
+			Parameter_accept(sm->class_rate);
 		}
 		self->stored = false;
 	}
@@ -128,6 +137,7 @@ static void _site_model_free( Model *self ){
 		free_Parameter(sm->proportions);
 		//TODO: deal with this
 		if(sm->mu!=NULL)free_Parameter(sm->mu);
+		if(sm->class_rate!=NULL)free_Parameter(sm->class_rate);
 		if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
 		free(sm->cat_rates);
 		free(sm);
@@ -183,9 +193,27 @@ static Model* _site_model_clone( Model *self, Hashtable* hash ){
 			Hashtable_add(hash, name, mu);
 		}
 	}
+	Parameter* class_rate = NULL;
+	if (sm->class_rate != NULL) {
+		char* name = Parameter_name(sm->class_rate);
+		if (Hashtable_exists(hash, name)) {
+			class_rate = Hashtable_get(hash, name);
+			class_rate->refCount++;
+		}
+		else{
+			class_rate = clone_Parameter(sm->class_rate);
+			Hashtable_add(hash, name, class_rate);
+		}
+	}
 	SiteModel* smclone = clone_SiteModel_with_parameters(sm, propclone, ps, mu);
+	// Before new_SiteModel2, which registers the model as a listener of it.
+	if (class_rate != NULL) {
+		SiteModel_set_class_rate(smclone, class_rate,
+		                         sm->class_rate_parameterization);
+	}
 	free_Parameters(ps);
 	free_Parameter(mu);
+	free_Parameter(class_rate);
 	Model* clone = new_SiteModel2(self->name, smclone);
 	Hashtable_add(hash, clone->name, clone);
 	if(mpropclone != NULL)mpropclone->free(mpropclone);
@@ -209,6 +237,10 @@ Model * new_SiteModel2( const char* name, SiteModel *sm ){
 	if ( sm->mu != NULL ) {
 		sm->mu->listeners->add( sm->mu->listeners, model );
 		Parameters_add_recursively(model->parameters, sm->mu);
+	}
+	if ( sm->class_rate != NULL ) {
+		sm->class_rate->listeners->add( sm->class_rate->listeners, model );
+		Parameters_add_recursively(model->parameters, sm->class_rate);
 	}
 	if (sm->proportions != NULL) {
 		sm->proportions->listeners->add(sm->proportions->listeners, model);
@@ -595,9 +627,11 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Parameter* 
 		Parameter_set_model(Parameters_at(sm->rates, i), MODEL_SITEMODEL);
 	}
 	sm->mu    = NULL;
-    
+	sm->class_rate = NULL;
+	sm->class_rate_parameterization = FREE_CLASS_PARAMETERIZATION_RATE;
+
     sm->set_rate = set_rate;
-	
+
 	sm->cat_rates       = dvector(sm->cat_count);
 	sm->cat_proportions = dvector(sm->cat_count);
 	sm->gradient = _no_gradient;
@@ -737,8 +771,71 @@ bool _cumulative_partial_means(distribution_t distribution, double alpha,
 	return true;
 }
 
+// Category 0 of an invariant-shaped model is a point mass pinned at rate 0. A
+// free class (+F) unpins it: the mass sits at r_f and contributes c = p_f r_f to
+// the unit mean, so the variable categories -- which the quadrature has just
+// normalised to carry all of it, sum_{k>0} p_k r_k = 1 -- are scaled down to
+// carry 1 - c instead. That single factor is the whole difference between +I and
+// +F, whatever quadrature produced the rates, because every branch above
+// imposes the same constraint (docs/models/sitemodel.md; the derivation is in
+// sitemodel.pdf, "Gamma plus a free rate class").
+//
+// The increment chart asks for r_f = A*g + d instead, where g is the largest of
+// the rates the quadrature produced and A = 1 - c is the very factor being
+// solved for -- the class is placed relative to a bulk that its own weight moves.
+// Substituting c = p_f r_f and solving the resulting linear equation gives
+//
+//     r_f = (g + d)/(1 + p_f g),   A = (1 - p_f d)/(1 + p_f g),
+//
+// so the domain is p_f d < 1 rather than p_f r_f < 1, and d = 0 puts the class
+// exactly on the fastest variable category (r_f = A*g) rather than at 0.
+//
+// Returns false, exactly as a non-finite quantile does, when the parameters
+// leave the domain: c >= 1 would make the variable rates negative or zero.
+static bool _apply_free_class( SiteModel *sm ) {
+	// Without an invariant class there is no category 0 to unpin: cat_count does
+	// not include one, so scaling from index 1 and writing index 0 would rewrite a
+	// perfectly good +G. SiteModel_set_class_rate asserts this, but the assert is
+	// compiled out of a release build.
+	if (sm->class_rate == NULL || !sm->invariant) return true;
+	const double proportion = sm->cat_proportions[0];
+	const double x = Parameter_value(sm->class_rate);
+	double rate, contribution;
+	switch (sm->class_rate_parameterization) {
+		case FREE_CLASS_PARAMETERIZATION_CONTRIBUTION:
+			contribution = x;
+			rate = contribution/proportion;
+			break;
+		case FREE_CLASS_PARAMETERIZATION_INCREMENT: {
+			// The fastest variable rate. Taken as a maximum rather than as the last
+			// category because only the quantile rules are guaranteed to come out
+			// ordered, and a caller's simplex could reorder the "discrete" bins.
+			double g = 0.0;
+			for (size_t i = 1; i < (size_t)sm->cat_count; i++) {
+				if (sm->cat_rates[i] > g) g = sm->cat_rates[i];
+			}
+			rate = (g + x)/(1.0 + proportion*g);
+			contribution = proportion*rate;
+			break;
+		}
+		case FREE_CLASS_PARAMETERIZATION_RATE:
+		default:
+			rate = x;
+			contribution = proportion*rate;
+			break;
+	}
+	// A weight that has underflowed to 0 makes r_f = c/p_f infinite; the
+	// finiteness test catches that as well as a non-finite parameter.
+	if (!(contribution < 1.0) || !isfinite(rate) || rate < 0.0) return false;
+	const double scale = 1.0 - contribution;
+	for (size_t i = 1; i < (size_t)sm->cat_count; i++) {
+		sm->cat_rates[i] *= scale;
+	}
+	sm->cat_rates[0] = rate;
+	return true;
+}
+
 bool _gamma_approx_quantile( SiteModel *sm ) {
-	
 	double propVariable = 1.0;
 	int cat = (sm->invariant ? 1 : 0);
 	const int nCat = sm->cat_count - cat;
@@ -822,7 +919,10 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 			sm->cat_rates[1] = 1.0 / sm->cat_proportions[1];
 			sm->need_update = false;
 			free(quantiles);
-			return true;
+			// A free class here makes this a two-point mixture rather than +I;
+			// the JSON parser does not offer it (that model is +R with two
+			// categories), but the C API can set one and the scaling holds.
+			return _apply_free_class(sm);
 		}
 		// +G+I
 		else{
@@ -963,11 +1063,11 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 		free(masses);
 		free(quantiles);
 		sm->need_update = false;
-		return ok;
+		return ok && _apply_free_class(sm);
 	}
 	free(quantiles);
 	sm->need_update = false;
-	return true;
+	return _apply_free_class(sm);
 }
 
 // Gamma distribution approximated using Laguerre quadrature
@@ -1014,6 +1114,22 @@ void SiteModel_set_mu(SiteModel *sm, Parameter* mu){
 	sm->mu = mu;
 	Parameter_set_model(sm->mu, MODEL_SITEMODEL);
 	mu->refCount++;
+}
+
+void SiteModel_set_class_rate(SiteModel* sm, Parameter* class_rate,
+                              free_class_parameterization_t parameterization){
+	assert(sm->proportions != NULL);
+	sm->class_rate = class_rate;
+	sm->class_rate_parameterization = parameterization;
+	Parameter_set_model(sm->class_rate, MODEL_SITEMODEL);
+	class_rate->refCount++;
+	// The analytic derivatives installed by new_SiteModel_with_parameters are the
+	// +I ones: they assume category 0 sits at rate 0 and that the variable rates
+	// carry the whole unit mean. Both are false here, and a wrong gradient is
+	// worse than none, so hand the model back to the derivative-free optimizers
+	// until the +F derivatives are implemented.
+	sm->gradient = _no_gradient;
+	sm->derivative = _no_derivative;
 }
 
 #pragma mark -
@@ -1291,9 +1407,11 @@ SiteModel * new_CATSiteModel_with_parameters( const Parameters *params,  const s
 		}
 	}
 	sm->mu    = NULL;
-	
+	sm->class_rate = NULL;
+	sm->class_rate_parameterization = FREE_CLASS_PARAMETERIZATION_RATE;
+
 	sm->set_rate = set_rate;
-	
+
 	sm->get_rate        = _get_rate_cat;
 	sm->get_proportion  = _get_proportion;
 	sm->get_proportions = _get_proportions;
@@ -1327,7 +1445,13 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm ){
 	if ( sm->mu != NULL ){
 		newsm->mu = clone_Parameter(sm->mu);
 	}
-	
+
+	newsm->class_rate = NULL;
+	newsm->class_rate_parameterization = sm->class_rate_parameterization;
+	if ( sm->class_rate != NULL ){
+		newsm->class_rate = clone_Parameter(sm->class_rate);
+	}
+
 	newsm->cat_rates = clone_dvector(sm->cat_rates, sm->cat_count);
 	
 	newsm->cat_proportions = NULL;
@@ -1383,7 +1507,12 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* pro
 		newsm->mu = mu;
 		mu->refCount++;
 	}
-	
+
+	// The rate of a free class is attached by the caller (_site_model_clone),
+	// which resolves it against the hashtable as it does every other parameter.
+	newsm->class_rate = NULL;
+	newsm->class_rate_parameterization = sm->class_rate_parameterization;
+
 	newsm->cat_rates = clone_dvector(sm->cat_rates, sm->cat_count);
 	
 	newsm->cat_proportions = NULL;
@@ -1413,6 +1542,7 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* pro
 void free_SiteModel( SiteModel *sm ){
 	if ( sm->rates != NULL ) free_Parameters(sm->rates);
 	if ( sm->mu != NULL ) free_Parameter(sm->mu);
+	if ( sm->class_rate != NULL ) free_Parameter(sm->class_rate);
 	if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
 	free_Parameter(sm->proportions);
 	free(sm->cat_rates);
@@ -1438,8 +1568,10 @@ static Parameter* _build_invariant_simplex(Parameter* proportion,
 	return simplex;
 }
 
-// "proportion_invariant" is sugar for the +I case: <id> always names the scalar
-// proportion of invariant sites S = p in (0,1) (so it logs as a single value and
+// Sugar for the weight of the extra point-mass class in category 0, shared by
+// "proportion_invariant" (+I, the class is pinned at rate 0) and
+// "free_class_proportion" (+F, the class has a rate of its own): <id> always
+// names the scalar proportion S = p in (0,1) (so it logs as a single value and
 // can carry e.g. a Beta prior). The internal 2-simplex X = [p, 1-p] the site
 // model consumes is auto-named "<id>.simplex" and driven by S through the
 // "proportions" (S -> X) transform. S is supplied one of two ways (the two
@@ -1451,7 +1583,8 @@ static Parameter* _build_invariant_simplex(Parameter* proportion,
 //     a "&reference" to such a parameter. Gradient/VI/HMC-ready.
 //
 // Returns the simplex X (what the site model stores as its proportions).
-static Parameter* new_proportion_invariant_from_json(json_node* node, Hashtable* hash){
+static Parameter* new_class_proportion_from_json(json_node* node, const char* key,
+                                                 Hashtable* hash){
 	Parameter* proportion;
 	if (node->node_type == MJSON_STRING || node->node_type == MJSON_OBJECT) {
 		// new_Parameter_from_json handles both a raw (0,1) leaf ({lower,upper,x:p})
@@ -1462,26 +1595,95 @@ static Parameter* new_proportion_invariant_from_json(json_node* node, Hashtable*
 		}
 	}
 	else {
-		// Bare number: a raw (0,1) leaf named "proportion_invariant".
+		// Bare number: a raw (0,1) leaf named after the key that supplied it.
 		double p = atof((char*)node->value);
-		proportion =
-			new_Parameter2("proportion_invariant", &p, 1, new_Constraint(0.0, 1.0));
+		proportion = new_Parameter2(key, &p, 1, new_Constraint(0.0, 1.0));
 		Hashtable_add(hash, Parameter_name(proportion), proportion);
 	}
 
 	if (Parameter_size(proportion) != 1) {
-		fprintf(stderr, "proportion_invariant must be a scalar in (0,1)\n");
+		fprintf(stderr, "%s must be a scalar in (0,1)\n", key);
 		exit(2);
 	}
 	const double* pv = Parameter_values(proportion);
 	if (pv[0] <= 0.0 || pv[0] >= 1.0) {
-		fprintf(stderr, "proportion_invariant must be in (0,1), got %f\n", pv[0]);
+		fprintf(stderr, "%s must be in (0,1), got %f\n", key, pv[0]);
 		exit(2);
 	}
 
 	char simplex_id[256];
 	snprintf(simplex_id, sizeof(simplex_id), "%s.simplex", Parameter_name(proportion));
 	return _build_invariant_simplex(proportion, simplex_id, hash);
+}
+
+// The JSON key naming the rate of a free class (+F) *is* its parameterization, so
+// the key and the chart come as a pair and exactly one of the three may appear.
+static const struct {
+	const char* key;
+	free_class_parameterization_t parameterization;
+} free_class_rate_keys[] = {
+	{"free_class_rate", FREE_CLASS_PARAMETERIZATION_RATE},
+	{"free_class_contribution", FREE_CLASS_PARAMETERIZATION_CONTRIBUTION},
+	{"free_class_increment", FREE_CLASS_PARAMETERIZATION_INCREMENT},
+};
+#define FREE_CLASS_RATE_KEY_COUNT \
+	(sizeof(free_class_rate_keys) / sizeof(free_class_rate_keys[0]))
+
+// The rate of a free class (+F), in whichever chart named it. Accepts the same
+// spellings as any other scalar parameter -- a bare number, an object (raw or
+// reparameterised through an unconstrained leaf), or a "&reference" -- and checks
+// it against the domain of its chart: a contribution is a share of the unit mean
+// and lives in (0,1), a rate is any non-negative number (0 being exactly the
+// invariant class), an increment is any non-negative number (0 putting the class
+// level with the fastest variable category).
+//
+// Only the contribution can be bounded into its domain by a box, which is the
+// reason to prefer it: the rate chart's real constraint is the joint p_f r_f < 1,
+// which no box on r_f alone expresses. The increment's is the equally joint
+// p_f d < 1, but that one binds only at rates far beyond anything a fit reaches
+// (d = 1/p_f puts the whole unit mean in the free class), so in practice the
+// lower bound is the only one that does any work. Both are caught by
+// _apply_free_class rather than by a constraint.
+static Parameter* new_free_class_rate_from_json(
+	json_node* node, const char* key, free_class_parameterization_t parameterization,
+	Hashtable* hash){
+	const bool is_contribution =
+		(parameterization == FREE_CLASS_PARAMETERIZATION_CONTRIBUTION);
+	Parameter* parameter;
+	if (node->node_type == MJSON_STRING || node->node_type == MJSON_OBJECT) {
+		parameter = new_Parameter_from_json(node, hash);
+		if (node->node_type == MJSON_OBJECT) {
+			Hashtable_add(hash, Parameter_name(parameter), parameter);
+		}
+	}
+	else {
+		double x = atof((char*)node->value);
+		parameter = new_Parameter2(
+			key, &x, 1, new_Constraint(0.0, is_contribution ? 1.0 : INFINITY));
+		Hashtable_add(hash, Parameter_name(parameter), parameter);
+	}
+
+	if (Parameter_size(parameter) != 1) {
+		fprintf(stderr, "%s must be a scalar\n", key);
+		exit(2);
+	}
+	const double x = Parameter_values(parameter)[0];
+	if (is_contribution) {
+		if (x <= 0.0 || x >= 1.0) {
+			fprintf(stderr, "%s is the free class's share of the unit mean and must "
+			                "be in (0,1), got %f\n", key, x);
+			exit(2);
+		}
+		check_constraint(parameter, 0.0, 1.0, 1.0e-6, 1.0 - 1.0e-6);
+	}
+	else {
+		if (x < 0.0) {
+			fprintf(stderr, "%s must be non-negative, got %f\n", key, x);
+			exit(2);
+		}
+		check_constraint(parameter, 0.0, INFINITY, 0.0, 100.0);
+	}
+	return parameter;
 }
 
 // The JSON key holding the free rate parameter of a "discrete" site model *is* the
@@ -1632,6 +1834,12 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		{"beta", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},     // Beta beta
 		{"categories", JSON_OPTIONAL, JSON_NUMBER},
 		{"distribution", JSON_OPTIONAL, JSON_STRING},
+		// The free rate class (+F): its weight, and its rate in one of the three
+		// charts (see _apply_free_class).
+		{"free_class_contribution", JSON_OPTIONAL, JSON_OBJECT | JSON_NUMBER | JSON_STRING},
+		{"free_class_increment", JSON_OPTIONAL, JSON_OBJECT | JSON_NUMBER | JSON_STRING},
+		{"free_class_proportion", JSON_OPTIONAL, JSON_OBJECT | JSON_NUMBER | JSON_STRING},
+		{"free_class_rate", JSON_OPTIONAL, JSON_OBJECT | JSON_NUMBER | JSON_STRING},
 		{"invariant", JSON_OPTIONAL, JSON_BOOL},
 		{"mean_contribution", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},  // discrete
 		{"mu", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
@@ -1681,6 +1889,46 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		fprintf(stderr, "sitemodel: specify either \"proportions\" or "
 		                "\"proportion_invariant\", not both\n");
 		exit(2);
+	}
+
+	// The free rate class (+F) is the invariant class with its rate unpinned: it
+	// takes the same weight, spelled "free_class_proportion" rather than
+	// "proportion_invariant" because nothing about it is invariant, plus a rate in
+	// one of three charts. The keys stand or fall together, and the weight cannot
+	// also come from "proportion_invariant" or a "proportions" simplex -- each of
+	// those names the weight of a *different* category 0.
+	json_node* free_class_proportion_node =
+		get_json_node(node, "free_class_proportion");
+	json_node* free_class_rate_node = NULL;
+	free_class_parameterization_t free_class_parameterization =
+		FREE_CLASS_PARAMETERIZATION_RATE;
+	const char* free_class_rate_key = NULL;
+	for (size_t i = 0; i < FREE_CLASS_RATE_KEY_COUNT; i++) {
+		json_node* candidate = get_json_node(node, free_class_rate_keys[i].key);
+		if (candidate == NULL) continue;
+		free_class_rate_node = candidate;
+		free_class_rate_key = free_class_rate_keys[i].key;
+		free_class_parameterization = free_class_rate_keys[i].parameterization;
+	}
+	const bool free_class =
+		(free_class_proportion_node != NULL || free_class_rate_node != NULL);
+	if (free_class) {
+		// Exactly one chart for the rate: r_f itself, the class's contribution to
+		// the unit mean c = p_f r_f, or its increment above the fastest variable
+		// rate. Any two of them would over-determine it.
+		json_validate_xor(node, "free_class_rate", "free_class_contribution",
+		                  "free_class_increment", NULL);
+		if (free_class_proportion_node == NULL) {
+			json_die(node, "\"free_class_proportion\" is required for a free rate "
+			               "class: a rate with no weight is not a mixture component");
+		}
+		if (proportion_invariant_node != NULL || proportions_node != NULL) {
+			json_die(node, "a free rate class takes its weight from "
+			               "\"free_class_proportion\"; \"%s\" weights a different "
+			               "category 0",
+			         proportion_invariant_node != NULL ? "proportion_invariant"
+			                                           : "proportions");
+		}
 	}
 
 	// Which of the mutually exclusive rate keys was given, if any -- none is the pure
@@ -1738,15 +1986,34 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		
 		// +G/W/L+I or +I
 		if (proportion_invariant_node != NULL) {
-			proportions = new_proportion_invariant_from_json(proportion_invariant_node, hash);
+			proportions = new_class_proportion_from_json(proportion_invariant_node,
+		                                             "proportion_invariant", hash);
 			invariant = true;
 			Parameter_set_model(proportions, MODEL_SITEMODEL);
 			if(distribution == DISTRIBUTION_DISCRETE){
 				cat = 1; // +I
 			}
 		}
+		// +G/W/L+F: the same weights as +I -- category 0 is a point mass of weight
+		// p_f and the rest of the distribution shares 1-p_f -- with the rate of that
+		// point mass attached below instead of being pinned at 0.
+		else if (free_class) {
+			// "discrete" has no distribution to put the free class beside: with no
+			// rate key it is +I (a point mass and one variable rate, so a free class
+			// makes it a two-point mixture) and with one it is +R, whose rates are
+			// all free already.
+			if (distribution == DISTRIBUTION_DISCRETE) {
+				json_die(node, "a free rate class needs a rate distribution to sit "
+				               "beside; \"discrete\" already has free rates (+R), or "
+				               "is the invariant model (+I)");
+			}
+			proportions = new_class_proportion_from_json(free_class_proportion_node,
+			                                             "free_class_proportion", hash);
+			invariant = true;
+			Parameter_set_model(proportions, MODEL_SITEMODEL);
+		}
 		// +R or +R+I or +G+I+D
-		// We need to specify invariant=true for +R+I
+		// We need to specify invariant=true for +R+I and +G+I+D
 		else if (proportions_node != NULL) {
 			invariant = get_json_node_value_bool(node, "invariant", false);
 
@@ -1770,6 +2037,12 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				quad = QUADRATURE_GAUSS_LAGUERRE;
 				if (proportions_node != NULL) {
 					fprintf(stderr, "Gauss-Laguerre quadrature does not need proportions to be specified (%s)\n", proportions_node->key);
+					exit(13);
+				}
+				// Its nodes and weights come from the quadrature rule, so there is no
+				// separately weighted extra class to add, invariant or free.
+				if (free_class) {
+					fprintf(stderr, "Gauss-Laguerre quadrature does not support a free rate class\n");
 					exit(13);
 				}
 				if (invariant) {
@@ -1806,6 +2079,16 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				fprintf(stderr, "Cannot not recognize quadrature method %s\n", method);
 				exit(13);
 			}
+		}
+
+		if (proportions_node != NULL && distribution != DISTRIBUTION_DISCRETE &&
+			quad != QUADRATURE_DISCRETE) {
+			json_die(node, "\"proportions\" weights each category individually, which "
+			               "needs \"quadrature\": \"discrete\"; \"%s\" takes the "
+			               "weights from the discretisation itself (use "
+			               "\"proportion_invariant\" for an invariant class)",
+			         discretization_node == NULL ? "median"
+			                                     : (char*)discretization_node->value);
 		}
 		
 		if (distribution == DISTRIBUTION_DISCRETE) {
@@ -1915,7 +2198,8 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	}
 	// allow +I only without distribution=discrete
 	else if (proportion_invariant_node != NULL) {
-		proportions = new_proportion_invariant_from_json(proportion_invariant_node, hash);
+		proportions = new_class_proportion_from_json(proportion_invariant_node,
+		                                             "proportion_invariant", hash);
 		invariant = true;
 		Parameter_set_model(proportions, MODEL_SITEMODEL);
 		distribution = DISTRIBUTION_DISCRETE;
@@ -1925,6 +2209,12 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	// weight 1 and the simplex would be dropped on the floor.
 	else if (proportions_node != NULL) {
 		json_die(node, "\"proportions\" gives the weight of each category of a "
+		               "\"distribution\", which this site model does not declare");
+	}
+	// Unlike +I, a free class is not a model on its own: on its own it is a
+	// two-point mixture, which is what "distribution": "discrete" already is.
+	else if (free_class) {
+		json_die(node, "a free rate class is an extra component beside a rate "
 		               "\"distribution\", which this site model does not declare");
 	}
 
@@ -1965,7 +2255,17 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		check_constraint(sm->mu, 0, INFINITY, 0.001, 100);
 		Hashtable_add(hash, Parameter_name(sm->mu), sm->mu);
 	}
-	
+
+	// Unpin category 0. Before new_SiteModel2, which registers the model as a
+	// listener of every parameter the site model holds.
+	if (free_class) {
+		Parameter* class_rate = new_free_class_rate_from_json(
+			free_class_rate_node, free_class_rate_key, free_class_parameterization,
+			hash);
+		SiteModel_set_class_rate(sm, class_rate, free_class_parameterization);
+		free_Parameter(class_rate);  // the site model took its own reference
+	}
+
 	Model* msm = new_SiteModel2(id, sm);
 	
 	msm->print = _SiteModel_print;

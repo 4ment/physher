@@ -454,6 +454,52 @@ char* test_proportions_rejects() {
     mu_assert(_parse_status(no_distribution) == 12,
               "proportions: no \"distribution\" should die");
 
+    // Weighting the categories individually only means something to the
+    // "discrete" quadrature; every other rule derives the weights from the
+    // discretisation. Left accepted, the median rule matches no branch of the rate
+    // construction and every rate comes out infinite, and the beta rule reads the
+    // first two elements of the simplex as if it were the invariant pair.
+    const char* median_proportions =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,\"invariant\":true,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.2,0.2,0.2,0.2,0.2]}}";
+    mu_assert(_parse_status(median_proportions) == 12,
+              "proportions: the default median quadrature should die");
+
+    const char* mean_proportions =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.25,0.25,0.25,0.25]}}";
+    mu_assert(_parse_status(mean_proportions) == 12,
+              "proportions: the mean quadrature should die");
+
+    const char* beta_proportions =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,\"quadrature\":\"beta\","
+        "\"shape\":{\"id\":\"shape\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"alpha\":{\"id\":\"a\",\"type\":\"parameter\",\"x\":1.0,\"lower\":0},"
+        "\"beta\":{\"id\":\"b\",\"type\":\"parameter\",\"x\":1.0,\"lower\":0},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.25,0.25,0.25,0.25]}}";
+    mu_assert(_parse_status(beta_proportions) == 12,
+              "proportions: the beta quadrature should die");
+
+    // The free-rates model is not affected: "discrete" places no quantiles, so it
+    // never reads "quadrature" and its weights are the simplex by definition.
+    const char* free_rates =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"rate_increments\":{\"id\":\"r\",\"type\":\"parameter\","
+        "\"x\":[1.0,1.0,1.0,1.0],\"lower\":0.0},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.25,0.25,0.25,0.25]}}";
+    mu_assert(_parse_status(free_rates) == 0,
+              "proportions: +R should not need a \"quadrature\"");
+
     // Two spellings of the same weights.
     const char* both =
         "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
@@ -1024,8 +1070,580 @@ char* test_freerate_em_restores_likelihood() {
     return NULL;
 }
 
+// A discretised gamma plus a free rate class (+G+F): category 0 is a point mass
+// of weight p_f whose rate is estimated instead of being pinned at 0. The rate is
+// given here as the class's contribution to the unit mean, c = p_f r_f, so that
+// r_f = c/p_f and the gamma categories -- which the quadrature normalised to
+// carry the whole mean -- are scaled by 1-c to leave room for it.
+#define FREE_CLASS_P 0.25
+#define FREE_CLASS_C 0.4
+static const char* FREE_CLASS_G4 =
+    "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+    "\"distribution\":\"gamma\",\"categories\":4,"
+    "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+    "\"free_class_proportion\":{\"id\":\"pf\",\"type\":\"parameter\","
+    "\"x\":0.25,\"lower\":0,\"upper\":1},"
+    "\"free_class_contribution\":{\"id\":\"cf\",\"type\":\"parameter\","
+    "\"x\":0.4,\"lower\":0,\"upper\":1}}";
+
+// The same shape and weight, with category 0 pinned at rate 0: the +G+I model the
+// free class generalises. Different ids so the two can share a hashtable.
+static const char* INVARIANT_G4 =
+    "{\"id\":\"sitemodel2\",\"type\":\"sitemodel\","
+    "\"distribution\":\"gamma\",\"categories\":4,"
+    "\"shape\":{\"id\":\"alpha2\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+    "\"proportion_invariant\":{\"id\":\"pinv\",\"type\":\"parameter\","
+    "\"x\":0.25,\"lower\":0,\"upper\":1}}";
+
+char* test_free_class() {
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(FREE_CLASS_G4, hash);
+    SiteModel* sm = model->obj;
+
+    // "categories" counts the variable categories, so the point mass is extra.
+    mu_assert(sm->cat_count == 5, "+F: wrong number of categories");
+    mu_assert(sm->invariant, "+F: category 0 is not a separate class");
+    mu_assert(sm->class_rate != NULL, "+F: the class rate was not attached");
+    mu_assert(sm->class_rate_parameterization ==
+                  FREE_CLASS_PARAMETERIZATION_CONTRIBUTION,
+              "+F: \"free_class_contribution\" did not select the contribution chart");
+
+    mu_assert(fabs(sm->get_proportion(sm, 0) - FREE_CLASS_P) < TOL,
+              "+F: the free class does not have weight p_f");
+    mu_assert(fabs(sm->get_rate(sm, 0) - FREE_CLASS_C / FREE_CLASS_P) < TOL,
+              "+F: the free class is not at rate c/p_f");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F: rates do not have unit weighted mean");
+    // c > p_f is exactly the condition for the class to be faster than average,
+    // which is the point of the model.
+    mu_assert(sm->get_rate(sm, 0) > 1.0,
+              "+F: c > p_f should put the class above the mean rate");
+
+    // The gamma categories are the +G+I ones scaled by 1-c: the free class takes
+    // over that share of the mean, and nothing else about the discretisation moves.
+    Model* invariant_model = _sitemodel_from_string(INVARIANT_G4, hash);
+    SiteModel* ism = invariant_model->obj;
+    for (size_t i = 1; i < 5; i++) {
+        mu_assert(fabs(sm->get_proportion(sm, i) - ism->get_proportion(ism, i)) < TOL,
+                  "+F: the variable categories do not keep the +I weights");
+        mu_assert(fabs(sm->get_rate(sm, i) -
+                       (1.0 - FREE_CLASS_C) * ism->get_rate(ism, i)) < TOL,
+                  "+F: the variable rates are not the +I rates scaled by 1-c");
+    }
+
+    // A change to either new parameter has to invalidate the cached categories,
+    // and the constraint has to survive it.
+    Parameter_set_value(Hashtable_get(hash, "cf"), 0.1);
+    mu_assert(fabs(sm->get_rate(sm, 0) - 0.1 / FREE_CLASS_P) < TOL,
+              "+F: rates not updated after a change to the contribution");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F: unit mean lost after a change to the contribution");
+
+    Parameter_set_value(Hashtable_get(hash, "pf"), 0.5);
+    mu_assert(fabs(sm->get_proportion(sm, 0) - 0.5) < TOL,
+              "+F: weights not updated after a change to the proportion");
+    mu_assert(fabs(sm->get_rate(sm, 0) - 0.1 / 0.5) < TOL,
+              "+F: rates not updated after a change to the proportion");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F: unit mean lost after a change to the proportion");
+
+    invariant_model->free(invariant_model);
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// The rate and the contribution are two charts on the same model, related by
+// c = p_f r_f. Given matching values they must produce identical categories.
+char* test_free_class_charts_agree() {
+    const char* rate_chart =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":{\"id\":\"pf\",\"type\":\"parameter\","
+        "\"x\":0.25,\"lower\":0,\"upper\":1},"
+        // r_f = c/p_f = 0.4/0.25
+        "\"free_class_rate\":{\"id\":\"rf\",\"type\":\"parameter\","
+        "\"x\":1.6,\"lower\":0}}";
+    Hashtable* hash = _new_hash();
+    Model* rate_model = _sitemodel_from_string(rate_chart, hash);
+    SiteModel* rsm = rate_model->obj;
+    mu_assert(rsm->class_rate_parameterization == FREE_CLASS_PARAMETERIZATION_RATE,
+              "+F: \"free_class_rate\" selected the contribution chart");
+
+    Hashtable* hash2 = _new_hash();
+    Model* contribution_model = _sitemodel_from_string(FREE_CLASS_G4, hash2);
+    SiteModel* csm = contribution_model->obj;
+
+    mu_assert(rsm->cat_count == csm->cat_count, "+F: charts disagree on the categories");
+    for (size_t i = 0; i < rsm->cat_count; i++) {
+        mu_assert(fabs(rsm->get_rate(rsm, i) - csm->get_rate(csm, i)) < TOL,
+                  "+F: the two charts give different rates");
+        mu_assert(fabs(rsm->get_proportion(rsm, i) - csm->get_proportion(csm, i)) < TOL,
+                  "+F: the two charts give different weights");
+    }
+    mu_assert(fabs(_weighted_mean(rsm) - 1.0) < TOL,
+              "+F: the rate chart loses the unit mean");
+
+    contribution_model->free(contribution_model);
+    free_Hashtable(hash2);
+    rate_model->free(rate_model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// r_f = 0 is not a limit but a point of the parameter space: it is the invariant
+// class, and it must reproduce +G+I exactly rather than approximately.
+char* test_free_class_reduces_to_invariant() {
+    const char* pinned =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":{\"id\":\"pf\",\"type\":\"parameter\","
+        "\"x\":0.25,\"lower\":0,\"upper\":1},"
+        "\"free_class_rate\":{\"id\":\"rf\",\"type\":\"parameter\","
+        "\"x\":0.0,\"lower\":0}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(pinned, hash);
+    SiteModel* sm = model->obj;
+    Model* invariant_model = _sitemodel_from_string(INVARIANT_G4, hash);
+    SiteModel* ism = invariant_model->obj;
+
+    mu_assert(sm->get_rate(sm, 0) == 0.0, "+F: r_f = 0 is not rate 0");
+    for (size_t i = 0; i < 5; i++) {
+        mu_assert(sm->get_rate(sm, i) == ism->get_rate(ism, i),
+                  "+F: r_f = 0 does not reproduce +G+I exactly");
+        mu_assert(sm->get_proportion(sm, i) == ism->get_proportion(ism, i),
+                  "+F: r_f = 0 does not reproduce the +G+I weights exactly");
+    }
+
+    invariant_model->free(invariant_model);
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// The scaling is applied to whatever the quadrature produced, so the mean
+// quadrature -- whose rates are conditional means rather than quantiles, and are
+// never renormalised -- takes the free class on the same terms.
+char* test_free_class_mean_quadrature() {
+    const char* json =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":{\"id\":\"pf\",\"type\":\"parameter\","
+        "\"x\":0.25,\"lower\":0,\"upper\":1},"
+        "\"free_class_contribution\":{\"id\":\"cf\",\"type\":\"parameter\","
+        "\"x\":0.4,\"lower\":0,\"upper\":1}}";
+    const char* invariant_json =
+        "{\"id\":\"sitemodel2\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,\"quadrature\":\"mean\","
+        "\"shape\":{\"id\":\"alpha2\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"proportion_invariant\":{\"id\":\"pinv\",\"type\":\"parameter\","
+        "\"x\":0.25,\"lower\":0,\"upper\":1}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
+    Model* invariant_model = _sitemodel_from_string(invariant_json, hash);
+    SiteModel* ism = invariant_model->obj;
+
+    mu_assert(fabs(sm->get_rate(sm, 0) - FREE_CLASS_C / FREE_CLASS_P) < TOL,
+              "+F mean quadrature: the free class is not at rate c/p_f");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F mean quadrature: rates do not have unit weighted mean");
+    for (size_t i = 1; i < 5; i++) {
+        mu_assert(fabs(sm->get_rate(sm, i) -
+                       (1.0 - FREE_CLASS_C) * ism->get_rate(ism, i)) < TOL,
+                  "+F mean quadrature: rates are not the +I rates scaled by 1-c");
+    }
+
+    invariant_model->free(invariant_model);
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// The rate chart's real constraint is the joint p_f r_f < 1, which no box on r_f
+// alone can express: beyond it the gamma categories would have to carry a
+// negative share of the mean. That is reported as a failed update -- the same
+// answer a non-finite quantile gives -- and not as silently negative rates.
+char* test_free_class_domain() {
+    const char* json =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":{\"id\":\"pf\",\"type\":\"parameter\","
+        "\"x\":0.5,\"lower\":0,\"upper\":1},"
+        // p_f r_f = 1.5 > 1
+        "\"free_class_rate\":{\"id\":\"rf\",\"type\":\"parameter\","
+        "\"x\":3.0,\"lower\":0}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
+
+    mu_assert(sm->update(sm) == false,
+              "+F: p_f r_f > 1 should fail the update");
+
+    // p_f r_f = 1 exactly is the same failure: the gamma categories would all
+    // collapse onto rate 0.
+    Parameter_set_value(Hashtable_get(hash, "rf"), 2.0);
+    mu_assert(sm->update(sm) == false, "+F: p_f r_f = 1 should fail the update");
+
+    // ...and back inside the domain it recovers.
+    Parameter_set_value(Hashtable_get(hash, "rf"), 1.0);
+    mu_assert(sm->update(sm) == true, "+F: p_f r_f < 1 should update");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F: unit mean not restored inside the domain");
+    for (size_t i = 1; i < sm->cat_count; i++) {
+        mu_assert(sm->get_rate(sm, i) > 0.0, "+F: a variable rate is not positive");
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// The fastest of the variable rates, which is what an increment is measured from.
+static double _fastest_variable_rate(SiteModel* sm) {
+    double g = 0.0;
+    for (size_t i = 1; i < sm->cat_count; i++) {
+        if (sm->get_rate(sm, i) > g) g = sm->get_rate(sm, i);
+    }
+    return g;
+}
+
+// The increment chart ("fast class"): the free class is placed at d above the
+// fastest variable category instead of anywhere on the line. The placement is
+// implicit -- the rescaling that makes room for the class moves the very rate it
+// is measured from -- so the test is that the defining identity r_f = r_max + d
+// holds of the rates the model actually reports.
+#define FREE_CLASS_D 2.0
+char* test_free_class_increment() {
+    const char* json =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":{\"id\":\"pf\",\"type\":\"parameter\","
+        "\"x\":0.25,\"lower\":0,\"upper\":1},"
+        "\"free_class_increment\":{\"id\":\"df\",\"type\":\"parameter\","
+        "\"x\":2.0,\"lower\":0}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
+
+    mu_assert(sm->class_rate_parameterization == FREE_CLASS_PARAMETERIZATION_INCREMENT,
+              "+F: \"free_class_increment\" did not select the increment chart");
+    mu_assert(fabs(sm->get_rate(sm, 0) -
+                   (_fastest_variable_rate(sm) + FREE_CLASS_D)) < TOL,
+              "+F increment: the class is not d above the fastest variable rate");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F increment: rates do not have unit weighted mean");
+
+    // The variable categories are still the +G+I ones scaled by 1-c; the only
+    // difference from the other charts is which equation fixes c.
+    Model* invariant_model = _sitemodel_from_string(INVARIANT_G4, hash);
+    SiteModel* ism = invariant_model->obj;
+    const double c = FREE_CLASS_P * sm->get_rate(sm, 0);
+    for (size_t i = 1; i < 5; i++) {
+        mu_assert(fabs(sm->get_rate(sm, i) - (1.0 - c) * ism->get_rate(ism, i)) < TOL,
+                  "+F increment: the variable rates are not the +I rates scaled by 1-c");
+    }
+
+    // Moving either parameter has to keep the identity, not just the value it
+    // happened to have at construction: p_f rescales the bulk the class is
+    // measured from, so r_f moves even when d does not.
+    Parameter_set_value(Hashtable_get(hash, "pf"), 0.4);
+    mu_assert(fabs(sm->get_rate(sm, 0) -
+                   (_fastest_variable_rate(sm) + FREE_CLASS_D)) < TOL,
+              "+F increment: identity lost after a change to the proportion");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F increment: unit mean lost after a change to the proportion");
+
+    Parameter_set_value(Hashtable_get(hash, "df"), 1.0);
+    mu_assert(fabs(sm->get_rate(sm, 0) - (_fastest_variable_rate(sm) + 1.0)) < TOL,
+              "+F increment: identity lost after a change to the increment");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F increment: unit mean lost after a change to the increment");
+
+    invariant_model->free(invariant_model);
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// d = 0 is the boundary of the fast class, where it sits exactly on the fastest
+// variable category: the model is still well defined there (it is a +G with one
+// category duplicated), and it is the closest the chart gets to +G+I -- which,
+// unlike the other two charts, it cannot reach at all.
+char* test_free_class_increment_boundary() {
+    const char* json =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":{\"id\":\"pf\",\"type\":\"parameter\","
+        "\"x\":0.25,\"lower\":0,\"upper\":1},"
+        "\"free_class_increment\":{\"id\":\"df\",\"type\":\"parameter\","
+        "\"x\":0.0,\"lower\":0}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
+
+    mu_assert(fabs(sm->get_rate(sm, 0) - _fastest_variable_rate(sm)) < TOL,
+              "+F increment: d = 0 does not put the class on the fastest category");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F increment: d = 0 loses the unit mean");
+    // Which is the whole point of the chart: no value of d puts the class below
+    // the bulk, so a fit cannot wander into the slow mode.
+    for (double d = 0.0; d < 3.5; d += 0.37) {
+        Parameter_set_value(Hashtable_get(hash, "df"), d);
+        const double rf = sm->get_rate(sm, 0);
+        for (size_t i = 1; i < sm->cat_count; i++) {
+            mu_assert(rf >= sm->get_rate(sm, i) - TOL,
+                      "+F increment: the class fell below a variable rate");
+        }
+        mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+                  "+F increment: unit mean lost along the increment");
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// The increment is a restriction of the free model, not a different one: the
+// categories it produces are those of the rate chart at the r_f it lands on. This
+// is what checks the closed-form solve of r_f = (1-p_f r_f) g + d.
+char* test_free_class_increment_matches_rate() {
+    const char* increment =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":{\"id\":\"pf\",\"type\":\"parameter\","
+        "\"x\":0.25,\"lower\":0,\"upper\":1},"
+        "\"free_class_increment\":{\"id\":\"df\",\"type\":\"parameter\","
+        "\"x\":2.0,\"lower\":0}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(increment, hash);
+    SiteModel* sm = model->obj;
+
+    char rate_json[512];
+    snprintf(rate_json, sizeof(rate_json),
+             "{\"id\":\"sitemodel2\",\"type\":\"sitemodel\","
+             "\"distribution\":\"gamma\",\"categories\":4,"
+             "\"shape\":{\"id\":\"alpha2\",\"type\":\"parameter\",\"x\":0.5,"
+             "\"lower\":0},"
+             "\"free_class_proportion\":{\"id\":\"pf2\",\"type\":\"parameter\","
+             "\"x\":0.25,\"lower\":0,\"upper\":1},"
+             "\"free_class_rate\":{\"id\":\"rf2\",\"type\":\"parameter\","
+             "\"x\":%.17g,\"lower\":0}}",
+             sm->get_rate(sm, 0));
+    Model* rate_model = _sitemodel_from_string(rate_json, hash);
+    SiteModel* rsm = rate_model->obj;
+
+    for (size_t i = 0; i < sm->cat_count; i++) {
+        mu_assert(fabs(sm->get_rate(sm, i) - rsm->get_rate(rsm, i)) < TOL,
+                  "+F increment: rates differ from the rate chart at the same r_f");
+        mu_assert(fabs(sm->get_proportion(sm, i) - rsm->get_proportion(rsm, i)) < TOL,
+                  "+F increment: weights differ from the rate chart at the same r_f");
+    }
+
+    rate_model->free(rate_model);
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// The increment's domain reads p_f d < 1 rather than p_f r_f < 1: the two say the
+// same thing -- c -> 1 exactly as p_f d -> 1 -- but in the increment chart the
+// bulk term cancels, so the bound sits at a fixed 1/p_f instead of moving with
+// the shape. Beyond it the variable rates would go negative.
+char* test_free_class_increment_domain() {
+    const char* json =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":{\"id\":\"pf\",\"type\":\"parameter\","
+        "\"x\":0.5,\"lower\":0,\"upper\":1},"
+        "\"free_class_increment\":{\"id\":\"df\",\"type\":\"parameter\","
+        "\"x\":1.0,\"lower\":0}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
+
+    mu_assert(sm->update(sm) == true, "+F increment: p_f d < 1 should update");
+    mu_assert(0.5 * sm->get_rate(sm, 0) < 1.0,
+              "+F increment: p_f d < 1 should imply p_f r_f < 1");
+    mu_assert(fabs(_weighted_mean(sm) - 1.0) < TOL,
+              "+F increment: unit mean lost");
+
+    Parameter_set_value(Hashtable_get(hash, "df"), 2.0);
+    mu_assert(sm->update(sm) == false, "+F increment: p_f d = 1 should fail the update");
+
+    Parameter_set_value(Hashtable_get(hash, "df"), 3.0);
+    mu_assert(sm->update(sm) == false, "+F increment: p_f d > 1 should fail the update");
+
+    Parameter_set_value(Hashtable_get(hash, "df"), 1.5);
+    mu_assert(sm->update(sm) == true, "+F increment: p_f d < 1 should update again");
+    for (size_t i = 1; i < sm->cat_count; i++) {
+        mu_assert(sm->get_rate(sm, i) > 0.0,
+                  "+F increment: a variable rate is not positive");
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+char* test_free_class_rejects() {
+    const char* good =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":0.25,\"free_class_rate\":1.6}";
+    mu_assert(_parse_status(good) == 0, "+F: a valid model should parse");
+
+    // The three keys stand or fall together: a rate with no weight is not a
+    // mixture component, and a weight with no rate does not say where it sits.
+    const char* no_proportion =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_rate\":1.6}";
+    mu_assert(_parse_status(no_proportion) == 12,
+              "+F: a rate with no weight should die");
+
+    const char* no_rate =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":0.25}";
+    mu_assert(_parse_status(no_rate) == 12, "+F: a weight with no rate should die");
+
+    const char* increment =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":0.25,\"free_class_increment\":2.0}";
+    mu_assert(_parse_status(increment) == 0, "+F: the increment chart should parse");
+
+    // Charts on the same rate, not layers on top of each other -- any two of the
+    // three over-determine it.
+    const char* both_charts =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":0.25,\"free_class_rate\":1.6,"
+        "\"free_class_contribution\":0.4}";
+    mu_assert(_parse_status(both_charts) == 12,
+              "+F: both rate charts together should die");
+
+    const char* rate_and_increment =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":0.25,\"free_class_rate\":1.6,"
+        "\"free_class_increment\":2.0}";
+    mu_assert(_parse_status(rate_and_increment) == 12,
+              "+F: a rate and an increment together should die");
+
+    // Each of these names the weight of a different category 0.
+    const char* with_proportion_invariant =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"proportion_invariant\":0.1,"
+        "\"free_class_proportion\":0.25,\"free_class_rate\":1.6}";
+    mu_assert(_parse_status(with_proportion_invariant) == 12,
+              "+F: \"proportion_invariant\" alongside a free class should die");
+
+    const char* with_proportions =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,\"invariant\":true,"
+        "\"quadrature\":\"discrete\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"proportions\":{\"id\":\"p\",\"type\":\"simplex\","
+        "\"x\":[0.2,0.2,0.2,0.2,0.2]},"
+        "\"free_class_proportion\":0.25,\"free_class_rate\":1.6}";
+    mu_assert(_parse_status(with_proportions) == 12,
+              "+F: \"proportions\" alongside a free class should die");
+
+    // The free class sits beside a rate distribution; on its own it would be a
+    // two-point mixture, which is what "discrete" already is.
+    const char* no_distribution =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"free_class_proportion\":0.25,\"free_class_rate\":1.6}";
+    mu_assert(_parse_status(no_distribution) == 12,
+              "+F: no \"distribution\" should die");
+
+    const char* discrete =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"discrete\",\"categories\":4,"
+        "\"free_class_proportion\":0.25,\"free_class_rate\":1.6}";
+    mu_assert(_parse_status(discrete) == 12,
+              "+F: \"distribution\": \"discrete\" should die");
+
+    // Gauss-Laguerre takes its weights from the quadrature rule, so there is no
+    // separately weighted class to add.
+    const char* laguerre =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"quadrature\":\"gausslaguerre\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":0.25,\"free_class_rate\":1.6}";
+    mu_assert(_parse_status(laguerre) == 13,
+              "+F: Gauss-Laguerre quadrature should die");
+
+    // A contribution is a share of the unit mean, so it is bounded whatever the
+    // weight is; a rate only has to be non-negative.
+    const char* contribution_too_big =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":0.25,\"free_class_contribution\":1.4}";
+    mu_assert(_parse_status(contribution_too_big) == 2,
+              "+F: a contribution outside (0,1) should die");
+
+    const char* negative_rate =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":0.25,\"free_class_rate\":-1.0}";
+    mu_assert(_parse_status(negative_rate) == 2,
+              "+F: a negative rate should die");
+
+    // A negative increment would put the class inside the bulk, which is the one
+    // thing this chart exists to rule out; ask for the rate chart instead.
+    const char* negative_increment =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":0.25,\"free_class_increment\":-1.0}";
+    mu_assert(_parse_status(negative_increment) == 2,
+              "+F: a negative increment should die");
+
+    const char* weight_out_of_range =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":0.5,\"lower\":0},"
+        "\"free_class_proportion\":1.0,\"free_class_rate\":1.6}";
+    mu_assert(_parse_status(weight_out_of_range) == 2,
+              "+F: a weight outside (0,1) should die");
+
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
+    mu_run_test(test_free_class);
+    mu_run_test(test_free_class_charts_agree);
+    mu_run_test(test_free_class_reduces_to_invariant);
+    mu_run_test(test_free_class_mean_quadrature);
+    mu_run_test(test_free_class_domain);
+    mu_run_test(test_free_class_increment);
+    mu_run_test(test_free_class_increment_boundary);
+    mu_run_test(test_free_class_increment_matches_rate);
+    mu_run_test(test_free_class_increment_domain);
+    mu_run_test(test_free_class_rejects);
     mu_run_test(test_freerate_em);
     mu_run_test(test_freerate_em_fixed_rates);
     mu_run_test(test_freerate_em_invariant);

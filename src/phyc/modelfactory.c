@@ -4,6 +4,7 @@
 #include "modelfactory.h"
 
 #include <string.h>
+#include <strings.h>
 
 #include "model.h"
 #include "sequence.h"

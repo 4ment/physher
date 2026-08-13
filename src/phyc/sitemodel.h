@@ -56,6 +56,22 @@ typedef enum rate_parameterization_t {
 	RATE_PARAMETERIZATION_RATE_RATIOS
 }rate_parameterization_t;
 
+// How the rate r_f of the free class (+F) sitting in category 0 is given. The
+// first two are charts on the *same* model and differ only in conditioning; the
+// third is a different, nested model, it cannot reach r_f below the fastest
+// variable rate, so it does not contain +I+G.
+typedef enum {
+	// r_f itself, in (0, 1/p_f). The bound is joint, so it cannot be imposed as
+	// a box on r_f; a violation is reported as a failed update.
+	FREE_CLASS_PARAMETERIZATION_RATE,
+	// The class's contribution to the unit mean, c = p_f r_f in (0,1). An
+	// independent box, hence the chart to prefer.
+	FREE_CLASS_PARAMETERIZATION_CONTRIBUTION,
+	// A non-negative increment above the fastest variable rate: r_f = r_max + d,
+	// which is the "fast class" restriction r_f >= r_max of the free model.
+	FREE_CLASS_PARAMETERIZATION_INCREMENT
+}free_class_parameterization_t;
+
 typedef struct SiteModel{
 	SitePattern* sp;
 
@@ -89,6 +105,16 @@ typedef struct SiteModel{
 	Parameters *rates;
 	Parameter* proportions;
     Parameter *mu;
+
+	// Rate of the point-mass class occupying category 0 (+F), or NULL to leave it
+	// pinned at rate 0, which is the invariant class (+I). Only meaningful
+	// alongside `invariant`, whose weights it reuses: the free class is the
+	// invariant class with its rate unpinned. See SiteModel_set_class_rate.
+	Parameter* class_rate;
+	// What class_rate means: the rate itself, its contribution to the unit mean,
+	// or its increment above the fastest variable rate (see
+	// free_class_parameterization_t and SiteModel_set_class_rate).
+	free_class_parameterization_t class_rate_parameterization;
 	
 	// for finite difference approx of gamma site model gradient
 	// double epsilon;
@@ -111,6 +137,25 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm );
 SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* props, const Parameters* params, Parameter* mu );
 
 void SiteModel_set_mu(SiteModel *sm, Parameter* mu);
+
+// Unpin the rate of category 0, turning the invariant class (+I) into a free
+// rate class (+F): category 0 keeps its weight p_f but sits at a rate of its own
+// instead of at 0, and the variable categories are scaled down to leave room for
+// what it contributes to the unit mean. `sm` must already carry an invariant
+// class (`invariant` set and a proportions parameter); the caller keeps its own
+// reference to `class_rate`.
+//
+// `parameterization` says what `class_rate` holds: r_f itself, which the model
+// then requires to satisfy p_f r_f < 1 (violating it is reported as a failed
+// update rather than silently producing negative rates); the contribution
+// c = p_f r_f, from which r_f = c/p_f is derived; or an increment above the
+// fastest variable rate, which pins the class *above* the distribution instead
+// of leaving it free to land anywhere.
+//
+// There is no analytic gradient for a free class yet, so this drops the site
+// model back to the derivative-free path.
+void SiteModel_set_class_rate(SiteModel* sm, Parameter* class_rate,
+                              free_class_parameterization_t parameterization);
 
 // Name of a rate parameterization, for error messages. Indexed by the enum, so a
 // new parameterization must be added to rate_parameterization_t and to the table
