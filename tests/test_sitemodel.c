@@ -890,6 +890,82 @@ char* test_mean_quadrature_rejects() {
 }
 
 // ---------------------------------------------------------------------------
+// Gauss-Laguerre quadrature
+
+// The gamma has mean 1, so its density is alpha^alpha r^(alpha-1) e^(-alpha r) /
+// Gamma(alpha). Substituting z = alpha*r turns E[g(r)] into the Gauss-Laguerre
+// weight function z^(alpha-1) e^(-z) integrated against g(z/alpha), divided by
+// Gamma(alpha). So the n-point rule with alf = alpha - 1 gives the categories
+// directly: r_k = z_k / alpha and p_k = w_k / Gamma(alpha), which is exactly what
+// _gamma_approx_laguerre does. Unlike the quantile discretizations the rates are
+// not equiprobable and are never renormalized -- the unit mean falls out of the
+// rule being exact for polynomials.
+char* test_gausslaguerre_quadrature() {
+    const char* json =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\","
+        "\"distribution\":\"gamma\",\"categories\":4,"
+        "\"quadrature\":\"gausslaguerre\","
+        "\"shape\":{\"id\":\"alpha\",\"type\":\"parameter\",\"x\":1.0,\"lower\":0}}";
+    Hashtable* hash = _new_hash();
+    Model* model = _sitemodel_from_string(json, hash);
+    SiteModel* sm = model->obj;
+
+    mu_assert(sm->cat_count == 4, "gausslaguerre: wrong number of categories");
+
+    // Shape 1 is alf = 0 and Gamma(1) = 1, so the categories must be the textbook
+    // 4-point Gauss-Laguerre abscissas and weights unchanged.
+    const double nodes[4] = {0.322547689619392, 1.745761101158347,
+                             4.536620296921128, 9.395070912301133};
+    const double weights[4] = {0.603154104341634, 0.357418692437800,
+                               0.038887908515005, 0.000539294705561};
+    const double quad_tol = 1.e-12;  // accuracy of the tabulated reference
+    for (size_t i = 0; i < 4; i++) {
+        mu_assert(fabs(sm->get_rate(sm, i) - nodes[i]) < quad_tol,
+                  "gausslaguerre: shape 1 rates are not the Laguerre abscissas");
+        mu_assert(fabs(sm->get_proportion(sm, i) - weights[i]) < quad_tol,
+                  "gausslaguerre: shape 1 proportions are not the Laguerre weights");
+    }
+
+    // An n-point rule integrates polynomials up to degree 2n-1 exactly, so with 4
+    // categories the first 7 moments of the gamma must come out to machine
+    // precision: E[r^k] = Gamma(alpha+k) / (Gamma(alpha) alpha^k). k = 0 is the
+    // proportions summing to 1 and k = 1 is the unit mean.
+    const double shapes[3] = {1.0, 0.1, 7.5};
+    for (size_t s = 0; s < 3; s++) {
+        const double alpha = shapes[s];
+        sm->set_rate(sm, 0, alpha);
+        for (size_t k = 0; k <= 7; k++) {
+            double moment = 0;
+            for (size_t i = 0; i < 4; i++) {
+                moment += sm->get_proportion(sm, i) * pow(sm->get_rate(sm, i), k);
+            }
+            // Gamma(alpha+k)/(Gamma(alpha) alpha^k) built up as a product to keep
+            // it accurate at a large shape.
+            double expected = 1.0;
+            for (size_t j = 0; j < k; j++) {
+                expected *= (alpha + j) / alpha;
+            }
+            mu_assert(fabs(moment - expected) < 1.e-9 * expected,
+                      "gausslaguerre: moment does not match the gamma");
+        }
+        for (size_t i = 0; i < 4; i++) {
+            mu_assert(sm->get_rate(sm, i) > 0,
+                      "gausslaguerre: rate is not positive");
+            mu_assert(sm->get_proportion(sm, i) > 0,
+                      "gausslaguerre: proportion is not positive");
+            if (i > 0) {
+                mu_assert(sm->get_rate(sm, i) > sm->get_rate(sm, i - 1),
+                          "gausslaguerre: rates are not increasing");
+            }
+        }
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// ---------------------------------------------------------------------------
 // EM for free rates (+R)
 
 static Model* _treelikelihood_from_file(const char* file, Hashtable* hash) {
@@ -1653,6 +1729,7 @@ char* all_tests() {
     mu_run_test(test_weibull_mean_quadrature_invariant);
     mu_run_test(test_mean_quadrature_gradient);
     mu_run_test(test_mean_quadrature_rejects);
+    mu_run_test(test_gausslaguerre_quadrature);
     mu_run_test(test_mean_contribution);
     mu_run_test(test_mean_contribution_invariant);
     mu_run_test(test_mean_contribution_dual);
