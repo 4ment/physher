@@ -4,6 +4,7 @@
 #ifndef cat_h
 #define cat_h
 
+#include <stdbool.h>
 #include <stdio.h>
 
 #include "mjson.h"
@@ -35,6 +36,17 @@ typedef struct {
 
 CatOptions cat_options_default(cat_assignment_t assignment);
 
+// Outcome of one fasttree_cat call.
+typedef struct CatResult {
+	double logP;      // log-likelihood the call left behind
+	// Full likelihood traversals performed, so a caller keeping an evaluation
+	// budget can charge for the work.
+	int evaluations;
+	// The new assignment scored worse than the one that came in and the old one
+	// was put back: the call changed nothing.
+	bool reverted;
+} CatResult;
+
 // Read the CAT keys ("assignment", "prior", "probe", "verbosity") off `node`, on
 // top of the defaults the assignment rule implies. Shared by the standalone
 // "cat" estimator and by "algorithm": "cat" in the optimizer, so the two spell
@@ -45,9 +57,11 @@ CatOptions cat_options_from_json(json_node* node);
 // model has. Dies at `node` if `tlk` has not got one.
 void cat_check_sitemodel(json_node* node, const SingleTreeLikelihood* tlk);
 
-// Returns the number of full likelihood traversals performed, so a caller
-// keeping an evaluation budget can charge for the work.
-int fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options);
+// Reassign every pattern to a rate category and reset the category rates from the
+// per-pattern likelihood profile. Guarded: the likelihood is taken before and
+// after, and the incoming assignment is restored if the new one scores worse, so
+// the call can only improve the model or leave it alone.
+CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options);
 
 void cat_estimator_from_json(json_node* node, Hashtable* hash);
 

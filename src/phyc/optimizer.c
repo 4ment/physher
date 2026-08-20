@@ -191,13 +191,19 @@ static opt_result cat_optimize( Optimizer *opt, double *fmin ){
 		return OPT_ERROR;
 	}
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)opt->treelikelihood->obj;
-	int evaluations = fasttree_cat(tlk, &opt->cat);
+	CatResult cat = fasttree_cat(tlk, &opt->cat);
 	*fmin = opt->f(NULL, NULL, opt->data);
 	opt->stop.iter = 1;
-	// The probe traversals, plus the evaluation of the target above. All full
-	// traversals, so the sum is comparable with what the other entries report.
-	opt->stop.f_eval_current += evaluations + 1;
+	// The probe traversals and the guard's own evaluations, plus the evaluation of
+	// the target above. All full traversals, so the sum is comparable with what the
+	// other entries report.
+	opt->stop.f_eval_current += cat.evaluations + 1;
 	if (isnan(*fmin)) return OPT_ERROR;
+	// The guard refused the new assignment and put the old one back, so this entry
+	// left the model where it found it -- the same thing serial Brent reports when
+	// it rolls back to its incoming value, and the schedule already resyncs on the
+	// target and marks the row failed rather than abandoning the run.
+	if (cat.reverted) return OPT_FAIL;
 	return OPT_SUCCESS;
 }
 

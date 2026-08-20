@@ -11,6 +11,12 @@
 
 #define CAT_PROBE_DEFAULT 20
 #define CAT_LLOYD_ITERATIONS 100
+// Relative slack on the guard below. A reassignment that reproduces the model it
+// started from -- every pattern in one category is the single-rate model, whichever
+// category that is -- comes back a few ULPs apart because the partials are summed in
+// a different order, and reverting on that would refuse a step that changed nothing.
+// The same idiom, and the same order of magnitude, as the meta schedule's tolfx test.
+#define CAT_REVERT_TOLERANCE 1.e-10
 
 CatOptions cat_options_default(cat_assignment_t assignment){
 	CatOptions options;
@@ -247,36 +253,53 @@ static int _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
 // second call. Clearing the assignment first restores the precondition the first call
 // gets for free, and is what makes repeated calls (an assign/optimize loop) possible.
 // FastTree does the same, structurally, in AllocRateCategories.
-int fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
+CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	SiteModel* sm = tlk->sm;
 	int cat_count = sm->cat_count;
-	memset(sm->site_category, 0, sizeof(int)*tlk->sp->count);
+	int pattern_count = tlk->sp->count;
+	Parameter* cat_rates = Parameters_at(sm->rates, 0);
+	CatResult result;
+	result.reverted = false;
+
+	// The number the new assignment has to beat, taken before site_category is
+	// cleared: after that every pattern reads block 0 and the value would be the
+	// single-rate model's, not the one the caller handed in. This is also the
+	// traversal that brings the partials up to date for the probe, and it leaves
+	// sm->need_update false so _cat_probe's writes into cat_rates[0] survive.
+	result.logP = tlk->calculate(tlk);
+	result.evaluations = 1;
+	const double logP_before = result.logP;
+	int* stored_categories = clone_ivector(sm->site_category, pattern_count);
+	double* stored_rates = dvector(cat_count);
+	for (int i = 0; i < cat_count; i++) {
+		stored_rates[i] = Parameter_value_at(cat_rates, i);
+	}
+	const bool stored_scale = tlk->scale;
+
+	memset(sm->site_category, 0, sizeof(int)*pattern_count);
 	sm->cat_count = 1;
+	sm->need_update = false;
 	int* counts = NULL;
 	if(options->verbosity > 0) counts = ivector(cat_count);
 	double* rates = dvector(cat_count);
 	log_spaced_spaced_vector2(rates, 1.0/cat_count, cat_count, cat_count);
 //	log_spaced_spaced_vector2(rates+1, 1.0/(cat_count-1), cat_count-1, cat_count-1); // invariant
 	if(options->verbosity > 0) print_dvector(rates, cat_count);
-	tlk->calculate(tlk);// make sure everything is up-to-date
-	sm->need_update = false;
-	int evaluations = 1;
 
 	if (options->assignment == CAT_ASSIGNMENT_POSTERIOR_MEAN) {
-		evaluations += _cat_assign_posterior_mean(tlk, rates, cat_count, options);
+		result.evaluations += _cat_assign_posterior_mean(tlk, rates, cat_count, options);
 		if(options->verbosity > 0){
-			for (int i = 0; i < tlk->sp->count; i++) counts[sm->site_category[i]]++;
+			for (int i = 0; i < pattern_count; i++) counts[sm->site_category[i]]++;
 			print_dvector(rates, cat_count);
 		}
 	}
 	else {
-		evaluations += _cat_assign_argmax(tlk, rates, cat_count, options, counts);
+		result.evaluations += _cat_assign_argmax(tlk, rates, cat_count, options, counts);
 	}
 
 	// The category rates are one vector parameter. Every element but the last goes
 	// in quietly and the last one loudly, so the listeners fire once, after the
 	// whole vector is in place rather than on the first element of it.
-	Parameter* cat_rates = Parameters_at(sm->rates, 0);
 	for (int i = 0; i < cat_count - 1; i++) {
 		Parameter_set_value_at_quietly(cat_rates, rates[i], i);
 	}
@@ -287,12 +310,41 @@ int fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 		}
 		free(counts);
 	}
+	sm->cat_count = cat_count;
 	SingleTreeLikelihood_use_rescaling(tlk, false);
 	SingleTreeLikelihood_update_all_nodes(tlk);
-	
-	sm->cat_count = cat_count;
+	result.logP = tlk->calculate(tlk);
+	result.evaluations++;
 	free(rates);
-	return evaluations;
+
+	// Both halves of the step are heuristic -- the quantizer discards the spread
+	// inside a category and the mean-one renormalization then moves every pattern
+	// at once -- so neither is guaranteed to improve on the assignment that came
+	// in. Put that one back when it does not, as RAxML's optimizeRateCategories
+	// does (docs/methods/cat-vs-raxml.md), so an alternation of this and the branch
+	// lengths can only climb. Restoring the rescaling flag too is what makes the
+	// revert exact: the accept path turns rescaling off, which is a different
+	// numerical path through the same model.
+	if (result.logP < logP_before - CAT_REVERT_TOLERANCE*fmax(1.0, fabs(logP_before))) {
+		memcpy(sm->site_category, stored_categories, sizeof(int)*pattern_count);
+		for (int i = 0; i < cat_count - 1; i++) {
+			Parameter_set_value_at_quietly(cat_rates, stored_rates[i], i);
+		}
+		Parameter_set_value_at(cat_rates, stored_rates[cat_count - 1], cat_count - 1);
+		SingleTreeLikelihood_use_rescaling(tlk, stored_scale);
+		SingleTreeLikelihood_update_all_nodes(tlk);
+		result.logP = tlk->calculate(tlk);
+		result.evaluations++;
+		result.reverted = true;
+		if(options->verbosity > 0){
+			fprintf(stdout, "CAT reassignment rejected: %f -> %f, restored %f\n",
+			        logP_before, result.logP, logP_before);
+		}
+	}
+
+	free(stored_categories);
+	free(stored_rates);
+	return result;
 }
 
 void cat_check_sitemodel(json_node* node, const SingleTreeLikelihood* tlk){
@@ -360,5 +412,10 @@ void cat_estimator_from_json(json_node* node, Hashtable* hash){
 	cat_check_sitemodel(node, tlk);
 
 	CatOptions options = cat_options_from_json(node);
-	fasttree_cat(tlk, &options);
+	CatResult result = fasttree_cat(tlk, &options);
+	if (result.reverted) {
+		fprintf(stdout, "CAT: the reassignment scored worse than the assignment it "
+		                "started from (%f); it was refused and nothing changed\n",
+		        result.logP);
+	}
 }

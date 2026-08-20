@@ -336,34 +336,147 @@ static char* test_posterior_mean_more_categories_than_patterns(void) {
     return NULL;
 }
 
-// What fasttree_cat charges for: the traversal that brings the likelihood up to
-// date, plus one per rate it probes at. A schedule budgets on this number, so a
-// probe loop that grew or shrank without the count following it would spend an
-// evaluation allowance it never reports.
-static char* test_evaluation_count(void) {
+// The guard: the call reports the likelihood it left behind, and that likelihood is
+// never below the one it started from. On a fresh model the assignment is the first
+// one there has ever been, so it has only the single-rate likelihood to beat and the
+// step must be accepted.
+static char* _check_guard_does_not_lose_ground(cat_assignment_t rule) {
     Hashtable* hash = _new_hash();
     Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
     SingleTreeLikelihood* tlk = model->obj;
-    int cat_count = (int)tlk->sm->cat_count;
 
-    CatOptions argmax = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
-    mu_assert(fasttree_cat(tlk, &argmax) == 1 + cat_count,
-              "CAT: the arg-max probes once per category");
+    double before = model->logP(model);
+    CatOptions options = cat_options_default(rule);
+    CatResult result = fasttree_cat(tlk, &options);
 
-    CatOptions mean = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
-    mean.probe_count = 7;
-    mu_assert(fasttree_cat(tlk, &mean) == 1 + 7,
-              "CAT: the posterior mean probes once per grid point");
-
-    // Fewer probes than categories is widened to the categories, and the count
-    // has to follow it there too.
-    mean.probe_count = 1;
-    mu_assert(fasttree_cat(tlk, &mean) == 1 + cat_count,
-              "CAT: a grid narrower than the categories is widened to them");
+    mu_assert(!result.reverted, "CAT: the first assignment should beat a single rate");
+    mu_assert(result.logP >= before, "CAT: the guard let the likelihood drop");
+    // What it reports has to be the model's own value, or a schedule budgeting or
+    // converging on it would be reading a number from somewhere else.
+    mu_assert(fabs(result.logP - model->logP(model)) < TOL,
+              "CAT: reported a likelihood the model does not have");
 
     model->free(model);
     free_Hashtable(hash);
     return NULL;
+}
+
+static char* test_argmax_guard_does_not_lose_ground(void) {
+    return _check_guard_does_not_lose_ground(CAT_ASSIGNMENT_ARGMAX);
+}
+
+static char* test_posterior_mean_guard_does_not_lose_ground(void) {
+    return _check_guard_does_not_lose_ground(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+}
+
+// The revert path. A prior strong enough to swamp the data collapses every pattern
+// into one category, which is the single-rate model and so strictly worse than a
+// fitted assignment -- run after one, it has to be refused, and refused exactly: the
+// categories, the rates and the likelihood all back where they were.
+static char* test_guard_reverts_a_worse_assignment(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+    Parameter* rates = Parameters_at(sm->rates, 0);
+
+    CatOptions fit = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    double fitted = fasttree_cat(tlk, &fit).logP;
+    int* categories = clone_ivector(sm->site_category, tlk->sp->count);
+    double* fitted_rates = dvector(sm->cat_count);
+    for (size_t c = 0; c < sm->cat_count; c++) {
+        fitted_rates[c] = Parameter_value_at(rates, c);
+    }
+
+    CatOptions collapse = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
+    collapse.prior_shape = 1.e4;
+    CatResult result = fasttree_cat(tlk, &collapse);
+
+    char* failure = NULL;
+    if (!result.reverted) {
+        failure = (char*)"CAT: collapsing onto one rate should have been refused";
+    }
+    if (failure == NULL && fabs(result.logP - fitted) > TOL) {
+        failure = (char*)"CAT: the revert did not recover the likelihood";
+    }
+    // One traversal to bring the likelihood up to date, one per category probed,
+    // one to score what the probe chose and one more to put the old assignment
+    // back: the restore is a full evaluation and has to be charged for.
+    if (failure == NULL && result.evaluations != 3 + (int)sm->cat_count) {
+        failure = (char*)"CAT: the revert was not charged for";
+    }
+    for (int i = 0; i < tlk->sp->count && failure == NULL; i++) {
+        if (sm->site_category[i] != categories[i]) {
+            failure = (char*)"CAT: the revert did not restore the assignment";
+        }
+    }
+    for (size_t c = 0; c < sm->cat_count && failure == NULL; c++) {
+        if (fabs(Parameter_value_at(rates, c) - fitted_rates[c]) > TOL) {
+            failure = (char*)"CAT: the revert did not restore the rates";
+        }
+    }
+    // The parameter is only half of it: the model has to see the restored value too,
+    // which it does not if the revert wrote the rates without firing the listeners.
+    if (failure == NULL && fabs(model->logP(model) - fitted) > TOL) {
+        failure = (char*)"CAT: the model did not pick the restored rates up";
+    }
+
+    free(categories);
+    free(fitted_rates);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+// What fasttree_cat charges for: the traversal that brings the likelihood up to
+// date, one per rate it probes at, and the one the guard spends scoring the
+// assignment it just made. A schedule budgets on this number, so a probe loop that
+// grew or shrank without the count following it would spend an evaluation allowance
+// it never reports.
+//
+// Each count is taken on its own model: a call that reverts pays for one more
+// traversal putting the old assignment back, which is charged for in the revert test
+// and would otherwise make these numbers depend on what ran before them.
+static char* _check_evaluation_count(const CatOptions* options, int probes,
+                                     const char* message) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    CatResult result = fasttree_cat(tlk, options);
+    char* failure = NULL;
+    if (result.reverted || result.evaluations != 2 + probes) {
+        failure = (char*)message;
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+static char* test_evaluation_count(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    int cat_count = (int)((SingleTreeLikelihood*)model->obj)->sm->cat_count;
+    model->free(model);
+    free_Hashtable(hash);
+
+    CatOptions argmax = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
+    char* failure = _check_evaluation_count(&argmax, cat_count,
+                                            "CAT: the arg-max probes once per category");
+    if (failure != NULL) return failure;
+
+    CatOptions mean = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    mean.probe_count = 7;
+    failure = _check_evaluation_count(&mean, 7,
+                                      "CAT: the posterior mean probes once per grid point");
+    if (failure != NULL) return failure;
+
+    // Fewer probes than categories is widened to the categories, and the count
+    // has to follow it there too.
+    mean.probe_count = 1;
+    return _check_evaluation_count(&mean, cat_count,
+                                   "CAT: a grid narrower than the categories is widened to them");
 }
 
 // The same reassignment reached through "algorithm": "cat" in an optimizer. What
@@ -528,6 +641,9 @@ static char* all_tests() {
     mu_run_test(test_posterior_mean_stays_inside_the_grid);
     mu_run_test(test_posterior_mean_single_category);
     mu_run_test(test_posterior_mean_more_categories_than_patterns);
+    mu_run_test(test_argmax_guard_does_not_lose_ground);
+    mu_run_test(test_posterior_mean_guard_does_not_lose_ground);
+    mu_run_test(test_guard_reverts_a_worse_assignment);
     mu_run_test(test_evaluation_count);
     mu_run_test(test_optimizer_model_key);
     mu_run_test(test_optimizer_treelikelihood_key);
