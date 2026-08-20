@@ -11,6 +11,21 @@
 
 #define CAT_PROBE_DEFAULT 20
 #define CAT_LLOYD_ITERATIONS 100
+// Half the log-rate span the refined band of the probe grid extends past the
+// previous round's centres on each side, as a fraction of that span.
+#define CAT_WARM_MARGIN 0.5
+// Floor on that margin, in log rate: log 2, so a round that left every pattern in
+// one category still gets a band spanning a factor of four rather than a point.
+#define CAT_WARM_MARGIN_MIN 0.6931471805599453
+// Probe rates kept outside the band on each side, to hold the tails of the grid
+// open at low resolution. Three is enough to keep a tail spanning a decade or two
+// from being represented by its endpoint alone.
+#define CAT_WARM_TAIL 3
+// Fewest probe rates a refined grid is worth building on: below this the tails eat
+// the budget and the band is no finer than the fixed grid it replaces.
+#define CAT_WARM_MIN_PROBES 8
+// Smallest rate the grid will probe at, RAxML's floor on its own per-pattern rate.
+#define CAT_RATE_FLOOR 1.e-4
 // Relative slack on the guard below. A reassignment that reproduces the model it
 // started from -- every pattern in one category is the single-rate model, whichever
 // category that is -- comes back a few ULPs apart because the partials are summed in
@@ -141,6 +156,117 @@ static void _cat_quantize(const double* x, const double* weights, int n,
 	}
 }
 
+// The grid the posterior mean is built on, and the weight each of its rates
+// carries in that mean.
+//
+// The first call has nothing to go on and lays the rates out log-spaced over
+// [1/probe, probe], every weight 1. Later calls know where the previous round put
+// its centres and spend the same budget of rates unevenly: a band around those
+// centres gets all but CAT_WARM_TAIL rates per side, so the resolution goes where
+// the sites are, and the tails keep the grid open at their old endpoints. This is
+// what makes successive rounds refine rather than reproduce round one's fixed
+// point against updated branch lengths, which RAxML gets from a warm start at
+// `patratStored[i]` on a step size that shrinks with the round
+// (docs/methods/cat-vs-raxml.md, section 2).
+//
+// What the grid must *not* do is narrow onto the centres, which is the obvious
+// reading of a warm start and is wrong here. RAxML's grid is a search device --
+// the per-pattern rate it converges to does not depend on where the search
+// started -- while this one is the support the posterior mean integrates over, so
+// dropping its tails drops the model's ability to call a column slow or fast at
+// all. Re-centring in that literal sense costs 75 log-likelihood units on
+// examples/fluA/JC69-CAT20-ML.json. Hence: the range only ever grows, and the
+// band's own edges move outward with the centres so a round whose rates have
+// spread comes back with a wider band rather than a trapped one.
+//
+// Uneven spacing would change the estimate on its own -- the sum over the grid is
+// a discrete prior, and crowding rates into the band would put prior mass there --
+// so each rate carries its cell width in log rate as a weight. That leaves the
+// posterior mean invariant to how the rates are distributed, and it is exactly 1
+// everywhere on the evenly spaced grid, which is why a first call reproduces what
+// it always did, bit for bit.
+static void _cat_probe_grid(double* probe_rates, double* probe_weights,
+                            int probe_count, const double* previous,
+                            int previous_count){
+	for (int i = 0; i < probe_count; i++) probe_weights[i] = 1.0;
+
+	double lower = 1.0/probe_count;
+	double upper = probe_count;
+	double band_lower = lower;
+	double band_upper = upper;
+	if (previous != NULL && probe_count >= CAT_WARM_MIN_PROBES) {
+		double lo = previous[0];
+		double hi = previous[0];
+		bool usable = true;
+		for (int i = 0; i < previous_count; i++) {
+			if (!isfinite(previous[i]) || previous[i] <= 0.0) usable = false;
+			if (previous[i] < lo) lo = previous[i];
+			if (previous[i] > hi) hi = previous[i];
+		}
+		if (usable) {
+			double margin = fmax(CAT_WARM_MARGIN*(log(hi) - log(lo)),
+			                     CAT_WARM_MARGIN_MIN);
+			band_lower = fmax(exp(log(lo) - margin), CAT_RATE_FLOOR);
+			band_upper = exp(log(hi) + margin);
+			// The rates are normalised to a weighted mean of one, so a centre of
+			// at least one is always among them and a band around them straddles
+			// it; the tests are here so a grid can never come out of this
+			// collapsed or inverted.
+			if (!(band_lower < band_upper)) {
+				band_lower = lower;
+				band_upper = upper;
+			}
+			lower = fmin(lower, band_lower);
+			upper = fmax(upper, band_upper);
+		}
+	}
+
+	int tail_lower = (band_lower > lower ? CAT_WARM_TAIL : 0);
+	int tail_upper = (band_upper < upper ? CAT_WARM_TAIL : 0);
+	int band_count = probe_count - tail_lower - tail_upper;
+	if (tail_lower == 0 && tail_upper == 0) {
+		log_spaced_spaced_vector2(probe_rates, lower, upper, probe_count);
+		return;
+	}
+
+	// The tails are laid out over the whole of their side and the endpoint the band
+	// already covers is dropped, so no rate is duplicated and the outermost rate is
+	// still the endpoint of the range.
+	if (tail_lower > 0) {
+		double* tail = dvector(tail_lower + 1);
+		log_spaced_spaced_vector2(tail, lower, band_lower, tail_lower + 1);
+		memcpy(probe_rates, tail, sizeof(double)*tail_lower);
+		free(tail);
+	}
+	log_spaced_spaced_vector2(probe_rates + tail_lower, band_lower, band_upper,
+	                          band_count);
+	if (tail_upper > 0) {
+		double* tail = dvector(tail_upper + 1);
+		log_spaced_spaced_vector2(tail, band_upper, upper, tail_upper + 1);
+		memcpy(probe_rates + tail_lower + band_count, tail + 1,
+		       sizeof(double)*tail_upper);
+		free(tail);
+	}
+
+	// Cell width in log rate, the outermost cells extended to the full width of the
+	// one beside them rather than halved, so an evenly spaced grid comes out with
+	// every weight equal. Scaled to a maximum of one: only ratios of weights are
+	// ever used, and keeping them O(1) keeps them out of the way of the posterior's
+	// own dynamic range.
+	double largest = 0;
+	for (int i = 0; i < probe_count; i++) {
+		int left = (i == 0 ? 0 : i - 1);
+		int right = (i == probe_count - 1 ? probe_count - 1 : i + 1);
+		double width = (log(probe_rates[right]) - log(probe_rates[left]))
+		               /(right - left);
+		probe_weights[i] = width;
+		if (width > largest) largest = width;
+	}
+	if (largest > 0) {
+		for (int i = 0; i < probe_count; i++) probe_weights[i] /= largest;
+	}
+}
+
 // Posterior-mean rate per pattern, then K categories at the cluster centres.
 // Both halves are standard: the per-site posterior mean is the empirical-Bayes
 // rate estimator (Mayrose et al. 2004), and clustering it is the least-squares
@@ -149,16 +275,25 @@ static void _cat_quantize(const double* x, const double* weights, int n,
 // shrunk toward the mean by exactly as much as its column is uninformative.
 // Returns the number of traversals _cat_probe performed.
 static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
-                                      int cat_count, const CatOptions* options){
+                                      int cat_count, const CatOptions* options,
+                                      const double* previous, int previous_count){
 	int pattern_count = tlk->sp->count;
 	int probe_count = options->probe_count;
 	if (probe_count < cat_count) probe_count = cat_count;
 
 	// A wider grid than the categories will end up spanning: the estimate has to
-	// be free to sit outside 1/K..K, which is what caps the dispersion the fixed
-	// grid can represent.
+	// be free to sit outside the range they occupy, which is what caps the
+	// dispersion the grid can represent.
 	double* probe_rates = dvector(probe_count);
-	log_spaced_spaced_vector2(probe_rates, 1.0/probe_count, probe_count, probe_count);
+	double* probe_weights = dvector(probe_count);
+	_cat_probe_grid(probe_rates, probe_weights, probe_count, previous,
+	                previous_count);
+	if (options->verbosity > 0) {
+		printf("CAT probe grid [%f, %f] over %d rates, %s\n", probe_rates[0],
+		       probe_rates[probe_count - 1], probe_count,
+		       previous == NULL ? "evenly spaced"
+		                        : "refined around the previous round's centres");
+	}
 	double* log_prior = dvector(probe_count);
 	if (options->prior_shape > 0) {
 		_cat_log_prior(log_prior, probe_rates, probe_count, options->prior_shape);
@@ -182,7 +317,11 @@ static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
 		double numerator = 0;
 		double denominator = 0;
 		for (int j = 0; j < probe_count; j++) {
-			double posterior = exp(likelihoods[j*pattern_count + i] + log_prior[j] - max);
+			// probe_weights is the cell width each rate stands for, so a grid
+			// whose rates are not evenly spaced still integrates the same
+			// posterior; it is 1 everywhere on an evenly spaced one.
+			double posterior = exp(likelihoods[j*pattern_count + i] + log_prior[j] - max)
+			                   *probe_weights[j];
 			numerator += posterior*probe_rates[j];
 			denominator += posterior;
 		}
@@ -196,6 +335,7 @@ static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
 	for (int i = 0; i < pattern_count; i++) tlk->sm->site_category[i] = labels[i];
 
 	free(probe_rates);
+	free(probe_weights);
 	free(log_prior);
 	free(likelihoods);
 	free(estimates);
@@ -276,18 +416,55 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	}
 	const bool stored_scale = tlk->scale;
 
+	// The centres the previous round left behind, to re-centre the probe grid on
+	// (section 2 of docs/methods/cat-vs-raxml.md), or NULL on the first call.
+	//
+	// They are read off sm->cat_rates rather than off the parameter because the
+	// probe scores absolute rates: sm->cat_rates is the mean-one scale the branch
+	// lengths were fitted against, the calculate above brought it up to date, and
+	// _cat_probe is about to overwrite element 0 of it.
+	//
+	// Only the categories a pattern actually sits in are collected. An empty
+	// cluster keeps a stale centre, and letting one pin the range would hold the
+	// grid open for a rate no site uses. That doubles as the test for whether a
+	// round has run at all: before the first call every pattern is in category 0,
+	// and there is nothing to warm-start from.
+	double* previous_centres = NULL;
+	int previous_count = 0;
+	int* occupied = ivector(cat_count);
+	bool assigned = false;
+	for (int i = 0; i < pattern_count; i++) occupied[sm->site_category[i]] = 1;
+	for (int i = 1; i < cat_count; i++) assigned = assigned || occupied[i] != 0;
+	if (assigned) {
+		previous_centres = dvector(cat_count);
+		for (int i = 0; i < cat_count; i++) {
+			if (occupied[i] != 0) previous_centres[previous_count++] = sm->cat_rates[i];
+		}
+	}
+	free(occupied);
+
 	memset(sm->site_category, 0, sizeof(int)*pattern_count);
 	sm->cat_count = 1;
 	sm->need_update = false;
 	int* counts = NULL;
 	if(options->verbosity > 0) counts = ivector(cat_count);
 	double* rates = dvector(cat_count);
+	// The arg-max rule scores the categories themselves, so this grid *is* the
+	// category set and the posterior mean overwrites it with its cluster centres.
+	// It is rebuilt cold every call, and deliberately so for the arg-max: its
+	// centres are its own grid endpoints by construction, so re-centring on them
+	// the way the probe grid does would widen the span by a constant factor every
+	// round instead of refining it. Warm-starting the arg-max needs RAxML's other
+	// half -- a continuous per-pattern estimate to re-centre *on* -- which is
+	// section 1, not section 2.
 	log_spaced_spaced_vector2(rates, 1.0/cat_count, cat_count, cat_count);
 //	log_spaced_spaced_vector2(rates+1, 1.0/(cat_count-1), cat_count-1, cat_count-1); // invariant
 	if(options->verbosity > 0) print_dvector(rates, cat_count);
 
 	if (options->assignment == CAT_ASSIGNMENT_POSTERIOR_MEAN) {
-		result.evaluations += _cat_assign_posterior_mean(tlk, rates, cat_count, options);
+		result.evaluations += _cat_assign_posterior_mean(tlk, rates, cat_count, options,
+		                                                previous_centres,
+		                                                previous_count);
 		if(options->verbosity > 0){
 			for (int i = 0; i < pattern_count; i++) counts[sm->site_category[i]]++;
 			print_dvector(rates, cat_count);
@@ -326,6 +503,7 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	// revert exact: the accept path turns rescaling off, which is a different
 	// numerical path through the same model.
 	if (result.logP < logP_before - CAT_REVERT_TOLERANCE*fmax(1.0, fabs(logP_before))) {
+		const double logP_proposed = result.logP;
 		memcpy(sm->site_category, stored_categories, sizeof(int)*pattern_count);
 		for (int i = 0; i < cat_count - 1; i++) {
 			Parameter_set_value_at_quietly(cat_rates, stored_rates[i], i);
@@ -338,12 +516,13 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 		result.reverted = true;
 		if(options->verbosity > 0){
 			fprintf(stdout, "CAT reassignment rejected: %f -> %f, restored %f\n",
-			        logP_before, result.logP, logP_before);
+			        logP_before, logP_proposed, result.logP);
 		}
 	}
 
 	free(stored_categories);
 	free(stored_rates);
+	free(previous_centres);
 	return result;
 }
 

@@ -162,8 +162,15 @@ static char* test_strong_prior_ignores_data(void) {
 
 // Running the action twice in one process used to collapse the assignment onto
 // category 0, because a pattern already in a category >= 1 was scored against a
-// matrix block that never changed between probes.
-static char* _check_idempotent(cat_assignment_t rule) {
+// matrix block that never changed between probes. That is what this pins: a second
+// call still has to produce a usable assignment over more than one category, and
+// -- the guard -- it can never leave the model worse than it found it.
+//
+// What it deliberately does not pin is that the second call changes nothing. The
+// posterior mean rebuilds its probe grid around the previous call's centres
+// (docs/methods/cat-vs-raxml.md, section 2), so a second call is a refinement of
+// the first rather than a repeat of it.
+static char* _check_second_call(cat_assignment_t rule) {
     Hashtable* hash = _new_hash();
     Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
     SingleTreeLikelihood* tlk = model->obj;
@@ -171,33 +178,121 @@ static char* _check_idempotent(cat_assignment_t rule) {
 
     CatOptions options = cat_options_default(rule);
     options.prior_shape = 0.0;
+    CatResult first = fasttree_cat(tlk, &options);
+    int* categories = clone_ivector(sm->site_category, tlk->sp->count);
+
+    CatResult second = fasttree_cat(tlk, &options);
+
+    char* failure = NULL;
+    bool spread_before = false;
+    bool spread_after = false;
+    for (int i = 0; i < tlk->sp->count; i++) {
+        if (categories[i] != 0) spread_before = true;
+        if (sm->site_category[i] != 0) spread_after = true;
+    }
+    if (!spread_before) {
+        failure = (char*)"CAT: the first call put every pattern in one category";
+    }
+    if (failure == NULL && !spread_after) {
+        failure = (char*)"CAT: a second call collapsed the assignment onto category 0";
+    }
+    if (failure == NULL && second.logP < first.logP - TOL*fabs(first.logP)) {
+        failure = (char*)"CAT: a second call lost likelihood";
+    }
+    if (failure == NULL && fabs(second.logP - model->logP(model)) > TOL) {
+        failure = (char*)"CAT: a second call reported a likelihood the model does "
+                         "not have";
+    }
+
+    free(categories);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+static char* test_argmax_second_call(void) {
+    return _check_second_call(CAT_ASSIGNMENT_ARGMAX);
+}
+
+static char* test_posterior_mean_second_call(void) {
+    return _check_second_call(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+}
+
+// The arg-max scores the categories themselves, on a grid rebuilt identically every
+// call, so its fixed point is exact: a second call reproduces the first to the last
+// bit. It is the one rule the warm start leaves alone, and this is the assertion the
+// posterior mean can no longer make.
+static char* test_argmax_idempotent(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
+    options.prior_shape = 0.0;
     fasttree_cat(tlk, &options);
     int* first = clone_ivector(sm->site_category, tlk->sp->count);
     double* first_rates = clone_dvector(sm->cat_rates, sm->cat_count);
 
     fasttree_cat(tlk, &options);
-    for (int i = 0; i < tlk->sp->count; i++) {
-        mu_assert(sm->site_category[i] == first[i],
-                  "CAT: a second call changed the assignment");
+    char* failure = NULL;
+    for (int i = 0; i < tlk->sp->count && failure == NULL; i++) {
+        if (sm->site_category[i] != first[i]) {
+            failure = (char*)"CAT: a second arg-max call changed the assignment";
+        }
     }
-    for (size_t c = 0; c < sm->cat_count; c++) {
-        mu_assert(fabs(sm->cat_rates[c] - first_rates[c]) < TOL,
-                  "CAT: a second call changed the rates");
+    for (size_t c = 0; c < sm->cat_count && failure == NULL; c++) {
+        if (fabs(sm->cat_rates[c] - first_rates[c]) > TOL) {
+            failure = (char*)"CAT: a second arg-max call changed the rates";
+        }
     }
 
     free(first);
     free(first_rates);
     model->free(model);
     free_Hashtable(hash);
-    return NULL;
+    return failure;
 }
 
-static char* test_argmax_idempotent(void) {
-    return _check_idempotent(CAT_ASSIGNMENT_ARGMAX);
-}
+// The warm start itself. A second posterior-mean call rebuilds its probe grid
+// around the centres the first one produced, so it lands somewhere the fixed grid
+// could not: on this fixture it moves the rates and the guard keeps the move, which
+// is the whole point of section 2 -- successive rounds refine instead of repeating.
+// A second call that came back identical would mean the grid had stopped following
+// the centres.
+static char* test_posterior_mean_refines(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
 
-static char* test_posterior_mean_idempotent(void) {
-    return _check_idempotent(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    options.prior_shape = 0.0;
+    CatResult first = fasttree_cat(tlk, &options);
+    double* first_rates = clone_dvector(sm->cat_rates, sm->cat_count);
+
+    CatResult second = fasttree_cat(tlk, &options);
+
+    char* failure = NULL;
+    bool moved = false;
+    for (size_t c = 0; c < sm->cat_count; c++) {
+        if (fabs(sm->cat_rates[c] - first_rates[c]) > TOL) moved = true;
+    }
+    if (!moved) {
+        failure = (char*)"CAT: a second posterior-mean call reproduced the first, so "
+                         "the probe grid is not following the centres";
+    }
+    if (failure == NULL && second.reverted) {
+        failure = (char*)"CAT: the refined grid scored worse than the fixed one";
+    }
+    if (failure == NULL && second.logP <= first.logP) {
+        failure = (char*)"CAT: the refined grid did not improve on the fixed one";
+    }
+
+    free(first_rates);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
 }
 
 // Whatever the rule, the assignment has to be usable: every pattern in range, and
@@ -634,8 +729,10 @@ static char* all_tests() {
     mu_run_test(test_argmax_matches_reference);
     mu_run_test(test_argmax_prior_matches_reference);
     mu_run_test(test_strong_prior_ignores_data);
+    mu_run_test(test_argmax_second_call);
+    mu_run_test(test_posterior_mean_second_call);
     mu_run_test(test_argmax_idempotent);
-    mu_run_test(test_posterior_mean_idempotent);
+    mu_run_test(test_posterior_mean_refines);
     mu_run_test(test_argmax_wellformed);
     mu_run_test(test_posterior_mean_wellformed);
     mu_run_test(test_posterior_mean_stays_inside_the_grid);
