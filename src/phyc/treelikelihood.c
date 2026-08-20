@@ -498,9 +498,10 @@ static int matrix_cat_count(const SingleTreeLikelihood* tlk){
 
 // The empirical CAT site model assigns every pattern to a single rate category instead
 // of averaging the likelihood over all of them, so its partials hold one block while
-// the matrices still hold one block per category. Only the lower partials need to know
-// about that; they live in treelikelihood4CAT.c. The matrices, the root likelihood and
-// the scaling factors already handle a single partials block correctly.
+// the matrices still hold one block per category. Two kernels need to know about that
+// -- the lower partials and the branch partials the upper likelihood combines through
+// -- and both live in treelikelihood4CAT.c. The matrices, the root likelihood and the
+// scaling factors already handle a single partials block correctly.
 //
 // Called after the regular kernel dispatch so it always has the last word.
 static void _set_cat_kernels(SingleTreeLikelihood* tlk){
@@ -521,6 +522,7 @@ static void _set_cat_kernels(SingleTreeLikelihood* tlk){
         // the p_t_transpose calls in _calculate_partials), so the SIMD and non-SIMD
         // kernels are not interchangeable: the choice has to follow use_SIMD.
         tlk->update_partials = update_partials_4_SSE_cat;
+        tlk->calculate_per_cat_partials = calculate_branch_partials_4_SSE_cat;
         return;
 #else
         fprintf(stderr, "The CAT site model has no AVX kernel\n");
@@ -529,6 +531,7 @@ static void _set_cat_kernels(SingleTreeLikelihood* tlk){
     }
 #endif
     tlk->update_partials = update_partials_4_cat;
+    tlk->calculate_per_cat_partials = calculate_branch_partials_4_cat;
 }
 
 void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
@@ -697,7 +700,11 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *
 			if(Node_isleaf(nodes[i])){
 				sp->get_partials(sp, tlk->mapping[Node_id(nodes[i])], tlk->partials[0][Node_id(nodes[i])]);
 				
-				for(size_t k = 1; k < tlk->sm->cat_count; k++){
+				// tlk->cat_count, not sm->cat_count: partials_size is sized by the
+				// former, and CAT holds a single block whatever the number of rate
+				// categories. Replicating sm->cat_count blocks into it wrote past
+				// the end of every leaf buffer.
+				for(size_t k = 1; k < tlk->cat_count; k++){
 					size_t offset = k*m->nstate*tlk->pattern_count;
 					memcpy(tlk->partials[0][Node_id(nodes[i])] + offset, tlk->partials[0][Node_id(nodes[i])], sizeof(double)*m->nstate*tlk->pattern_count);
 				}
@@ -1136,18 +1143,15 @@ double _calculate_simple( SingleTreeLikelihood *tlk ){
 
 //#define UPPER_PARTIALS 1
 
-// The upper partials weight each category by sm->get_proportions and index the
-// matrices by the category loop variable, neither of which holds for CAT. Refuse
-// instead of returning a plausible wrong number.
-static void _reject_cat_upper(const SingleTreeLikelihood *tlk){
-	if(tlk->sm->site_category != NULL){
-		fprintf(stderr, "The upper partial likelihoods are not implemented for the CAT site model\n");
-		exit(2);
-	}
-}
+// CAT reaches the upper partials through the same recursion as every other site
+// model: update_upper_partials only ever combines partials through tlk->update_partials,
+// which _set_cat_kernels has already pointed at the CAT lower kernel, and the branch
+// partials go through tlk->calculate_per_cat_partials, likewise. What differs is the
+// last step, and _calculate_uppper already handles it: CAT leaves sm->integrate false,
+// so the single block is copied to root_partials instead of being averaged over
+// category proportions that do not exist here.
 
 void SingleTreeLikelihood_update_uppers(SingleTreeLikelihood *tlk){
-	_reject_cat_upper(tlk);
 	_calculate_simple(tlk);
 #ifdef UPPER_PARTIALS
 	printf("calculate_upper root update\n");
@@ -1158,7 +1162,6 @@ void SingleTreeLikelihood_update_uppers(SingleTreeLikelihood *tlk){
 }
 
 void SingleTreeLikelihood_update_uppers2(SingleTreeLikelihood *tlk){
-	_reject_cat_upper(tlk);
 	update_upper_partials2(tlk, Tree_root(tlk->tree));
 	memset(tlk->update_nodes, 0, sizeof(bool)*Tree_node_count(tlk->tree));
 	tlk->update_upper = false;
@@ -1424,7 +1427,9 @@ void SingleTreeLikelihood_set_sitepattern( SingleTreeLikelihood *tlk, SitePatter
 				if( tlk->partials[b] == NULL ) continue;
 				double *partials = tlk->partials[b][nodeID];
 				sp->get_partials(sp, tlk->mapping[nodeID], partials);
-				for ( size_t k = 1; k < tlk->sm->cat_count; k++ ) {
+				// Blocks the buffer actually holds -- one under CAT, whatever the
+				// number of rate categories. See new_SingleTreeLikelihood.
+				for ( size_t k = 1; k < tlk->cat_count; k++ ) {
 					memcpy(partials + k*block, partials, sizeof(double)*block);
 				}
 			}

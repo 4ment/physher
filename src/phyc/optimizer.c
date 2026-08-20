@@ -22,6 +22,7 @@
 #include "gradascent.h"
 #include "topologyopt.h"
 #include "tree.h"
+#include "cat.h"
 #include "treelikelihood.h"
 #include "tracelogger.h"
 #include "modelfactory.h"
@@ -125,6 +126,8 @@ struct _Optimizer{
 //    Model* model;
 	Parameters* parameters;
 	Model* treelikelihood;
+	// Only read by OPT_CAT, which has no parameter list of its own.
+	CatOptions cat;
 
 	OptStopCriterion stop;
 	
@@ -170,6 +173,32 @@ static opt_result em_optimize( Optimizer *opt, double *fmin ){
 	opt->stop.f_eval_current += em.evaluations + em.steps;
 	if (isnan(em.logP)) return OPT_ERROR;
 	return em.converged ? OPT_SUCCESS : OPT_MAXITER;
+}
+
+// The empirical CAT step: reassign every pattern to a rate category and reset the
+// category rates from the per-pattern likelihood profile (see cat.h). Like EM it
+// has no parameter list and no objective of its own -- it reads the site model off
+// `opt->treelikelihood` and rewrites it in place -- and like EM the value reported
+// back is the *target*'s, taken through opt->f so the sign convention matches the
+// rest of a schedule.
+//
+// One call is one reassignment pass, not a loop to convergence: the pass only pays
+// off once the branch lengths have caught up with the new categories, so it is a
+// meta schedule that alternates the two, and "iterations" has nothing to count here.
+static opt_result cat_optimize( Optimizer *opt, double *fmin ){
+	if (opt->treelikelihood == NULL) {
+		fprintf(stderr, "CAT has no tree likelihood to assign categories on\n");
+		return OPT_ERROR;
+	}
+	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)opt->treelikelihood->obj;
+	int evaluations = fasttree_cat(tlk, &opt->cat);
+	*fmin = opt->f(NULL, NULL, opt->data);
+	opt->stop.iter = 1;
+	// The probe traversals, plus the evaluation of the target above. All full
+	// traversals, so the sum is comparable with what the other entries report.
+	opt->stop.f_eval_current += evaluations + 1;
+	if (isnan(*fmin)) return OPT_ERROR;
+	return OPT_SUCCESS;
 }
 
 opt_result serial_brent_optimize_tree( Model* mtlk, opt_func f, void *data, OptStopCriterion *stop, double *fmin ){
@@ -284,6 +313,7 @@ opt_progress opt_check_progress( OptStopCriterion *stop, double before, double a
 static const char* meta_entry_name(const Optimizer* opt){
 	if (opt->algorithm == OPT_TOPOLOGY) return "topology";
 	if (opt->algorithm == OPT_EM) return "free rates";
+	if (opt->algorithm == OPT_CAT) return "cat rates";
 	// Every other algorithm holding a tree likelihood is there to sweep its
 	// branch lengths.
 	if (opt->treelikelihood != NULL) return "branches";
@@ -446,11 +476,11 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 				// serial_brent_optimize_tree does not go through opt_optimize, so
 				// it would otherwise never be reset.
 				opt->stop.f_eval_current = 0;
-				// A tree likelihood on an entry means "sweep its branch lengths"
-				// -- except for the two algorithms that hold one for their own
-				// reasons and dispatch through opt_optimize like everything else.
-				if(opt->treelikelihood != NULL && opt->algorithm != OPT_TOPOLOGY &&
-				   opt->algorithm != OPT_EM){
+				// Serial Brent holding a tree likelihood is the branch sweep, and
+				// it is the one entry that does not go through opt_optimize. The
+				// other algorithms that carry a tree likelihood (topology, EM,
+				// CAT) hold it for their own reasons and dispatch normally.
+				if(opt->algorithm == OPT_SERIAL_BRENT && opt->treelikelihood != NULL){
 					status = serial_brent_optimize_tree(opt->treelikelihood, opt->f, opt->data, &opt->stop, &fret);
 				}
 				else{
@@ -586,6 +616,7 @@ Optimizer * new_Optimizer( opt_algorithm algorithm ) {
 	opt->data = NULL;
 	opt->parameters = NULL;
 	opt->treelikelihood = NULL;
+	opt->cat = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
 	opt->dimension = 0;
 	
 	opt->stop.iter_min = 1;
@@ -665,6 +696,7 @@ Optimizer* clone_Optimizer(Optimizer *opt, void* data, Parameters* parameters){
 	clone->schedule = NULL;
 	clone->parameters = NULL;
 	clone->treelikelihood = NULL;
+	clone->cat = opt->cat;
     
     clone->ascent = opt->ascent;
 	clone->etas = clone_dvector(opt->etas, opt->eta_count);
@@ -1049,6 +1081,10 @@ opt_result opt_optimize( Optimizer *opt, double *fmin ){
 			result = em_optimize(opt, fmin);
 			break;
 		}
+		case OPT_CAT:{
+			result = cat_optimize(opt, fmin);
+			break;
+		}
 		default:
 			result = -100;
 			break;
@@ -1135,6 +1171,21 @@ static bool opt_algorithm_uses_gradient(opt_algorithm algorithm){
 	       algorithm == OPT_SG || algorithm == OPT_SG_ADAM;
 }
 
+// The model a specialized algorithm operates on -- the tree whose branches serial
+// Brent sweeps, the site model EM splits or CAT reassigns. This is not the
+// objective: that is "target", and it may well be a posterior wrapping the tree
+// likelihood rather than the tree likelihood itself.
+//
+// "model" is the generic spelling, and the one the standalone "cat" estimator
+// already uses for exactly this. "treelikelihood" is the older name for it, kept
+// so existing configs keep parsing; the schema's xor makes sure only one of them,
+// and never one of them together with "parameters" or "list", is given.
+static json_node* optimizer_model_node(json_node* node){
+	json_node* model_node = get_json_node(node, "model");
+	if (model_node == NULL) model_node = get_json_node(node, "treelikelihood");
+	return model_node;
+}
+
 Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 
 	const char* algorithm_string = get_json_node_value_string(node, "algorithm");
@@ -1152,6 +1203,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"algorithm", JSON_REQUIRED, JSON_STRING},
 	    {"alpha", JSON_OPTIONAL, JSON_NUMBER},
+	    {"assignment", JSON_OPTIONAL, JSON_STRING},
 	    {"checkpoint", JSON_OPTIONAL, JSON_ANY},
 	    {"checkpoint_frequency", JSON_OPTIONAL, JSON_NUMBER},
 	    {"eta", JSON_OPTIONAL, JSON_NUMBER},
@@ -1163,10 +1215,12 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	    {"max", JSON_FORBIDDEN, JSON_ANY},
 	    {"maximize", JSON_OPTIONAL, JSON_ANY},
 	    {"min", JSON_OPTIONAL, JSON_ANY},
-	    {"model", JSON_FORBIDDEN, JSON_STRING|JSON_OBJECT},
+	    {"model", JSON_OPTIONAL, JSON_STRING},
 	    {"parameters", JSON_OPTIONAL, JSON_ANY},
 	    {"patience", JSON_OPTIONAL, JSON_NUMBER},
 	    {"precision", JSON_OPTIONAL, JSON_NUMBER},
+	    {"prior", JSON_OPTIONAL, JSON_NUMBER},
+	    {"probe", JSON_OPTIONAL, JSON_NUMBER},
 	    {"rounds", JSON_OPTIONAL, JSON_ANY},
 		{"target", JSON_REQUIRED, JSON_STRING|JSON_OBJECT},
 	    {"threads", JSON_OPTIONAL, JSON_NUMBER},
@@ -1177,7 +1231,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	    {"verbosity", JSON_OPTIONAL, JSON_NUMBER},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
-	json_validate_xor(node, "treelikelihood", "parameters", "list", NULL);
+	json_validate_xor(node, "model", "treelikelihood", "parameters", "list", NULL);
 
 	const char* id = get_json_node_value_string(node, "id");
 	size_t iterations = get_json_node_value_size_t(node, "iterations", 1000);
@@ -1188,10 +1242,6 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	Optimizer* opt = NULL;
 	json_node* parametersNode = get_json_node(node, "parameters");
 
-	if(get_json_node(node, "treelikelihood") != NULL && parametersNode != NULL){
-		fprintf(stderr, "Cannot specify both `treelikelihood' and `parameters' for object %s\n", id);
-		exit(13);
-	}
 	if(parametersNode != NULL){
 		get_parameters_references(node, hash, parameters);
 	}
@@ -1226,7 +1276,7 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		opt_set_tolfx(opt, precision);
 	}
 	else if (strcasecmp(algorithm_string, "brent") == 0 || strcasecmp(algorithm_string, "serial") == 0) {
-		json_node* treelike_node = get_json_node(node, "treelikelihood");
+		json_node* treelike_node = optimizer_model_node(node);
 		if (treelike_node != NULL) {
 			const char* ref = (char*)treelike_node->value;
 			opt = new_Optimizer(OPT_SERIAL_BRENT);
@@ -1243,15 +1293,15 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		}
 		opt_set_tolx(opt, precision);
 	}
-	// EM for a free-rate site model. "treelikelihood" is not optional here as it
-	// is for serial Brent: it is where the mixture being split lives, and there
-	// is no parameter list to fall back on -- EM decides for itself which
-	// parameters it moves.
+	// EM for a free-rate site model. "model" is not optional here as it is for
+	// serial Brent: it is where the mixture being split lives, and there is no
+	// parameter list to fall back on -- EM decides for itself which parameters
+	// it moves.
 	else if (strcasecmp(algorithm_string, "em") == 0) {
-		json_node* treelike_node = get_json_node(node, "treelikelihood");
+		json_node* treelike_node = optimizer_model_node(node);
 		if (treelike_node == NULL) {
-			json_die(node, "\"algorithm\": \"em\" needs the \"treelikelihood\" whose "
-			               "site model holds the mixture to split");
+			json_die(node, "\"algorithm\": \"em\" needs the \"model\" whose site "
+			               "model holds the mixture to split");
 		}
 		opt = new_Optimizer(OPT_EM);
 		opt->treelikelihood = safe_get_reference_model((char*)treelike_node->value,
@@ -1261,6 +1311,32 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 		// already contains a full Brent run per category. Left at 0, EM applies
 		// its own default of one step per category (IQ-TREE's).
 		if (get_json_node(node, "iterations") == NULL) iterations = 0;
+	}
+	// Empirical CAT reassignment, as a schedule entry rather than a standalone
+	// "type": "cat" action, so it can alternate with the branch sweep under one
+	// convergence criterion instead of being unrolled by hand in "physher".
+	// Like EM it needs the "model" -- the site model it rewrites lives there and
+	// there is no parameter list to fall back on -- and it takes the same option
+	// keys as the standalone estimator.
+	else if (strcasecmp(algorithm_string, "cat") == 0) {
+		json_node* treelike_node = optimizer_model_node(node);
+		if (treelike_node == NULL) {
+			json_die(node, "\"algorithm\": \"cat\" needs the \"model\" whose site "
+			               "model holds the categories to assign");
+		}
+		opt = new_Optimizer(OPT_CAT);
+		opt->treelikelihood = safe_get_reference_model((char*)treelike_node->value,
+		                                               hash, id);
+		if (opt->treelikelihood->type != MODEL_TREELIKELIHOOD) {
+			json_die(node, "\"model\" must reference a tree likelihood: '%s'",
+			         (char*)treelike_node->value);
+		}
+		cat_check_sitemodel(node, (SingleTreeLikelihood*)opt->treelikelihood->obj);
+		opt->cat = cat_options_from_json(node);
+		// One reassignment pass per call, so there is no inner loop for
+		// "iterations" to bound; the enclosing schedule decides how many passes
+		// the run gets.
+		iterations = 1;
 	}
     // stochastic gradient
     else if(strcasecmp(algorithm_string, "sg") == 0){

@@ -37,10 +37,11 @@ typedef enum opt_algorithm {
     OPT_SG,
 	OPT_SG_ADAM,
 	OPT_TOPOLOGY,
-	OPT_EM
+	OPT_EM,
+	OPT_CAT
 }opt_algorithm;
 
-static const char *OPT_ALGORITHMS[11] = {"POWELL","BRENT","BRENTSERIAL","BFGS","CG_PR","CG_FR","META","SG","SGADAM","TOPOLOGY","EM"};
+static const char *OPT_ALGORITHMS[12] = {"POWELL","BRENT","BRENTSERIAL","BFGS","CG_PR","CG_FR","META","SG","SGADAM","TOPOLOGY","EM","CAT"};
 
 typedef struct OptimizerCheckpoint{
 	char* file;

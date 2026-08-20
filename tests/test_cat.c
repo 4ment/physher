@@ -14,6 +14,9 @@
 #include "phyc/filereader.h"
 #include "phyc/hashtable.h"
 #include "phyc/matrix.h"
+#include "phyc/optimizer.h"
+#include "phyc/node.h"
+#include "phyc/tree.h"
 #include "phyc/parameters.h"
 #include "phyc/sitemodel.h"
 #include "phyc/treelikelihood.h"
@@ -333,6 +336,185 @@ static char* test_posterior_mean_more_categories_than_patterns(void) {
     return NULL;
 }
 
+// What fasttree_cat charges for: the traversal that brings the likelihood up to
+// date, plus one per rate it probes at. A schedule budgets on this number, so a
+// probe loop that grew or shrank without the count following it would spend an
+// evaluation allowance it never reports.
+static char* test_evaluation_count(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    int cat_count = (int)tlk->sm->cat_count;
+
+    CatOptions argmax = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
+    mu_assert(fasttree_cat(tlk, &argmax) == 1 + cat_count,
+              "CAT: the arg-max probes once per category");
+
+    CatOptions mean = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    mean.probe_count = 7;
+    mu_assert(fasttree_cat(tlk, &mean) == 1 + 7,
+              "CAT: the posterior mean probes once per grid point");
+
+    // Fewer probes than categories is widened to the categories, and the count
+    // has to follow it there too.
+    mean.probe_count = 1;
+    mu_assert(fasttree_cat(tlk, &mean) == 1 + cat_count,
+              "CAT: a grid narrower than the categories is widened to them");
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// The same reassignment reached through "algorithm": "cat" in an optimizer. What
+// is under test is the wiring -- the model lookup, the option keys and the value
+// reported back -- not the assignment, which the tests above cover; so the
+// optimizer is checked against a direct fasttree_cat call on a second copy.
+// `model_key` is the JSON key naming the tree likelihood: "model" and the older
+// "treelikelihood" have to be interchangeable.
+static char* _check_optimizer(const char* model_key) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    Hashtable_add(hash, "treelikelihood", model);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    char config[512];
+    snprintf(config, sizeof(config),
+             "{\"id\": \"catopt\", \"type\": \"optimizer\","
+             " \"algorithm\": \"cat\", \"target\": \"@treelikelihood\","
+             " \"%s\": \"@treelikelihood\","
+             " \"assignment\": \"posterior_mean\", \"prior\": 3.0}",
+             model_key);
+    json_node* node = create_json_tree(config);
+    Optimizer* opt = new_Optimizer_from_json(node, hash);
+
+    double fmin = 0;
+    mu_assert(opt_optimize(opt, &fmin) == OPT_SUCCESS,
+              "CAT optimizer: did not report success");
+    // The objective is the target's negative log-likelihood, so a meta schedule
+    // can compare what this entry reports with what every other one does.
+    mu_assert(fabs(fmin + model->logP(model)) < TOL,
+              "CAT optimizer: reported something other than the target's value");
+
+    int pattern_count = tlk->sp->count;
+    int* assigned = ivector(pattern_count);
+    memcpy(assigned, tlk->sm->site_category, sizeof(int) * pattern_count);
+    double* assigned_rates = dvector(tlk->sm->cat_count);
+    for (size_t c = 0; c < tlk->sm->cat_count; c++) {
+        assigned_rates[c] = Parameter_value_at(Parameters_at(tlk->sm->rates, 0), c);
+    }
+
+    free_Optimizer(opt);
+    json_free_tree(node);
+    model->free(model);
+    free_Hashtable(hash);
+
+    Hashtable* reference_hash = _new_hash();
+    Model* reference = _treelikelihood_from_file("jc69-cat.json", reference_hash);
+    SingleTreeLikelihood* reference_tlk = reference->obj;
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    options.prior_shape = 3.0;
+    fasttree_cat(reference_tlk, &options);
+
+    char* failure = NULL;
+    for (int i = 0; i < pattern_count && failure == NULL; i++) {
+        if (assigned[i] != reference_tlk->sm->site_category[i]) {
+            failure = (char*)"CAT optimizer: assigned a different category than "
+                             "fasttree_cat";
+        }
+    }
+    for (size_t c = 0; c < reference_tlk->sm->cat_count && failure == NULL; c++) {
+        double rate = Parameter_value_at(Parameters_at(reference_tlk->sm->rates, 0), c);
+        if (fabs(assigned_rates[c] - rate) > TOL) {
+            failure = (char*)"CAT optimizer: set a different rate than fasttree_cat";
+        }
+    }
+
+    free(assigned);
+    free(assigned_rates);
+    reference->free(reference);
+    free_Hashtable(reference_hash);
+    return failure;
+}
+
+static char* test_optimizer_model_key(void) { return _check_optimizer("model"); }
+
+// The key serial Brent and EM have always used for the same thing, kept working.
+static char* test_optimizer_treelikelihood_key(void) {
+    return _check_optimizer("treelikelihood");
+}
+
+// The branch sweep (serial_brent_optimize_tree) never evaluates the whole tree: it
+// combines the upper partials of one node with the lower partials below it and reads
+// the likelihood off that. At unchanged branch lengths the result has to equal the
+// ordinary lower likelihood, at every node -- that identity is the whole justification
+// for the sweep, and it is what the CAT kernels in treelikelihood4CAT.c have to
+// preserve.
+//
+// Walking the nodes in postorder is what the sweep does, so this also exercises
+// _calculate_uppper's incremental path (the sibling's uppers are rebuilt from the
+// previous node) and not just its from-scratch one.
+static char* _check_upper_matches_lower(const char* file, bool cat, bool sse) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file(file, hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SingleTreeLikelihood_enable_SSE(tlk, sse);
+    if (cat) {
+        CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+        fasttree_cat(tlk, &options);
+    }
+
+    double lower = model->logP(model);
+    mu_assert(isfinite(lower), "upper: the lower likelihood is not finite");
+
+    tlk->node_upper = NULL;
+    tlk->use_upper = true;
+    tlk->update_upper = true;
+    SingleTreeLikelihood_update_uppers(tlk);
+
+    Node** nodes = Tree_get_nodes(tlk->tree, POSTORDER);
+    char* failure = NULL;
+    for (int i = 0; i < Tree_node_count(tlk->tree) && failure == NULL; i++) {
+        Node* node = nodes[i];
+        // The root, and the child of the root pinned to a zero branch, are the two the
+        // sweep skips: they have no branch of their own to optimize.
+        if (!Node_has_distance(node)) continue;
+        double upper = tlk->calculate_upper(tlk, node);
+        if (!isfinite(upper) || fabs(upper - lower) > 1.e-6) {
+            failure = (char*)"upper: a node's upper likelihood disagrees with the "
+                             "lower likelihood at the same branch lengths";
+        }
+        // _calculate does this for the optimizer; _calculate_uppper reads it to decide
+        // whether it can update incrementally.
+        tlk->node_upper = node;
+    }
+    tlk->use_upper = false;
+
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+static char* test_upper_matches_lower_SSE(void) {
+    return _check_upper_matches_lower("jc69-cat.json", true, true);
+}
+
+static char* test_upper_matches_lower(void) {
+    return _check_upper_matches_lower("jc69-cat.json", true, false);
+}
+
+// A single category leaves no room for the per-pattern matrix offset to be wrong, so
+// it separates a broken offset from a broken recursion.
+static char* test_upper_matches_lower_single_category(void) {
+    return _check_upper_matches_lower("jc69-cat1.json", true, true);
+}
+
+// The same identity on a model that is not CAT. If this failed too, the check itself
+// would be wrong rather than the CAT kernels.
+static char* test_upper_matches_lower_without_cat(void) {
+    return _check_upper_matches_lower("jc69-freerate.json", false, true);
+}
+
 static char* all_tests() {
     mu_suite_start();
     mu_run_test(test_options_default);
@@ -346,6 +528,13 @@ static char* all_tests() {
     mu_run_test(test_posterior_mean_stays_inside_the_grid);
     mu_run_test(test_posterior_mean_single_category);
     mu_run_test(test_posterior_mean_more_categories_than_patterns);
+    mu_run_test(test_evaluation_count);
+    mu_run_test(test_optimizer_model_key);
+    mu_run_test(test_optimizer_treelikelihood_key);
+    mu_run_test(test_upper_matches_lower_SSE);
+    mu_run_test(test_upper_matches_lower);
+    mu_run_test(test_upper_matches_lower_single_category);
+    mu_run_test(test_upper_matches_lower_without_cat);
     return NULL;
 }
 

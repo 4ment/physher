@@ -258,8 +258,8 @@ void create_json_phylo_tree(Hashtable* options, Hashtable* nodes){
 		add_json_node_string(jopt_bl, "id", "optbl");
 		add_json_node_string(jopt_bl, "type", "optimizer");
 		add_json_node_string(jopt_bl, "algorithm", "serial");
+		add_json_node_string(jopt_bl, "target", "@treelikelihood");
 		add_json_node_string(jopt_bl, "model", "@treelikelihood");
-		add_json_node_string(jopt_bl, "treelikelihood", "@treelikelihood");
 	}
 	
 	if (strlen(Hashtable_get(options, "treeopt")) > 0) {
@@ -287,7 +287,7 @@ void create_json_substitution_model(Hashtable* options, Hashtable* nodes){
 	add_json_node_string(jopt_mat, "id", "optmat");
 	add_json_node_string(jopt_mat, "type", "optimizer");
 	add_json_node_string(jopt_mat, "algorithm", "serial");
-	add_json_node_string(jopt_mat, "model", "@treelikelihood");
+	add_json_node_string(jopt_mat, "target", "@treelikelihood");
 	
 	json_node* jparams = create_json_node(jopt_mat);
 	add_json_node(jopt_mat, jparams);
@@ -793,7 +793,7 @@ void create_json_node_meta_opt(Hashtable* nodes){
 	add_json_node_string(joptmeta, "id", "metaopt");
 	add_json_node_string(joptmeta, "type", "optimizer");
 	add_json_node_string(joptmeta, "algorithm", "meta");
-	add_json_node_string(joptmeta, "model", "@treelikelihood");
+	add_json_node_string(joptmeta, "target", "@treelikelihood");
 	add_json_node_double(joptmeta, "min", 1);
 	add_json_node_double(joptmeta, "iterations", 10000);
 	add_json_node_double(joptmeta, "precision", 0.001);

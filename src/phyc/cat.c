@@ -141,8 +141,9 @@ static void _cat_quantize(const double* x, const double* weights, int n,
 // quantizer (Lloyd 1982). What they buy together is that the categories are
 // placed where the data are instead of on a fixed grid, and that each pattern is
 // shrunk toward the mean by exactly as much as its column is uninformative.
-static void _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
-                                       int cat_count, const CatOptions* options){
+// Returns the number of traversals _cat_probe performed.
+static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
+                                      int cat_count, const CatOptions* options){
 	int pattern_count = tlk->sp->count;
 	int probe_count = options->probe_count;
 	if (probe_count < cat_count) probe_count = cat_count;
@@ -195,13 +196,15 @@ static void _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
 	free(weights);
 	free(centres);
 	free(labels);
+	return probe_count;
 }
 
 // FastTree's rule: score every pattern at each of the K grid rates and keep the
 // best, under the Gamma prior when there is one.
-static void _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
-                               int cat_count, const CatOptions* options,
-                               int* counts){
+// Returns the number of traversals _cat_probe performed.
+static int _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
+                              int cat_count, const CatOptions* options,
+                              int* counts){
 	int pattern_count = tlk->sp->count;
 	double* log_prior = dvector(cat_count);
 	if (options->prior_shape > 0) {
@@ -229,6 +232,7 @@ static void _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
 	}
 	free(log_prior);
 	free(likelihoods);
+	return cat_count;
 }
 
 // Assign every pattern one rate category, by the rule in options->assignment.
@@ -243,7 +247,7 @@ static void _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
 // second call. Clearing the assignment first restores the precondition the first call
 // gets for free, and is what makes repeated calls (an assign/optimize loop) possible.
 // FastTree does the same, structurally, in AllocRateCategories.
-void fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
+int fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	SiteModel* sm = tlk->sm;
 	int cat_count = sm->cat_count;
 	memset(sm->site_category, 0, sizeof(int)*tlk->sp->count);
@@ -256,16 +260,17 @@ void fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	if(options->verbosity > 0) print_dvector(rates, cat_count);
 	tlk->calculate(tlk);// make sure everything is up-to-date
 	sm->need_update = false;
+	int evaluations = 1;
 
 	if (options->assignment == CAT_ASSIGNMENT_POSTERIOR_MEAN) {
-		_cat_assign_posterior_mean(tlk, rates, cat_count, options);
+		evaluations += _cat_assign_posterior_mean(tlk, rates, cat_count, options);
 		if(options->verbosity > 0){
 			for (int i = 0; i < tlk->sp->count; i++) counts[sm->site_category[i]]++;
 			print_dvector(rates, cat_count);
 		}
 	}
 	else {
-		_cat_assign_argmax(tlk, rates, cat_count, options, counts);
+		evaluations += _cat_assign_argmax(tlk, rates, cat_count, options, counts);
 	}
 
 	// The category rates are one vector parameter. Every element but the last goes
@@ -287,26 +292,18 @@ void fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	
 	sm->cat_count = cat_count;
 	free(rates);
+	return evaluations;
 }
 
-void cat_estimator_from_json(json_node* node, Hashtable* hash){
-	static const json_field schema[] = {
-	    {"assignment", JSON_OPTIONAL, JSON_STRING},
-	    {"id", JSON_OPTIONAL, JSON_STRING},
-	    {"model", JSON_REQUIRED, JSON_STRING},
-	    {"prior", JSON_OPTIONAL, JSON_NUMBER},
-	    {"probe", JSON_OPTIONAL, JSON_NUMBER},
-	    {"type", JSON_OPTIONAL, JSON_STRING},
-	    {"verbosity", JSON_OPTIONAL, JSON_NUMBER},
-	};
-	json_validate(node, schema, sizeof(schema)/sizeof(schema[0]));
-
-	char* ref = get_json_node_value_string(node, "model");
-	Model* mtlk = Hashtable_get(hash, ref+1);
-	if (mtlk == NULL || mtlk->type != MODEL_TREELIKELIHOOD) {
-		json_die(node, "\"model\" must reference a tree likelihood: '%s'", ref);
+void cat_check_sitemodel(json_node* node, const SingleTreeLikelihood* tlk){
+	if (tlk->sm == NULL || tlk->sm->site_category == NULL) {
+		json_die(node, "the tree likelihood does not carry an empirical CAT site "
+		               "model: give its \"sitemodel\" a \"categories\" count and a "
+		               "rate vector of that size, with no rate distribution");
 	}
+}
 
+CatOptions cat_options_from_json(json_node* node){
 	const char* assignment = get_json_node_value_string(node, "assignment");
 	cat_assignment_t rule = CAT_ASSIGNMENT_ARGMAX;
 	if (assignment != NULL) {
@@ -339,7 +336,29 @@ void cat_estimator_from_json(json_node* node, Hashtable* hash){
 	if (options.probe_count < 0) {
 		json_die(node, "\"probe\" must be positive, not %d", options.probe_count);
 	}
+	return options;
+}
 
+void cat_estimator_from_json(json_node* node, Hashtable* hash){
+	static const json_field schema[] = {
+	    {"assignment", JSON_OPTIONAL, JSON_STRING},
+	    {"id", JSON_OPTIONAL, JSON_STRING},
+	    {"model", JSON_REQUIRED, JSON_STRING},
+	    {"prior", JSON_OPTIONAL, JSON_NUMBER},
+	    {"probe", JSON_OPTIONAL, JSON_NUMBER},
+	    {"type", JSON_OPTIONAL, JSON_STRING},
+	    {"verbosity", JSON_OPTIONAL, JSON_NUMBER},
+	};
+	json_validate(node, schema, sizeof(schema)/sizeof(schema[0]));
+
+	char* ref = get_json_node_value_string(node, "model");
+	Model* mtlk = Hashtable_get(hash, ref+1);
+	if (mtlk == NULL || mtlk->type != MODEL_TREELIKELIHOOD) {
+		json_die(node, "\"model\" must reference a tree likelihood: '%s'", ref);
+	}
 	SingleTreeLikelihood *tlk = mtlk->obj;
+	cat_check_sitemodel(node, tlk);
+
+	CatOptions options = cat_options_from_json(node);
 	fasttree_cat(tlk, &options);
 }

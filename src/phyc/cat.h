@@ -35,7 +35,19 @@ typedef struct {
 
 CatOptions cat_options_default(cat_assignment_t assignment);
 
-void fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options);
+// Read the CAT keys ("assignment", "prior", "probe", "verbosity") off `node`, on
+// top of the defaults the assignment rule implies. Shared by the standalone
+// "cat" estimator and by "algorithm": "cat" in the optimizer, so the two spell
+// their options identically.
+CatOptions cat_options_from_json(json_node* node);
+
+// The estimator rewrites sm->site_category, which only the empirical CAT site
+// model has. Dies at `node` if `tlk` has not got one.
+void cat_check_sitemodel(json_node* node, const SingleTreeLikelihood* tlk);
+
+// Returns the number of full likelihood traversals performed, so a caller
+// keeping an evaluation budget can charge for the work.
+int fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options);
 
 void cat_estimator_from_json(json_node* node, Hashtable* hash);
 

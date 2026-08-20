@@ -15,11 +15,15 @@
 // per-pattern indirection through their inner loops would put every model at risk to
 // serve this one. Nothing here is reachable unless the site model is CAT.
 //
-// Only the lower partials need a CAT version. The transition matrices are already
-// built for every category by _calculate_partials, and the root likelihood reads the
-// single partials block directly (CAT sets sm->integrate to false), so
-// node_log_likelihoods_4, the scaling factors and the matrix allocation are shared and
-// already correct.
+// Two kernels need a CAT version: the lower partials, and the branch partials the
+// upper likelihood combines through (calculate_branch_partials_4_cat below), which the
+// branch-length sweep in serial_brent_optimize_tree runs on every node. Everything
+// around them is shared and already correct: the transition matrices are built for
+// every category by _calculate_partials, the recursion in update_upper_partials only
+// ever goes through tlk->update_partials, and the root likelihood reads the single
+// partials block directly because CAT sets sm->integrate to false -- so
+// node_log_likelihoods_4, the scaling factors and the matrix allocation need no
+// variant of their own.
 
 #include "treelikelihood4CAT.h"
 
@@ -399,6 +403,213 @@ void update_partials_4_cat(SingleTreeLikelihood *tlk, int partialsIndex,
     if (tlk->scale) {
         SingleTreeLikelihood_scalePartials(tlk, partialsIndex, partialsIndex1,
                                            partialsIndex2);
+    }
+}
+
+#pragma mark -
+#pragma mark Upper Likelihood
+
+// Combine the upper partials of a node with the lower partials below it, through the
+// transition matrix of the branch being optimized. Same three cases as
+// calculate_branch_partials_4, with the category loop gone (a CAT partials block
+// holds one category) and the matrix block picked per pattern.
+//
+// The result is a single block, which _calculate_uppper copies straight to
+// root_partials because CAT leaves sm->integrate false: there are no proportions to
+// average over, the pattern already chose its category.
+
+// The node below the branch is a leaf, so its lower partials are the state itself.
+static void _calculate_branch_partials_state_cat(const SingleTreeLikelihood *tlk,
+                                                 double *rootPartials,
+                                                 const double *upperPartials,
+                                                 int partialsIndex,
+                                                 const double *matrices) {
+    int v = 0;
+
+    for (int k = 0; k < tlk->pattern_count; k++) {
+        int state = tlk->sp->patterns[partialsIndex][k];
+        int w = _cat_offset(tlk, k);
+
+        if (state < 4) {
+            int u = w + state;
+
+            rootPartials[v] = matrices[u] * upperPartials[v];
+            u += 4;
+            v++;
+            rootPartials[v] = matrices[u] * upperPartials[v];
+            u += 4;
+            v++;
+            rootPartials[v] = matrices[u] * upperPartials[v];
+            u += 4;
+            v++;
+            rootPartials[v] = matrices[u] * upperPartials[v];
+            v++;
+        } else {
+            // An ambiguous state sums the row, which is 1 for a stochastic matrix but
+            // is summed anyway so a non-stochastic one stays correct.
+            const double *transMatrixPtr = &matrices[w];
+
+            rootPartials[v] = (transMatrixPtr[0] + transMatrixPtr[1] +
+                               transMatrixPtr[2] + transMatrixPtr[3]) *
+                              upperPartials[v];
+            v++;
+            rootPartials[v] = (transMatrixPtr[4] + transMatrixPtr[5] +
+                               transMatrixPtr[6] + transMatrixPtr[7]) *
+                              upperPartials[v];
+            v++;
+            rootPartials[v] = (transMatrixPtr[8] + transMatrixPtr[9] +
+                               transMatrixPtr[10] + transMatrixPtr[11]) *
+                              upperPartials[v];
+            v++;
+            rootPartials[v] = (transMatrixPtr[12] + transMatrixPtr[13] +
+                               transMatrixPtr[14] + transMatrixPtr[15]) *
+                              upperPartials[v];
+            v++;
+        }
+    }
+}
+
+// The node carrying the upper partials is a leaf. Only reachable for a child of the
+// root whose sibling is a leaf, where the upper partials are that sibling's state.
+static void _calculate_branch_partials_state2_cat(const SingleTreeLikelihood *tlk,
+                                                  double *rootPartials,
+                                                  int upperPartialsIndex,
+                                                  const double *partials,
+                                                  const double *matrices) {
+    // A known state writes one of the four entries per pattern; the other three have
+    // to be zero rather than whatever the spare block held.
+    memset(rootPartials, 0, sizeof(double) * 4 * tlk->pattern_count);
+    int v = 0;
+    int u = 0;
+
+    for (int k = 0; k < tlk->pattern_count; k++) {
+        const double *partialsChildPtr = partials + v;
+        int state = tlk->sp->patterns[upperPartialsIndex][k];
+        int w = _cat_offset(tlk, k);
+        double sum;
+
+        if (state < 4) {
+            const double *transMatrixPtr = &matrices[w + state * 4];
+
+            sum = transMatrixPtr[0] * partialsChildPtr[0];
+            sum += transMatrixPtr[1] * partialsChildPtr[1];
+            sum += transMatrixPtr[2] * partialsChildPtr[2];
+            sum += transMatrixPtr[3] * partialsChildPtr[3];
+            rootPartials[u + state] = sum;
+            u += 4;
+        } else {
+            const double *transMatrixPtr = &matrices[w];
+
+            sum = transMatrixPtr[0] * partialsChildPtr[0];
+            sum += transMatrixPtr[1] * partialsChildPtr[1];
+            sum += transMatrixPtr[2] * partialsChildPtr[2];
+            sum += transMatrixPtr[3] * partialsChildPtr[3];
+            rootPartials[u++] = sum;
+
+            sum = transMatrixPtr[4] * partialsChildPtr[0];
+            sum += transMatrixPtr[5] * partialsChildPtr[1];
+            sum += transMatrixPtr[6] * partialsChildPtr[2];
+            sum += transMatrixPtr[7] * partialsChildPtr[3];
+            rootPartials[u++] = sum;
+
+            sum = transMatrixPtr[8] * partialsChildPtr[0];
+            sum += transMatrixPtr[9] * partialsChildPtr[1];
+            sum += transMatrixPtr[10] * partialsChildPtr[2];
+            sum += transMatrixPtr[11] * partialsChildPtr[3];
+            rootPartials[u++] = sum;
+
+            sum = transMatrixPtr[12] * partialsChildPtr[0];
+            sum += transMatrixPtr[13] * partialsChildPtr[1];
+            sum += transMatrixPtr[14] * partialsChildPtr[2];
+            sum += transMatrixPtr[15] * partialsChildPtr[3];
+            rootPartials[u++] = sum;
+        }
+        v += 4;
+    }
+}
+
+// Both sides carry partials.
+static void _calculate_branch_partials_undefined_cat(const SingleTreeLikelihood *tlk,
+                                                     double *rootPartials,
+                                                     const double *upperPartials,
+                                                     const double *partials,
+                                                     const double *matrices) {
+    int v = 0;
+
+    for (int k = 0; k < tlk->pattern_count; k++) {
+        const double *partialsChildPtr = partials + v;
+        const double *transMatrixPtr = &matrices[_cat_offset(tlk, k)];
+        double sum;
+
+        sum = *transMatrixPtr * partialsChildPtr[0];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[1];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[2];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[3];
+        transMatrixPtr++;
+        rootPartials[v] = sum * upperPartials[v];
+        v++;
+
+        sum = *transMatrixPtr * partialsChildPtr[0];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[1];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[2];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[3];
+        transMatrixPtr++;
+        rootPartials[v] = sum * upperPartials[v];
+        v++;
+
+        sum = *transMatrixPtr * partialsChildPtr[0];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[1];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[2];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[3];
+        transMatrixPtr++;
+        rootPartials[v] = sum * upperPartials[v];
+        v++;
+
+        sum = *transMatrixPtr * partialsChildPtr[0];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[1];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[2];
+        transMatrixPtr++;
+        sum += *transMatrixPtr * partialsChildPtr[3];
+        rootPartials[v] = sum * upperPartials[v];
+        v++;
+    }
+}
+
+void calculate_branch_partials_4_cat(SingleTreeLikelihood *tlk, double *rootPartials,
+                                     int upperPartialsIndex, int partialsIndex,
+                                     int matrixIndex) {
+    const double *matrices =
+        tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex];
+
+    if (tlk->partials[0][partialsIndex] == NULL) {
+        _calculate_branch_partials_state_cat(
+            tlk, rootPartials,
+            tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]]
+                         [upperPartialsIndex],
+            tlk->mapping[partialsIndex], matrices);
+    } else if (tlk->partials[0][upperPartialsIndex] == NULL) {
+        _calculate_branch_partials_state2_cat(
+            tlk, rootPartials, tlk->mapping[upperPartialsIndex],
+            tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
+            matrices);
+    } else {
+        _calculate_branch_partials_undefined_cat(
+            tlk, rootPartials,
+            tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]]
+                         [upperPartialsIndex],
+            tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
+            matrices);
     }
 }
 
@@ -823,6 +1034,186 @@ void update_partials_4_SSE_cat(SingleTreeLikelihood *tlk, int partialsIndex,
     if (tlk->scale) {
         SingleTreeLikelihood_scalePartials(tlk, partialsIndex, partialsIndex1,
                                            partialsIndex2);
+    }
+}
+
+// The SSE counterparts of the three cases above. The leaf matrices are stored
+// transposed whenever use_SIMD is set (see the p_t_transpose calls in
+// _calculate_uppper), which is why _calculate_branch_partials_state_SSE_cat reads
+// them along the other axis and the two dispatchers are not interchangeable.
+static void _calculate_branch_partials_state_SSE_cat(const SingleTreeLikelihood *tlk,
+                                                     double *rootPartials,
+                                                     const double *upperPartials,
+                                                     int partialsIndex,
+                                                     const double *matrices) {
+    __m128d *up = (__m128d *)upperPartials;
+    __m128d *rp = (__m128d *)rootPartials;
+    __m128d *m1, *m2;
+
+    for (int k = 0; k < tlk->pattern_count; k++) {
+        const double *transMatrixPtr = &matrices[_cat_offset(tlk, k)];
+        const int state = tlk->sp->patterns[partialsIndex][k];
+
+        if (state < 4) {
+            m1 = (__m128d *)&transMatrixPtr[state * 4];
+            *rp = _mm_mul_pd(*m1, *up);
+            rp++;
+            m1++;
+            up++;
+            *rp = _mm_mul_pd(*m1, *up);
+            rp++;
+            up++;
+        } else {
+            m1 = (__m128d *)transMatrixPtr;
+            m2 = (__m128d *)&transMatrixPtr[4];
+            *rp = _mm_add_pd(*m1, *m2);
+            m1 += 4;
+            m2 += 4;
+            *rp = _mm_add_pd(*rp, _mm_add_pd(*m1, *m2));
+            *rp = _mm_mul_pd(*up, *rp);
+            up++;
+            rp++;
+
+            m1 = (__m128d *)&transMatrixPtr[2];
+            m2 = (__m128d *)&transMatrixPtr[6];
+            *rp = _mm_add_pd(*m1, *m2);
+            m1 += 4;
+            m2 += 4;
+            *rp = _mm_add_pd(*rp, _mm_add_pd(*m1, *m2));
+            *rp = _mm_mul_pd(*up, *rp);
+            up++;
+            rp++;
+        }
+    }
+}
+
+static void _calculate_branch_partials_upper_undefined_SSE_cat(
+    const SingleTreeLikelihood *tlk, double *rootPartials, int upperPartialsIndex,
+    const double *partials, const double *matrices) {
+    // As in the scalar case, a known state leaves three of the four entries unwritten.
+    memset(rootPartials, 0, sizeof(double) * 4 * tlk->pattern_count);
+
+    double t[2] __attribute__((aligned(16)));
+    __m128d temp;
+    int v = 0;
+    int u = 0;
+
+    for (int k = 0; k < tlk->pattern_count; k++) {
+        __m128d p1 = _mm_load_pd(&partials[v]);
+        __m128d p2 = _mm_load_pd(&partials[v + 2]);
+        int state = tlk->sp->patterns[upperPartialsIndex][k];
+        int w = _cat_offset(tlk, k);
+
+        if (state < 4) {
+            __m128d *m = (__m128d *)&matrices[w + state * 4];
+            temp = _mm_mul_pd(*m, p1);
+            m++;
+            temp = _mm_add_pd(temp, _mm_mul_pd(*m, p2));
+            _mm_store_pd(t, temp);
+            rootPartials[u + state] = t[0] + t[1];
+            u += 4;
+        } else {
+            __m128d *m = (__m128d *)&matrices[w];
+
+            temp = _mm_mul_pd(*m, p1);
+            m++;
+            temp = _mm_add_pd(temp, _mm_mul_pd(*m, p2));
+            m++;
+            _mm_store_pd(t, temp);
+            rootPartials[u++] = t[0] + t[1];
+
+            temp = _mm_mul_pd(*m, p1);
+            m++;
+            temp = _mm_add_pd(temp, _mm_mul_pd(*m, p2));
+            m++;
+            _mm_store_pd(t, temp);
+            rootPartials[u++] = t[0] + t[1];
+
+            temp = _mm_mul_pd(*m, p1);
+            m++;
+            temp = _mm_add_pd(temp, _mm_mul_pd(*m, p2));
+            m++;
+            _mm_store_pd(t, temp);
+            rootPartials[u++] = t[0] + t[1];
+
+            temp = _mm_mul_pd(*m, p1);
+            m++;
+            temp = _mm_add_pd(temp, _mm_mul_pd(*m, p2));
+            _mm_store_pd(t, temp);
+            rootPartials[u++] = t[0] + t[1];
+        }
+        v += 4;
+    }
+}
+
+static void _calculate_branch_partials_undefined_SSE_cat(
+    const SingleTreeLikelihood *tlk, double *rootPartials, const double *upperPartials,
+    const double *partials, const double *matrices) {
+    int v = 0;
+    __m128d *m;
+    __m128d p1, p2, temp, temp2;
+
+    for (int k = 0; k < tlk->pattern_count; k++) {
+        m = (__m128d *)&matrices[_cat_offset(tlk, k)];
+        p1 = _mm_load_pd(&partials[v]);
+        p2 = _mm_load_pd(&partials[v + 2]);
+
+        temp = _mm_mul_pd(*m, p1);
+        m++;
+        temp = _mm_add_pd(temp, _mm_mul_pd(*m, p2));
+        m++;
+
+        temp2 = _mm_mul_pd(*m, p1);
+        m++;
+        temp2 = _mm_add_pd(temp2, _mm_mul_pd(*m, p2));
+        m++;
+
+        temp = _mm_hadd_pd(temp, temp2);
+        temp2 = _mm_load_pd(&upperPartials[v]);
+        _mm_store_pd(&rootPartials[v], _mm_mul_pd(temp, temp2));
+        v += 2;
+
+        temp = _mm_mul_pd(*m, p1);
+        m++;
+        temp = _mm_add_pd(temp, _mm_mul_pd(*m, p2));
+        m++;
+
+        temp2 = _mm_mul_pd(*m, p1);
+        m++;
+        temp2 = _mm_add_pd(temp2, _mm_mul_pd(*m, p2));
+        m++;
+
+        temp = _mm_hadd_pd(temp, temp2);
+        temp2 = _mm_load_pd(&upperPartials[v]);
+        _mm_store_pd(&rootPartials[v], _mm_mul_pd(temp, temp2));
+        v += 2;
+    }
+}
+
+void calculate_branch_partials_4_SSE_cat(SingleTreeLikelihood *tlk,
+                                         double *rootPartials, int upperPartialsIndex,
+                                         int partialsIndex, int matrixIndex) {
+    const double *matrices =
+        tlk->matrices[tlk->current_matrices_indexes[matrixIndex]][matrixIndex];
+
+    if (tlk->partials[0][partialsIndex] == NULL) {
+        _calculate_branch_partials_state_SSE_cat(
+            tlk, rootPartials,
+            tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]]
+                         [upperPartialsIndex],
+            tlk->mapping[partialsIndex], matrices);
+    } else if (tlk->partials[0][upperPartialsIndex] == NULL) {
+        _calculate_branch_partials_upper_undefined_SSE_cat(
+            tlk, rootPartials, tlk->mapping[upperPartialsIndex],
+            tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
+            matrices);
+    } else {
+        _calculate_branch_partials_undefined_SSE_cat(
+            tlk, rootPartials,
+            tlk->partials[tlk->current_partials_indexes[upperPartialsIndex]]
+                         [upperPartialsIndex],
+            tlk->partials[tlk->current_partials_indexes[partialsIndex]][partialsIndex],
+            matrices);
     }
 }
 

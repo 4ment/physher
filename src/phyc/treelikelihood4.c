@@ -1695,7 +1695,7 @@ static void _calculate_branch_partials_undefined_SSE(SingleTreeLikelihood *tlk, 
 	
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < tlk->pattern_count; k++) {
-			m = (__m128d*)&matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l*16];
+			m = (__m128d*)&matrices[l*16];
 			p1 = _mm_load_pd(&partials[v]);
 			p2 = _mm_load_pd(&partials[v+2]);
 			
@@ -1738,7 +1738,7 @@ static void _calculate_branch_partials_upper_undefined_SSE(SingleTreeLikelihood 
 			int state = tlk->sp->patterns[upperPartialsIndex][k];
 			
 			if(state < 4){
-				__m128d* m = (__m128d*)&matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l * 16 + state*4];
+				__m128d* m = (__m128d*)&matrices[l * 16 + state*4];
 				temp = _mm_mul_pd(*m, p1); m++;
 				temp = _mm_add_pd(temp, _mm_mul_pd(*m,p2));
 				_mm_store_pd(t,temp);
@@ -1746,7 +1746,7 @@ static void _calculate_branch_partials_upper_undefined_SSE(SingleTreeLikelihood 
 				u+=4;
 			}
 			else{
-				__m128d* m = (__m128d*)&matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l*16];
+				__m128d* m = (__m128d*)&matrices[l*16];
 				
 				temp = _mm_mul_pd(*m, p1); m++;
 				temp = _mm_add_pd(temp, _mm_mul_pd(*m,p2)); m++;
@@ -1781,7 +1781,7 @@ static void _calculate_branch_partials_state_SSE(SingleTreeLikelihood *tlk, doub
 	__m128d* m1, *m2;
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < tlk->pattern_count; k++) {
-			const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k)*16 + l*16];
+			const double* transMatrixPtr = &matrices[l*16];
 			const int state = tlk->sp->patterns[partialsIndex][k];
 			if(state < 4){
 				m1 = (__m128d*)&transMatrixPtr[state*4];
@@ -2845,7 +2845,7 @@ static void _calculate_branch_partials_undefined(SingleTreeLikelihood *tlk, doub
 	for(int l = 0; l < tlk->cat_count; l++) {
 		for(int k = 0; k < tlk->pattern_count; k++) {
 			const double* partialsChildPtr = partials+v;
-			const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k) +l*16];
+			const double* transMatrixPtr = &matrices[l*16];
 			
 			double sum = *transMatrixPtr * partialsChildPtr[0]; transMatrixPtr++;
 			sum += *transMatrixPtr * partialsChildPtr[1]; transMatrixPtr++;
@@ -2881,7 +2881,7 @@ static void _calculate_branch_partials_state(SingleTreeLikelihood *tlk, double* 
 		for(int k = 0; k < tlk->pattern_count; k++) {
 			int state = tlk->sp->patterns[partialsIndex][k];
 			if(state < 4){
-				int w =  tlk->sm->get_site_category(tlk->sm, k) + l * 16 + state;
+				int w = l * 16 + state;
 				
 				rootPartials[v] = matrices[w] * upperPartials[v]; w += 4; v++;
 				rootPartials[v] = matrices[w] * upperPartials[v]; w += 4; v++;
@@ -2889,7 +2889,7 @@ static void _calculate_branch_partials_state(SingleTreeLikelihood *tlk, double* 
 				rootPartials[v] = matrices[w] * upperPartials[v]; v++;
 			}
 			else{
-				const double* transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k) + l*16];
+				const double* transMatrixPtr = &matrices[l*16];
 				
 				rootPartials[v] = (transMatrixPtr[0] + transMatrixPtr[1] + transMatrixPtr[2] + transMatrixPtr[3]) * upperPartials[v]; v++;
 				rootPartials[v] = (transMatrixPtr[4] + transMatrixPtr[5] + transMatrixPtr[6] + transMatrixPtr[7]) * upperPartials[v]; v++;
@@ -2914,7 +2914,7 @@ static void _calculate_branch_partials_state2(SingleTreeLikelihood *tlk, double*
 			double sum;
 			
 			if(state < 4){
-				transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k) + l * 16 + state*4];
+				transMatrixPtr = &matrices[l * 16 + state*4];
 				
 				sum = transMatrixPtr[0] * partialsChildPtr[0];
 				sum += transMatrixPtr[1] * partialsChildPtr[1];
@@ -2924,7 +2924,7 @@ static void _calculate_branch_partials_state2(SingleTreeLikelihood *tlk, double*
 				u+=4;
 			}
 			else{
-				transMatrixPtr = &matrices[tlk->sm->get_site_category(tlk->sm, k) + l*16];
+				transMatrixPtr = &matrices[l*16];
 				
 				sum = transMatrixPtr[0] * partialsChildPtr[0];
 				sum += transMatrixPtr[1] * partialsChildPtr[1];
