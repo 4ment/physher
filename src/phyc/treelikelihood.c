@@ -23,6 +23,7 @@
 #include "solve.h"
 
 #include "treelikelihood4.h"
+#include "treelikelihood4CAT.h"
 #include "treelikelihood20.h"
 #include "treelikelihoodX.h"
 #include "treelikelihoodCodon.h"
@@ -495,6 +496,41 @@ static int matrix_cat_count(const SingleTreeLikelihood* tlk){
     return imax(tlk->sm->cat_count, tlk->cat_capacity);
 }
 
+// The empirical CAT site model assigns every pattern to a single rate category instead
+// of averaging the likelihood over all of them, so its partials hold one block while
+// the matrices still hold one block per category. Only the lower partials need to know
+// about that; they live in treelikelihood4CAT.c. The matrices, the root likelihood and
+// the scaling factors already handle a single partials block correctly.
+//
+// Called after the regular kernel dispatch so it always has the last word.
+static void _set_cat_kernels(SingleTreeLikelihood* tlk){
+    if(tlk->sm == NULL || tlk->sm->site_category == NULL) return;
+
+    if(tlk->m->nstate != 4){
+        fprintf(stderr, "The CAT site model is only implemented for nucleotides "
+                        "(%u states requested)\n", tlk->m->nstate);
+        exit(2);
+    }
+    // Has no live caller and would need a CAT variant of its own.
+    tlk->update_partials_flexible = NULL;
+
+#if defined (SSE3_ENABLED) || (AVX_ENABLED)
+    if(tlk->use_SIMD){
+#ifdef SSE3_ENABLED
+        // Leaf transition matrices are stored transposed whenever use_SIMD is set (see
+        // the p_t_transpose calls in _calculate_partials), so the SIMD and non-SIMD
+        // kernels are not interchangeable: the choice has to follow use_SIMD.
+        tlk->update_partials = update_partials_4_SSE_cat;
+        return;
+#else
+        fprintf(stderr, "The CAT site model has no AVX kernel\n");
+        exit(2);
+#endif
+    }
+#endif
+    tlk->update_partials = update_partials_4_cat;
+}
+
 void allocate_storage(SingleTreeLikelihood* tlk, size_t index){
     Tree* tree = tlk->tree;
     size_t nodeCount = Tree_node_count(tree);
@@ -724,8 +760,10 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *
 		tlk->node_log_likelihoods = node_log_likelihoods_4_AVX;
         tlk->use_SIMD = true;
 	}
-	
+
 #endif
+
+	_set_cat_kernels(tlk);
 
     tlk->nthreads = 1;
 	tlk->root_frequencies = NULL;
@@ -1098,7 +1136,18 @@ double _calculate_simple( SingleTreeLikelihood *tlk ){
 
 //#define UPPER_PARTIALS 1
 
+// The upper partials weight each category by sm->get_proportions and index the
+// matrices by the category loop variable, neither of which holds for CAT. Refuse
+// instead of returning a plausible wrong number.
+static void _reject_cat_upper(const SingleTreeLikelihood *tlk){
+	if(tlk->sm->site_category != NULL){
+		fprintf(stderr, "The upper partial likelihoods are not implemented for the CAT site model\n");
+		exit(2);
+	}
+}
+
 void SingleTreeLikelihood_update_uppers(SingleTreeLikelihood *tlk){
+	_reject_cat_upper(tlk);
 	_calculate_simple(tlk);
 #ifdef UPPER_PARTIALS
 	printf("calculate_upper root update\n");
@@ -1109,6 +1158,7 @@ void SingleTreeLikelihood_update_uppers(SingleTreeLikelihood *tlk){
 }
 
 void SingleTreeLikelihood_update_uppers2(SingleTreeLikelihood *tlk){
+	_reject_cat_upper(tlk);
 	update_upper_partials2(tlk, Tree_root(tlk->tree));
 	memset(tlk->update_nodes, 0, sizeof(bool)*Tree_node_count(tlk->tree));
 	tlk->update_upper = false;
@@ -1385,6 +1435,13 @@ void SingleTreeLikelihood_set_sitepattern( SingleTreeLikelihood *tlk, SitePatter
 }
 
 void SingleTreeLikelihood_set_sitemodel( SingleTreeLikelihood *tlk, SiteModel *sm ){
+	// Swapping in or out of CAT would have to swap the partial likelihood kernels with
+	// it (see _set_cat_kernels). The only caller is the free-rate EM, which never uses
+	// CAT, so refuse rather than carry an untested path.
+	if( (tlk->sm->site_category == NULL) != (sm->site_category == NULL) ){
+		fprintf(stderr, "SingleTreeLikelihood_set_sitemodel: cannot swap between a CAT and a non-CAT site model\n");
+		exit(2);
+	}
 	int cat_count = (sm->site_category == NULL ? (int)sm->cat_count : 1);
 	if( cat_count > tlk->cat_capacity ){
 		fprintf(stderr, "SingleTreeLikelihood_set_sitemodel: %d categories exceeds the allocated capacity of %d\n",
@@ -1585,6 +1642,7 @@ void SingleTreeLikelihood_enable_SSE( SingleTreeLikelihood *tlk, bool value ){
 			tlk->calculate_per_cat_partials = calculate_branch_partials;
 		}
 	}
+	_set_cat_kernels(tlk);
 	SingleTreeLikelihood_update_all_nodes(tlk);
 #endif
 }

@@ -703,7 +703,7 @@ char* test_weibull_mean_quadrature() {
     const double expected_half[4] = {0.012812320429430, 0.120440304532478,
                                      0.519546986081804, 3.347200388955839};
     const double quad_tol = 1.e-9;  // accuracy of the numerical reference
-    sm->set_rate(sm, 0, 0.5);
+    Parameters_set_value(sm->rates, 0, 0.5);
     for (size_t i = 0; i < 4; i++) {
         mu_assert(fabs(sm->get_rate(sm, i) - expected_half[i]) < quad_tol,
                   "weibull mean: rates not matching after a change of shape");
@@ -719,7 +719,7 @@ char* test_weibull_mean_quadrature() {
     // incomplete gamma, so nothing can overflow the way a Weibull *quantile* does at
     // a small shape: the discretization degenerates to a single fast category
     // instead of returning NaN.
-    sm->set_rate(sm, 0, 0.01);
+    Parameters_set_value(sm->rates, 0, 0.01);
     for (size_t i = 0; i < 4; i++) {
         mu_assert(isfinite(sm->get_rate(sm, i)),
                   "weibull mean: rate is not finite at the smallest allowed shape");
@@ -803,11 +803,11 @@ static char* _check_mean_quadrature_gradient(const char* json, bool invariant) {
     double analytic = sm->derivative(sm, ingrad, shape);
 
     double h = 1.e-6 * alpha;
-    sm->set_rate(sm, 0, alpha + h);
+    Parameters_set_value(sm->rates, 0, alpha + h);
     double plus = _quadratic_objective(sm);
-    sm->set_rate(sm, 0, alpha - h);
+    Parameters_set_value(sm->rates, 0, alpha - h);
     double minus = _quadratic_objective(sm);
-    sm->set_rate(sm, 0, alpha);
+    Parameters_set_value(sm->rates, 0, alpha);
     mu_assert(fabs(analytic - (plus - minus) / (2.0 * h)) < 1.e-6,
               "mean quadrature: shape derivative does not match finite differences");
 
@@ -933,7 +933,7 @@ char* test_gausslaguerre_quadrature() {
     const double shapes[3] = {1.0, 0.1, 7.5};
     for (size_t s = 0; s < 3; s++) {
         const double alpha = shapes[s];
-        sm->set_rate(sm, 0, alpha);
+        Parameters_set_value(sm->rates, 0, alpha);
         for (size_t k = 0; k <= 7; k++) {
             double moment = 0;
             for (size_t i = 0; i < 4; i++) {
@@ -1708,6 +1708,392 @@ char* test_free_class_rejects() {
     return NULL;
 }
 
+// --- CAT: empirical per-pattern rates ---------------------------------------
+
+// CAT is the only site model built against a SitePattern: instead of mixing every
+// category at every site it assigns each pattern to exactly one category, so a
+// pattern set has to be in the hashtable for "&patterns" to resolve.
+static SitePattern* _new_test_patterns(Hashtable* hash) {
+    const char* json =
+        "{\"id\":\"patterns\",\"type\":\"sitepattern\",\"datatype\":\"nucleotide\","
+        "\"alignment\":{\"id\":\"seqs\",\"type\":\"alignment\",\"file\":\"tiny.fa\"}}";
+    json_node* root = create_json_tree(json);
+    SitePattern* sp = new_SitePattern_from_json(root, hash);
+    json_free_tree(root);
+    Hashtable_add(hash, "patterns", sp);
+    return sp;
+}
+
+static const char* CAT_JSON =
+    "{\"id\":\"sitemodel\",\"type\":\"sitemodel\",\"sitepattern\":\"&patterns\","
+    "\"categories\":4,\"parameters\":{\"id\":\"catrates\",\"type\":\"parameter\","
+    "\"x\":[0.25,0.5,1.0,2.0],\"lower\":0}}";
+
+// _parse_status, but against a hashtable holding the pattern set CAT needs.
+static int _cat_parse_status(const char* json) {
+    fflush(stdout);
+    fflush(stderr);
+    pid_t pid = fork();
+    if (pid == 0) {
+        freopen("/dev/null", "w", stderr);
+        freopen("/dev/null", "w", stdout);
+        Hashtable* hash = _new_hash();
+        _new_test_patterns(hash);
+        Model* model = _sitemodel_from_string(json, hash);
+        model->free(model);
+        free_Hashtable(hash);
+        _exit(0);
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+// Spread the patterns over the categories so the assignment actually matters:
+// anything that only ever looks at category 0 still passes with the default.
+static void _assign_round_robin(SiteModel* sm) {
+    for (int i = 0; i < sm->sp->count; i++) {
+        sm->site_category[i] = i % (int)sm->cat_count;
+    }
+    sm->need_update = true;
+}
+
+// The normalisation CAT is built on: averaged over the *sites* of the alignment
+// (patterns weighted by how many sites they stand for), the rate is 1.
+static double _cat_site_mean(SiteModel* sm) {
+    double mean = 0;
+    for (int i = 0; i < sm->sp->count; i++) {
+        mean += sm->get_rate(sm, sm->get_site_category(sm, i)) * sm->sp->weights[i];
+    }
+    return mean / sm->sp->nsites;
+}
+
+char* test_cat() {
+    Hashtable* hash = _new_hash();
+    SitePattern* sp = _new_test_patterns(hash);
+    Model* model = _sitemodel_from_string(CAT_JSON, hash);
+    SiteModel* sm = model->obj;
+
+    mu_assert(sm->cat_count == 4, "CAT: wrong number of categories");
+    mu_assert(sm->site_category != NULL, "CAT: no per-pattern assignment");
+    mu_assert(sm->sp == sp, "CAT: not attached to the pattern set");
+    mu_assert(sp->ref_count == 2, "CAT: did not take a reference on the patterns");
+
+    // One vector parameter of cat_count elements, like every other rate
+    // parameterization -- so the whole vector carries a single id a prior or a
+    // logger can name.
+    mu_assert(Parameters_count(sm->rates) == 1, "CAT: rates are not a single vector");
+    Parameter* rates = Parameters_at(sm->rates, 0);
+    mu_assert(Parameter_size(rates) == sm->cat_count, "CAT: wrong rate dimension");
+    mu_assert(Hashtable_get(hash, "catrates") == rates,
+              "CAT: the rate vector is not registered under its id");
+    for (int i = 0; i < sp->count; i++) {
+        mu_assert(sm->get_site_category(sm, i) == 0,
+                  "CAT: patterns start out unassigned, i.e. in category 0");
+    }
+
+    // A site sits in one category rather than being averaged over all of them, so
+    // the weights are 1 and not a simplex -- but they still have to be there, since
+    // integrate_partials and the loggers index them.
+    mu_assert(sm->get_proportions(sm) != NULL, "CAT: no proportions vector");
+    for (size_t i = 0; i < sm->cat_count; i++) {
+        mu_assert(sm->get_proportion(sm, i) == 1.0, "CAT: a category weight is not 1");
+    }
+
+    // Nothing assigned yet: every site is in category 0, so that category carries
+    // the whole mean and normalises to 1.
+    mu_assert(fabs(sm->get_rate(sm, 0) - 1.0) < TOL,
+              "CAT: the unassigned model is not a rate-1 model");
+    mu_assert(fabs(_cat_site_mean(sm) - 1.0) < TOL, "CAT: rates are not normalised");
+
+    // ...and it still holds once the patterns are spread over the categories.
+    _assign_round_robin(sm);
+    mu_assert(sm->update(sm), "CAT: update failed on a valid model");
+    mu_assert(fabs(_cat_site_mean(sm) - 1.0) < TOL,
+              "CAT: rates lost their unit mean over the alignment");
+    // The rates keep their relative sizes; only the common scale is fitted.
+    for (size_t i = 1; i < sm->cat_count; i++) {
+        double ratio = sm->get_rate(sm, i) / sm->get_rate(sm, i - 1);
+        double expected =
+            Parameter_value_at(rates, i) / Parameter_value_at(rates, i - 1);
+        mu_assert(fabs(ratio - expected) < TOL, "CAT: normalisation skewed the rates");
+    }
+
+    // Empirical rates are not differentiable, but the hooks still have to be the
+    // no-op ones rather than whatever malloc left behind.
+    mu_assert(sm->derivative(sm, NULL, Parameters_at(sm->rates, 0)) == 0.0,
+              "CAT: derivative is not the no-op");
+
+    model->free(model);
+    mu_assert(sp->ref_count == 1,
+              "CAT: the reference on the patterns was not released");
+    free_SitePattern(sp);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// A zero mean rate would divide every category by zero. It is reported as a failed
+// update, the same way a bad free-rate model is.
+char* test_cat_degenerate() {
+    Hashtable* hash = _new_hash();
+    SitePattern* sp = _new_test_patterns(hash);
+    Model* model = _sitemodel_from_string(CAT_JSON, hash);
+    SiteModel* sm = model->obj;
+
+    Parameter* rates = Parameters_at(sm->rates, 0);
+    for (size_t i = 0; i < Parameter_size(rates); i++) {
+        Parameter_set_value_at(rates, 0.0, i);
+    }
+    mu_assert(!sm->update(sm), "CAT: an all-zero rate vector should fail the update");
+
+    model->free(model);
+    free_SitePattern(sp);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// Both clone entry points have to carry the pattern set and the assignment: the
+// vtable they copy reads site_category unconditionally.
+char* test_cat_clone() {
+    Hashtable* hash = _new_hash();
+    SitePattern* sp = _new_test_patterns(hash);
+    Model* model = _sitemodel_from_string(CAT_JSON, hash);
+    SiteModel* sm = model->obj;
+    _assign_round_robin(sm);
+    mu_assert(sm->update(sm), "CAT: update failed on a valid model");
+
+    // clone_SiteModel: the plain copy clone_SingleTreeLikelihood makes.
+    SiteModel* copy = clone_SiteModel(sm);
+    mu_assert(copy->sp == sm->sp, "CAT clone: lost the pattern set");
+    for (int i = 0; i < sp->count; i++) {
+        mu_assert(copy->get_site_category(copy, i) == sm->get_site_category(sm, i),
+                  "CAT clone: lost the category assignment");
+    }
+    mu_assert(fabs(_cat_site_mean(copy) - 1.0) < TOL,
+              "CAT clone: the copy does not reproduce the rates");
+    free_SiteModel(copy);
+
+    // Model::clone: the hashtable-resolving one used by the threaded optimizers.
+    Hashtable* clonehash = _new_hash();
+    Model* mclone = model->clone(model, clonehash);
+    SiteModel* smclone = mclone->obj;
+    mu_assert(smclone->sp == sm->sp, "CAT Model clone: lost the pattern set");
+    for (int i = 0; i < sp->count; i++) {
+        mu_assert(
+            smclone->get_site_category(smclone, i) == sm->get_site_category(sm, i),
+            "CAT Model clone: lost the category assignment");
+    }
+    mu_assert(fabs(_cat_site_mean(smclone) - 1.0) < TOL,
+              "CAT Model clone: the copy does not reproduce the rates");
+    mclone->free(mclone);
+    free_Hashtable(clonehash);
+
+    model->free(model);
+    mu_assert(sp->ref_count == 1, "CAT: a clone leaked a reference on the patterns");
+    free_SitePattern(sp);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+char* test_cat_rejects() {
+    const char* missing_rates =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\",\"sitepattern\":\"&patterns\","
+        "\"categories\":4}";
+    mu_assert(_cat_parse_status(missing_rates) == 12,
+              "CAT: no category rates should die");
+
+    // The rates are indexed by category, so a short vector is a read off the end.
+    const char* short_rates =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\",\"sitepattern\":\"&patterns\","
+        "\"categories\":4,\"parameters\":{\"id\":\"catrates\","
+        "\"type\":\"parameter\",\"x\":[0.5,0.5,0.5],\"lower\":0}}";
+    mu_assert(_cat_parse_status(short_rates) == 12,
+              "CAT: fewer rates than categories should die");
+
+    // CAT reads its categories off the alignment; anything describing a rate
+    // distribution would be silently dropped.
+    const char* with_invariant =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\",\"sitepattern\":\"&patterns\","
+        "\"categories\":4,\"proportion_invariant\":0.1,"
+        "\"parameters\":{\"id\":\"catrates\",\"type\":\"parameter\","
+        "\"x\":[0.25,0.5,1.0,2.0],\"lower\":0}}";
+    mu_assert(_cat_parse_status(with_invariant) == 12,
+              "CAT: a rate distribution alongside it should die");
+
+    const char* unknown_patterns =
+        "{\"id\":\"sitemodel\",\"type\":\"sitemodel\",\"sitepattern\":\"&nosuch\","
+        "\"categories\":4,\"parameters\":{\"id\":\"catrates\",\"type\":\"parameter\","
+        "\"x\":[0.25,0.5,1.0,2.0],\"lower\":0}}";
+    mu_assert(_cat_parse_status(unknown_patterns) == 12,
+              "CAT: an undefined \"sitepattern\" should die");
+
+    mu_assert(_cat_parse_status(CAT_JSON) == 0, "CAT: a valid model should parse");
+    return NULL;
+}
+
+// ---------------------------------------------------------------------------
+// CAT in the tree likelihood
+//
+// The kernels live in treelikelihood4CAT.c and are only reachable through a CAT
+// site model, so these run the whole likelihood rather than poking at partials.
+
+// The categories are assigned by fasttree_cat in a real run. Here they are set by
+// hand so the reference below knows which rate each pattern is supposed to get.
+static void _cat_assign_round_robin(SiteModel* sm) {
+    for (int i = 0; i < sm->sp->count; i++) {
+        sm->site_category[i] = i % (int)sm->cat_count;
+    }
+    sm->need_update = true;
+}
+
+// Independent reference: run a single-rate model once per category rate, keep the
+// per-pattern log-likelihoods, and pick for every pattern the one belonging to its
+// category. That is the definition of the CAT likelihood, computed without any of
+// the code under test.
+static double _cat_reference_logP(const SiteModel* cat, bool sse) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat-ref.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SingleTreeLikelihood_enable_SSE(tlk, sse);
+    Parameter* mu = Hashtable_get(hash, "mu");
+
+    double* selected = dvector(tlk->sp->count);
+    for (size_t c = 0; c < cat->cat_count; c++) {
+        Parameter_set_value(mu, cat->cat_rates[c]);
+        model->logP(model);
+        for (int k = 0; k < tlk->sp->count; k++) {
+            if (cat->site_category[k] == (int)c) selected[k] = tlk->pattern_lk[k];
+        }
+    }
+
+    double logP = 0;
+    for (int k = 0; k < tlk->sp->count; k++) {
+        logP += selected[k] * tlk->sp->weights[k];
+    }
+
+    free(selected);
+    model->free(model);
+    free_Hashtable(hash);
+    return logP;
+}
+
+// With every category on the same rate the assignment cannot matter: CAT has to
+// collapse onto the plain single-rate model. Catches an offset that is applied
+// where it should not be, and a likelihood that ignores CAT entirely.
+static char* _check_cat_uniform(bool sse) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SingleTreeLikelihood_enable_SSE(tlk, sse);
+    SiteModel* sm = tlk->sm;
+
+    _cat_assign_round_robin(sm);
+    Parameter* rates = Parameters_at(sm->rates, 0);
+    for (size_t i = 0; i < Parameter_size(rates) - 1; i++) {
+        Parameter_set_value_at_quietly(rates, 1.0, i);
+    }
+    Parameter_set_value_at(rates, 1.0, Parameter_size(rates) - 1);
+
+    double logP = model->logP(model);
+
+    Hashtable* ref_hash = _new_hash();
+    Model* ref = _treelikelihood_from_file("jc69-cat-ref.json", ref_hash);
+    SingleTreeLikelihood_enable_SSE(ref->obj, sse);
+    double expected = ref->logP(ref);
+
+    mu_assert(fabs(logP - expected) < 1.e-8,
+              "CAT: equal rates did not reproduce the single-rate likelihood");
+
+    ref->free(ref);
+    free_Hashtable(ref_hash);
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+char* test_cat_likelihood_uniform() { return _check_cat_uniform(false); }
+char* test_cat_likelihood_uniform_sse() { return _check_cat_uniform(true); }
+
+// The real check: distinct rates, patterns spread over all four categories, and the
+// answer compared against the per-category reference above.
+static char* _check_cat_likelihood(bool sse) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SingleTreeLikelihood_enable_SSE(tlk, sse);
+    SiteModel* sm = tlk->sm;
+
+    _cat_assign_round_robin(sm);
+    double logP = model->logP(model);
+    mu_assert(!isnan(logP), "CAT: the likelihood is not a number");
+
+    // The rates are normalized to a unit mean over the alignment, so at least one
+    // category is above 1 and one below: the assignment cannot be a no-op.
+    mu_assert(sm->cat_rates[0] < 1.0 && sm->cat_rates[sm->cat_count - 1] > 1.0,
+              "CAT: the rates are too flat for this test to mean anything");
+
+    double expected = _cat_reference_logP(sm, sse);
+    mu_assert(fabs(logP - expected) < 1.e-8,
+              "CAT: the likelihood does not match the per-category reference");
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+char* test_cat_likelihood() { return _check_cat_likelihood(false); }
+char* test_cat_likelihood_sse() { return _check_cat_likelihood(true); }
+
+// Two independent implementations of the same kernels; they must not disagree.
+char* test_cat_likelihood_sse_matches() {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+    _cat_assign_round_robin(sm);
+
+    SingleTreeLikelihood_enable_SSE(tlk, false);
+    double plain = model->logP(model);
+
+    SingleTreeLikelihood_enable_SSE(tlk, true);
+    SingleTreeLikelihood_update_all_nodes(tlk);
+    sm->need_update = true;
+    double sse = model->logP(model);
+
+    mu_assert(fabs(plain - sse) < 1.e-8, "CAT: the SSE and non-SSE kernels disagree");
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
+// A rate no pattern is assigned to must not reach the likelihood at all: it is
+// absent from the weighted mean the rates are normalized by, so it cannot even
+// arrive through the normalization. Catches a kernel reading a fixed matrix block
+// instead of the one the pattern points at.
+char* test_cat_likelihood_ignores_unused() {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+
+    // Everything on category 1; 0, 2 and 3 are unused.
+    for (int i = 0; i < sm->sp->count; i++) sm->site_category[i] = 1;
+    sm->need_update = true;
+    double before = model->logP(model);
+
+    Parameter* rates = Parameters_at(sm->rates, 0);
+    Parameter_set_value_at(rates, Parameter_value_at(rates, 3) * 7.0, 3);
+    double after = model->logP(model);
+
+    mu_assert(fabs(before - after) < 1.e-8,
+              "CAT: an unassigned category changed the likelihood");
+
+    model->free(model);
+    free_Hashtable(hash);
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_free_class);
@@ -1740,6 +2126,16 @@ char* all_tests() {
     mu_run_test(test_rate_parameterization_key_selects);
     mu_run_test(test_rate_parameterization_rejects);
     mu_run_test(test_proportions_rejects);
+    mu_run_test(test_cat);
+    mu_run_test(test_cat_degenerate);
+    mu_run_test(test_cat_clone);
+    mu_run_test(test_cat_rejects);
+    mu_run_test(test_cat_likelihood_uniform);
+    mu_run_test(test_cat_likelihood_uniform_sse);
+    mu_run_test(test_cat_likelihood);
+    mu_run_test(test_cat_likelihood_sse);
+    mu_run_test(test_cat_likelihood_sse_matches);
+    mu_run_test(test_cat_likelihood_ignores_unused);
     return NULL;
 }
 

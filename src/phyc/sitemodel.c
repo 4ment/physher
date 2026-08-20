@@ -21,6 +21,11 @@
 #include <gsl/gsl_cdf.h>
 #endif
 
+// Default lower bound for the alpha/beta shapes of the Beta quadrature. Chosen just
+// above where GSL's Beta inverse-CDF stops converging (it already fails at 0.02, and
+// is reliable from ~0.05 upwards over the useful range of the other shape).
+#define BETA_QUADRATURE_SHAPE_LOWER 0.1
+
 static bool _gamma_approx_quantile( SiteModel *sm );
 static void _calculate_rates_discrete( SiteModel *sm );
 static void _calculate_rates_discrete_rate_shape( SiteModel *sm );
@@ -133,14 +138,9 @@ static void _site_model_free( Model *self ){
 			model->free(model);
 		}
 		
-		if(sm->rates != NULL) free_Parameters(sm->rates);
-		free_Parameter(sm->proportions);
-		//TODO: deal with this
-		if(sm->mu!=NULL)free_Parameter(sm->mu);
-		if(sm->class_rate!=NULL)free_Parameter(sm->class_rate);
-		if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
-		free(sm->cat_rates);
-		free(sm);
+		// Delegated rather than open-coded: the two had already drifted apart, and
+		// whatever the site model owns is the same either way.
+		free_SiteModel(sm);
 		free_Model(self);
 	}
 	else{
@@ -266,6 +266,21 @@ static void _SiteModel_print(Model* model, FILE* out){
 		for (int i = 0; i < Parameters_count(sm->rates); i++) {
 			fprintf(out, "%s %f\n", Parameters_name(sm->rates, i),Parameters_value(sm->rates, i));
 		}
+		// CAT assigns each site to one category instead of mixing them, so there are
+		// no weights to report and nothing that sums to one; what it does have is
+		// the number of patterns that landed in each category.
+		if (sm->site_category != NULL) {
+			int* counts = ivector(sm->cat_count);
+			for (int i = 0; i < sm->sp->count; i++){
+				counts[sm->get_site_category(sm, i)]++;
+			}
+			fprintf(out, "patterns rate\n");
+			for (int i = 0; i < sm->cat_count; i++){
+				fprintf(out, "%d %f\n", counts[i], sm->cat_rates[i]);
+			}
+			free(counts);
+			return;
+		}
 		double sum = 0;
 		fprintf(out, "proportion rate\n");
 		for (int i = 0; i < sm->cat_count; i++){
@@ -313,11 +328,6 @@ static void _SiteModel_log_value(Model* model, const char* quantity, size_t i,
 	double value = strcasecmp(quantity, "rates") == 0 ? sm->get_rate(sm, i)
 	                                                   : sm->get_proportion(sm, i);
 	StringBuffer_append_format(out, format != NULL ? format : "%f", value);
-}
-
-void set_rate(SiteModel* sm, const int index, const double value){
-    Parameters_set_value(sm->rates, index, value);
-    sm->need_update = true;
 }
 
 int _get_site_category(SiteModel* sm, const int pattern){
@@ -630,8 +640,6 @@ SiteModel * new_SiteModel_with_parameters( const Parameters *params, Parameter* 
 	sm->class_rate = NULL;
 	sm->class_rate_parameterization = FREE_CLASS_PARAMETERIZATION_RATE;
 
-    sm->set_rate = set_rate;
-
 	sm->cat_rates       = dvector(sm->cat_count);
 	sm->cat_proportions = dvector(sm->cat_count);
 	sm->gradient = _no_gradient;
@@ -835,6 +843,39 @@ static bool _apply_free_class( SiteModel *sm ) {
 	return true;
 }
 
+#ifndef GSL_DISABLED
+// Fill quantiles[offset .. offset+count-1] with the Beta inverse-CDF evaluated at
+// i/denominator. GSL's betainv is iterative and gives up ("inverse failed to
+// converge") for shape pairs that are small or wildly asymmetric -- alpha ~ 0.02 is
+// already enough, and a line search on alpha or beta walks straight into that region.
+// Under the default GSL handler that failure aborts the process, so the handler is
+// disabled here and the failure reported the same way the gamma inverse-CDF below
+// reports one: return false, which _update_gamma_approx_quantile propagates to the
+// tree likelihood as a NaN so the optimizer simply rejects the point.
+//
+// A non-converged call can also return a finite but meaningless value, so the
+// quantiles are checked for finiteness and monotonicity: the caller turns successive
+// differences into category proportions, and a non-monotonic sequence would silently
+// produce negative proportions.
+static bool _beta_quantiles(double* quantiles, int offset, int count, int denominator,
+                            double alpha, double beta) {
+	gsl_error_handler_t* handler = gsl_set_error_handler_off();
+	bool ok = true;
+	double previous = 0.0;
+	for (int i = 0; i < count; i++) {
+		const double q = gsl_cdf_beta_Pinv((double)i / denominator, alpha, beta);
+		if (!isfinite(q) || q < previous || q > 1.0) {
+			ok = false;
+			break;
+		}
+		quantiles[i + offset] = q;
+		previous = q;
+	}
+	gsl_set_error_handler(handler);
+	return ok;
+}
+#endif
+
 bool _gamma_approx_quantile( SiteModel *sm ) {
 	double propVariable = 1.0;
 	int cat = (sm->invariant ? 1 : 0);
@@ -851,8 +892,11 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 		// cat can be equal to 0 or 1
 		if(sm->proportions == NULL){
 			if(sm->quadrature == QUADRATURE_BETA){
-				for (int i = 0; i < sm->cat_count; i++) {
-					quantiles[i] = gsl_cdf_beta_Pinv((double)i/sm->cat_count, shape_alpha, shape_beta);
+				if(!_beta_quantiles(quantiles, 0, sm->cat_count, sm->cat_count,
+				                    shape_alpha, shape_beta)){
+					free(quantiles);
+					sm->need_update = false;
+					return false;
 				}
 			}
 			else{
@@ -873,8 +917,11 @@ bool _gamma_approx_quantile( SiteModel *sm ) {
 		// proportion of invariant come from a simplex
 		// cat should be equal to 1
 		else{
-			for (int i = 0; i < sm->cat_count-cat; i++) {
-				quantiles[i+cat] = gsl_cdf_beta_Pinv((double)i/(sm->cat_count-cat), shape_alpha, shape_beta);
+			if(!_beta_quantiles(quantiles, cat, sm->cat_count - cat,
+			                    sm->cat_count - cat, shape_alpha, shape_beta)){
+				free(quantiles);
+				sm->need_update = false;
+				return false;
 			}
 			
 			const double* proportions = Parameter_values(sm->proportions);
@@ -1360,16 +1407,36 @@ void _calculate_rates_discrete_ratios( SiteModel *sm ) {
 
 #pragma region CAT
 
-void _cat_update(SiteModel* sm){
+// The category rates are empirical, so they are normalised to a mean of one over
+// the *alignment* rather than over a distribution: every site contributes the rate
+// of the category it was assigned to, weighted by the number of sites its pattern
+// stands for. Before fasttree_cat has run, every pattern sits in category 0 and
+// the mean is simply that category's rate.
+bool _cat_update(SiteModel* sm){
+	const double* rates = Parameter_values(Parameters_at(sm->rates, 0));
 	double avg = 0;
 	for (int i = 0; i < sm->sp->count; i++ ) {
-		avg += Parameters_value(sm->rates, sm->get_site_category(sm, i)) * sm->sp->weights[i];
+		avg += rates[sm->get_site_category(sm, i)] * sm->sp->weights[i];
 	}
 	avg /= sm->sp->nsites;
+	// A zero or non-finite mean would send every category rate to inf/nan and take
+	// the likelihood with it. Report a failed update instead, which the tree
+	// likelihood already turns into a NAN log-likelihood.
+	if (!isfinite(avg) || avg <= 0.0) {
+		return false;
+	}
 	for (int i = 0; i < sm->cat_count; i++ ) {
-		sm->cat_rates[i] = Parameters_value(sm->rates, i)/avg;
+		sm->cat_rates[i] = rates[i]/avg;
 	}
 	sm->need_update = false;
+	return true;
+}
+
+bool _update_cat(SiteModel *sm){
+	if ( sm->need_update ) {
+		return _cat_update(sm);
+	}
+	return true;
 }
 
 double _get_rate_cat( SiteModel *sm, const int index ){
@@ -1380,12 +1447,22 @@ double _get_rate_cat( SiteModel *sm, const int index ){
 }
 
 SiteModel * new_CATSiteModel_with_parameters( const Parameters *params,  const size_t cat_count, SitePattern* sp){
+	assert(sp != NULL);
+	// One rate per category, held as a single vector parameter the way every other
+	// rate parameterization holds its own: _cat_update indexes it by category, and
+	// a pattern may be assigned to any of them.
+	assert(Parameters_count(params) == 1);
+	assert(Parameter_size(Parameters_at(params, 0)) == cat_count);
 	SiteModel *sm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(sm);
+	// The pattern weights drive the normalisation and the assignment is one entry
+	// per pattern, so the site model keeps the pattern set alive for as long as it
+	// needs it: it takes its own reference and drops it in free_SiteModel.
 	sm->sp = sp;
+	sp->ref_count++;
 	sm->site_category = ivector(sp->count);
 	sm->get_site_category = _get_site_category_CAT;
-	
+
 	sm->distribution = -1;
 	sm->invariant = false;
 	sm->quadrature = -1;
@@ -1394,11 +1471,19 @@ SiteModel * new_CATSiteModel_with_parameters( const Parameters *params,  const s
 	sm->cat_count = cat_count;
 
 	sm->cat_rates = dvector(sm->cat_count);
-	sm->cat_proportions = NULL;
+	// Not mixture weights: a site sits in exactly one category rather than being
+	// averaged over all of them, so the single block the likelihood integrates
+	// carries a weight of 1. Kept as a full vector rather than NULL because
+	// get_proportions hands it straight to integrate_partials and to the loggers,
+	// which index it by category.
+	sm->cat_proportions = dvector(sm->cat_count);
+	for (size_t i = 0; i < cat_count; i++ ) {
+		sm->cat_proportions[i] = 1.0;
+	}
 	sm->proportions = NULL;
-	
+
 	sm->rates = NULL;
-	
+
 	if(Parameters_count(params) > 0){
 		sm->rates = new_Parameters(Parameters_count(params));
 		Parameters_add_parameters(sm->rates, params);
@@ -1406,20 +1491,25 @@ SiteModel * new_CATSiteModel_with_parameters( const Parameters *params,  const s
 			Parameters_set_name2(sm->rates, Parameters_name2(params));
 		}
 	}
+	for(size_t i = 0; i < Parameters_count(params); i++){
+		Parameter_set_model(Parameters_at(sm->rates, i), MODEL_SITEMODEL);
+	}
 	sm->mu    = NULL;
 	sm->class_rate = NULL;
 	sm->class_rate_parameterization = FREE_CLASS_PARAMETERIZATION_RATE;
 
-	sm->set_rate = set_rate;
-
 	sm->get_rate        = _get_rate_cat;
 	sm->get_proportion  = _get_proportion;
 	sm->get_proportions = _get_proportions;
-	sm->update = _update_nothing;
-	
+	sm->update = _update_cat;
+	// The category rates are read off the alignment, not from a differentiable
+	// discretization, so there is nothing to differentiate here.
+	sm->gradient = _no_gradient;
+	sm->derivative = _no_derivative;
+
 	sm->integrate   = false;
 	sm->need_update = true;
-	
+
 	return sm;
 }
 
@@ -1429,18 +1519,44 @@ SiteModel * clone_SiteModel( const SiteModel *sm ){
 	return clone_SiteModel_with(sm);
 }
 
+// The pattern set and the per-pattern category assignment, shared by both clone
+// entry points. Both are NULL on everything but the empirical CAT model, but they
+// are read unconditionally (get_site_category is copied along with the rest of the
+// vtable), so they must be set either way.
+static void _clone_SiteModel_categories( const SiteModel *sm, SiteModel *newsm ){
+	newsm->sp = sm->sp;
+	if ( sm->sp != NULL ){
+		sm->sp->ref_count++;
+	}
+	newsm->site_category = NULL;
+	if ( sm->site_category != NULL ){
+		newsm->site_category = clone_ivector(sm->site_category, sm->sp->count);
+	}
+}
+
 SiteModel * clone_SiteModel_with( const SiteModel *sm ){
 	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
 	assert(newsm);
-	
+
 	newsm->rates = NULL;
-	
+
 	newsm->cat_count = sm->cat_count;
-	
+
 	if ( sm->rates != NULL ){
 		newsm->rates = clone_Parameters(sm->rates);
 	}
-	
+
+	// A CAT site model reads the pattern weights and carries one category per
+	// pattern; the clone needs both or it dereferences whatever malloc left behind.
+	// The pattern set is shared rather than deep-copied -- it is immutable here and
+	// reference counted.
+	_clone_SiteModel_categories(sm, newsm);
+
+	newsm->proportions = NULL;
+	if ( sm->proportions != NULL ){
+		newsm->proportions = clone_Parameter(sm->proportions);
+	}
+
 	newsm->mu = NULL;
 	if ( sm->mu != NULL ){
 		newsm->mu = clone_Parameter(sm->mu);
@@ -1461,9 +1577,7 @@ SiteModel * clone_SiteModel_with( const SiteModel *sm ){
 	
 	newsm->integrate = sm->integrate;
 	newsm->need_update = false;
-	
-	newsm->set_rate = sm->set_rate;
-	
+
 	newsm->get_rate        = sm->get_rate;
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
@@ -1492,16 +1606,19 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* pro
 	newsm->rate_parameterization = sm->rate_parameterization;
 
 	newsm->rates = NULL;
-	
+
 	newsm->cat_count = sm->cat_count;
-	
+
 	if ( sm->rates != NULL ){
 		newsm->rates = new_Parameters(Parameters_count(sm->rates));
 		for (int i = 0; i < Parameters_count(sm->rates); i++) {
 			Parameters_add(newsm->rates, Parameters_at(params, i));
 		}
 	}
-	
+
+	// See clone_SiteModel_with: CAT's pattern set and category assignment.
+	_clone_SiteModel_categories(sm, newsm);
+
 	newsm->mu = NULL;
 	if ( mu != NULL ){
 		newsm->mu = mu;
@@ -1522,9 +1639,7 @@ SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* pro
 	
 	newsm->integrate = sm->integrate;
 	newsm->need_update = false;
-	
-	newsm->set_rate = sm->set_rate;
-	
+
 	newsm->get_rate        = sm->get_rate;
 	newsm->get_proportion  = sm->get_proportion;
 	newsm->get_proportions = sm->get_proportions;
@@ -1544,6 +1659,10 @@ void free_SiteModel( SiteModel *sm ){
 	if ( sm->mu != NULL ) free_Parameter(sm->mu);
 	if ( sm->class_rate != NULL ) free_Parameter(sm->class_rate);
 	if ( sm->cat_proportions != NULL ) free(sm->cat_proportions);
+	if ( sm->site_category != NULL ) free(sm->site_category);
+	// Only the empirical CAT model holds a pattern set, and it took a reference for
+	// it in new_CATSiteModel_with_parameters.
+	if ( sm->sp != NULL ) free_SitePattern(sm->sp);
 	free_Parameter(sm->proportions);
 	free(sm->cat_rates);
 	free(sm);
@@ -1843,7 +1962,8 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 		{"invariant", JSON_OPTIONAL, JSON_BOOL},
 		{"mean_contribution", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},  // discrete
 		{"mu", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
-		{"parameters", JSON_OPTIONAL, JSON_ANY},
+		// The category rates of the empirical CAT model, selected by "sitepattern".
+		{"parameters", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"proportion_invariant", JSON_OPTIONAL, JSON_OBJECT | JSON_NUMBER | JSON_STRING},
 		{"proportions", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 		{"quadrature", JSON_OPTIONAL, JSON_STRING},
@@ -2138,11 +2258,29 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 				json_node* alpha_node = _get_required_json_node(node, "alpha",
 				                                                "quadrature", method);
 				Parameter* alpha_parameter = new_Parameter_from_json(alpha_node, hash);
-				Parameters_move(rates, alpha_parameter);
 
 				json_node* beta_node = _get_required_json_node(node, "beta",
 				                                               "quadrature", method);
 				Parameter* beta_parameter = new_Parameter_from_json(beta_node, hash);
+
+				// GSL's iterative Beta inverse-CDF stops converging once either shape
+				// gets small -- 0.02 already fails -- and a line search on alpha or
+				// beta bounded only by 0 walks right into that region. Unless the user
+				// pinned an explicit positive lower bound, keep both shapes above the
+				// awkward zone. This is a usability bound, not a guarantee: the inverse
+				// also fails for extreme *ratios* (alpha=1000 with beta=0.5), so
+				// _beta_quantiles remains the ultimate safety net.
+				Parameter* shapes[2] = {alpha_parameter, beta_parameter};
+				for (int i = 0; i < 2; i++) {
+					if (Parameter_lower(shapes[i]) <= 0.0) {
+						Parameter_set_lower(shapes[i], BETA_QUADRATURE_SHAPE_LOWER);
+						if (Parameter_value(shapes[i]) < BETA_QUADRATURE_SHAPE_LOWER) {
+							Parameter_set_value(shapes[i], BETA_QUADRATURE_SHAPE_LOWER);
+						}
+					}
+				}
+
+				Parameters_move(rates, alpha_parameter);
 				Parameters_move(rates, beta_parameter);
 			}
 			else if(quad == QUADRATURE_KUMARASWAMY){
@@ -2229,15 +2367,39 @@ Model* new_SiteModel_from_json(json_node*node, Hashtable*hash){
 	SiteModel* sm = NULL;
 	
 	if (sp_ref != NULL) {
+		// "sitepattern" selects the empirical CAT model, which reads its categories
+		// off the alignment. Everything describing a rate *distribution* would be
+		// silently dropped on the floor here, so refuse it rather than quietly
+		// fitting a different model than the one that was asked for.
+		if (distribution_node != NULL || proportions_node != NULL ||
+		    proportion_invariant_node != NULL || discretization_node != NULL ||
+		    free_class) {
+			json_die(node, "\"sitepattern\" selects the empirical CAT site model, "
+			               "whose categories come from the alignment; it cannot also "
+			               "take a rate \"distribution\" or its weights");
+		}
 		int cat = get_json_node_value_int(node, "categories", 4);
 		SitePattern* sp = Hashtable_get(hash, sp_ref+1);
-		json_node* params_node = get_json_node(node, "parameters");
-		get_parameter_list_from_node(params_node, rates);
-//		get_parameters_references(node, hash, rates);
-		for (int i = 0; i < Parameters_count(rates); i++) {
-			Hashtable_add(hash, Parameters_name(rates, i), Parameters_at(rates, i));
+		if (sp == NULL) {
+			json_die(node, "\"sitepattern\" refers to \"%s\", which is not defined",
+			         sp_ref + 1);
 		}
-		
+		json_node* params_node = get_json_node(node, "parameters");
+		if (params_node == NULL) {
+			json_die(node, "the CAT site model reads its category rates from "
+			               "\"parameters\"");
+		}
+		// One vector parameter of "categories" elements, like every other rate
+		// parameterization. The rates are indexed by category, so a mis-sized one is
+		// a read off the end of the parameter rather than a different model.
+		Parameters_move(rates, new_Parameter_from_json(params_node, hash));
+		Parameter* cat_rates = Parameters_at(rates, 0);
+		if (Parameter_size(cat_rates) != (size_t)cat) {
+			json_die(node, "\"parameters\" holds %zu rate(s) but \"categories\" is %d",
+			         Parameter_size(cat_rates), cat);
+		}
+		Hashtable_add(hash, Parameter_name(cat_rates), cat_rates);
+
 		sm = new_CATSiteModel_with_parameters(rates, cat, sp);
 	}
 	else {

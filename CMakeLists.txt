@@ -241,6 +241,7 @@ if(DISABLE_GSL)
         src/phyc/treeio.c
         src/phyc/treelikelihood.c
         src/phyc/treelikelihood4.c
+        src/phyc/treelikelihood4CAT.c
         src/phyc/treelikelihood20.c
         src/phyc/treelikelihoodCodon.c
         src/phyc/treelikelihoodX.c

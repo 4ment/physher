@@ -1430,6 +1430,10 @@ void get_parameters_slice(const char* ref, Parameters* parameters, Hashtable* ha
 	}
 	*start = '\0';
 	Parameters* ps = Hashtable_get(hash, copy);
+	if (ps == NULL) {
+		fprintf(stderr, "Reference '%s' does not match any Parameters declared earlier\n", copy);
+		exit(1);
+	}
 	start++;
 	start[strlen(start)-1] = '\0';
 	int begin = 0;
@@ -1485,10 +1489,18 @@ void get_parameter_reference(const char* ref, Hashtable* hash, Parameters* param
 	}
 	else if (ref[0] == '&') {
 		Parameter* p = Hashtable_get(hash, ref + 1);
+		if (p == NULL) {
+			fprintf(stderr, "Reference '%s' does not match any Parameter declared earlier\n", ref);
+			exit(1);
+		}
 		Parameters_add(parameters, p);
 	}
 	else if (ref[0] == '%') {
 		Parameters* ps = Hashtable_get(hash, ref + 1);
+		if (ps == NULL) {
+			fprintf(stderr, "Reference '%s' does not match any Parameters declared earlier\n", ref);
+			exit(1);
+		}
 		Parameters_add_parameters(parameters, ps);
 	}
 	else {
