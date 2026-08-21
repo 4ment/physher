@@ -202,7 +202,7 @@ static opt_result cat_optimize( Optimizer *opt, double *fmin ){
 	// The guard refused the new assignment and put the old one back, so this entry
 	// left the model where it found it -- the same thing serial Brent reports when
 	// it rolls back to its incoming value, and the schedule already resyncs on the
-	// target and marks the row failed rather than abandoning the run.
+	// target and marks the row reverted rather than abandoning the run.
 	if (cat.reverted) return OPT_FAIL;
 	return OPT_SUCCESS;
 }
@@ -463,7 +463,12 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 			Optimizer* opt = schedule->optimizers[i];
 			const double lnl_before = lnl;
 			size_t entry_evals = 0;
-			bool entry_failed = false;
+			// An entry that rolls back to the state it came in with (OPT_FAIL) is
+			// a normal no-op -- Brent refusing a worse branch length, CAT's guard
+			// restoring the previous assignment -- and is reported as such. Only
+			// OPT_ERROR is an actual failure.
+			bool entry_reverted = false;
+			bool entry_error = false;
 			struct timespec entry_start;
 			time_monotonic(&entry_start);
 			// Read the round count, do not overwrite it. This used to assign
@@ -504,7 +509,8 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 					fret = f(NULL, NULL, data);
 					stop->f_eval_current++;
 					entry_evals++;
-					entry_failed = true;
+					if (status == OPT_ERROR) entry_error = true;
+					else entry_reverted = true;
 				}
 			}
 			lnl = fret;
@@ -513,12 +519,15 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 				char detail[128];
 				const char* name = meta_entry_name(opt);
 				meta_entry_detail(opt, name, detail, sizeof(detail));
-				if (entry_failed) {
+				if (entry_error || entry_reverted) {
 					// Reported in the row rather than on stderr so it stays next
-					// to the sweep it happened in.
+					// to the sweep it happened in. An error over a revert when a
+					// multi-round entry did both: the error is the one worth
+					// looking at.
 					size_t used = strlen(detail);
-					snprintf(detail + used, sizeof(detail) - used, "%s[failed]",
-					         used > 0 ? "  " : "");
+					snprintf(detail + used, sizeof(detail) - used, "%s%s",
+					         used > 0 ? "  " : "",
+					         entry_error ? "[failed]" : "[reverted]");
 				}
 				meta_print_row(name_width, sweep + 1, name,
 				               OPT_ALGORITHMS[opt->algorithm], sign*lnl, sign*(lnl - lnl_before),
@@ -1222,10 +1231,12 @@ Optimizer* new_Optimizer_from_json(json_node* node, Hashtable* hash){
 	    {"maximize", JSON_OPTIONAL, JSON_ANY},
 	    {"min", JSON_OPTIONAL, JSON_ANY},
 	    {"model", JSON_OPTIONAL, JSON_STRING},
+	    {"npmle_iterations", JSON_OPTIONAL, JSON_NUMBER},
+	    {"npmle_tolerance", JSON_OPTIONAL, JSON_NUMBER},
 	    {"parameters", JSON_OPTIONAL, JSON_ANY},
 	    {"patience", JSON_OPTIONAL, JSON_NUMBER},
 	    {"precision", JSON_OPTIONAL, JSON_NUMBER},
-	    {"prior", JSON_OPTIONAL, JSON_NUMBER},
+	    {"prior", JSON_OPTIONAL, JSON_NUMBER | JSON_STRING},
 	    {"probe", JSON_OPTIONAL, JSON_NUMBER},
 	    {"rounds", JSON_OPTIONAL, JSON_ANY},
 		{"target", JSON_REQUIRED, JSON_STRING|JSON_OBJECT},

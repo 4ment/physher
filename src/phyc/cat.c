@@ -32,10 +32,37 @@
 // a different order, and reverting on that would refuse a step that changed nothing.
 // The same idiom, and the same order of magnitude, as the meta schedule's tolfx test.
 #define CAT_REVERT_TOLERANCE 1.e-10
+// Passes the nonparametric prior is allowed, and the Kiefer-Wolfowitz gap it is
+// happy to stop at. The pass never touches the tree, so both are cheap in absolute
+// terms -- P x M arithmetic against a tree traversal's P x nodes x states^2 -- but
+// EM crawls once the estimate is nearly sparse, and on fluA the gap is still around
+// 5.e-5 after ten thousand passes. The cap is therefore what normally ends the
+// iteration, and it is set where the answer has stopped moving rather than where
+// the certificate is satisfied: on that alignment the tree length is stable to five
+// figures by pass 500 and the CAT likelihood to a fifth of a log unit by pass 1000,
+// while a further nine thousand passes buy 0.16 of one. A run that wants the
+// certificate raises "npmle_iterations".
+#define CAT_NPMLE_ITERATIONS 1000
+#define CAT_NPMLE_TOLERANCE 1.e-4
+// Floor on the mass the estimated prior may put on a grid rate. The nonparametric
+// MLE genuinely wants zeros -- that is what makes it discrete -- but a zero read as
+// a prior is an unbreakable veto, and one arrived at by an iteration that was cut
+// off at CAT_NPMLE_ITERATIONS is a veto nobody chose. The floor bounds it instead:
+// a pattern has to beat the supported rates by log(1/CAT_NPMLE_FLOOR) = 230 log
+// units before a floored rate can win, which no single alignment column does. It
+// also keeps the mixture density strictly positive, so the EM ratio below cannot
+// divide by zero however sparse the estimate becomes.
+#define CAT_NPMLE_FLOOR 1.e-100
+// What counts as an atom when reporting the support: mass above this is a rate the
+// estimate actually uses, rather than one it is on its way to discarding.
+#define CAT_NPMLE_ATOM 1.e-6
 
 CatOptions cat_options_default(cat_assignment_t assignment){
 	CatOptions options;
 	options.assignment = assignment;
+	options.prior = CAT_PRIOR_FIXED;
+	options.npmle_iterations = CAT_NPMLE_ITERATIONS;
+	options.npmle_tolerance = CAT_NPMLE_TOLERANCE;
 	// FastTree hard-codes a Gamma(3, 1/3) prior and the arg-max rule was tuned
 	// against it, so that pairing is kept. The posterior mean already shrinks by
 	// the right amount on its own, and stacking the prior on top of it shrinks
@@ -54,6 +81,165 @@ static void _cat_log_prior(double* log_prior, const double* rates, int count,
 	for (int i = 0; i < count; i++) {
 		log_prior[i] = (shape - 1.0)*log(rates[i]) - shape*rates[i];
 	}
+}
+
+// How the estimated prior turned out, for CatResult and the verbose print.
+typedef struct {
+	int atoms;
+	int passes;
+	double gap;
+} _cat_npmle_report;
+
+// Nonparametric maximum likelihood estimate of the prior over the rate grid.
+//
+// Both assignment rules weight the per-pattern profile by a prior over the grid,
+// and until now that prior was picked rather than estimated: flat, or FastTree's
+// mean-one Gamma(3, 1/3). Neither is the rate distribution of the alignment in
+// front of it, and the posterior mean is only an empirical-Bayes estimator if the
+// prior it shrinks toward came from the data. Estimating it is the g-modelling half
+// of empirical Bayes, and it can be done without assuming a family at all: over
+// distributions g on the M grid rates the marginal log-likelihood
+//
+//     L(g) = sum_i n_i log( sum_j g_j L_ij )
+//
+// is concave, so it has a well-defined maximiser -- the classical nonparametric MLE
+// of a mixing distribution (Kiefer & Wolfowitz 1956; Laird 1978; Koenker & Mizera
+// 2014). L_ij is the profile the assignment already built, so the whole estimate
+// costs no tree traversals, only M x P arithmetic per pass.
+//
+// The pass is the EM (vertex-direction) update
+//
+//     D_j = sum_i n_i L_ij / sum_k g_k L_ik,      g_j <- g_j D_j / N,
+//
+// which stays on the simplex -- sum_j g_j D_j / N = (1/N) sum_i n_i = 1 -- and
+// cannot decrease L. D_j is also the certificate: the Kiefer--Wolfowitz condition
+// for optimality is D_j <= N at every grid rate, with equality wherever g puts mass,
+// so sup_j D_j/N - 1 measures how far the current g is from the maximum rather than
+// how far the last step moved. That gap is what the loop stops on, and what it
+// reports when it runs out of passes instead.
+//
+// Two properties of the answer are worth expecting rather than being surprised by.
+//
+// It is *discrete* -- the maximiser is supported on at most P of the M rates, and
+// the mass on the rest goes to zero -- but it is approached from a dense start and
+// the doomed masses only decay geometrically, so `report->atoms` after a bounded
+// number of passes measures how far the iteration got as much as it measures the
+// true support. On fluA it is 18 of 20 after a thousand passes. What is diagnostic
+// is a *collapse*: an estimate that puts everything on one rate, and in particular
+// on an end of the grid, is saying that no mixture beats rescaling the whole tree,
+// which is what a badly scaled set of branch lengths looks like from here.
+//
+// And it is a prior on the rates, not a set of category weights: CAT assigns every
+// pattern to one category with proportion 1, so what the estimate changes is where
+// each pattern's posterior mean is pulled to, not how the likelihood mixes. Taking
+// the atoms themselves as the categories -- the other half of what a nonparametric
+// estimate offers -- would replace the quantizer, and is not what this does.
+static void _cat_npmle(double* log_prior, const double* likelihoods,
+                       const double* pattern_weights, int pattern_count,
+                       const double* widths, int count, int max_passes,
+                       double tolerance, _cat_npmle_report* report){
+	// exp(profile - per-pattern maximum), so a pattern sitting at -800 does not
+	// underflow its whole row to zero. The shift is constant along a row, which
+	// scales that row's mixture density by a constant and so moves L(g) by an
+	// additive constant: it cancels out of D_j exactly. The row's maximum entry is
+	// 1, which is what keeps the mixture density strictly positive below.
+	double* scaled = dvector((size_t)pattern_count*count);
+	for (int i = 0; i < pattern_count; i++) {
+		double max = -DBL_MAX;
+		for (int j = 0; j < count; j++) {
+			double value = likelihoods[j*pattern_count + i];
+			if (value > max) max = value;
+		}
+		for (int j = 0; j < count; j++) {
+			scaled[(size_t)i*count + j] = exp(likelihoods[j*pattern_count + i] - max);
+		}
+	}
+
+	// Start from the prior the grid itself implies: flat in rate density, so each
+	// point carries its cell width, which is 1 everywhere on an evenly spaced grid.
+	// The problem is concave, so the starting point decides how long the iteration
+	// takes and not where it goes.
+	double* g = dvector(count);
+	double* gradient = dvector(count);
+	double total = 0;
+	for (int j = 0; j < count; j++) total += widths[j];
+	for (int j = 0; j < count; j++) g[j] = widths[j]/total;
+
+	double sites = 0;
+	for (int i = 0; i < pattern_count; i++) sites += pattern_weights[i];
+
+	// The gap is measured on the g that is about to be updated and the loop leaves
+	// as soon as it is small enough, so `gap` on the way out always belongs to the
+	// g that is returned and `pass` is the number of updates that produced it.
+	//
+	// Note that the gap is a certificate and not a progress meter: L(g) rises every
+	// pass, but sup_j D_j can rise too, and on fluA the gap at pass 1000 is
+	// sometimes larger than at pass 500. What that says is that a run is nearly
+	// always stopped by `max_passes`, which is why the default sits where the
+	// estimate has settled rather than where the gap has.
+	double gap = INFINITY;
+	int pass = 0;
+	while (true) {
+		for (int j = 0; j < count; j++) gradient[j] = 0;
+		for (int i = 0; i < pattern_count; i++) {
+			const double* row = scaled + (size_t)i*count;
+			double mixture = 0;
+			for (int j = 0; j < count; j++) mixture += g[j]*row[j];
+			double weight = pattern_weights[i]/mixture;
+			for (int j = 0; j < count; j++) gradient[j] += weight*row[j];
+		}
+		gap = 0;
+		for (int j = 0; j < count; j++) {
+			double excess = gradient[j]/sites - 1.0;
+			if (excess > gap) gap = excess;
+		}
+		if (gap <= tolerance || pass >= max_passes) break;
+		for (int j = 0; j < count; j++) {
+			g[j] = fmax(g[j]*gradient[j]/sites, CAT_NPMLE_FLOOR);
+		}
+		pass++;
+	}
+
+	report->atoms = 0;
+	report->passes = pass;
+	report->gap = gap;
+	for (int j = 0; j < count; j++) {
+		if (g[j] > CAT_NPMLE_ATOM) report->atoms++;
+		log_prior[j] = log(g[j]);
+	}
+
+	free(scaled);
+	free(g);
+	free(gradient);
+}
+
+// The log prior *mass* each grid rate carries, which is what both assignment rules
+// weight the profile by. `widths` is the cell width of each rate in log rate, so a
+// fixed prior stays a prior on the rate rather than on the grid points however
+// unevenly they are laid out; it is 1 everywhere on an evenly spaced grid, where
+// this reduces to the log density.
+static void _cat_prior(double* log_prior, const double* rates, const double* widths,
+                       int count, const double* likelihoods,
+                       const double* pattern_weights, int pattern_count,
+                       const CatOptions* options, _cat_npmle_report* report){
+	if (options->prior == CAT_PRIOR_NPMLE) {
+		_cat_npmle(log_prior, likelihoods, pattern_weights, pattern_count, widths,
+		           count, options->npmle_iterations, options->npmle_tolerance,
+		           report);
+		if (options->verbosity > 0) {
+			printf("CAT estimated prior: %d of %d rates carry mass, "
+			       "Kiefer-Wolfowitz gap %g after %d passes\n", report->atoms,
+			       count, report->gap, report->passes);
+		}
+		return;
+	}
+	if (options->prior_shape > 0) {
+		_cat_log_prior(log_prior, rates, count, options->prior_shape);
+	}
+	else {
+		for (int j = 0; j < count; j++) log_prior[j] = 0;
+	}
+	for (int j = 0; j < count; j++) log_prior[j] += log(widths[j]);
 }
 
 // Fill likelihoods[count x P] with the per-pattern log-likelihood at each rate.
@@ -276,7 +462,8 @@ static void _cat_probe_grid(double* probe_rates, double* probe_weights,
 // Returns the number of traversals _cat_probe performed.
 static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
                                       int cat_count, const CatOptions* options,
-                                      const double* previous, int previous_count){
+                                      const double* previous, int previous_count,
+                                      _cat_npmle_report* report){
 	int pattern_count = tlk->sp->count;
 	int probe_count = options->probe_count;
 	if (probe_count < cat_count) probe_count = cat_count;
@@ -294,21 +481,24 @@ static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
 		       previous == NULL ? "evenly spaced"
 		                        : "refined around the previous round's centres");
 	}
-	double* log_prior = dvector(probe_count);
-	if (options->prior_shape > 0) {
-		_cat_log_prior(log_prior, probe_rates, probe_count, options->prior_shape);
-	}
-
 	double* likelihoods = malloc(sizeof(double)*probe_count*pattern_count);
 	_cat_probe(tlk, probe_rates, probe_count, likelihoods);
+
+	double* weights = dvector(pattern_count);
+	for (int i = 0; i < pattern_count; i++) weights[i] = tlk->sp->weights[i];
+
+	// The prior comes after the probe because an estimated one is estimated *from*
+	// the probe: the nonparametric MLE reads the whole P x M profile. A fixed prior
+	// does not care when it is built.
+	double* log_prior = dvector(probe_count);
+	_cat_prior(log_prior, probe_rates, probe_weights, probe_count, likelihoods,
+	           weights, pattern_count, options, report);
 
 	// The quantizer works on log rates: the profile is close to symmetric there,
 	// and the rate distributions this approximates (gamma, lognormal) put their
 	// structure on the log scale.
 	double* estimates = dvector(pattern_count);
-	double* weights = dvector(pattern_count);
 	for (int i = 0; i < pattern_count; i++) {
-		weights[i] = tlk->sp->weights[i];
 		double max = -DBL_MAX;
 		for (int j = 0; j < probe_count; j++) {
 			double logP = likelihoods[j*pattern_count + i] + log_prior[j];
@@ -317,11 +507,10 @@ static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
 		double numerator = 0;
 		double denominator = 0;
 		for (int j = 0; j < probe_count; j++) {
-			// probe_weights is the cell width each rate stands for, so a grid
-			// whose rates are not evenly spaced still integrates the same
-			// posterior; it is 1 everywhere on an evenly spaced one.
-			double posterior = exp(likelihoods[j*pattern_count + i] + log_prior[j] - max)
-			                   *probe_weights[j];
+			// log_prior is the prior mass of the rate, cell width included, so a
+			// grid whose rates are not evenly spaced still integrates the same
+			// posterior.
+			double posterior = exp(likelihoods[j*pattern_count + i] + log_prior[j] - max);
 			numerator += posterior*probe_rates[j];
 			denominator += posterior;
 		}
@@ -350,14 +539,22 @@ static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
 // Returns the number of traversals _cat_probe performed.
 static int _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
                               int cat_count, const CatOptions* options,
-                              int* counts){
+                              int* counts, _cat_npmle_report* report){
 	int pattern_count = tlk->sp->count;
-	double* log_prior = dvector(cat_count);
-	if (options->prior_shape > 0) {
-		_cat_log_prior(log_prior, rates, cat_count, options->prior_shape);
-	}
 	double* likelihoods = malloc(sizeof(double)*pattern_count*cat_count);
 	_cat_probe(tlk, rates, cat_count, likelihoods);
+
+	// This grid is evenly spaced in log rate, so every rate stands for the same
+	// cell and the widths are all one; they are passed anyway so that both rules
+	// build their prior through the same call.
+	double* widths = dvector(cat_count);
+	double* weights = dvector(pattern_count);
+	for (int j = 0; j < cat_count; j++) widths[j] = 1.0;
+	for (int i = 0; i < pattern_count; i++) weights[i] = tlk->sp->weights[i];
+
+	double* log_prior = dvector(cat_count);
+	_cat_prior(log_prior, rates, widths, cat_count, likelihoods, weights,
+	           pattern_count, options, report);
 
 	for (int i = 0; i < pattern_count; i++) {
 		int best = 0;
@@ -376,6 +573,8 @@ static int _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
 			counts[best]++;
 		}
 	}
+	free(widths);
+	free(weights);
 	free(log_prior);
 	free(likelihoods);
 	return cat_count;
@@ -400,6 +599,7 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	Parameter* cat_rates = Parameters_at(sm->rates, 0);
 	CatResult result;
 	result.reverted = false;
+	_cat_npmle_report report = {0, 0, 0.0};
 
 	// The number the new assignment has to beat, taken before site_category is
 	// cleared: after that every pattern reads block 0 and the value would be the
@@ -464,14 +664,15 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	if (options->assignment == CAT_ASSIGNMENT_POSTERIOR_MEAN) {
 		result.evaluations += _cat_assign_posterior_mean(tlk, rates, cat_count, options,
 		                                                previous_centres,
-		                                                previous_count);
+		                                                previous_count, &report);
 		if(options->verbosity > 0){
 			for (int i = 0; i < pattern_count; i++) counts[sm->site_category[i]]++;
 			print_dvector(rates, cat_count);
 		}
 	}
 	else {
-		result.evaluations += _cat_assign_argmax(tlk, rates, cat_count, options, counts);
+		result.evaluations += _cat_assign_argmax(tlk, rates, cat_count, options, counts,
+		                                         &report);
 	}
 
 	// The category rates are one vector parameter. Every element but the last goes
@@ -520,6 +721,10 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 		}
 	}
 
+	result.npmle_atoms = report.atoms;
+	result.npmle_passes = report.passes;
+	result.npmle_gap = report.gap;
+
 	free(stored_categories);
 	free(stored_rates);
 	free(previous_centres);
@@ -551,14 +756,38 @@ CatOptions cat_options_from_json(json_node* node){
 	}
 
 	CatOptions options = cat_options_default(rule);
-	// Shape of the mean-one Gamma prior on the category rate. FastTree's value, and
-	// on by default for the arg-max: without it the selected rate is unshrunk, the
-	// assigned rates are over-dispersed and the branches stretch -- badly so on
-	// small trees. Set to 0 to select on the likelihood alone. The posterior mean
-	// defaults to 0 for the opposite reason: it shrinks on its own.
-	options.prior_shape = get_json_node_value_double(node, "prior", options.prior_shape);
+
+	// "prior" is either a number -- the shape of the mean-one Gamma prior on the
+	// category rate -- or the string "npmle", which estimates the prior instead of
+	// naming one.
+	//
+	// The shape is FastTree's value and on by default for the arg-max: without it
+	// the selected rate is unshrunk, the assigned rates are over-dispersed and the
+	// branches stretch -- badly so on small trees. Set to 0 to select on the
+	// likelihood alone. The posterior mean defaults to 0 for the opposite reason:
+	// it shrinks on its own.
+	json_node* prior_node = get_json_node(node, "prior");
+	if (prior_node != NULL && prior_node->node_type == MJSON_STRING) {
+		const char* prior = (const char*)prior_node->value;
+		if (strcasecmp(prior, "npmle") == 0) {
+			options.prior = CAT_PRIOR_NPMLE;
+		}
+		else {
+			json_die(node, "\"prior\" is a Gamma shape or the string \"npmle\", "
+			               "not \"%s\"", prior);
+		}
+	}
+	else {
+		options.prior_shape = get_json_node_value_double(node, "prior",
+		                                                 options.prior_shape);
+	}
+
 	options.probe_count = get_json_node_value_int(node, "probe", options.probe_count);
 	options.verbosity = get_json_node_value_int(node, "verbosity", 0);
+	options.npmle_iterations = get_json_node_value_int(node, "npmle_iterations",
+	                                                   options.npmle_iterations);
+	options.npmle_tolerance = get_json_node_value_double(node, "npmle_tolerance",
+	                                                     options.npmle_tolerance);
 	if (rule == CAT_ASSIGNMENT_ARGMAX && get_json_node(node, "probe") != NULL) {
 		json_die(node, "\"probe\" sets the size of the grid the posterior mean is "
 		               "built on; \"assignment\": \"argmax\" scores the categories "
@@ -566,6 +795,22 @@ CatOptions cat_options_from_json(json_node* node){
 	}
 	if (options.probe_count < 0) {
 		json_die(node, "\"probe\" must be positive, not %d", options.probe_count);
+	}
+	// The two NPMLE knobs only mean anything under the estimated prior, and a run
+	// that set them and got FastTree's Gamma would be silently ignoring them.
+	if (options.prior != CAT_PRIOR_NPMLE
+	    && (get_json_node(node, "npmle_iterations") != NULL
+	        || get_json_node(node, "npmle_tolerance") != NULL)) {
+		json_die(node, "\"npmle_iterations\" and \"npmle_tolerance\" tune the "
+		               "estimated prior; ask for it with \"prior\": \"npmle\"");
+	}
+	if (options.npmle_iterations < 1) {
+		json_die(node, "\"npmle_iterations\" must be positive, not %d",
+		         options.npmle_iterations);
+	}
+	if (!(options.npmle_tolerance >= 0)) {
+		json_die(node, "\"npmle_tolerance\" must not be negative, not %g",
+		         options.npmle_tolerance);
 	}
 	return options;
 }
@@ -575,7 +820,9 @@ void cat_estimator_from_json(json_node* node, Hashtable* hash){
 	    {"assignment", JSON_OPTIONAL, JSON_STRING},
 	    {"id", JSON_OPTIONAL, JSON_STRING},
 	    {"model", JSON_REQUIRED, JSON_STRING},
-	    {"prior", JSON_OPTIONAL, JSON_NUMBER},
+	    {"npmle_iterations", JSON_OPTIONAL, JSON_NUMBER},
+	    {"npmle_tolerance", JSON_OPTIONAL, JSON_NUMBER},
+	    {"prior", JSON_OPTIONAL, JSON_NUMBER | JSON_STRING},
 	    {"probe", JSON_OPTIONAL, JSON_NUMBER},
 	    {"type", JSON_OPTIONAL, JSON_STRING},
 	    {"verbosity", JSON_OPTIONAL, JSON_NUMBER},

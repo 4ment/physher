@@ -52,7 +52,7 @@ static double* _grid(int count) {
 static double* _profile(const char* file, const double* rates, int count,
                         int* pattern_count) {
     Hashtable* hash = _new_hash();
-    Model* model = _treelikelihood_from_file("jc69-cat-ref.json", hash);
+    Model* model = _treelikelihood_from_file(file, hash);
     SingleTreeLikelihood* tlk = model->obj;
     Parameter* mu = Hashtable_get(hash, "mu");
     *pattern_count = tlk->sp->count;
@@ -67,6 +67,56 @@ static double* _profile(const char* file, const double* rates, int count,
     model->free(model);
     free_Hashtable(hash);
     return profile;
+}
+
+// The nonparametric MLE of the prior over the grid, recomputed here so the tests do
+// not have to trust the copy in cat.c. Plain EM from the flat start,
+// g_j <- g_j D_j / N with D_j = sum_i n_i L_ij / sum_k g_k L_ik, run for a fixed
+// number of passes so the comparison is deterministic. The floor mirrors
+// CAT_NPMLE_FLOOR in cat.c: without it the two iterations part company as soon as a
+// rate is driven out of the estimate. Writes the Kiefer--Wolfowitz gap of the
+// distribution it returns to `gap`.
+static double* _npmle(const double* profile, const double* weights,
+                      int pattern_count, int count, int passes, double* gap) {
+    double* scaled = dvector(pattern_count * count);
+    for (int i = 0; i < pattern_count; i++) {
+        double max = -INFINITY;
+        for (int j = 0; j < count; j++) {
+            double value = profile[j * pattern_count + i];
+            if (value > max) max = value;
+        }
+        for (int j = 0; j < count; j++) {
+            scaled[i * count + j] = exp(profile[j * pattern_count + i] - max);
+        }
+    }
+    double sites = 0;
+    for (int i = 0; i < pattern_count; i++) sites += weights[i];
+
+    double* g = dvector(count);
+    double* gradient = dvector(count);
+    for (int j = 0; j < count; j++) g[j] = 1.0 / count;
+    for (int pass = 0;; pass++) {
+        for (int j = 0; j < count; j++) gradient[j] = 0;
+        for (int i = 0; i < pattern_count; i++) {
+            const double* row = scaled + i * count;
+            double mixture = 0;
+            for (int j = 0; j < count; j++) mixture += g[j] * row[j];
+            double weight = weights[i] / mixture;
+            for (int j = 0; j < count; j++) gradient[j] += weight * row[j];
+        }
+        *gap = 0;
+        for (int j = 0; j < count; j++) {
+            double excess = gradient[j] / sites - 1.0;
+            if (excess > *gap) *gap = excess;
+        }
+        if (pass >= passes) break;
+        for (int j = 0; j < count; j++) {
+            g[j] = fmax(g[j] * gradient[j] / sites, 1.e-100);
+        }
+    }
+    free(scaled);
+    free(gradient);
+    return g;
 }
 
 static char* test_options_default(void) {
@@ -130,6 +180,195 @@ static char* test_argmax_matches_reference(void) {
 
 static char* test_argmax_prior_matches_reference(void) {
     return _check_argmax_matches_reference(3.0);
+}
+
+// The estimated prior, end to end. The assignment under "prior": "npmle" has to be
+// the one an independently computed nonparametric MLE implies, pattern for pattern,
+// and the optimality gap the call reports has to be that estimate's gap -- which
+// together pin both halves: that the profile reaching the estimator is the right
+// one, and that the estimator is solving the problem it claims to.
+//
+// The pass cap is small and the tolerance zero so the cap is what stops both
+// iterations and the comparison is against a defined iterate rather than against
+// whatever two convergence tests happened to accept.
+static char* test_npmle_matches_reference(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat-short.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+    int count = (int)sm->cat_count;
+
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
+    options.prior = CAT_PRIOR_NPMLE;
+    options.npmle_iterations = 200;
+    options.npmle_tolerance = 0.0;
+    CatResult result = fasttree_cat(tlk, &options);
+
+    double* rates = _grid(count);
+    int pattern_count = 0;
+    double* profile = _profile("jc69-cat-short-ref.json", rates, count,
+                               &pattern_count);
+    mu_assert(pattern_count == tlk->sp->count, "CAT: reference has other patterns");
+
+    double gap = 0;
+    double* g = _npmle(profile, tlk->sp->weights, pattern_count, count, 200, &gap);
+
+    char* failure = NULL;
+    if (result.npmle_passes != 200) {
+        failure = (char*)"CAT: the estimated prior did not run the passes it was given";
+    }
+    if (failure == NULL && fabs(result.npmle_gap - gap) > 1.e-8 * fmax(1.0, gap)) {
+        failure = (char*)"CAT: the reported optimality gap is not the gap of the "
+                         "nonparametric MLE of the prior";
+    }
+    int atoms = 0;
+    for (int j = 0; j < count; j++) {
+        if (g[j] > 1.e-6) atoms++;
+    }
+    if (failure == NULL && result.npmle_atoms != atoms) {
+        failure = (char*)"CAT: the reported support of the estimated prior is not "
+                         "the support of the nonparametric MLE";
+    }
+    for (int i = 0; failure == NULL && i < pattern_count; i++) {
+        int best = 0;
+        double best_value = -INFINITY;
+        for (int c = 0; c < count; c++) {
+            double value = profile[c * pattern_count + i] + log(g[c]);
+            if (value > best_value) {
+                best_value = value;
+                best = c;
+            }
+        }
+        if (sm->site_category[i] != best) {
+            failure = (char*)"CAT: the arg-max under the estimated prior disagrees "
+                             "with the reference";
+        }
+    }
+
+    free(g);
+    free(profile);
+    free(rates);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+// The gap is a certificate, not a progress meter: when the loop stops on it the
+// answer really is that close to the maximum. Given enough passes and a tolerance
+// it can reach, the run has to end on the tolerance rather than on the cap.
+static char* test_npmle_stops_on_its_certificate(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    options.prior = CAT_PRIOR_NPMLE;
+    options.npmle_iterations = 100000;
+    options.npmle_tolerance = 1.e-3;
+    CatResult result = fasttree_cat(tlk, &options);
+
+    char* failure = NULL;
+    if (result.npmle_passes >= options.npmle_iterations) {
+        failure = (char*)"CAT: the estimated prior never met its own tolerance";
+    }
+    if (failure == NULL && !(result.npmle_gap <= options.npmle_tolerance)) {
+        failure = (char*)"CAT: the estimated prior stopped above the gap it was "
+                         "asked for";
+    }
+    // A distribution has to put its mass somewhere, and it cannot put it on more
+    // rates than the grid offers.
+    if (failure == NULL
+        && (result.npmle_atoms < 1 || result.npmle_atoms > options.probe_count)) {
+        failure = (char*)"CAT: the estimated prior is supported on an impossible "
+                         "number of rates";
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+// One category is one grid rate, and the only distribution on one point is the one
+// that puts everything there. That is already optimal, so the iteration has nothing
+// to do and must say so rather than spending its budget.
+static char* test_npmle_single_category(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat1.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
+    options.prior = CAT_PRIOR_NPMLE;
+    CatResult result = fasttree_cat(tlk, &options);
+
+    char* failure = NULL;
+    if (result.npmle_atoms != 1 || result.npmle_passes != 0
+        || fabs(result.npmle_gap) > TOL) {
+        failure = (char*)"CAT: the estimated prior on a single rate is not the point "
+                         "mass, already optimal";
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+// The diagnostics belong to the estimated prior and mean nothing without one, so a
+// fixed prior has to leave them alone rather than report a stale or invented
+// number.
+static char* test_npmle_diagnostics_only_when_estimated(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
+    CatResult result = fasttree_cat(tlk, &options);
+
+    char* failure = NULL;
+    if (result.npmle_atoms != 0 || result.npmle_passes != 0 || result.npmle_gap != 0) {
+        failure = (char*)"CAT: a fixed prior reported an estimated one's diagnostics";
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+// Estimating the prior has to change something, or the option is decoration. The
+// flat prior is the one it starts from, so the comparison is against that rather
+// than against FastTree's Gamma, and it is made on the category rates because those
+// are what the estimate is meant to move.
+static char* test_npmle_moves_the_rates(void) {
+    Hashtable* hash = _new_hash();
+    Model* flat_model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* flat_tlk = flat_model->obj;
+    CatOptions flat = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    fasttree_cat(flat_tlk, &flat);
+    double* flat_rates = clone_dvector(flat_tlk->sm->cat_rates,
+                                       flat_tlk->sm->cat_count);
+    flat_model->free(flat_model);
+    free_Hashtable(hash);
+
+    hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    options.prior = CAT_PRIOR_NPMLE;
+    fasttree_cat(tlk, &options);
+
+    bool moved = false;
+    for (size_t c = 0; c < tlk->sm->cat_count; c++) {
+        if (fabs(tlk->sm->cat_rates[c] - flat_rates[c]) > TOL) moved = true;
+    }
+    char* failure = NULL;
+    if (!moved) {
+        failure = (char*)"CAT: estimating the prior left the categories where the "
+                         "flat prior put them";
+    }
+
+    free(flat_rates);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
 }
 
 // A prior this strong swamps every likelihood difference, so the choice stops
@@ -297,13 +536,14 @@ static char* test_posterior_mean_refines(void) {
 
 // Whatever the rule, the assignment has to be usable: every pattern in range, and
 // every rate a positive finite number the site model can normalise.
-static char* _check_wellformed(cat_assignment_t rule) {
+static char* _check_wellformed(cat_assignment_t rule, cat_prior_t prior) {
     Hashtable* hash = _new_hash();
     Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
     SingleTreeLikelihood* tlk = model->obj;
     SiteModel* sm = tlk->sm;
 
     CatOptions options = cat_options_default(rule);
+    options.prior = prior;
     fasttree_cat(tlk, &options);
 
     for (int i = 0; i < tlk->sp->count; i++) {
@@ -326,11 +566,22 @@ static char* _check_wellformed(cat_assignment_t rule) {
 }
 
 static char* test_argmax_wellformed(void) {
-    return _check_wellformed(CAT_ASSIGNMENT_ARGMAX);
+    return _check_wellformed(CAT_ASSIGNMENT_ARGMAX, CAT_PRIOR_FIXED);
 }
 
 static char* test_posterior_mean_wellformed(void) {
-    return _check_wellformed(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    return _check_wellformed(CAT_ASSIGNMENT_POSTERIOR_MEAN, CAT_PRIOR_FIXED);
+}
+
+// The estimated prior can be sparse enough to leave a category with no rate near
+// it, so an assignment made under it is worth the same check as one made under a
+// fixed prior: every pattern in range, every rate positive and finite.
+static char* test_argmax_npmle_wellformed(void) {
+    return _check_wellformed(CAT_ASSIGNMENT_ARGMAX, CAT_PRIOR_NPMLE);
+}
+
+static char* test_posterior_mean_npmle_wellformed(void) {
+    return _check_wellformed(CAT_ASSIGNMENT_POSTERIOR_MEAN, CAT_PRIOR_NPMLE);
 }
 
 // The point of the posterior mean: it shrinks, and it shrinks by construction. A
@@ -339,13 +590,14 @@ static char* test_posterior_mean_wellformed(void) {
 // arg-max sits on the endpoints as soon as a column looks constant or saturated.
 // That is the whole difference between the two rules, and unlike the size of the
 // shrinkage it does not depend on which tree the assignment was run on.
-static char* test_posterior_mean_stays_inside_the_grid(void) {
+static char* _check_posterior_mean_stays_inside_the_grid(cat_prior_t prior) {
     Hashtable* hash = _new_hash();
     Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
     SingleTreeLikelihood* tlk = model->obj;
     SiteModel* sm = tlk->sm;
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    options.prior = prior;
     fasttree_cat(tlk, &options);
 
     double lower = 1.0 / options.probe_count;
@@ -379,6 +631,17 @@ static char* test_posterior_mean_stays_inside_the_grid(void) {
     model->free(model);
     free_Hashtable(hash);
     return NULL;
+}
+
+static char* test_posterior_mean_stays_inside_the_grid(void) {
+    return _check_posterior_mean_stays_inside_the_grid(CAT_PRIOR_FIXED);
+}
+
+// Convexity is a property of the average, not of the prior it averages against, so
+// estimating the prior cannot let an estimate out of the grid however much mass the
+// estimate moves to one end of it.
+static char* test_posterior_mean_npmle_stays_inside_the_grid(void) {
+    return _check_posterior_mean_stays_inside_the_grid(CAT_PRIOR_NPMLE);
 }
 
 // A single category cannot express any heterogeneity: every pattern goes to 0 and
@@ -580,7 +843,8 @@ static char* test_evaluation_count(void) {
 // optimizer is checked against a direct fasttree_cat call on a second copy.
 // `model_key` is the JSON key naming the tree likelihood: "model" and the older
 // "treelikelihood" have to be interchangeable.
-static char* _check_optimizer(const char* model_key) {
+static char* _check_optimizer(const char* model_key, const char* prior_json,
+                              cat_prior_t prior) {
     Hashtable* hash = _new_hash();
     Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
     Hashtable_add(hash, "treelikelihood", model);
@@ -591,8 +855,8 @@ static char* _check_optimizer(const char* model_key) {
              "{\"id\": \"catopt\", \"type\": \"optimizer\","
              " \"algorithm\": \"cat\", \"target\": \"@treelikelihood\","
              " \"%s\": \"@treelikelihood\","
-             " \"assignment\": \"posterior_mean\", \"prior\": 3.0}",
-             model_key);
+             " \"assignment\": \"posterior_mean\", \"prior\": %s}",
+             model_key, prior_json);
     json_node* node = create_json_tree(config);
     Optimizer* opt = new_Optimizer_from_json(node, hash);
 
@@ -621,6 +885,7 @@ static char* _check_optimizer(const char* model_key) {
     Model* reference = _treelikelihood_from_file("jc69-cat.json", reference_hash);
     SingleTreeLikelihood* reference_tlk = reference->obj;
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    options.prior = prior;
     options.prior_shape = 3.0;
     fasttree_cat(reference_tlk, &options);
 
@@ -645,11 +910,22 @@ static char* _check_optimizer(const char* model_key) {
     return failure;
 }
 
-static char* test_optimizer_model_key(void) { return _check_optimizer("model"); }
+static char* test_optimizer_model_key(void) {
+    return _check_optimizer("model", "3.0", CAT_PRIOR_FIXED);
+}
+
+// "prior" carries two different kinds of value, so the string form needs its own
+// pass through the JSON: a number is a Gamma shape and the word "npmle" asks for
+// the prior to be estimated instead. Checked the same way as the shape -- against a
+// direct call that asks for it in C -- so this is about the key reaching the
+// estimator, not about what the estimator then does.
+static char* test_optimizer_npmle_key(void) {
+    return _check_optimizer("model", "\"npmle\"", CAT_PRIOR_NPMLE);
+}
 
 // The key serial Brent and EM have always used for the same thing, kept working.
 static char* test_optimizer_treelikelihood_key(void) {
-    return _check_optimizer("treelikelihood");
+    return _check_optimizer("treelikelihood", "3.0", CAT_PRIOR_FIXED);
 }
 
 // The branch sweep (serial_brent_optimize_tree) never evaluates the whole tree: it
@@ -736,6 +1012,14 @@ static char* all_tests() {
     mu_run_test(test_argmax_wellformed);
     mu_run_test(test_posterior_mean_wellformed);
     mu_run_test(test_posterior_mean_stays_inside_the_grid);
+    mu_run_test(test_npmle_matches_reference);
+    mu_run_test(test_npmle_stops_on_its_certificate);
+    mu_run_test(test_npmle_single_category);
+    mu_run_test(test_npmle_diagnostics_only_when_estimated);
+    mu_run_test(test_npmle_moves_the_rates);
+    mu_run_test(test_argmax_npmle_wellformed);
+    mu_run_test(test_posterior_mean_npmle_wellformed);
+    mu_run_test(test_posterior_mean_npmle_stays_inside_the_grid);
     mu_run_test(test_posterior_mean_single_category);
     mu_run_test(test_posterior_mean_more_categories_than_patterns);
     mu_run_test(test_argmax_guard_does_not_lose_ground);
@@ -743,6 +1027,7 @@ static char* all_tests() {
     mu_run_test(test_guard_reverts_a_worse_assignment);
     mu_run_test(test_evaluation_count);
     mu_run_test(test_optimizer_model_key);
+    mu_run_test(test_optimizer_npmle_key);
     mu_run_test(test_optimizer_treelikelihood_key);
     mu_run_test(test_upper_matches_lower_SSE);
     mu_run_test(test_upper_matches_lower);
