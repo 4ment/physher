@@ -245,6 +245,24 @@ static char* test_npmle_matches_reference(void) {
         }
     }
 
+    // L(g), the objective the iteration climbs, recomputed on the reference
+    // profile. It is a likelihood of the data -- the label summed out, not
+    // selected -- so unlike the CAT score it is a number that may be compared with
+    // another site model's, and it is reported for that reason.
+    double mixture = 0;
+    for (int i = 0; i < pattern_count; i++) {
+        double total = 0;
+        for (int c = 0; c < count; c++) {
+            total += g[c] * exp(profile[c * pattern_count + i]);
+        }
+        mixture += tlk->sp->weights[i] * log(total);
+    }
+    if (failure == NULL
+        && fabs(result.npmle_logP - mixture) > 1.e-8 * fabs(mixture)) {
+        failure = (char*)"CAT: the reported mixture likelihood is not the one the "
+                         "estimated prior attains";
+    }
+
     free(g);
     free(profile);
     free(rates);
@@ -324,7 +342,8 @@ static char* test_npmle_diagnostics_only_when_estimated(void) {
     CatResult result = fasttree_cat(tlk, &options);
 
     char* failure = NULL;
-    if (result.npmle_atoms != 0 || result.npmle_passes != 0 || result.npmle_gap != 0) {
+    if (result.npmle_atoms != 0 || result.npmle_passes != 0 || result.npmle_gap != 0
+        || result.npmle_logP != 0) {
         failure = (char*)"CAT: a fixed prior reported an estimated one's diagnostics";
     }
 
@@ -407,7 +426,7 @@ static char* test_strong_prior_ignores_data(void) {
 //
 // What it deliberately does not pin is that the second call changes nothing. The
 // posterior mean rebuilds its probe grid around the previous call's centres
-// (docs/methods/cat-vs-raxml.md, section 2), so a second call is a refinement of
+// (docs/methods/cat.md, "2. Warm start"), so a second call is a refinement of
 // the first rather than a repeat of it.
 static char* _check_second_call(cat_assignment_t rule) {
     Hashtable* hash = _new_hash();
@@ -999,6 +1018,350 @@ static char* test_upper_matches_lower_without_cat(void) {
     return _check_upper_matches_lower("jc69-freerate.json", false, true);
 }
 
+// The mixture cat_mixture is supposed to score, built by hand: the category rates
+// the fit ended on, weighted by the share of sites each category holds, with the
+// per-pattern likelihoods coming from an independently computed profile. The naive
+// sum of weight * exp(loglikelihood) is safe on this alignment -- no pattern is
+// anywhere near underflow -- and being naive is the point: it shares no code with
+// the log-sum-exp under test.
+static char* _check_mixture_matches_reference(cat_assignment_t rule) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+    int count = (int)sm->cat_count;
+    int pattern_count = tlk->sp->count;
+
+    CatOptions options = cat_options_default(rule);
+    fasttree_cat(tlk, &options);
+    double logP = tlk->calculate(tlk);
+
+    double* rates = clone_dvector(sm->cat_rates, count);
+    int* assignment = clone_ivector(sm->site_category, pattern_count);
+    double* weight = dvector(count);
+    double sites = 0;
+    for (int i = 0; i < pattern_count; i++) {
+        weight[assignment[i]] += tlk->sp->weights[i];
+        sites += tlk->sp->weights[i];
+    }
+    int used = 0;
+    for (int k = 0; k < count; k++) {
+        if (weight[k] > 0) used++;
+        weight[k] /= sites;
+    }
+
+    CatMixture mixture = cat_mixture(tlk, 0);
+
+    int reference_patterns = 0;
+    double* profile =
+        _profile("jc69-cat-ref.json", rates, count, &reference_patterns);
+    mu_assert(reference_patterns == pattern_count, "CAT: reference has other patterns");
+
+    double reference = 0;
+    double bound = 0;
+    double score = 0;
+    for (int i = 0; i < pattern_count; i++) {
+        double total = 0;
+        for (int k = 0; k < count; k++) {
+            total += weight[k] * exp(profile[k * pattern_count + i]);
+        }
+        reference += tlk->sp->weights[i] * log(total);
+        bound += tlk->sp->weights[i]
+                 * (profile[assignment[i] * pattern_count + i] + log(weight[assignment[i]]));
+        score += tlk->sp->weights[i] * profile[assignment[i] * pattern_count + i];
+    }
+
+    char* failure = NULL;
+    if (fabs(mixture.logP_mixture - reference) > 1.e-8 * fabs(reference)) {
+        failure = (char*)"CAT: the reported likelihood is not the mixture's the fit "
+                         "defines";
+    }
+    if (failure == NULL && fabs(mixture.logP_bound - bound) > 1.e-8 * fabs(bound)) {
+        failure = (char*)"CAT: the reported lower bound is not the ELBO at the "
+                         "selected category";
+    }
+    // The CAT score is the profile read along the assignment, which is also what
+    // the tree likelihood reports: if these three disagree the profile is not the
+    // one the model is scoring.
+    if (failure == NULL && fabs(mixture.logP_cat - score) > 1.e-8 * fabs(score)) {
+        failure = (char*)"CAT: the reported score is not the profile read along the "
+                         "assignment";
+    }
+    if (failure == NULL && mixture.logP_cat != logP) {
+        failure = (char*)"CAT: the reported score is not the tree likelihood";
+    }
+    if (failure == NULL
+        && fabs(mixture.gap - (mixture.logP_cat - mixture.logP_mixture)) > TOL) {
+        failure = (char*)"CAT: the gap is not the score minus the mixture";
+    }
+    if (failure == NULL && mixture.used != used) {
+        failure = (char*)"CAT: the component count is not the number of categories "
+                         "carrying sites";
+    }
+    if (failure == NULL && mixture.evaluations != count + 2) {
+        failure = (char*)"CAT: the mixture probes once per category, plus the two "
+                         "traversals bracketing them";
+    }
+
+    free(profile);
+    free(rates);
+    free(assignment);
+    free(weight);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+static char* test_mixture_matches_reference(void) {
+    return _check_mixture_matches_reference(CAT_ASSIGNMENT_ARGMAX);
+}
+
+static char* test_mixture_matches_reference_posterior_mean(void) {
+    return _check_mixture_matches_reference(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+}
+
+// Summing the label out is a report, not a step: it borrows the assignment slot and the
+// first category rate to probe with and has to give both back untouched, or a run
+// that prints the number mid-schedule would be a different run from one that does
+// not. Checked bit for bit, since anything else here is a bug rather than drift.
+static char* _check_mixture_leaves_the_model_alone(cat_assignment_t rule) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SiteModel* sm = tlk->sm;
+    int count = (int)sm->cat_count;
+    int pattern_count = tlk->sp->count;
+
+    CatOptions options = cat_options_default(rule);
+    fasttree_cat(tlk, &options);
+    double logP = tlk->calculate(tlk);
+    int* assignment = clone_ivector(sm->site_category, pattern_count);
+    double* rates = clone_dvector(sm->cat_rates, count);
+    Parameter* parameter = Parameters_at(sm->rates, 0);
+    double* values = clone_dvector(Parameter_values(parameter), count);
+
+    cat_mixture(tlk, 0);
+
+    char* failure = NULL;
+    if (tlk->calculate(tlk) != logP) {
+        failure = (char*)"CAT: the mixture moved the likelihood";
+    }
+    if (failure == NULL && (int)sm->cat_count != count) {
+        failure = (char*)"CAT: the mixture left the category count changed";
+    }
+    for (int i = 0; failure == NULL && i < pattern_count; i++) {
+        if (sm->site_category[i] != assignment[i]) {
+            failure = (char*)"CAT: the mixture left the assignment changed";
+        }
+    }
+    for (int k = 0; failure == NULL && k < count; k++) {
+        if (sm->cat_rates[k] != rates[k]
+            || Parameter_value_at(parameter, k) != values[k]) {
+            failure = (char*)"CAT: the mixture left the category rates changed";
+        }
+    }
+
+    free(assignment);
+    free(rates);
+    free(values);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+static char* test_mixture_leaves_the_model_alone(void) {
+    return _check_mixture_leaves_the_model_alone(CAT_ASSIGNMENT_ARGMAX);
+}
+
+static char* test_mixture_leaves_the_model_alone_posterior_mean(void) {
+    return _check_mixture_leaves_the_model_alone(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+}
+
+// The bound is an ELBO and the mixture is what it bounds, so the order is not a
+// property of this alignment. The score sitting above the bound is the same
+// statement read the other way -- they differ by the log weight of the selected
+// category, which is negative -- while the score against the *mixture* is only
+// ordered when the assignment is the mixture's own arg-max, so it is not asserted.
+static char* _check_mixture_brackets(cat_assignment_t rule, cat_prior_t prior) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    CatOptions options = cat_options_default(rule);
+    options.prior = prior;
+    options.npmle_iterations = 50;
+    fasttree_cat(tlk, &options);
+    CatMixture mixture = cat_mixture(tlk, 0);
+
+    char* failure = NULL;
+    if (!(mixture.logP_bound <= mixture.logP_mixture + TOL)) {
+        failure = (char*)"CAT: the lower bound is above the mixture it bounds";
+    }
+    if (failure == NULL && !(mixture.logP_bound <= mixture.logP_cat + TOL)) {
+        failure = (char*)"CAT: the lower bound is above the score";
+    }
+    if (failure == NULL
+        && (!isfinite(mixture.logP_mixture) || !isfinite(mixture.logP_bound))) {
+        failure = (char*)"CAT: the mixture likelihood is not finite";
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+static char* test_mixture_brackets(void) {
+    return _check_mixture_brackets(CAT_ASSIGNMENT_ARGMAX, CAT_PRIOR_FIXED);
+}
+
+static char* test_mixture_brackets_posterior_mean(void) {
+    return _check_mixture_brackets(CAT_ASSIGNMENT_POSTERIOR_MEAN, CAT_PRIOR_FIXED);
+}
+
+static char* test_mixture_brackets_npmle(void) {
+    return _check_mixture_brackets(CAT_ASSIGNMENT_POSTERIOR_MEAN, CAT_PRIOR_NPMLE);
+}
+
+// One category is one component, and a mixture of one is the thing itself: there is
+// no label to sum out, so the mixture, the score and the bound all coincide and
+// the gap is exactly zero. The case that would catch a stray log K.
+static char* test_mixture_single_category(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat1.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
+    fasttree_cat(tlk, &options);
+    CatMixture mixture = cat_mixture(tlk, 0);
+
+    char* failure = NULL;
+    if (mixture.used != 1) {
+        failure = (char*)"CAT: a single category is not one component";
+    }
+    if (failure == NULL && fabs(mixture.gap) > TOL * fabs(mixture.logP_cat)) {
+        failure = (char*)"CAT: a single category has nothing to sum out and "
+                         "cannot show a gap";
+    }
+    if (failure == NULL
+        && fabs(mixture.logP_bound - mixture.logP_cat) > TOL * fabs(mixture.logP_cat)) {
+        failure = (char*)"CAT: the bound at a weight of one is not the score";
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+// The profile diagnostics, against the same posterior recomputed from an
+// independent profile. Run under the arg-max, where the grid the posterior lives on
+// is the category set, so "the posterior of the selected category" is a quantity
+// the test can name.
+static char* test_diagnostics_match_reference(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    int count = (int)tlk->sm->cat_count;
+    int pattern_count = tlk->sp->count;
+
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
+    CatResult result = fasttree_cat(tlk, &options);
+
+    double* rates = _grid(count);
+    int reference_patterns = 0;
+    double* profile = _profile("jc69-cat-ref.json", rates, count, &reference_patterns);
+    mu_assert(reference_patterns == pattern_count, "CAT: reference has other patterns");
+
+    double* aggregate = dvector(count);
+    double confidence = 0;
+    double entropy = 0;
+    double sites = 0;
+    for (int i = 0; i < pattern_count; i++) {
+        double total = 0;
+        double best = 0;
+        for (int c = 0; c < count; c++) {
+            double prior = (options.prior_shape - 1.0) * log(rates[c])
+                           - options.prior_shape * rates[c];
+            total += exp(profile[c * pattern_count + i] + prior);
+        }
+        double row = 0;
+        for (int c = 0; c < count; c++) {
+            double prior = (options.prior_shape - 1.0) * log(rates[c])
+                           - options.prior_shape * rates[c];
+            double p = exp(profile[c * pattern_count + i] + prior) / total;
+            if (p > best) best = p;
+            if (p > 0) row -= p * log(p);
+            aggregate[c] += tlk->sp->weights[i] * p;
+        }
+        confidence += tlk->sp->weights[i] * best;
+        entropy += tlk->sp->weights[i] * row;
+        sites += tlk->sp->weights[i];
+    }
+    confidence /= sites;
+    entropy /= sites;
+    double information = 0;
+    for (int c = 0; c < count; c++) {
+        double p = aggregate[c] / sites;
+        if (p > 0) information -= p * log(p);
+    }
+    information -= entropy;
+
+    char* failure = NULL;
+    if (result.grid != count) {
+        failure = (char*)"CAT: the arg-max posterior lives on the categories";
+    }
+    if (failure == NULL && fabs(result.confidence - confidence) > 1.e-8) {
+        failure = (char*)"CAT: the reported mean posterior is not the profile's";
+    }
+    if (failure == NULL && fabs(result.entropy - entropy) > 1.e-8) {
+        failure = (char*)"CAT: the reported entropy is not the profile's";
+    }
+    if (failure == NULL && fabs(result.information - information) > 1.e-8) {
+        failure = (char*)"CAT: the reported information is not the profile's";
+    }
+    // Ceilings that hold whatever the data: a posterior on `count` points cannot
+    // be more confident than certain, and its entropy cannot exceed log(count).
+    if (failure == NULL
+        && (result.confidence < 1.0 / count - TOL || result.confidence > 1.0 + TOL
+            || result.entropy < -TOL || result.entropy > log(count) + TOL)) {
+        failure = (char*)"CAT: the diagnostics left the range a posterior allows";
+    }
+
+    free(aggregate);
+    free(profile);
+    free(rates);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+// The posterior mean reads a posterior over its probe grid rather than over the
+// categories, and the diagnostics have to say which grid they came from or the
+// entropy has no ceiling to be read against.
+static char* test_diagnostics_report_the_probe_grid(void) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
+    SingleTreeLikelihood* tlk = model->obj;
+
+    CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+    options.probe_count = 13;
+    CatResult result = fasttree_cat(tlk, &options);
+
+    char* failure = NULL;
+    if (result.grid != 13) {
+        failure = (char*)"CAT: the posterior mean's diagnostics are not on its probe "
+                         "grid";
+    }
+    if (failure == NULL
+        && (result.entropy < -TOL || result.entropy > log(13) + TOL
+            || result.information < -TOL)) {
+        failure = (char*)"CAT: the diagnostics left the range a posterior allows";
+    }
+
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
 static char* all_tests() {
     mu_suite_start();
     mu_run_test(test_options_default);
@@ -1026,6 +1389,16 @@ static char* all_tests() {
     mu_run_test(test_posterior_mean_guard_does_not_lose_ground);
     mu_run_test(test_guard_reverts_a_worse_assignment);
     mu_run_test(test_evaluation_count);
+    mu_run_test(test_mixture_matches_reference);
+    mu_run_test(test_mixture_matches_reference_posterior_mean);
+    mu_run_test(test_mixture_leaves_the_model_alone);
+    mu_run_test(test_mixture_leaves_the_model_alone_posterior_mean);
+    mu_run_test(test_mixture_brackets);
+    mu_run_test(test_mixture_brackets_posterior_mean);
+    mu_run_test(test_mixture_brackets_npmle);
+    mu_run_test(test_mixture_single_category);
+    mu_run_test(test_diagnostics_match_reference);
+    mu_run_test(test_diagnostics_report_the_probe_grid);
     mu_run_test(test_optimizer_model_key);
     mu_run_test(test_optimizer_npmle_key);
     mu_run_test(test_optimizer_treelikelihood_key);

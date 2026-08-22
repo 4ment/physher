@@ -3,6 +3,8 @@
 
 #include "cat.h"
 
+#include <strings.h>
+
 #include "parameters.h"
 #include "treelikelihood.h"
 #include "utils.h"
@@ -88,7 +90,79 @@ typedef struct {
 	int atoms;
 	int passes;
 	double gap;
+	// L(g) at the estimate: the log-likelihood of the mixture over the grid, which
+	// is what the EM below maximizes. Comparable with a mixture's
+	// score in a way the CAT score is not, and free -- the profile is already in
+	// hand. Left at zero when the prior is not estimated.
+	double logP;
 } _cat_npmle_report;
+
+// The per-pattern posterior over the grid the profile was built on, reduced to the
+// numbers that say whether the grid is finer than the columns can resolve. All of
+// it comes out of the array the assignment already built, so it costs no traversal.
+// The fields are CatResult's; see cat.h for what each one means.
+typedef struct {
+	int grid;
+	double confidence;
+	double entropy;
+	double information;
+} _cat_diagnostics;
+
+static void _cat_diagnose(const double* likelihoods, const double* log_prior,
+                          int count, const double* pattern_weights,
+                          int pattern_count, _cat_diagnostics* diagnostics){
+	double sites = 0;
+	for (int i = 0; i < pattern_count; i++) sites += pattern_weights[i];
+	double* posterior = dvector(count);
+	// Site-weighted aggregate posterior, whose entropy is the H(Z) half of the
+	// mutual information below.
+	double* aggregate = dvector(count);
+	double confidence = 0;
+	double entropy = 0;
+	for (int i = 0; i < pattern_count; i++) {
+		double max = -DBL_MAX;
+		for (int j = 0; j < count; j++) {
+			double value = likelihoods[j*pattern_count + i] + log_prior[j];
+			if (value > max) max = value;
+		}
+		double total = 0;
+		for (int j = 0; j < count; j++) {
+			posterior[j] = exp(likelihoods[j*pattern_count + i] + log_prior[j] - max);
+			total += posterior[j];
+		}
+		double best = 0;
+		double row = 0;
+		for (int j = 0; j < count; j++) {
+			double p = posterior[j]/total;
+			if (p > best) best = p;
+			if (p > 0) row -= p*log(p);
+			aggregate[j] += pattern_weights[i]*p;
+		}
+		confidence += pattern_weights[i]*best;
+		entropy += pattern_weights[i]*row;
+	}
+	diagnostics->grid = count;
+	diagnostics->confidence = (sites > 0 ? confidence/sites : 0);
+	diagnostics->entropy = (sites > 0 ? entropy/sites : 0);
+	double aggregate_entropy = 0;
+	for (int j = 0; j < count; j++) {
+		double p = (sites > 0 ? aggregate[j]/sites : 0);
+		if (p > 0) aggregate_entropy -= p*log(p);
+	}
+	// H(Z) - H(Z | D) with both taken on the same grid: non-negative in exact
+	// arithmetic, and clamped so a cancellation cannot report a negative
+	// information at a grid nothing distinguishes.
+	diagnostics->information = fmax(aggregate_entropy - diagnostics->entropy, 0.0);
+	free(posterior);
+	free(aggregate);
+}
+
+static void _cat_report_diagnostics(const _cat_diagnostics* diagnostics){
+	printf("CAT assignment over %d grid rates: mean posterior %g, mean entropy %g "
+	       "of %g nats, information %g\n", diagnostics->grid,
+	       diagnostics->confidence, diagnostics->entropy, log(diagnostics->grid),
+	       diagnostics->information);
+}
 
 // Nonparametric maximum likelihood estimate of the prior over the rate grid.
 //
@@ -144,12 +218,16 @@ static void _cat_npmle(double* log_prior, const double* likelihoods,
 	// additive constant: it cancels out of D_j exactly. The row's maximum entry is
 	// 1, which is what keeps the mixture density strictly positive below.
 	double* scaled = dvector((size_t)pattern_count*count);
+	// The shift each row was scaled by, kept so L(g) can be put back on the scale
+	// of a log-likelihood at the end.
+	double* shift = dvector(pattern_count);
 	for (int i = 0; i < pattern_count; i++) {
 		double max = -DBL_MAX;
 		for (int j = 0; j < count; j++) {
 			double value = likelihoods[j*pattern_count + i];
 			if (value > max) max = value;
 		}
+		shift[i] = max;
 		for (int j = 0; j < count; j++) {
 			scaled[(size_t)i*count + j] = exp(likelihoods[j*pattern_count + i] - max);
 		}
@@ -208,7 +286,21 @@ static void _cat_npmle(double* log_prior, const double* likelihoods,
 		log_prior[j] = log(g[j]);
 	}
 
+	// L(g) itself, undoing the per-row shift. This is a genuine likelihood of the
+	// data -- the label is summed out, not selected -- under the mixture that puts
+	// mass g on the grid rates, at the tree the profile was taken on. It is
+	// what the iteration maximizes, and reporting it costs one more pass over an
+	// array that is about to be freed.
+	report->logP = 0;
+	for (int i = 0; i < pattern_count; i++) {
+		const double* row = scaled + (size_t)i*count;
+		double mixture = 0;
+		for (int j = 0; j < count; j++) mixture += g[j]*row[j];
+		report->logP += pattern_weights[i]*(shift[i] + log(mixture));
+	}
+
 	free(scaled);
+	free(shift);
 	free(g);
 	free(gradient);
 }
@@ -228,8 +320,9 @@ static void _cat_prior(double* log_prior, const double* rates, const double* wid
 		           report);
 		if (options->verbosity > 0) {
 			printf("CAT estimated prior: %d of %d rates carry mass, "
-			       "Kiefer-Wolfowitz gap %g after %d passes\n", report->atoms,
-			       count, report->gap, report->passes);
+			       "Kiefer-Wolfowitz gap %g after %d passes, mixture "
+			       "log-likelihood %f\n", report->atoms, count, report->gap,
+			       report->passes, report->logP);
 		}
 		return;
 	}
@@ -289,7 +382,7 @@ static void _cat_quantize(const double* x, const double* weights, int n,
 	// rather than spread over the support. Seeding one category per *distinct*
 	// value instead is the obvious alternative and measures worse: it costs 6 % of
 	// the tree length at 8-16 taxa, because it spends categories on a sparse tail
-	// that carries almost no sites (docs/methods/cat-improvements.md).
+	// that carries almost no sites (docs/methods/cat.md, "A note on choosing the quantizer").
 	double total = 0;
 	for (int i = 0; i < n; i++) total += sorted[i].weight;
 	double accumulated = 0;
@@ -353,7 +446,7 @@ static void _cat_quantize(const double* x, const double* weights, int n,
 // what makes successive rounds refine rather than reproduce round one's fixed
 // point against updated branch lengths, which RAxML gets from a warm start at
 // `patratStored[i]` on a step size that shrinks with the round
-// (docs/methods/cat-vs-raxml.md, section 2).
+// (docs/methods/cat.md, "2. Warm start").
 //
 // What the grid must *not* do is narrow onto the centres, which is the obvious
 // reading of a warm start and is wrong here. RAxML's grid is a search device --
@@ -463,7 +556,8 @@ static void _cat_probe_grid(double* probe_rates, double* probe_weights,
 static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
                                       int cat_count, const CatOptions* options,
                                       const double* previous, int previous_count,
-                                      _cat_npmle_report* report){
+                                      _cat_npmle_report* report,
+                                      _cat_diagnostics* diagnostics){
 	int pattern_count = tlk->sp->count;
 	int probe_count = options->probe_count;
 	if (probe_count < cat_count) probe_count = cat_count;
@@ -493,6 +587,14 @@ static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
 	double* log_prior = dvector(probe_count);
 	_cat_prior(log_prior, probe_rates, probe_weights, probe_count, likelihoods,
 	           weights, pattern_count, options, report);
+
+	// Taken on the probe grid rather than on the K categories: the posterior the
+	// assignment reads is the one over the grid, and the categories it ends up
+	// reporting are cluster centres of a point estimate, which carries no
+	// posterior of its own.
+	_cat_diagnose(likelihoods, log_prior, probe_count, weights, pattern_count,
+	              diagnostics);
+	if (options->verbosity > 0) _cat_report_diagnostics(diagnostics);
 
 	// The quantizer works on log rates: the profile is close to symmetric there,
 	// and the rate distributions this approximates (gamma, lognormal) put their
@@ -539,7 +641,8 @@ static int _cat_assign_posterior_mean(SingleTreeLikelihood* tlk, double* rates,
 // Returns the number of traversals _cat_probe performed.
 static int _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
                               int cat_count, const CatOptions* options,
-                              int* counts, _cat_npmle_report* report){
+                              int* counts, _cat_npmle_report* report,
+                              _cat_diagnostics* diagnostics){
 	int pattern_count = tlk->sp->count;
 	double* likelihoods = malloc(sizeof(double)*pattern_count*cat_count);
 	_cat_probe(tlk, rates, cat_count, likelihoods);
@@ -555,6 +658,12 @@ static int _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
 	double* log_prior = dvector(cat_count);
 	_cat_prior(log_prior, rates, widths, cat_count, likelihoods, weights,
 	           pattern_count, options, report);
+
+	// The categories are the grid here, so max_j pi_ij is the posterior of the
+	// category the loop below is about to select.
+	_cat_diagnose(likelihoods, log_prior, cat_count, weights, pattern_count,
+	              diagnostics);
+	if (options->verbosity > 0) _cat_report_diagnostics(diagnostics);
 
 	for (int i = 0; i < pattern_count; i++) {
 		int best = 0;
@@ -599,7 +708,8 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	Parameter* cat_rates = Parameters_at(sm->rates, 0);
 	CatResult result;
 	result.reverted = false;
-	_cat_npmle_report report = {0, 0, 0.0};
+	_cat_npmle_report report = {0, 0, 0.0, 0.0};
+	_cat_diagnostics diagnostics = {0, 0.0, 0.0, 0.0};
 
 	// The number the new assignment has to beat, taken before site_category is
 	// cleared: after that every pattern reads block 0 and the value would be the
@@ -617,7 +727,7 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	const bool stored_scale = tlk->scale;
 
 	// The centres the previous round left behind, to re-centre the probe grid on
-	// (section 2 of docs/methods/cat-vs-raxml.md), or NULL on the first call.
+	// (section "2. Warm start" of docs/methods/cat.md), or NULL on the first call.
 	//
 	// They are read off sm->cat_rates rather than off the parameter because the
 	// probe scores absolute rates: sm->cat_rates is the mean-one scale the branch
@@ -664,7 +774,8 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	if (options->assignment == CAT_ASSIGNMENT_POSTERIOR_MEAN) {
 		result.evaluations += _cat_assign_posterior_mean(tlk, rates, cat_count, options,
 		                                                previous_centres,
-		                                                previous_count, &report);
+		                                                previous_count, &report,
+		                                                &diagnostics);
 		if(options->verbosity > 0){
 			for (int i = 0; i < pattern_count; i++) counts[sm->site_category[i]]++;
 			print_dvector(rates, cat_count);
@@ -672,7 +783,7 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	}
 	else {
 		result.evaluations += _cat_assign_argmax(tlk, rates, cat_count, options, counts,
-		                                         &report);
+		                                         &report, &diagnostics);
 	}
 
 	// The category rates are one vector parameter. Every element but the last goes
@@ -699,7 +810,7 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	// inside a category and the mean-one renormalization then moves every pattern
 	// at once -- so neither is guaranteed to improve on the assignment that came
 	// in. Put that one back when it does not, as RAxML's optimizeRateCategories
-	// does (docs/methods/cat-vs-raxml.md), so an alternation of this and the branch
+	// does (docs/methods/cat.md, "4. The accept/revert guard"), so an alternation of this and the branch
 	// lengths can only climb. Restoring the rescaling flag too is what makes the
 	// revert exact: the accept path turns rescaling off, which is a different
 	// numerical path through the same model.
@@ -724,11 +835,162 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	result.npmle_atoms = report.atoms;
 	result.npmle_passes = report.passes;
 	result.npmle_gap = report.gap;
+	result.npmle_logP = report.logP;
+	// Properties of the profile, so they describe the assignment that was proposed
+	// whether or not the guard above kept it.
+	result.grid = diagnostics.grid;
+	result.confidence = diagnostics.confidence;
+	result.entropy = diagnostics.entropy;
+	result.information = diagnostics.information;
 
 	free(stored_categories);
 	free(stored_rates);
 	free(previous_centres);
 	return result;
+}
+
+// Sum the label out of the fit the model is currently holding.
+//
+// The CAT score is log P(D | zhat, theta) and every other site model reports
+// log P(D | theta); the difference is the pointwise mutual information between a
+// column and the category it was given, and no amount of tuning removes it
+// (docs/methods/cat.md, "What you may compare, and what you may not"). What does
+// remove it is summing the label out, and the ingredients are already here: the
+// category rates, and the share of sites each category holds.
+//
+// The mixture that comes out is not an approximation of CAT, it is CAT's own model
+// read without the hard assignment -- a K-component free-rate model whose rates are
+// the ones CAT fitted. Its mean rate is one for the same reason theirs is, because
+// _cat_update normalised them against this very assignment, so the branch lengths
+// it scores are the branch lengths in the tree and the number is comparable with a
+// Gamma or free-rate score directly. What it is not comparable with is a Gamma
+// score at equal parameter count: the mixture has 2K - 2 free rate parameters
+// against Gamma's one, so an information criterion, not a raw difference, is the
+// fair comparison.
+//
+// The profile is rebuilt here rather than borrowed from the assignment because the
+// assignment probes the *raw* grid, before _cat_update divides through by the
+// weighted mean; marginalizing that one would score a mixture at another tree
+// scale. K traversals is the price of the honest version.
+CatMixture cat_mixture(SingleTreeLikelihood* tlk, int verbosity){
+	SiteModel* sm = tlk->sm;
+	const int cat_count = sm->cat_count;
+	const int pattern_count = tlk->sp->count;
+	CatMixture mixture;
+	mixture.evaluations = 0;
+
+	// The CAT score, and the traversal that brings the partials up to date for the
+	// probe. It leaves sm->need_update false, so _cat_probe's writes into
+	// cat_rates[0] survive -- the same precondition fasttree_cat relies on.
+	mixture.logP_cat = tlk->calculate(tlk);
+	mixture.evaluations++;
+	sm->update(sm);
+
+	// The rates the likelihood just used, copied before the probe overwrites the
+	// first of them. Read off sm->cat_rates rather than off the parameter because
+	// the probe scores absolute rates and these are the mean-one ones; a site
+	// model carrying a mu applies it to both alike, so it cancels.
+	double* rates = clone_dvector(sm->cat_rates, cat_count);
+
+	// Mixture weights: the share of sites each category holds. A hard assignment
+	// has no soft responsibilities to average, and given the labels this is their
+	// maximum-likelihood weight vector anyway.
+	double* log_weight = dvector(cat_count);
+	double sites = 0;
+	for (int i = 0; i < pattern_count; i++) {
+		log_weight[sm->site_category[i]] += tlk->sp->weights[i];
+		sites += tlk->sp->weights[i];
+	}
+	mixture.used = 0;
+	for (int k = 0; k < cat_count; k++) {
+		if (log_weight[k] > 0) mixture.used++;
+		// An empty category is a component of weight zero, and -inf is how it
+		// drops out of the log-sum-exp below instead of distorting it.
+		log_weight[k] = log(log_weight[k]/sites);
+	}
+
+	// _cat_probe's precondition: every pattern reading matrix block 0, and
+	// sm->cat_count at 1 so the refresh loop rewrites that block alone.
+	int* stored = clone_ivector(sm->site_category, pattern_count);
+	memset(sm->site_category, 0, sizeof(int)*pattern_count);
+	sm->cat_count = 1;
+	sm->need_update = false;
+	double* profile = dvector((size_t)cat_count*pattern_count);
+	_cat_probe(tlk, rates, cat_count, profile);
+	mixture.evaluations += cat_count;
+
+	// Put back everything the probe borrowed. The category rates are rebuilt from
+	// the parameter rather than from the copy above: same arithmetic on the same
+	// inputs, so it lands on the same values, and it is the path any other caller
+	// would take.
+	sm->cat_count = cat_count;
+	memcpy(sm->site_category, stored, sizeof(int)*pattern_count);
+	sm->need_update = true;
+	SingleTreeLikelihood_update_all_nodes(tlk);
+	mixture.logP_cat = tlk->calculate(tlk);
+	mixture.evaluations++;
+
+	mixture.logP_mixture = 0;
+	mixture.logP_bound = 0;
+	for (int i = 0; i < pattern_count; i++) {
+		double max = -DBL_MAX;
+		for (int k = 0; k < cat_count; k++) {
+			double value = profile[k*pattern_count + i] + log_weight[k];
+			if (value > max) max = value;
+		}
+		double total = 0;
+		for (int k = 0; k < cat_count; k++) {
+			total += exp(profile[k*pattern_count + i] + log_weight[k] - max);
+		}
+		mixture.logP_mixture += tlk->sp->weights[i]*(max + log(total));
+		// The same sum with the mixture replaced by a point mass on the selected
+		// category: an ELBO, hence a lower bound, for any assignment at all.
+		mixture.logP_bound += tlk->sp->weights[i]
+		                       *(profile[stored[i]*pattern_count + i]
+		                         + log_weight[stored[i]]);
+	}
+	mixture.gap = mixture.logP_cat - mixture.logP_mixture;
+
+	// The mixture itself, so it can be rebuilt elsewhere. Empty categories are
+	// skipped: they are components of weight zero and no other model has a way to
+	// express one. Printed to enough digits that a "distribution": "discrete" site
+	// model given these numbers reproduces logP_mixture rather than approaching it.
+	if (verbosity > 0) {
+		for (int k = 0; k < cat_count; k++) {
+			if (log_weight[k] > -INFINITY) {
+				printf("CAT component %d: rate %.10g weight %.10g\n", k, rates[k],
+				       exp(log_weight[k]));
+			}
+		}
+	}
+
+	free(rates);
+	free(log_weight);
+	free(profile);
+	free(stored);
+	return mixture;
+}
+
+// The three numbers side by side, in the order they should be read: the one that
+// may be reported, the one that may not, and the free bound that brackets the
+// first from below.
+//
+// "at most" on the parameter count is load-bearing: 2K-2 counts every component as
+// distinct and every value as fitted, and neither holds here. See the note on
+// CatMixture::used.
+static void _cat_report_mixture(const CatMixture* mixture){
+	fprintf(stdout, "CAT mixture log-likelihood %f over %d categories "
+	                "(at most %d free rate parameters)\n", mixture->logP_mixture,
+	        mixture->used, 2*mixture->used - 2);
+	// The score can land either side of the mixture: it is above it whenever the
+	// assignment is the mixture's own arg-max, and a rule that selects on anything
+	// else -- a prior, a posterior mean, a quantizer -- can put it below. Below is
+	// the more damning reading of the two, since it says the hard assignment is
+	// losing to the mixture built out of its own rates, so the direction is
+	// spelled out rather than left to the sign of a number.
+	fprintf(stdout, "CAT score %f, %s the mixture by %f; lower bound %f\n",
+	        mixture->logP_cat, mixture->gap >= 0 ? "above" : "below",
+	        fabs(mixture->gap), mixture->logP_bound);
 }
 
 void cat_check_sitemodel(json_node* node, const SingleTreeLikelihood* tlk){
@@ -817,8 +1079,10 @@ CatOptions cat_options_from_json(json_node* node){
 
 void cat_estimator_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
+	    {"assign", JSON_OPTIONAL, JSON_BOOL},
 	    {"assignment", JSON_OPTIONAL, JSON_STRING},
 	    {"id", JSON_OPTIONAL, JSON_STRING},
+	    {"mixture", JSON_OPTIONAL, JSON_BOOL},
 	    {"model", JSON_REQUIRED, JSON_STRING},
 	    {"npmle_iterations", JSON_OPTIONAL, JSON_NUMBER},
 	    {"npmle_tolerance", JSON_OPTIONAL, JSON_NUMBER},
@@ -837,11 +1101,42 @@ void cat_estimator_from_json(json_node* node, Hashtable* hash){
 	SingleTreeLikelihood *tlk = mtlk->obj;
 	cat_check_sitemodel(node, tlk);
 
-	CatOptions options = cat_options_from_json(node);
-	CatResult result = fasttree_cat(tlk, &options);
-	if (result.reverted) {
-		fprintf(stdout, "CAT: the reassignment scored worse than the assignment it "
-		                "started from (%f); it was refused and nothing changed\n",
-		        result.logP);
+	// Two things this node can do, and they are usually wanted at different points
+	// of a run. Reassigning belongs wherever the fit needs it; summing the label
+	// out is a report and belongs after the *last* optimizer action, because the number
+	// worth printing is the one at the tree that will be written out. Hence
+	// "assign": false, which turns the node into a rescore that changes nothing --
+	// the shape a run should use to report a comparable likelihood.
+	bool assign = get_json_node_value_bool(node, "assign", true);
+	bool mixture = get_json_node_value_bool(node, "mixture", !assign);
+	if (!assign && !mixture) {
+		json_die(node, "\"assign\": false with \"mixture\": false leaves this "
+		               "node nothing to do");
+	}
+	if (!assign) {
+		static const char* assignment_keys[] = {"assignment", "prior", "probe",
+		                                        "npmle_iterations",
+		                                        "npmle_tolerance"};
+		for (size_t i = 0; i < sizeof(assignment_keys)/sizeof(assignment_keys[0]); i++) {
+			if (get_json_node(node, assignment_keys[i]) != NULL) {
+				json_die(node, "\"%s\" configures the assignment, which "
+				               "\"assign\": false turns off", assignment_keys[i]);
+			}
+		}
+	}
+
+	if (assign) {
+		CatOptions options = cat_options_from_json(node);
+		CatResult result = fasttree_cat(tlk, &options);
+		if (result.reverted) {
+			fprintf(stdout, "CAT: the reassignment scored worse than the assignment "
+			                "it started from (%f); it was refused and nothing "
+			                "changed\n", result.logP);
+		}
+	}
+	if (mixture) {
+		CatMixture result = cat_mixture(tlk, get_json_node_value_int(node,
+		                                                            "verbosity", 0));
+		_cat_report_mixture(&result);
 	}
 }

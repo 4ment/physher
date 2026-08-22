@@ -20,7 +20,7 @@ typedef enum {
 	// of those rates. The arg-max of a noisy profile is biased away from the
 	// mean of the rate distribution -- the ordinary selection bias of taking a
 	// maximum -- while the posterior mean shrinks by exactly the amount the
-	// column is uninformative. See docs/methods/cat-improvements.md.
+	// column is uninformative. See docs/methods/cat.md.
 	CAT_ASSIGNMENT_POSTERIOR_MEAN
 } cat_assignment_t;
 
@@ -78,7 +78,101 @@ typedef struct CatResult {
 	int npmle_atoms;
 	int npmle_passes;
 	double npmle_gap;
+	// Log-likelihood of the mixture the estimated prior defines: the grid rates
+	// weighted by the estimate, with the category label summed out rather than
+	// selected. Unlike `logP` this is a likelihood and comparable with one,
+	// though of a richer model -- `npmle_atoms` components rather than K -- and it
+	// is taken at the tree the assignment saw. Zero unless prior is CAT_PRIOR_NPMLE.
+	double npmle_logP;
+	// Read off the per-pattern posterior over the grid the profile was built on --
+	// the K categories under CAT_ASSIGNMENT_ARGMAX, the probe grid under
+	// CAT_ASSIGNMENT_POSTERIOR_MEAN -- and weighted by pattern site counts.
+	// `grid` says which, so `entropy` can be read against its ceiling log(grid).
+	// Together they say whether the grid is finer than the columns can resolve
+	// before anything else is fitted: a `confidence` near 1/grid and an `entropy`
+	// near its ceiling means no column knows its own rate.
+	int grid;
+	// Site-weighted mean of max_j pi_ij. Under the arg-max rule that maximum is
+	// the selected category, so this is pi_bar(khat) exactly.
+	double confidence;
+	// Site-weighted mean of H(pi_i), in nats, between 0 and log(grid).
+	double entropy;
+	// Plug-in mutual information between a column and its rate: H(pi_bar) minus
+	// the mean entropy above, where pi_bar is the site-weighted aggregate
+	// posterior. Equals the log(grid) - entropy of docs/methods/cat.md when that
+	// aggregate is flat.
+	double information;
 } CatResult;
+
+// What a CAT fit is worth as a mixture, all taken at the tree, rates and
+// assignment the model currently holds. See docs/methods/cat.md, "What you may
+// compare, and what you may not".
+//
+// The label that is summed out here is the per-pattern rate category, not a
+// parameter: nothing is integrated over a prior and this is not the model evidence
+// the `bridgesampling`, `nest`, `is` and `laplace` actions estimate. What comes out
+// is an ordinary log P(D | theta) -- the same quantity every non-CAT site model
+// reports as "treelikelihood", and marginal over its categories in exactly the way
+// a discrete Gamma's is.
+typedef struct CatMixture {
+	// The number that is comparable with a Gamma, free-rate or single-rate score:
+	// the log-likelihood of the K-component free-rate mixture whose rates are the
+	// category rates and whose weights are the site-weighted assignment
+	// frequencies. That mixture has mean rate one by construction, because the
+	// category rates were normalised against the same assignment, so it scores the
+	// same branch lengths on the same scale -- it is the model CAT fitted, with
+	// the label summed out instead of selected.
+	double logP_mixture;
+	// The CAT score, sum_i n_i log f_{i khat_i}: what "treelikelihood" reports and
+	// what must not be compared with anything.
+	double logP_cat;
+	// sum_i n_i (log f_{i khat_i} + log p_{khat_i}), the mixture's ELBO at a point
+	// mass on the selected category. A lower bound on logP_mixture for *any*
+	// assignment, so it costs nothing and cannot be wrong.
+	double logP_bound;
+	// logP_cat - logP_mixture: the pointwise mutual information the CAT score is
+	// credited with and the mixture is not. Positive whenever the assignment is
+	// the mixture's own arg-max, which is not guaranteed under a prior or under
+	// the posterior-mean rule.
+	double gap;
+	// Categories carrying at least one site: the mixture has this many components,
+	// the rest having weight zero and dropping out of it.
+	//
+	// 2*used - 2 (rates plus weights, less the simplex and the unit-mean
+	// constraints) is an *upper bound* on the free parameters, not the k an
+	// information criterion wants, and on real data it is a loose one. Two reasons,
+	// both measured in docs/methods/cat.md, "Are they free parameters?":
+	//
+	// - The values are not maximum-likelihood estimates of this mixture. The rates
+	//   are cluster centres of posterior means and the weights are site counts of a
+	//   hard assignment; neither was chosen to maximise the number reported here.
+	//   Fitting the same mixture by ML gains 6.8 log units on fluA, so k is
+	//   charging for optimisation that did not happen.
+	// - The components are not distinct. The quantizer stacks categories on the
+	//   same rate, and the likelihood is flat along the directions that move weight
+	//   between two of them, so the Fisher information is singular and those
+	//   directions are not parameters at all. On fluA at K = 20, 15 occupied
+	//   categories sit on 6 distinct rates, and the free-rate family saturates at
+	//   3 -- an identified dimension of 4, against a nominal 28.
+	//
+	// The identified dimension is found by fitting "distribution": "discrete" at
+	// increasing K until the likelihood stops moving. There is no way to read it
+	// off this struct, which is why the number here is reported as a bound.
+	int used;
+	// Full likelihood traversals performed: one per category, plus the two that
+	// bracket them.
+	int evaluations;
+} CatMixture;
+
+// Sum the category label out of the current CAT fit, so its likelihood can be
+// compared with any other site model's. Costs K + 2 traversals and leaves the model
+// exactly as it found it -- assignment, category rates and partials all restored --
+// so it can be run between optimizer actions. `tlk` must carry a CAT site model.
+//
+// At `verbosity > 0` the mixture is also printed component by component: rate and
+// weight per category, which is what another program -- or physher's own
+// "distribution": "discrete" site model -- needs to be handed the same model.
+CatMixture cat_mixture(SingleTreeLikelihood* tlk, int verbosity);
 
 // Read the CAT keys ("assignment", "prior", "probe", "npmle_iterations",
 // "npmle_tolerance", "verbosity") off `node`, on top of the defaults the assignment
