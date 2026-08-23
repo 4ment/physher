@@ -58,7 +58,6 @@ typedef struct Trace{
 	void(*write)(struct Trace* logger, size_t);
 	void(*report)(struct Trace* logger);
 	void(*free)(struct Trace*);
-	bool cpo;
 	bool tree;
 	char* format;
 	bool force;// force calculation of model (i.e. do not use stored lnl)

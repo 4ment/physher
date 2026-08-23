@@ -6,9 +6,11 @@
 
 #include "mjson.h"
 #include "hashtable.h"
+#include "model.h"
 
 typedef struct CPO{
 	char* filename;
+	Model* model;  // the tree likelihood the trace was logged from
 	size_t burnin;
 	void(*calculate)(struct CPO*);
 	void(*free)(struct CPO*);

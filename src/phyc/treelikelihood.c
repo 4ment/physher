@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <strings.h>
 
 #include "tree.h"
 #include "node.h"
@@ -335,6 +336,57 @@ static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	return clone;
 }
 
+
+// Loggable interface: the per-pattern arrays, each yielding sp->count columns.
+static size_t _TreeLikelihoodModel_log_count(Model* model, const char* quantity){
+	SingleTreeLikelihood* tlk = model->obj;
+	if(strcasecmp(quantity, "patternLogLikelihood") == 0 ||
+	   strcasecmp(quantity, "patternWeight") == 0){
+		return tlk->sp->count;
+	}
+	return 0;
+}
+
+static void _TreeLikelihoodModel_log_name(Model* model, const char* quantity,
+                                          size_t i, struct StringBuffer* out){
+	// Prefix with the model id so columns stay unique across several
+	// likelihoods, e.g. "treelikelihood.patternLogLikelihood.0".
+	StringBuffer_append_format(out, "%s.%s.%zu", model->name, quantity, i);
+}
+
+// snprintf, not StringBuffer_append_format: the latter parses only a
+// single-digit precision, so a "%.10e" column would emit a bare "e".
+static void _TreeLikelihoodModel_append_value(struct StringBuffer* out,
+                                              const char* format, double value){
+	char cell[64];
+	snprintf(cell, sizeof(cell), format, value);
+	StringBuffer_append_string(out, cell);
+}
+
+static void _TreeLikelihoodModel_log_value(Model* model, const char* quantity,
+                                           size_t i, const char* format,
+                                           struct StringBuffer* out){
+	SingleTreeLikelihood* tlk = model->obj;
+	if(strcasecmp(quantity, "patternWeight") == 0){
+		_TreeLikelihoodModel_append_value(out, format != NULL ? format : "%f",
+		                                  tlk->sp->weights[i]);
+		return;
+	}
+	// pattern_lk is scratch as much as it is output: it is allocated at
+	// sp->count*4 and the derivative code slices the tail of it
+	// (pattern_likelihoods at +count, pattern_dlnl at +2*count, pattern_d2lnl at
+	// +3*count), so only the first sp->count entries are the likelihoods, and
+	// they are only current right after a traversal. Recompute rather than trust
+	// whatever last wrote there; tlk->calculate returns immediately when nothing
+	// is dirty, so the other sp->count-1 calls in this row cost a branch.
+	// tlk->calculate, not model->logP: the latter adds the tree transform's log
+	// Jacobian when include_jacobian is set, which is a property of the whole
+	// tree and has no per-pattern share.
+	tlk->calculate(tlk);
+	_TreeLikelihoodModel_append_value(out, format != NULL ? format : "%e",
+	                                  tlk->pattern_lk[i]);
+}
+
 // TreeLikelihood listen to the TreeModel, SiteModel, BranchModel
 Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  Model *tree, Model *m, Model *sm, Model *bm ){
 	Model *model = new_Model(MODEL_TREELIKELIHOOD,name, tlk);
@@ -355,6 +407,9 @@ Model * new_TreeLikelihoodModel( const char* name, SingleTreeLikelihood *tlk,  M
 	model->store = _singleTreeLikelihood_store;
 	model->restore = _singleTreeLikelihood_restore;
 	model->accept = _singleTreeLikelihood_accept;
+	model->log_count = _TreeLikelihoodModel_log_count;
+	model->log_name = _TreeLikelihoodModel_log_name;
+	model->log_value = _TreeLikelihoodModel_log_value;
 	
 	Model** list = (Model**)model->data;
 	list[0] = tree;
@@ -3622,6 +3677,11 @@ void _calculate_gradient(Model *model,
 						 Parameters* branchModelParameters){
 	Model** models = model->data;
 	SingleTreeLikelihood* tlk = model->obj;
+	if(tlk->sm->site_category != NULL){
+		fprintf(stderr, "_calculate_gradient: the CAT site model has no gradient; "
+		                "use a derivative-free optimizer such as \"algorithm\": \"serial\"\n");
+		exit(2);
+	}
 	// models[0] = tree;
 	Model* substitutionModel = models[1];
 	Model* siteModel = models[2];

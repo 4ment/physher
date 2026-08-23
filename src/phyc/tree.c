@@ -1339,14 +1339,23 @@ void _TreeModel_log_value(Model* mtree, const char* quantity, size_t i,
                           const char* format, struct StringBuffer* out){
 	Tree* tree = mtree->obj;
 	const char* fmt = format != NULL ? format : "%f";
+	double value = 0;
 	if(strcasecmp(quantity, "treeLength") == 0){
-		StringBuffer_append_format(out, fmt, Tree_length(tree));
+		value = Tree_length(tree);
 	}
 	else if(strcasecmp(quantity, "meanBranchLength") == 0){
 		// 2N-2 for rooted trees, 2N-3 for unrooted trees
 		int branches = tree->time_mode ? Tree_node_count(tree) - 1 : Tree_node_count(tree) - 2;
-		StringBuffer_append_format(out, fmt, Tree_length(tree) / branches);
+		value = Tree_length(tree) / branches;
 	}
+	else{
+		return;
+	}
+	// snprintf, not StringBuffer_append_format: the latter parses only a
+	// single-digit precision, so a "%.10f" column would emit a bare "f".
+	char cell[64];
+	snprintf(cell, sizeof(cell), fmt, value);
+	StringBuffer_append_string(out, cell);
 }
 
 double _treeModel_logP(Model *self){

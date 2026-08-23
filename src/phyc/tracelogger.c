@@ -32,36 +32,6 @@ static void _validate_log_format(json_node* node, const char* fmt){
 	}
 }
 
-// Header for a CPO logger: a comment line of per-pattern weights, then the
-// per-pattern column names.
-static void _log_cpo_header(Trace* logger){
-	StringBuffer* buffer = new_StringBuffer(10);
-	fprintf(logger->file, "#");
-	for(int j = 0; j < logger->model_count; j++){
-		Model* treelikelihood = logger->models[j];
-		SingleTreeLikelihood* tlk = treelikelihood->obj;
-
-		for (int i = 0; i < tlk->sp->count; i++) {
-			StringBuffer_empty(buffer);
-			StringBuffer_append_format(buffer, "%f", tlk->sp->weights[i]);
-			fprintf(logger->file, "%s%s", (i == 0 && j == 0 ? "": "\t"), buffer->c);
-		}
-	}
-	fprintf(logger->file, "\niter");
-	for(int j = 0; j < logger->model_count; j++){
-		Model* treelikelihood = logger->models[j];
-		SingleTreeLikelihood* tlk = treelikelihood->obj;
-		for (int i = 0; i < tlk->sp->count; i++) {
-			StringBuffer_empty(buffer);
-			StringBuffer_append_format(buffer, "%s%s%d", treelikelihood->name, ".p", i);
-			fprintf(logger->file, "\t%s", buffer->c);
-		}
-	}
-	fflush(logger->file);
-	free_StringBuffer(buffer);
-	fprintf(logger->file, "\n");
-}
-
 // Refresh each node's annotation table from the branch-model traits. Rates
 // change every sample, so the previous annotations are cleared first.
 static void _log_tree_annotate(Trace* logger, Tree* tree){
@@ -128,19 +98,6 @@ void log_tree(Trace* logger, size_t iter){
 		}
 		else{
 			Tree_print_nexus(logger->file, tree);
-		}
-	}
-	fprintf(logger->file, "\n");
-}
-
-void log_log_cpo(Trace* logger, size_t iter){
-	fprintf(logger->file, "%zu", iter);
-	for(int j = 0; j < logger->model_count; j++){
-		Model* treelikelihood = logger->models[j];
-		SingleTreeLikelihood* tlk = treelikelihood->obj;
-		tlk->calculate(tlk);// update partials
-		for (int i = 0; i < tlk->sp->count; i++) {
-			fprintf(logger->file, "\t%e", tlk->pattern_lk[i]);
 		}
 	}
 	fprintf(logger->file, "\n");
@@ -268,12 +225,7 @@ void log_initialize(Trace* logger){
 		Tree_print_nexus_header_figtree_BeginTrees(logger->file, tree);
 	}
 	else if(!logger->tree || (logger->tree && strcasecmp(logger->format, "newick") != 0)){
-		if(logger->cpo){
-			_log_cpo_header(logger);
-		}
-		else{
-			_log_columns_header(logger);
-		}
+		_log_columns_header(logger);
 	}
 }
 
@@ -530,7 +482,7 @@ Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 	    {"annotate", JSON_OPTIONAL, JSON_ARRAY},
 	    {"append", JSON_OPTIONAL, JSON_ANY},
 	    {"columns", JSON_OPTIONAL, JSON_ANY},
-	    {"cpo", JSON_OPTIONAL, JSON_ANY},
+	    {"cpo", JSON_FORBIDDEN, JSON_ANY, "replaced by a column {\"ref\": \"@treelikelihood\", \"quantity\": \"patternLogLikelihood\"}"},
 	    {"every", JSON_OPTIONAL, JSON_ANY},
 	    {"file", JSON_OPTIONAL, JSON_ANY},
 	    {"force", JSON_OPTIONAL, JSON_ANY},
@@ -576,8 +528,6 @@ Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 		}
 	}
 	
-	logger->cpo = get_json_node_value_bool(node, "cpo", false);
-
 	logger->model_count = 0;
 	logger->models = NULL;
 	logger->trait_models = NULL;
@@ -603,18 +553,12 @@ Trace* new_Trace_from_json(json_node* node, Hashtable* hash){
 		logger->tree = true;
 	}
 
-	if (logger->cpo) {
-		logger->write = log_log_cpo;
-	}
-	if (logger->column_count > 0) {
-		logger->write = log_columns;
-	}
 	if (logger->tree) {
 		logger->write = log_tree;
 		if(format == NULL)logger->format = String_clone("newick");
 	}
 	else {
-		// For a value (columns/cpo) logger, "format" is the printf conversion
+		// For a column logger, "format" is the printf conversion
 		// applied to every numeric value, in both the tabular and label layouts;
 		// default to "%e".
 		if(format != NULL){

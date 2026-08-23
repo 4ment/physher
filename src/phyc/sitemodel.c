@@ -327,7 +327,11 @@ static void _SiteModel_log_value(Model* model, const char* quantity, size_t i,
 	sm->get_proportions(sm);  // refresh cat_rates/cat_proportions
 	double value = strcasecmp(quantity, "rates") == 0 ? sm->get_rate(sm, i)
 	                                                   : sm->get_proportion(sm, i);
-	StringBuffer_append_format(out, format != NULL ? format : "%f", value);
+	// snprintf, not StringBuffer_append_format: the latter parses only a
+	// single-digit precision, so a "%.10f" column would emit a bare "f".
+	char cell[64];
+	snprintf(cell, sizeof(cell), format != NULL ? format : "%f", value);
+	StringBuffer_append_string(out, cell);
 }
 
 int _get_site_category(SiteModel* sm, const int pattern){
