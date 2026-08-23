@@ -372,17 +372,16 @@ static void _TreeLikelihoodModel_log_value(Model* model, const char* quantity,
 		                                  tlk->sp->weights[i]);
 		return;
 	}
-	// pattern_lk is scratch as much as it is output: it is allocated at
-	// sp->count*4 and the derivative code slices the tail of it
-	// (pattern_likelihoods at +count, pattern_dlnl at +2*count, pattern_d2lnl at
-	// +3*count), so only the first sp->count entries are the likelihoods, and
-	// they are only current right after a traversal. Recompute rather than trust
-	// whatever last wrote there; tlk->calculate returns immediately when nothing
-	// is dirty, so the other sp->count-1 calls in this row cost a branch.
-	// tlk->calculate, not model->logP: the latter adds the tree transform's log
-	// Jacobian when include_jacobian is set, which is a property of the whole
-	// tree and has no per-pattern share.
-	tlk->calculate(tlk);
+
+	// If it is an MCMC and restore was called, the pattern likelihoods are still the rejected ones.
+	// Force a traversal to get the current state.
+	// It is for CPO calculation
+	if(i == 0){
+		model->full_logP(model);
+	}
+	else{
+		tlk->calculate(tlk);
+	}
 	_TreeLikelihoodModel_append_value(out, format != NULL ? format : "%e",
 	                                  tlk->pattern_lk[i]);
 }

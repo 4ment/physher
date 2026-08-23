@@ -420,14 +420,11 @@ void tree_transform_collect_lowers(Node *node, TreeTransform *tt, double *lowers
         lowers[Node_id(node)] = fmax(lowers[Node_id(Node_left(node))], lowers[Node_id(Node_right(node))]);
         if (Node_isroot(node)) {
             Parameter* rootHeight = Parameters_at(tt->parameters, 1);
-            Parameter_set_lower(rootHeight, lowers[Node_id(node)]);
-            Constraint_set_flower(rootHeight->cnstr, lowers[Node_id(node)]);
             if(rootHeight->transform != NULL){
                 rootHeight->transform->lower = lowers[Node_id(node)];
-                // printf("%f\n", lowers[Node_id(node)]);
-                
             }
-            // printf("root_height %p %s %f %f\n", rootHeight, Parameter_name(rootHeight), Parameter_value(rootHeight), lowers[Node_id(node)]);
+            Parameter_set_lower(rootHeight, lowers[Node_id(node)]);
+            Constraint_set_flower(rootHeight->cnstr, lowers[Node_id(node)]);
         }
     } else if(!tt->unknownLeaves[Node_id(node)]) {
         lowers[Node_id(node)] = Node_height(node);
