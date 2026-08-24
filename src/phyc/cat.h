@@ -20,7 +20,7 @@ typedef enum {
 	// of those rates. The arg-max of a noisy profile is biased away from the
 	// mean of the rate distribution -- the ordinary selection bias of taking a
 	// maximum -- while the posterior mean shrinks by exactly the amount the
-	// column is uninformative. See docs/methods/cat.md.
+	// column is uninformative. See notes/cat.md.
 	CAT_ASSIGNMENT_POSTERIOR_MEAN
 } cat_assignment_t;
 
@@ -57,7 +57,7 @@ typedef struct {
 
 CatOptions cat_options_default(cat_assignment_t assignment);
 
-// Outcome of one fasttree_cat call.
+// Outcome of one cat_assign call.
 typedef struct CatResult {
 	double logP;      // log-likelihood the call left behind
 	// Full likelihood traversals performed, so a caller keeping an evaluation
@@ -99,13 +99,13 @@ typedef struct CatResult {
 	double entropy;
 	// Plug-in mutual information between a column and its rate: H(pi_bar) minus
 	// the mean entropy above, where pi_bar is the site-weighted aggregate
-	// posterior. Equals the log(grid) - entropy of docs/methods/cat.md when that
+	// posterior. Equals the log(grid) - entropy of notes/cat.md when that
 	// aggregate is flat.
 	double information;
 } CatResult;
 
 // What a CAT fit is worth as a mixture, all taken at the tree, rates and
-// assignment the model currently holds. See docs/methods/cat.md, "What you may
+// assignment the model currently holds. See notes/cat.md, "What you may
 // compare, and what you may not".
 //
 // The label that is summed out here is the per-pattern rate category, not a
@@ -141,7 +141,7 @@ typedef struct CatMixture {
 	// 2*used - 2 (rates plus weights, less the simplex and the unit-mean
 	// constraints) is an *upper bound* on the free parameters, not the k an
 	// information criterion wants, and on real data it is a loose one. Two reasons,
-	// both measured in docs/methods/cat.md, "Are they free parameters?":
+	// both measured in notes/cat.md, "Are they free parameters?":
 	//
 	// - The values are not maximum-likelihood estimates of this mixture. The rates
 	//   are cluster centres of posterior means and the weights are site counts of a
@@ -188,7 +188,7 @@ void cat_check_sitemodel(json_node* node, const SingleTreeLikelihood* tlk);
 // per-pattern likelihood profile. Guarded: the likelihood is taken before and
 // after, and the incoming assignment is restored if the new one scores worse, so
 // the call can only improve the model or leave it alone.
-CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options);
+CatResult cat_assign(SingleTreeLikelihood* tlk, const CatOptions* options);
 
 void cat_estimator_from_json(json_node* node, Hashtable* hash);
 

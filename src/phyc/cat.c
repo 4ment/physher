@@ -382,7 +382,7 @@ static void _cat_quantize(const double* x, const double* weights, int n,
 	// rather than spread over the support. Seeding one category per *distinct*
 	// value instead is the obvious alternative and measures worse: it costs 6 % of
 	// the tree length at 8-16 taxa, because it spends categories on a sparse tail
-	// that carries almost no sites (docs/methods/cat.md, "A note on choosing the quantizer").
+	// that carries almost no sites (notes/cat.md, "A note on choosing the quantizer").
 	double total = 0;
 	for (int i = 0; i < n; i++) total += sorted[i].weight;
 	double accumulated = 0;
@@ -445,8 +445,7 @@ static void _cat_quantize(const double* x, const double* weights, int n,
 // the sites are, and the tails keep the grid open at their old endpoints. This is
 // what makes successive rounds refine rather than reproduce round one's fixed
 // point against updated branch lengths, which RAxML gets from a warm start at
-// `patratStored[i]` on a step size that shrinks with the round
-// (docs/methods/cat.md, "2. Warm start").
+// `patratStored[i]` on a step size that shrinks with the round.
 //
 // What the grid must *not* do is narrow onto the centres, which is the obvious
 // reading of a warm start and is wrong here. RAxML's grid is a search device --
@@ -700,8 +699,7 @@ static int _cat_assign_argmax(SingleTreeLikelihood* tlk, const double* rates,
 // arg-max would hand it back to category 0 -- collapsing the whole assignment on the
 // second call. Clearing the assignment first restores the precondition the first call
 // gets for free, and is what makes repeated calls (an assign/optimize loop) possible.
-// FastTree does the same, structurally, in AllocRateCategories.
-CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
+CatResult cat_assign(SingleTreeLikelihood* tlk, const CatOptions* options){
 	SiteModel* sm = tlk->sm;
 	int cat_count = sm->cat_count;
 	int pattern_count = tlk->sp->count;
@@ -727,7 +725,7 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	const bool stored_scale = tlk->scale;
 
 	// The centres the previous round left behind, to re-centre the probe grid on
-	// (section "2. Warm start" of docs/methods/cat.md), or NULL on the first call.
+	// (section "2. Warm start" of notes/cat.md), or NULL on the first call.
 	//
 	// They are read off sm->cat_rates rather than off the parameter because the
 	// probe scores absolute rates: sm->cat_rates is the mean-one scale the branch
@@ -810,7 +808,7 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 	// inside a category and the mean-one renormalization then moves every pattern
 	// at once -- so neither is guaranteed to improve on the assignment that came
 	// in. Put that one back when it does not, as RAxML's optimizeRateCategories
-	// does (docs/methods/cat.md, "4. The accept/revert guard"), so an alternation of this and the branch
+	// does (notes/cat.md, "4. The accept/revert guard"), so an alternation of this and the branch
 	// lengths can only climb. Restoring the rescaling flag too is what makes the
 	// revert exact: the accept path turns rescaling off, which is a different
 	// numerical path through the same model.
@@ -854,7 +852,7 @@ CatResult fasttree_cat(SingleTreeLikelihood* tlk, const CatOptions* options){
 // The CAT score is log P(D | zhat, theta) and every other site model reports
 // log P(D | theta); the difference is the pointwise mutual information between a
 // column and the category it was given, and no amount of tuning removes it
-// (docs/methods/cat.md, "What you may compare, and what you may not"). What does
+// (notes/cat.md, "What you may compare, and what you may not"). What does
 // remove it is summing the label out, and the ingredients are already here: the
 // category rates, and the share of sites each category holds.
 //
@@ -881,7 +879,7 @@ CatMixture cat_mixture(SingleTreeLikelihood* tlk, int verbosity){
 
 	// The CAT score, and the traversal that brings the partials up to date for the
 	// probe. It leaves sm->need_update false, so _cat_probe's writes into
-	// cat_rates[0] survive -- the same precondition fasttree_cat relies on.
+	// cat_rates[0] survive -- the same precondition cat_assign relies on.
 	mixture.logP_cat = tlk->calculate(tlk);
 	mixture.evaluations++;
 	sm->update(sm);
@@ -1127,7 +1125,7 @@ void cat_estimator_from_json(json_node* node, Hashtable* hash){
 
 	if (assign) {
 		CatOptions options = cat_options_from_json(node);
-		CatResult result = fasttree_cat(tlk, &options);
+		CatResult result = cat_assign(tlk, &options);
 		if (result.reverted) {
 			fprintf(stdout, "CAT: the reassignment scored worse than the assignment "
 			                "it started from (%f); it was refused and nothing "

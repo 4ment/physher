@@ -278,6 +278,23 @@ double ** FileReader_csv_double( const char *filename, int nrow, int ncol ){
 }
 
 
+char* load_stream(FILE *file){
+	StringBuffer* buffer = new_StringBuffer(1000);
+	char chunk[4096];
+	size_t read = 0;
+	while ( (read = fread(chunk, 1, sizeof(chunk) - 1, file)) > 0 ) {
+		chunk[read] = '\0';
+		StringBuffer_append_string(buffer, chunk);
+	}
+	if( ferror(file) ){
+		fprintf(stderr, "Could not read stream\n");
+		exit(1);
+	}
+	char* content = StringBuffer_tochar(buffer);
+	free_StringBuffer(buffer);
+	return content;
+}
+
 char* load_file(const char *filename){
 	FileReader* reader = new_FileReader(filename, 1000);
 	StringBuffer* buffer = new_StringBuffer(100);

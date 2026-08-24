@@ -1937,7 +1937,7 @@ char* test_cat_rejects() {
 // The kernels live in treelikelihood4CAT.c and are only reachable through a CAT
 // site model, so these run the whole likelihood rather than poking at partials.
 
-// The categories are assigned by fasttree_cat in a real run. Here they are set by
+// The categories are assigned by cat_assign in a real run. Here they are set by
 // hand so the reference below knows which rate each pattern is supposed to get.
 static void _cat_assign_round_robin(SiteModel* sm) {
     for (int i = 0; i < sm->sp->count; i++) {

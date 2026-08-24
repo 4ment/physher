@@ -31,4 +31,7 @@ double ** FileReader_csv_double( const char *filename, int nrow, int ncol );
 
 char* load_file(const char *filename);
 
+// Read a whole stream (e.g. stdin) into a NUL terminated string.
+char* load_stream(FILE *file);
+
 #endif

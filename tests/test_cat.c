@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // The empirical CAT assignment rules (src/phyc/cat.c). These run the whole tree
-// likelihood: fasttree_cat only makes sense against real per-pattern profiles, and
+// likelihood: cat_assign only makes sense against real per-pattern profiles, and
 // the profile it builds internally is not otherwise reachable.
 
 #include <math.h>
@@ -14,6 +14,7 @@
 #include "phyc/filereader.h"
 #include "phyc/hashtable.h"
 #include "phyc/matrix.h"
+#include "phyc/model.h"
 #include "phyc/optimizer.h"
 #include "phyc/node.h"
 #include "phyc/tree.h"
@@ -39,7 +40,7 @@ static Model* _treelikelihood_from_file(const char* file, Hashtable* hash) {
     return model;
 }
 
-// The grid fasttree_cat builds for K categories, recomputed here so the tests do
+// The grid cat_assign builds for K categories, recomputed here so the tests do
 // not have to trust the copy under test.
 static double* _grid(int count) {
     double* rates = dvector(count);
@@ -144,7 +145,7 @@ static char* _check_argmax_matches_reference(double prior_shape) {
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
     options.prior_shape = prior_shape;
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
 
     double* rates = _grid(count);
     int pattern_count = 0;
@@ -202,7 +203,7 @@ static char* test_npmle_matches_reference(void) {
     options.prior = CAT_PRIOR_NPMLE;
     options.npmle_iterations = 200;
     options.npmle_tolerance = 0.0;
-    CatResult result = fasttree_cat(tlk, &options);
+    CatResult result = cat_assign(tlk, &options);
 
     double* rates = _grid(count);
     int pattern_count = 0;
@@ -283,7 +284,7 @@ static char* test_npmle_stops_on_its_certificate(void) {
     options.prior = CAT_PRIOR_NPMLE;
     options.npmle_iterations = 100000;
     options.npmle_tolerance = 1.e-3;
-    CatResult result = fasttree_cat(tlk, &options);
+    CatResult result = cat_assign(tlk, &options);
 
     char* failure = NULL;
     if (result.npmle_passes >= options.npmle_iterations) {
@@ -316,7 +317,7 @@ static char* test_npmle_single_category(void) {
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
     options.prior = CAT_PRIOR_NPMLE;
-    CatResult result = fasttree_cat(tlk, &options);
+    CatResult result = cat_assign(tlk, &options);
 
     char* failure = NULL;
     if (result.npmle_atoms != 1 || result.npmle_passes != 0
@@ -339,7 +340,7 @@ static char* test_npmle_diagnostics_only_when_estimated(void) {
     SingleTreeLikelihood* tlk = model->obj;
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
-    CatResult result = fasttree_cat(tlk, &options);
+    CatResult result = cat_assign(tlk, &options);
 
     char* failure = NULL;
     if (result.npmle_atoms != 0 || result.npmle_passes != 0 || result.npmle_gap != 0
@@ -361,7 +362,7 @@ static char* test_npmle_moves_the_rates(void) {
     Model* flat_model = _treelikelihood_from_file("jc69-cat.json", hash);
     SingleTreeLikelihood* flat_tlk = flat_model->obj;
     CatOptions flat = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
-    fasttree_cat(flat_tlk, &flat);
+    cat_assign(flat_tlk, &flat);
     double* flat_rates = clone_dvector(flat_tlk->sm->cat_rates,
                                        flat_tlk->sm->cat_count);
     flat_model->free(flat_model);
@@ -372,7 +373,7 @@ static char* test_npmle_moves_the_rates(void) {
     SingleTreeLikelihood* tlk = model->obj;
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
     options.prior = CAT_PRIOR_NPMLE;
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
 
     bool moved = false;
     for (size_t c = 0; c < tlk->sm->cat_count; c++) {
@@ -403,7 +404,7 @@ static char* test_strong_prior_ignores_data(void) {
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
     options.prior_shape = 1.e4;
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
 
     int chosen = sm->site_category[0];
     for (int i = 1; i < tlk->sp->count; i++) {
@@ -426,7 +427,7 @@ static char* test_strong_prior_ignores_data(void) {
 //
 // What it deliberately does not pin is that the second call changes nothing. The
 // posterior mean rebuilds its probe grid around the previous call's centres
-// (docs/methods/cat.md, "2. Warm start"), so a second call is a refinement of
+// (notes/cat.md, "2. Warm start"), so a second call is a refinement of
 // the first rather than a repeat of it.
 static char* _check_second_call(cat_assignment_t rule) {
     Hashtable* hash = _new_hash();
@@ -436,10 +437,10 @@ static char* _check_second_call(cat_assignment_t rule) {
 
     CatOptions options = cat_options_default(rule);
     options.prior_shape = 0.0;
-    CatResult first = fasttree_cat(tlk, &options);
+    CatResult first = cat_assign(tlk, &options);
     int* categories = clone_ivector(sm->site_category, tlk->sp->count);
 
-    CatResult second = fasttree_cat(tlk, &options);
+    CatResult second = cat_assign(tlk, &options);
 
     char* failure = NULL;
     bool spread_before = false;
@@ -488,11 +489,11 @@ static char* test_argmax_idempotent(void) {
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
     options.prior_shape = 0.0;
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
     int* first = clone_ivector(sm->site_category, tlk->sp->count);
     double* first_rates = clone_dvector(sm->cat_rates, sm->cat_count);
 
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
     char* failure = NULL;
     for (int i = 0; i < tlk->sp->count && failure == NULL; i++) {
         if (sm->site_category[i] != first[i]) {
@@ -526,10 +527,10 @@ static char* test_posterior_mean_refines(void) {
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
     options.prior_shape = 0.0;
-    CatResult first = fasttree_cat(tlk, &options);
+    CatResult first = cat_assign(tlk, &options);
     double* first_rates = clone_dvector(sm->cat_rates, sm->cat_count);
 
-    CatResult second = fasttree_cat(tlk, &options);
+    CatResult second = cat_assign(tlk, &options);
 
     char* failure = NULL;
     bool moved = false;
@@ -563,7 +564,7 @@ static char* _check_wellformed(cat_assignment_t rule, cat_prior_t prior) {
 
     CatOptions options = cat_options_default(rule);
     options.prior = prior;
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
 
     for (int i = 0; i < tlk->sp->count; i++) {
         mu_assert(sm->site_category[i] >= 0 && sm->site_category[i] < (int)sm->cat_count,
@@ -617,7 +618,7 @@ static char* _check_posterior_mean_stays_inside_the_grid(cat_prior_t prior) {
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
     options.prior = prior;
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
 
     double lower = 1.0 / options.probe_count;
     double upper = options.probe_count;
@@ -638,7 +639,7 @@ static char* _check_posterior_mean_stays_inside_the_grid(cat_prior_t prior) {
     sm = tlk->sm;
     CatOptions argmax = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
     argmax.prior_shape = 0.0;
-    fasttree_cat(tlk, &argmax);
+    cat_assign(tlk, &argmax);
     bool extreme = false;
     for (int i = 0; i < tlk->sp->count; i++) {
         if (sm->site_category[i] == 0 ||
@@ -674,7 +675,7 @@ static char* test_posterior_mean_single_category(void) {
     mu_assert(sm->cat_count == 1, "CAT: fixture should have one category");
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
     for (int i = 0; i < tlk->sp->count; i++) {
         mu_assert(sm->site_category[i] == 0, "CAT: one category leaves no choice");
     }
@@ -699,7 +700,7 @@ static char* test_posterior_mean_more_categories_than_patterns(void) {
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
     options.probe_count = 2;  // a two-point profile cannot fill four categories
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
 
     Parameter* rates = Parameters_at(sm->rates, 0);
     for (size_t c = 0; c < sm->cat_count; c++) {
@@ -724,7 +725,7 @@ static char* _check_guard_does_not_lose_ground(cat_assignment_t rule) {
 
     double before = model->logP(model);
     CatOptions options = cat_options_default(rule);
-    CatResult result = fasttree_cat(tlk, &options);
+    CatResult result = cat_assign(tlk, &options);
 
     mu_assert(!result.reverted, "CAT: the first assignment should beat a single rate");
     mu_assert(result.logP >= before, "CAT: the guard let the likelihood drop");
@@ -758,7 +759,7 @@ static char* test_guard_reverts_a_worse_assignment(void) {
     Parameter* rates = Parameters_at(sm->rates, 0);
 
     CatOptions fit = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
-    double fitted = fasttree_cat(tlk, &fit).logP;
+    double fitted = cat_assign(tlk, &fit).logP;
     int* categories = clone_ivector(sm->site_category, tlk->sp->count);
     double* fitted_rates = dvector(sm->cat_count);
     for (size_t c = 0; c < sm->cat_count; c++) {
@@ -767,7 +768,7 @@ static char* test_guard_reverts_a_worse_assignment(void) {
 
     CatOptions collapse = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
     collapse.prior_shape = 1.e4;
-    CatResult result = fasttree_cat(tlk, &collapse);
+    CatResult result = cat_assign(tlk, &collapse);
 
     char* failure = NULL;
     if (!result.reverted) {
@@ -805,7 +806,7 @@ static char* test_guard_reverts_a_worse_assignment(void) {
     return failure;
 }
 
-// What fasttree_cat charges for: the traversal that brings the likelihood up to
+// What cat_assign charges for: the traversal that brings the likelihood up to
 // date, one per rate it probes at, and the one the guard spends scoring the
 // assignment it just made. A schedule budgets on this number, so a probe loop that
 // grew or shrank without the count following it would spend an evaluation allowance
@@ -820,7 +821,7 @@ static char* _check_evaluation_count(const CatOptions* options, int probes,
     Model* model = _treelikelihood_from_file("jc69-cat.json", hash);
     SingleTreeLikelihood* tlk = model->obj;
 
-    CatResult result = fasttree_cat(tlk, options);
+    CatResult result = cat_assign(tlk, options);
     char* failure = NULL;
     if (result.reverted || result.evaluations != 2 + probes) {
         failure = (char*)message;
@@ -859,7 +860,7 @@ static char* test_evaluation_count(void) {
 // The same reassignment reached through "algorithm": "cat" in an optimizer. What
 // is under test is the wiring -- the model lookup, the option keys and the value
 // reported back -- not the assignment, which the tests above cover; so the
-// optimizer is checked against a direct fasttree_cat call on a second copy.
+// optimizer is checked against a direct cat_assign call on a second copy.
 // `model_key` is the JSON key naming the tree likelihood: "model" and the older
 // "treelikelihood" have to be interchangeable.
 static char* _check_optimizer(const char* model_key, const char* prior_json,
@@ -906,19 +907,19 @@ static char* _check_optimizer(const char* model_key, const char* prior_json,
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
     options.prior = prior;
     options.prior_shape = 3.0;
-    fasttree_cat(reference_tlk, &options);
+    cat_assign(reference_tlk, &options);
 
     char* failure = NULL;
     for (int i = 0; i < pattern_count && failure == NULL; i++) {
         if (assigned[i] != reference_tlk->sm->site_category[i]) {
             failure = (char*)"CAT optimizer: assigned a different category than "
-                             "fasttree_cat";
+                             "cat_assign";
         }
     }
     for (size_t c = 0; c < reference_tlk->sm->cat_count && failure == NULL; c++) {
         double rate = Parameter_value_at(Parameters_at(reference_tlk->sm->rates, 0), c);
         if (fabs(assigned_rates[c] - rate) > TOL) {
-            failure = (char*)"CAT optimizer: set a different rate than fasttree_cat";
+            failure = (char*)"CAT optimizer: set a different rate than cat_assign";
         }
     }
 
@@ -964,7 +965,7 @@ static char* _check_upper_matches_lower(const char* file, bool cat, bool sse) {
     SingleTreeLikelihood_enable_SSE(tlk, sse);
     if (cat) {
         CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
-        fasttree_cat(tlk, &options);
+        cat_assign(tlk, &options);
     }
 
     double lower = model->logP(model);
@@ -1033,7 +1034,7 @@ static char* _check_mixture_matches_reference(cat_assignment_t rule) {
     int pattern_count = tlk->sp->count;
 
     CatOptions options = cat_options_default(rule);
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
     double logP = tlk->calculate(tlk);
 
     double* rates = clone_dvector(sm->cat_rates, count);
@@ -1133,7 +1134,7 @@ static char* _check_mixture_leaves_the_model_alone(cat_assignment_t rule) {
     int pattern_count = tlk->sp->count;
 
     CatOptions options = cat_options_default(rule);
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
     double logP = tlk->calculate(tlk);
     int* assignment = clone_ivector(sm->site_category, pattern_count);
     double* rates = clone_dvector(sm->cat_rates, count);
@@ -1190,7 +1191,7 @@ static char* _check_mixture_brackets(cat_assignment_t rule, cat_prior_t prior) {
     CatOptions options = cat_options_default(rule);
     options.prior = prior;
     options.npmle_iterations = 50;
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
     CatMixture mixture = cat_mixture(tlk, 0);
 
     char* failure = NULL;
@@ -1231,7 +1232,7 @@ static char* test_mixture_single_category(void) {
     SingleTreeLikelihood* tlk = model->obj;
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
-    fasttree_cat(tlk, &options);
+    cat_assign(tlk, &options);
     CatMixture mixture = cat_mixture(tlk, 0);
 
     char* failure = NULL;
@@ -1264,7 +1265,7 @@ static char* test_diagnostics_match_reference(void) {
     int pattern_count = tlk->sp->count;
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_ARGMAX);
-    CatResult result = fasttree_cat(tlk, &options);
+    CatResult result = cat_assign(tlk, &options);
 
     double* rates = _grid(count);
     int reference_patterns = 0;
@@ -1344,7 +1345,7 @@ static char* test_diagnostics_report_the_probe_grid(void) {
 
     CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
     options.probe_count = 13;
-    CatResult result = fasttree_cat(tlk, &options);
+    CatResult result = cat_assign(tlk, &options);
 
     char* failure = NULL;
     if (result.grid != 13) {
@@ -1360,6 +1361,85 @@ static char* test_diagnostics_report_the_probe_grid(void) {
     model->free(model);
     free_Hashtable(hash);
     return failure;
+}
+
+// The branch-length gradient under CAT, against central finite differences of the
+// likelihood itself.
+//
+// CAT's partials hold one block rather than one per category, so the mixture path
+// (gradient_cat_branch_lengths) cannot serve here: gradient_CAT_branch_lengths has to
+// contract the category dimension itself, and the chain-rule factor it applies is the
+// rate of each pattern's own category rather than a sum over categories weighted by
+// proportions. Finite differences do not care how any of that is arranged, so they
+// catch a wrong contraction as readily as a wrong rate.
+static char* _check_branch_gradient(const char* file, bool sse, bool assign) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file(file, hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SingleTreeLikelihood_enable_SSE(tlk, sse);
+    // Without a fit every pattern sits in category 0 and every category rate is the
+    // same, which would pass whatever the per-pattern rate factor did.
+    if (assign) {
+        CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+        cat_assign(tlk, &options);
+    }
+
+    size_t nodeCount = Tree_node_count(tlk->tree);
+    Parameter* distances = Tree_nodes(tlk->tree)[0]->distance;
+
+    // Finite differences first: the analytic pass leaves the upper partials live.
+    double* numeric = dvector(Parameter_size(distances));
+    Model_first_derivatives(model, distances, 1.e-6, numeric);
+
+    double* analytic = dvector(nodeCount);
+    TreeLikelihood_gradient(model, TREELIKELIHOOD_FLAG_TREE_MODEL, analytic);
+
+    char* failure = NULL;
+    // The root and the root's right child carry no branch of their own; the gradient
+    // is only defined over the remaining nodeCount - 2 entries.
+    for (size_t i = 0; i < nodeCount - 2 && failure == NULL; i++) {
+        double tolerance = 1.e-4 * (1.0 + fabs(numeric[i]));
+        if (!isfinite(analytic[i])) {
+            failure = (char*)"CAT: the branch length gradient is not finite";
+        }
+        else if (fabs(analytic[i] - numeric[i]) > tolerance) {
+            failure = (char*)"CAT: the branch length gradient disagrees with finite "
+                             "differences";
+        }
+    }
+
+    free(numeric);
+    free(analytic);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+static char* test_branch_gradient_SSE(void) {
+    return _check_branch_gradient("jc69-cat.json", true, true);
+}
+
+static char* test_branch_gradient(void) {
+    return _check_branch_gradient("jc69-cat.json", false, true);
+}
+
+// One category leaves no room for the per-pattern rate factor to be wrong, so it
+// separates a broken contraction from a broken recursion.
+static char* test_branch_gradient_single_category(void) {
+    return _check_branch_gradient("jc69-cat1.json", true, true);
+}
+
+// Before any assignment every pattern is in category 0. The gradient still has to be
+// the likelihood's, and this is the one case where the mixture path and the CAT path
+// would be asked for the same number.
+static char* test_branch_gradient_before_assignment(void) {
+    return _check_branch_gradient("jc69-cat.json", true, false);
+}
+
+// The same check on a model that is not CAT. If this failed too, the check itself
+// would be wrong rather than the CAT gradient.
+static char* test_branch_gradient_without_cat(void) {
+    return _check_branch_gradient("jc69-freerate.json", true, false);
 }
 
 static char* all_tests() {
@@ -1406,6 +1486,11 @@ static char* all_tests() {
     mu_run_test(test_upper_matches_lower);
     mu_run_test(test_upper_matches_lower_single_category);
     mu_run_test(test_upper_matches_lower_without_cat);
+    mu_run_test(test_branch_gradient_SSE);
+    mu_run_test(test_branch_gradient);
+    mu_run_test(test_branch_gradient_single_category);
+    mu_run_test(test_branch_gradient_before_assignment);
+    mu_run_test(test_branch_gradient_without_cat);
     return NULL;
 }
 

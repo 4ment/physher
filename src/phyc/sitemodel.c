@@ -1414,7 +1414,7 @@ void _calculate_rates_discrete_ratios( SiteModel *sm ) {
 // The category rates are empirical, so they are normalised to a mean of one over
 // the *alignment* rather than over a distribution: every site contributes the rate
 // of the category it was assigned to, weighted by the number of sites its pattern
-// stands for. Before fasttree_cat has run, every pattern sits in category 0 and
+// stands for. Before cat_assign has run, every pattern sits in category 0 and
 // the mean is simply that category's rate.
 bool _cat_update(SiteModel* sm){
 	const double* rates = Parameter_values(Parameters_at(sm->rates, 0));

@@ -86,7 +86,7 @@ int main(int argc, const char* argv[]){
 
 		fprintf(stdout, "\nusage: physher [--help] [--seed SEED] input-file-name\n");
 		fprintf(stdout, "\npositional arguments:\n");
-  		fprintf(stdout, "  input-file-name     JSON configuration file\n\n");
+  		fprintf(stdout, "  input-file-name     JSON configuration file (- to read from stdin)\n\n");
 		fprintf(stdout, "options:\n");
   		fprintf(stdout, "  --help              show this help message and exit\n");
   		fprintf(stdout, "  --seed              SEED  initialize seed\n");
@@ -100,8 +100,16 @@ int main(int argc, const char* argv[]){
 		exit(0);
 	}
 	else{
-		char* content = load_file(argv[argc-1]);
-		printf("Reading file %s\n", argv[argc-1]);
+		char* content = NULL;
+		if(strcmp(argv[argc-1], "-") == 0){
+			// Configuration piped in, e.g. `phyforge ml ... | physher -`
+			content = load_stream(stdin);
+			printf("Reading configuration from stdin\n");
+		}
+		else{
+			content = load_file(argv[argc-1]);
+			printf("Reading file %s\n", argv[argc-1]);
+		}
 		printf("done\n\n");
 
 		json = create_json_tree(content);

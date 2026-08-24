@@ -3350,6 +3350,121 @@ void gradient_cat_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gran
 	}
 }
 
+// The branch-length gradient under the empirical CAT site model.
+//
+// Not a special case of gradient_cat_branch_lengths above, which is written for a
+// mixture: there a pattern's likelihood sums over every category, so the derivative
+// carries a category dimension that gradient_branch_length_from_cat_inplace contracts
+// against the proportions afterwards. CAT assigns each pattern to a single category
+// instead, and its partials hold one block whatever K is (tlk->cat_count is 1 while
+// sm->cat_count is K, see allocate_storage), with the branch kernel picking each
+// pattern's own transition matrix out of the K the matrix buffer does hold. The
+// category dimension therefore collapses here -- one derivative per branch -- and the
+// chain-rule factor is the rate of the pattern's own category rather than a sum over
+// categories weighted by proportions that are all 1 under CAT. Running the mixture
+// version instead reads K blocks out of a one-block buffer.
+//
+// branch_gradient is written contracted, one entry per node id, so the caller must
+// not pass it through gradient_branch_length_from_cat_inplace.
+void gradient_CAT_branch_lengths( SingleTreeLikelihood *tlk, double* branch_gradient, const double* pattern_likelihoods ){
+	int tempMatrixId = Node_id(Tree_root(tlk->tree));
+	double* mat = tlk->matrices[tlk->current_matrices_indexes[tempMatrixId]][tempMatrixId];
+	double* spare_partials = tlk->partials[0][tlk->upper_partial_indexes[Tree_root(tlk->tree)->id]];
+	size_t nodeCount = Tree_node_count(tlk->tree);
+	SiteModel* sm = tlk->sm;
+	const int nstate = tlk->m->nstate;
+	const int patternCount = tlk->sp->count;
+	const size_t catCount = sm->cat_count;
+	const double* branchLengths = Tree_branch_lengths(tlk->tree);
+
+	// include_root_freqs means update_upper_partials already folded the root
+	// frequencies into the upper partials and the state sum is unweighted.
+	double* ones = NULL;
+	const double* state_weights = tlk->get_root_frequencies(tlk);
+	if( tlk->include_root_freqs ){
+		ones = dvector(nstate);
+		for ( int i = 0; i < nstate; i++ ) ones[i] = 1.0;
+		state_weights = ones;
+	}
+
+	// Scaled partials are not in the units pattern_likelihoods is in, so the ratio has
+	// to be taken against a likelihood built by the same branch kernel with the
+	// transition matrices in place of their derivatives.
+	double* scaled_partials = NULL;
+	if( tlk->scale ){
+		scaled_partials = (double*)aligned16_malloc( tlk->partials_size * sizeof(double) );
+	}
+
+	for ( size_t i = 0; i < nodeCount; i++ ) {
+		Node* node = Tree_node(tlk->tree, i);
+		if( Node_isroot(node) ) continue;
+		const int nodeId = Node_id(node);
+		double bl = branchLengths[nodeId];
+		if( tlk->bm != NULL ){
+			bl *= tlk->bm->get(tlk->bm, node);
+		}
+
+		// Every category is filled even though each pattern reads exactly one of
+		// them: the kernel selects the block by the pattern's own category.
+		for ( size_t c = 0; c < catCount; c++ ) {
+#if defined (SSE3_ENABLED) || (AVX_ENABLED)
+			if( tlk->use_SIMD && tlk->partials[0][nodeId] == NULL ){
+				tlk->m->dp_dt_transpose(tlk->m,
+										bl * sm->get_rate(sm, c),
+										&mat[c*tlk->matrix_size]);
+			}
+			else{
+				tlk->m->dp_dt(tlk->m,
+							  bl * sm->get_rate(sm, c),
+							  &mat[c*tlk->matrix_size]);
+			}
+#else
+			tlk->m->dp_dt(tlk->m,
+						  bl * sm->get_rate(sm, c),
+						  &mat[c*tlk->matrix_size]);
+#endif
+		}
+
+		tlk->calculate_per_cat_partials(tlk, spare_partials, tlk->upper_partial_indexes[nodeId], nodeId, tempMatrixId );
+		if( tlk->scale ){
+			tlk->calculate_per_cat_partials(tlk, scaled_partials, tlk->upper_partial_indexes[nodeId], nodeId, nodeId );
+		}
+
+		const double* dpartials = spare_partials;
+		const double* lpartials = scaled_partials;
+		double gradient = 0;
+		for ( int k = 0; k < patternCount; k++ ) {
+			double dlikelihood = state_weights[0] * dpartials[0];
+			for ( int j = 1; j < nstate; j++ ) {
+				dlikelihood += state_weights[j] * dpartials[j];
+			}
+			dpartials += nstate;
+
+			double likelihood;
+			if( tlk->scale ){
+				likelihood = state_weights[0] * lpartials[0];
+				for ( int j = 1; j < nstate; j++ ) {
+					likelihood += state_weights[j] * lpartials[j];
+				}
+				lpartials += nstate;
+			}
+			else{
+				likelihood = pattern_likelihoods[k];
+			}
+
+			// d(bl*r)/d(bl) = r at the rate of the category this pattern was assigned
+			// to. get_rate carries sm->mu when there is one, which is the same factor
+			// the matrices above were built with.
+			gradient += dlikelihood / likelihood * tlk->sp->weights[k]
+						* sm->get_rate(sm, sm->get_site_category(sm, k));
+		}
+		branch_gradient[nodeId] = gradient;
+	}
+
+	if( scaled_partials != NULL ) free(scaled_partials);
+	if( ones != NULL ) free(ones);
+}
+
 double gradient_pinv_sitemodel(SingleTreeLikelihood* tlk, const double* branch_gradient, const double* branch_lengths){
 	double* pattern_likelihoods = tlk->pattern_lk + tlk->sp->count;
 	size_t nodeCount = Tree_node_count(tlk->tree);
@@ -3676,11 +3791,6 @@ void _calculate_gradient(Model *model,
 						 Parameters* branchModelParameters){
 	Model** models = model->data;
 	SingleTreeLikelihood* tlk = model->obj;
-	if(tlk->sm->site_category != NULL){
-		fprintf(stderr, "_calculate_gradient: the CAT site model has no gradient; "
-		                "use a derivative-free optimizer such as \"algorithm\": \"serial\"\n");
-		exit(2);
-	}
 	// models[0] = tree;
 	Model* substitutionModel = models[1];
 	Model* siteModel = models[2];
@@ -3704,15 +3814,51 @@ void _calculate_gradient(Model *model,
 	bool branchModelGrad = Parameters_count(branchModelParameters) != 0;
 	bool siteModelGrad = Parameters_count(siteModelParameters) != 0;
 	bool substitutionModelGrad = Parameters_count(substitutionModelParameters) != 0;
+	// The empirical CAT site model keeps one category per pattern rather than mixing
+	// them, which the branch-length gradient below knows about and the two paths here
+	// do not.
+	bool cat_sitemodel = tlk->sm->site_category != NULL;
+
+	// CAT's category rates are empirical -- cluster centres of per-pattern posterior
+	// means, not a differentiable discretization -- so the site model answers
+	// _no_gradient for them, which would reach a gradient-based optimizer as a zero,
+	// indistinguishable from a converged parameter. Say so instead. Branch lengths are
+	// a different matter and are handled below.
+	if(cat_sitemodel && siteModelGrad){
+		fprintf(stderr, "_calculate_gradient: the CAT site model's category rates have no "
+		                "gradient; drop them from the parameters being differentiated, or "
+		                "use a derivative-free optimizer such as \"algorithm\": \"serial\"\n");
+		exit(2);
+	}
+	// gradient_substitution_model_aux integrates the branch partials over the category
+	// proportions, which under CAT would read cat_count blocks out of the single block
+	// its partials hold. Reachable but not yet written.
+	if(cat_sitemodel && substitutionModelGrad){
+		fprintf(stderr, "_calculate_gradient: the substitution model gradient is not "
+		                "implemented for the CAT site model; use a derivative-free "
+		                "optimizer such as \"algorithm\": \"serial\"\n");
+		exit(2);
+	}
 
 	// per category gradient wrt branch lengths
 	if (branchModelGrad || treeModelGrad || siteModelGrad) {
-		gradient_cat_branch_lengths(tlk, cat_branch_gradient, pattern_likelihoods);
+		if(cat_sitemodel){
+			gradient_CAT_branch_lengths(tlk, cat_branch_gradient, pattern_likelihoods);
+		}
+		else{
+			gradient_cat_branch_lengths(tlk, cat_branch_gradient, pattern_likelihoods);
+		}
 	}
 	if (!time_mode) {
 		size_t rightNodeID = Tree_root(tlk->tree)->right->id;
-		for (size_t j = 0; j < catCount; j++) {
-			cat_branch_gradient[rightNodeID*catCount + j] = 0;
+		// CAT's is already contracted to one entry per node.
+		if(cat_sitemodel){
+			cat_branch_gradient[rightNodeID] = 0;
+		}
+		else{
+			for (size_t j = 0; j < catCount; j++) {
+				cat_branch_gradient[rightNodeID*catCount + j] = 0;
+			}
 		}
 		branchLengths[rightNodeID] = 0;
 	}
@@ -3727,7 +3873,7 @@ void _calculate_gradient(Model *model,
 	
 	
 	// gradient wrt branch lengths
-	if((branchModelGrad || treeModelGrad || siteModelGrad) && catCount > 1){
+	if((branchModelGrad || treeModelGrad || siteModelGrad) && catCount > 1 && !cat_sitemodel){
 		gradient_branch_length_from_cat_inplace(tlk, cat_branch_gradient);
 	}
 

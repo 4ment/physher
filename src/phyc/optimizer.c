@@ -191,7 +191,7 @@ static opt_result cat_optimize( Optimizer *opt, double *fmin ){
 		return OPT_ERROR;
 	}
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)opt->treelikelihood->obj;
-	CatResult cat = fasttree_cat(tlk, &opt->cat);
+	CatResult cat = cat_assign(tlk, &opt->cat);
 	*fmin = opt->f(NULL, NULL, opt->data);
 	opt->stop.iter = 1;
 	// The probe traversals and the guard's own evaluations, plus the evaluation of
