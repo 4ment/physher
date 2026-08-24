@@ -61,8 +61,9 @@ Transform *new_SimplexTransform_with_parameter(const char *type, Parameter *para
 void free_Transform(Transform* transform);
 
 struct _Parameter{
-	char *name;
+	phyc_tag_t tag; // PHYC_TAG_PARAMETER, must stay first: see phyc_tag_of()
 	int id;
+	char *name;
 	double *value;
 	double *stored_value;
 	bool stored;

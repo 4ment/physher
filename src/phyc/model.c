@@ -41,9 +41,36 @@ static void _dummy_jsonize(Model* m, json_node* node){
 #pragma mark -
 
 
+phyc_tag_t phyc_tag_of(const void* obj) {
+	// Every tagged struct declares phyc_tag_t as its first member, so reading
+	// one at offset 0 is valid for any of them; anything else in the hashtable
+	// gives an arbitrary value that matches none of the known tags.
+	phyc_tag_t tag;
+	memcpy(&tag, obj, sizeof(phyc_tag_t));
+	if (tag == PHYC_TAG_MODEL || tag == PHYC_TAG_PARAMETER ||
+		tag == PHYC_TAG_PARAMETERS) {
+		return tag;
+	}
+	return 0;
+}
+
+const char* phyc_tag_name(const void* obj) {
+	switch (phyc_tag_of(obj)) {
+		case PHYC_TAG_MODEL:
+			return "model";
+		case PHYC_TAG_PARAMETER:
+			return "parameter";
+		case PHYC_TAG_PARAMETERS:
+			return "parameter list";
+		default:
+			return "unknown object";
+	}
+}
+
 Model * new_Model( model_t type, const char *name, void *obj ){
 	Model *model = (Model*)malloc(sizeof(Model));
 	assert(model);
+	model->tag = PHYC_TAG_MODEL;
 	model->name = String_clone(name);
 	model->type = type;
 	model->obj = obj;

@@ -4,11 +4,32 @@
 #ifndef _MODEL_H_
 #define _MODEL_H_
 
+#include <stdint.h>
 #include <stdio.h>
 
 #include "utils.h"
 #include "mjson.h"
 #include "hashtable.h"
+
+// Models, Parameters and Parameters lists all live in the same Hashtable, keyed
+// by their JSON "id", and Hashtable_get returns a void*. Without a tag a '&'
+// reference naming a Model resolves happily and is then used as a Parameter --
+// silent type confusion (a bogus dimension, a garbage name, a segfault). Every
+// struct that can be registered declares one of these as its *first* member, so
+// phyc_tag_of() is well defined for anything coming out of the hashtable.
+typedef uint32_t phyc_tag_t;
+
+#define PHYC_TAG_MODEL ((phyc_tag_t)0x4d4f444cu)       // 'MODL'
+#define PHYC_TAG_PARAMETER ((phyc_tag_t)0x50415241u)   // 'PARA'
+#define PHYC_TAG_PARAMETERS ((phyc_tag_t)0x50415253u)  // 'PARS'
+
+// Tag of an object retrieved from the hashtable, or 0 for an untagged one
+// (a double, an int, ...). obj must not be NULL.
+phyc_tag_t phyc_tag_of(const void* obj);
+
+// Human-readable kind of obj, for error messages: "model", "parameter",
+// "parameter list" or "unknown object".
+const char* phyc_tag_name(const void* obj);
 
 struct _Parameter;
 typedef struct _Parameter Parameter;
@@ -111,9 +132,10 @@ typedef enum {
 } hessian_mode_t;
 
 struct _Model {
+	phyc_tag_t tag; // PHYC_TAG_MODEL, must stay first: see phyc_tag_of()
+	model_t type;
 	void *obj; // pointer to model
 	char *name;
-	model_t type;
 	void* data;
 	double (*logP)( Model * );
 	double (*full_logP)( Model * );

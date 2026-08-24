@@ -28,6 +28,7 @@ struct _Constraint{
 };
 
 struct _Parameters{
+	phyc_tag_t tag; // PHYC_TAG_PARAMETERS, must stay first: see phyc_tag_of()
 	char* name;
 	Parameter **list;
 	size_t count;
@@ -58,6 +59,16 @@ void* safe_get_reference_parameter(const char* ref, Hashtable* hash,
         fprintf(stderr, "Reference '%s' not found for parent '%s'\n", ref, parent);
         exit(2);
     }
+    // Models share this namespace, so '&' can resolve to something that is not
+    // a Parameter; using it as one is silent memory corruption.
+    if (phyc_tag_of(res) != PHYC_TAG_PARAMETER) {
+        fprintf(stderr,
+                "Reference '%s' is a %s, not a parameter (parent '%s')%s\n", ref,
+                phyc_tag_name(res), parent,
+                phyc_tag_of(res) == PHYC_TAG_MODEL ? "; use '@' to refer to a model"
+                                                   : "");
+        exit(2);
+    }
     return res;
 }
 
@@ -80,6 +91,16 @@ void* safe_get_reference_model(const char* ref, Hashtable* hash,
     void* res = Hashtable_get(hash, ref + 1);
     if (res == NULL) {
         fprintf(stderr, "Reference '%s' not found for parent '%s'\n", ref, parent);
+        exit(2);
+    }
+    // Parameters share this namespace, so '@' can resolve to something that is
+    // not a Model; using it as one is silent memory corruption.
+    if (phyc_tag_of(res) != PHYC_TAG_MODEL) {
+        fprintf(stderr, "Reference '%s' is a %s, not a model (parent '%s')%s\n", ref,
+                phyc_tag_name(res), parent,
+                phyc_tag_of(res) == PHYC_TAG_PARAMETER
+                    ? "; use '&' to refer to a parameter"
+                    : "");
         exit(2);
     }
     return res;
@@ -210,6 +231,7 @@ Parameter * new_Parameter_with_postfix( const char *name, const char *postfix, c
 Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, const double* value, size_t dim, Constraint *constr ){
 	Parameter *p = (Parameter *)malloc( sizeof(Parameter) );
 	assert(p);
+	p->tag = PHYC_TAG_PARAMETER;
 	size_t name_len    = strlen(name);
 	size_t postfix_len = strlen(postfix);
 	
@@ -241,6 +263,7 @@ Parameter * new_Parameter_with_postfix2( const char *name, const char *postfix, 
 Parameter * new_Parameter_full( const char *name, double value, size_t dim, Constraint *constr){
 	Parameter *p = (Parameter *)malloc( sizeof(Parameter) );
 	assert(p);
+	p->tag = PHYC_TAG_PARAMETER;
 	p->name = String_clone(name);
 	assert(p->name);
 	p->update = _parameter_handle_update;
@@ -268,6 +291,7 @@ Parameter * new_Parameter_full( const char *name, double value, size_t dim, Cons
 Parameter * new_ParameterModel( const char *name, const double* value, size_t dim, Constraint *constr, Model* model){
 	Parameter *p = (Parameter *)malloc( sizeof(Parameter) );
 	assert(p);
+	p->tag = PHYC_TAG_PARAMETER;
 	
 	p->name = String_clone(name);
 	p->update = _parameter_handle_update;
@@ -909,6 +933,7 @@ double check_value( Constraint *cnstr, double value ){
 Parameters * new_Parameters( const size_t capacity ){
     Parameters *ps = (Parameters *)malloc( sizeof(Parameters) );
     assert(ps);
+    ps->tag = PHYC_TAG_PARAMETERS;
     ps->name = NULL;
     ps->list = (Parameter **)malloc( capacity * sizeof(Parameter *) );
     assert(ps->list);
@@ -1429,11 +1454,17 @@ void get_parameters_slice(const char* ref, Parameters* parameters, Hashtable* ha
 		start++;
 	}
 	*start = '\0';
-	Parameters* ps = Hashtable_get(hash, copy);
-	if (ps == NULL) {
+	void* obj = Hashtable_get(hash, copy);
+	if (obj == NULL) {
 		fprintf(stderr, "Reference '%s' does not match any Parameters declared earlier\n", copy);
 		exit(1);
 	}
+	if (phyc_tag_of(obj) != PHYC_TAG_PARAMETERS) {
+		fprintf(stderr, "Reference '%s' is a %s, not a parameter list\n", copy,
+				phyc_tag_name(obj));
+		exit(1);
+	}
+	Parameters* ps = (Parameters*)obj;
 	start++;
 	start[strlen(start)-1] = '\0';
 	int begin = 0;
@@ -1488,20 +1519,35 @@ void get_parameter_reference(const char* ref, Hashtable* hash, Parameters* param
 		get_parameters_slice(ref + 1, parameters, hash);
 	}
 	else if (ref[0] == '&') {
-		Parameter* p = Hashtable_get(hash, ref + 1);
-		if (p == NULL) {
+		void* obj = Hashtable_get(hash, ref + 1);
+		if (obj == NULL) {
 			fprintf(stderr, "Reference '%s' does not match any Parameter declared earlier\n", ref);
 			exit(1);
 		}
-		Parameters_add(parameters, p);
+		// Models are registered under the same keys, so a '&' ref naming one
+		// resolves here; reinterpreting it as a Parameter reads garbage.
+		if (phyc_tag_of(obj) != PHYC_TAG_PARAMETER) {
+			fprintf(stderr, "Reference '%s' is a %s, not a parameter%s\n", ref,
+					phyc_tag_name(obj),
+					phyc_tag_of(obj) == PHYC_TAG_MODEL
+						? "; use '@' to refer to a model"
+						: "");
+			exit(1);
+		}
+		Parameters_add(parameters, (Parameter*)obj);
 	}
 	else if (ref[0] == '%') {
-		Parameters* ps = Hashtable_get(hash, ref + 1);
-		if (ps == NULL) {
+		void* obj = Hashtable_get(hash, ref + 1);
+		if (obj == NULL) {
 			fprintf(stderr, "Reference '%s' does not match any Parameters declared earlier\n", ref);
 			exit(1);
 		}
-		Parameters_add_parameters(parameters, ps);
+		if (phyc_tag_of(obj) != PHYC_TAG_PARAMETERS) {
+			fprintf(stderr, "Reference '%s' is a %s, not a parameter list\n", ref,
+					phyc_tag_name(obj));
+			exit(1);
+		}
+		Parameters_add_parameters(parameters, (Parameters*)obj);
 	}
 	else {
 		fprintf(stderr, "Reference '%s' must start with '&' (Parameter) or '%%' (Parameters)\n", ref);
