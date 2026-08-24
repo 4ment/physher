@@ -6,8 +6,9 @@
 
 #include <stdio.h>
 
-#include "mjson.h"
 #include "hashtable.h"
+#include "mjson.h"
+#include "model.h"
 
 #define JSON_PREDICTIVE "predictive"
 
@@ -16,6 +17,7 @@ typedef struct _Predictive Predictive;
 
 struct _Predictive{
 	char* filename;
+	Model* model;  // the tree likelihood the trace was logged from
 	size_t burnin;
 	void(*calculate)(Predictive*);
 	void(*free)(Predictive*);

@@ -3,74 +3,42 @@
 
 #include "predictive.h"
 
-#include <float.h>
+#include <math.h>
 
-#include "mstring.h"
 #include "matrix.h"
-#include "filereader.h"
+#include "mstring.h"
+#include "patterntrace.h"
 #include "statistics.h"
+#include "treelikelihood.h"
 
-// computed log pointwise predictive density
+// Log pointwise predictive density and the effective number of parameters, the
+// two halves of the WAIC, from a trace of per-pattern log-likelihoods.
 void _predictive_calculate(Predictive* predictive){
-	char *ptr = NULL;
-	double *temp = NULL;
-	int l = 0;
+	SingleTreeLikelihood* tlk = predictive->model->obj;
+	const int pattern_count = tlk->sp->count;
+	const double* weights = tlk->sp->weights;
+
 	size_t count = 0;
-	size_t sample = 0;
-	double* weights = NULL;
-	FileReader *reader = new_FileReader(predictive->filename, 1000);
-	reader->read_line(reader);
-	weights = String_split_char_double( reader->line+1, '\t', &l );
-	size_t siteCount = l;
-	Vector** vecs = malloc(siteCount*sizeof(Vector*));
-	for (int i = 0; i < siteCount; i++) {
-		vecs[i] = new_Vector(100);
-	}
-	reader->read_line(reader);// discard header
-	
-	while ( reader->read_line(reader) ) {
-		StringBuffer_trim(reader->buffer);
-		
-		if ( reader->buffer->length == 0){
-			continue;
-		}
-		if ( sample >= predictive->burnin){
-			ptr = reader->line;
-			l = 0;
-			//printf("=%s=\n", ptr);
-			temp = String_split_char_double( ptr, '\t', &l );
-			for (int i = 0; i < siteCount; i++) {
-				Vector_push(vecs[i], temp[i+1]);
-			}
-			free(temp);
-			count++;
-		}
-		sample++;
-	}
-	free_FileReader(reader);
-	
-	double llpd = 0;
-	for (int i = 0; i < siteCount; i++) {
-		double sum = Vector_at(vecs[i], 0);
-		for (int j = 1; j < count; j++) {
-			sum = logaddexp(sum, Vector_at(vecs[i], j));
-		}
-		llpd += (sum - log(count))*weights[i];
-	}
-	printf("lppd: %f\n", llpd);
-	
+	double** trace = read_pattern_log_likelihoods(predictive->model,
+	                                              predictive->filename,
+	                                              predictive->burnin,
+	                                              "predictive", &count);
+
+	double lppd = 0;
 	double pwaic = 0;
-	for (int i = 0; i < siteCount; i++) {
-		double m = mean(Vector_data(vecs[i]), count);
-		pwaic += weights[i]*variance(Vector_data(vecs[i]), count, m);
+	for (int i = 0; i < pattern_count; i++) {
+		const double* lnl = trace[i];
+		double sum = lnl[0];
+		for (size_t j = 1; j < count; j++) {
+			sum = logaddexp(sum, lnl[j]);
+		}
+		lppd += (sum - log(count))*weights[i];
+		pwaic += weights[i]*variance(lnl, count, mean(lnl, count));
 	}
+	printf("lppd: %f\n", lppd);
 	printf("pwaic: %f\n", pwaic);
-	
-	for (int i = 0; i < siteCount; i++) {
-		free_Vector(vecs[i]);
-	}
-	free(vecs);
-	free(weights);
+
+	free_dmatrix(trace, pattern_count);
 }
 
 void _free_predictive(Predictive* predictive){
@@ -83,12 +51,22 @@ Predictive* new_Predictive_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"burnin", JSON_OPTIONAL, JSON_NUMBER},
 	    {"filename", JSON_REQUIRED, JSON_STRING},
+	    {"model", JSON_REQUIRED, JSON_STRING},
 	};
 	json_validate(node, schema, sizeof(schema) / sizeof(schema[0]));
 	
 	char* filename = get_json_node_value_string(node, "filename");
+	char* ref = get_json_node_value_string(node, "model");
+	// The likelihood the trace was logged from: it supplies the pattern weights
+	// and the column names to look for, so the file needs to carry neither.
+	Model* model = Hashtable_get(hash, ref + 1);
+	if (model == NULL || model->type != MODEL_TREELIKELIHOOD) {
+		json_die(node, "\"model\" must reference a tree likelihood (e.g. \"@treelikelihood\"): '%s'", ref);
+	}
+
 	Predictive* predictive = malloc(sizeof(Predictive));
 	predictive->filename = String_clone(filename);
+	predictive->model = model;
 	predictive->burnin = get_json_node_value_size_t(node, "burnin", 0);
 	predictive->calculate = _predictive_calculate;
 	predictive->free = _free_predictive;
