@@ -1459,6 +1459,47 @@ size_t parse_taxa_dates(json_node* node, char*** ptaxa, double** pdates){
 	return taxaNode->child_count;
 }
 
+// Build the Parameter behind a tree model's "branch_lengths" node.
+//
+// `branchCount` is the number of branches the tree will have, or 0 when it is
+// not known yet. It is only used to size a parameter whose JSON does not pin a
+// "dimension" of its own, which is what lets an "initializer" (nj/upgma) config
+// omit a count it cannot know before the topology has been built. A parameter
+// referenced by id is shared with whoever created it and is never resized.
+static Parameter* parse_branch_lengths_from_json(json_node* branchLengthsNode,
+                                                 Hashtable* hash, size_t branchCount){
+	Parameter* branchLengths = NULL;
+	if(branchLengthsNode->node_type == MJSON_OBJECT){
+		if(branchCount > 0 && get_json_node(branchLengthsNode, "dimension") == NULL){
+			add_json_node_size_t(branchLengthsNode, "dimension", branchCount);
+		}
+		branchLengths = new_Parameter_from_json(branchLengthsNode, hash);
+	}
+	else{
+		char* ref = (char*)branchLengthsNode->value;
+		branchLengths = Hashtable_get(hash, ref+1);
+		if(branchLengths == NULL){
+			fprintf(stderr, "tree \"branch_lengths\" refers to unknown parameter %s\n",
+			        ref);
+			exit(2);
+		}
+		branchLengths->refCount++;
+	}
+	// Branch lengths are non-negative. Pin both the hard bounds (used by the
+	// optimizer's bracketing, see find_bracket) and the soft fitting bounds to
+	// [BL_MIN, BL_MAX]; without a finite hard lower bound the line search walks
+	// into negative branch lengths and the likelihood goes to NaN.
+	if(Constraint_lower(branchLengths->cnstr) < BL_MIN){
+		Constraint_set_lower(branchLengths->cnstr, BL_MIN);
+	}
+	if(Constraint_upper(branchLengths->cnstr) > BL_MAX){
+		Constraint_set_upper(branchLengths->cnstr, BL_MAX);
+	}
+	Constraint_set_flower(branchLengths->cnstr, BL_MIN);
+	Constraint_set_fupper(branchLengths->cnstr, BL_MAX);
+	return branchLengths;
+}
+
 Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 		{"branch_lengths", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
@@ -1500,30 +1541,12 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	Parameter* branchLengths = NULL;
 	Parameter* heights = NULL;
 
-	// it's an unrooted tree
-	if(branchLengthsNode != NULL){
-		char* id = get_json_node_value_string(branchLengthsNode, "id");
-		
-		if(branchLengthsNode->node_type == MJSON_OBJECT){
-			branchLengths = new_Parameter_from_json(branchLengthsNode, hash);
-		}
-		else{
-			char* ref = (char*)branchLengthsNode->value;
-			branchLengths = Hashtable_get(hash, ref+1);
-			branchLengths->refCount++;
-		}
-		// Branch lengths are non-negative. Pin both the hard bounds (used by the
-		// optimizer's bracketing, see find_bracket) and the soft fitting bounds to
-		// [BL_MIN, BL_MAX]; without a finite hard lower bound the line search walks
-		// into negative branch lengths and the likelihood goes to NaN.
-		if(Constraint_lower(branchLengths->cnstr) < BL_MIN){
-			Constraint_set_lower(branchLengths->cnstr, BL_MIN);
-		}
-		if(Constraint_upper(branchLengths->cnstr) > BL_MAX){
-			Constraint_set_upper(branchLengths->cnstr, BL_MAX);
-		}
-		Constraint_set_flower(branchLengths->cnstr, BL_MIN);
-		Constraint_set_fupper(branchLengths->cnstr, BL_MAX);
+	// it's an unrooted tree. A topology loaded from a newick string/file already
+	// fixes the number of branches, so the parameter can be built now; when the
+	// topology comes from an "initializer" it does not exist yet and parsing is
+	// deferred to that branch below, which knows the taxon count.
+	if(branchLengthsNode != NULL && (newick_node != NULL || file_node != NULL)){
+		branchLengths = parse_branch_lengths_from_json(branchLengthsNode, hash, 0);
 	}
 	// it's a time tree (not reparametrized)
 	else if(heightsNode != NULL){
@@ -1697,16 +1720,34 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 		// from a distance matrix) parsimony needs the topology loaded above from
 		// the newick/file; here we only overwrite its branch lengths with the
 		// parsimony estimates (see Parsimony_init_branch_lengths).
-		if(init_node != NULL &&
-		   strcasecmp(get_json_node_value_string(init_node, "algorithm"), "parsimony") == 0){
+		const char* init_algorithm =
+		    (init_node == NULL ? NULL
+		                       : get_json_node_value_string(init_node, "algorithm"));
+		// A "scale"-only initializer (handled above for time trees) carries no
+		// algorithm; anything else must name one.
+		if(init_node != NULL && init_algorithm == NULL &&
+		   get_json_node(init_node, "scale") == NULL){
+			error("tree initializer requires an \"algorithm\"\n");
+		}
+		if(init_algorithm != NULL && strcasecmp(init_algorithm, "parsimony") == 0){
 			if(branchLengths == NULL){
 				error("Parsimony initializer requires a branch-length (unrooted) tree\n");
 			}
 			json_node* patterns_node = get_json_node(init_node, "sitepattern");
+			if(patterns_node == NULL){
+				error("Parsimony initializer requires a \"sitepattern\"\n");
+			}
 			SitePattern* patterns = NULL;
-			if(patterns_node->node_type == MJSON_STRING){
+			// A site pattern created here is owned by the hashtable (as in
+			// new_ParsimonyModel_from_json); one looked up by reference is borrowed,
+			// so we take a reference and give it back below.
+			bool borrowedPatterns = patterns_node->node_type == MJSON_STRING;
+			if(borrowedPatterns){
 				char* ref = (char*)patterns_node->value;
 				patterns = Hashtable_get(hash, ref+1);
+				if(patterns == NULL){
+					error("Parsimony initializer: unknown sitepattern reference\n");
+				}
 				patterns->ref_count++;
 			}
 			else{
@@ -1718,7 +1759,24 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 			Parsimony* parsimony = new_Parsimony(patterns, tree);
 			Parsimony_init_branch_lengths(parsimony, min_length);
 			free_Parsimony(parsimony);
-			free_SitePattern(patterns);
+			if(borrowedPatterns){
+				free_SitePattern(patterns);
+			}
+		}
+		else if(init_algorithm != NULL){
+			// nj/upgma build a topology from a distance matrix, so they are handled
+			// in the branch below, where no newick/file is given.
+			if(strcasecmp(init_algorithm, "nj") == 0 ||
+			   strcasecmp(init_algorithm, "upgma") == 0){
+				fprintf(stderr,
+				        "Tree initializer \"%s\" builds a topology and cannot be "
+				        "combined with \"newick\"/\"file\"\n", init_algorithm);
+			}
+			else{
+				fprintf(stderr, "Unknown tree initializer algorithm: %s "
+				                "(nj, upgma, parsimony)\n", init_algorithm);
+			}
+			exit(2);
 		}
 
 		char* id = get_json_node_value_string(node, "id");
@@ -1734,37 +1792,67 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	}
 	else if (init_node != NULL) {
 		char* algorithm = get_json_node_value_string(init_node, "algorithm");
-		if (strcasecmp(algorithm, "nj") == 0) {
-			tree = create_NJ_from_json(init_node, hash, branchLengths);
+		if (algorithm == NULL) {
+			error("tree initializer requires an \"algorithm\"\n");
 		}
-		else if (strcasecmp(algorithm, "upgma") == 0) {
-			tree = create_UPGMA_from_json(init_node, hash);
-		}
-		else{
+		bool isNJ = strcasecmp(algorithm, "nj") == 0;
+		if (!isNJ && strcasecmp(algorithm, "upgma") != 0) {
+			if (strcasecmp(algorithm, "parsimony") == 0) {
+				// parsimony only sets branch lengths, it does not build a topology
+				error("Parsimony initializer requires a tree topology "
+				      "(\"newick\" or \"file\")\n");
+			}
+			fprintf(stderr, "Unknown tree initializer algorithm: %s "
+			                "(nj, upgma, parsimony)\n", algorithm);
 			exit(2);
 		}
-	
-		tree->time_mode = time_tree;
-		tree->rooted = time_tree;
-
-        if(mtt == NULL && time_tree && tree->tt->update_lowers != NULL)
-			tree->tt->update_lowers(tree->tt);
-        
-		// initialize heights from distances read from newick file
-		if(tree->time_mode){
-			init_heights_from_distances(tree);
+		// nj and upgma build a topology with branch lengths out of a distance
+		// matrix; they know nothing about dates and set up no height
+		// parameterization, so there is no time tree to hand back here.
+		if (time_tree || branchLengthsNode == NULL) {
+			fprintf(stderr, "Tree initializer \"%s\" builds a tree with branch "
+			                "lengths and requires \"branch_lengths\"; time trees "
+			                "are not supported yet\n", algorithm);
+			exit(2);
 		}
-		
+
+		Matrix* matrix = create_DistanceMatrix_from_json(init_node, hash);
+		size_t tipCount = matrix->nrow;
+		if (tipCount < 3) {
+			fprintf(stderr, "Tree initializer \"%s\" needs at least 3 taxa, got "
+			                "%zu\n", algorithm, tipCount);
+			exit(2);
+		}
+		// An n-taxon unrooted tree has 2n-3 branches: it is stored as a rooted
+		// binary tree (2n-1 nodes) whose root right branch is pinned to 0, see
+		// Tree_update_branch_indices.
+		size_t branchCount = 2 * tipCount - 3;
+		branchLengths =
+		    parse_branch_lengths_from_json(branchLengthsNode, hash, branchCount);
+		if (Parameter_size(branchLengths) != branchCount) {
+			fprintf(stderr, "branch_lengths parameter \"%s\" has dimension %zu but "
+			                "the tree built by the \"%s\" initializer has %zu taxa "
+			                "and therefore %zu branches\n",
+			        Parameter_name(branchLengths), Parameter_size(branchLengths),
+			        algorithm, tipCount, branchCount);
+			exit(2);
+		}
+
+		if (isNJ) {
+			tree = new_NJ((const char**)matrix->rowNames, tipCount, matrix->matrix,
+			              branchLengths);
+		}
+		else {
+			tree = new_UPGMA((const char**)matrix->rowNames, tipCount, matrix->matrix,
+			                 branchLengths);
+		}
+		free_Matrix(matrix);
+
+		tree->time_mode = false;
+		tree->rooted = false;
+
 		char* id = get_json_node_value_string(node, "id");
-		mtree = new_TreeModel2(id, tree, mtt);
-
-		if(mtt != NULL){
-			TreeTransformModel_add_tree_model(mtt, mtree);
-			tree->tt = mtt->obj;
-		}
-		if(tree->tt != NULL){
-			TreeTransform_initialize_from_heights(tree->tt);
-		}
+		mtree = new_TreeModel2(id, tree, NULL);
 	}
 	else if (node->node_type == MJSON_STRING) {
 		char* ref = (char*)node->value;

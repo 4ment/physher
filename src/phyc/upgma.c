@@ -11,7 +11,8 @@
 
 static void _findMinIndexes( double **matrix, int ncluster, int *alias, int *imin, int *jmin);
 
-Tree * new_UPGMA( const char **taxa, size_t dim, double **matrix ){
+Tree * new_UPGMA( const char **taxa, size_t dim, double **matrix, Parameter* branchLengths ){
+    assert(dim > 2);
     
     Node **nodes = (Node**)malloc(dim*sizeof(Node*));
     assert(nodes);
@@ -47,8 +48,11 @@ Tree * new_UPGMA( const char **taxa, size_t dim, double **matrix ){
         
         double l = fmax(0.0, matrix[ alias[imin] ][ alias[jmin] ]*0.5);
         
-        inode->bl = l-h[alias[imin]];
-        jnode->bl = l-h[alias[jmin]];
+        // A non-additive distance matrix can put a cluster above its own join
+        // height; clamp so the tree starts inside the feasible region of the
+        // branch length parameter, whose lower bound is BL_MIN.
+        inode->bl = fmax(BL_MIN, l-h[alias[imin]]);
+        jnode->bl = fmax(BL_MIN, l-h[alias[jmin]]);
         
         nodes[alias[imin]] = node;
         counts[alias[imin]] += counts[alias[jmin]];
@@ -84,16 +88,14 @@ Tree * new_UPGMA( const char **taxa, size_t dim, double **matrix ){
     
     double l = fmax(0.0, matrix[ alias[0] ][ alias[1] ]*0.5);
     
-    inode->bl = l-h[ alias[0] ];
-    jnode->bl = l-h[ alias[1] ];
+    inode->bl = fmax(BL_MIN, l-h[ alias[0] ]);
+    jnode->bl = fmax(BL_MIN, l-h[ alias[1] ]);
     
     free(counts);
     free(nodes);
     free(alias);
     free(h);
-	Tree* tree = new_Tree2(node, NULL);
-	Tree_set_rooted(tree, true);
-    return tree;
+	return new_Tree2(node, branchLengths);
 }
 
 void _findMinIndexes( double **matrix, int ncluster, int *alias, int *imin, int *jmin){
@@ -218,10 +220,4 @@ Tree * new_UPGMA_float( const Sequences *sequences, float **_matrix ){
 	return tree;
 }
 
-Tree* create_UPGMA_from_json( json_node* node, Hashtable* hash ){
-	Matrix* matrix = create_DistanceMatrix_from_json(node, hash);
-	Tree* tree = new_UPGMA((const char**)matrix->rowNames, matrix->nrow, matrix->matrix);
-	free_Matrix(matrix);
-	return tree;
-}
 

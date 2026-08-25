@@ -199,6 +199,7 @@ void findMinIndexes( double **matrix, int ncluster, double *r, int *alias, int *
 }
 
 struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix, Parameter* branchLengths ){
+    assert(dim > 2);
     Node **nodes = (Node**)malloc(sizeof(Node*)*dim);
     assert(nodes);
     int *alias = ivector(dim);
@@ -239,8 +240,11 @@ struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix, Parameter
         double il = (matrix[ alias[imin] ][ alias[jmin] ] + (r[imin] - r[jmin])/(ncluster-2))*0.5;
         double jl = matrix[ alias[imin] ][ alias[jmin] ]-il;
         
-        inode->bl = fmax(0.0, il);
-        jnode->bl = fmax(0.0, jl);
+        // The distance estimates can come out negative (or zero); clamp them so
+        // the tree starts inside the feasible region of the branch length
+        // parameter, whose lower bound is BL_MIN.
+        inode->bl = fmax(BL_MIN, il);
+        jnode->bl = fmax(BL_MIN, jl);
         
         nodes[alias[imin]] = node;
         nodes[alias[jmin]] = NULL;
@@ -273,7 +277,9 @@ struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix, Parameter
     Node_set_parent(inode, node);
     Node_set_parent(jnode, node);
     
-    double l = fmax(0.0, matrix[ alias[0] ][ alias[1] ]*0.5);
+    // The two branches incident to this last node are the two halves of a single
+    // branch of the unrooted tree; new_Tree2 merges them back together.
+    double l = fmax(BL_MIN, matrix[ alias[0] ][ alias[1] ]) * 0.5;
 
     inode->bl = l;
     jnode->bl = l;
@@ -285,9 +291,3 @@ struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix, Parameter
     return new_Tree2(node, branchLengths);
 }
 
-Tree* create_NJ_from_json( json_node* node, Hashtable* hash, Parameter* branchLengths ){
-	Matrix* matrix = create_DistanceMatrix_from_json(node, hash);
-	Tree* tree = new_NJ((const char**)matrix->rowNames, matrix->nrow, matrix->matrix, branchLengths);
-	free_Matrix(matrix);
-	return tree;
-}

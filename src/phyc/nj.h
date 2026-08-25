@@ -9,6 +9,4 @@
 
 struct _Tree * new_NJ( const char **taxa, size_t dim, double **matrix, Parameter* branchLengths );
 
-struct _Tree* create_NJ_from_json( json_node* node, Hashtable* hash, Parameter* branchLengths );
-
 #endif

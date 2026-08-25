@@ -9,7 +9,7 @@
 #include "mstring.h"
 
 Vector* read_log_column_with_id( const char *filename, size_t burnin, const char* id ){
-	int count = 0;
+	size_t count = 0;
 	char *ptr = NULL;
 	double *temp = NULL;
 	int l;
@@ -66,17 +66,25 @@ Vector** read_log_column_with_ids( const char *filename, size_t burnin, const ch
 	ptr = reader->line;
 	l = 0;
 	char** header = String_split_char(ptr, '\t', &l);
-	bool* in = bvector(l);
+	// columns[j] is the index in the file of the column named tags[j]. Indexing
+	// by tag rather than walking the file in column order keeps vecs[j] matched
+	// to tags[j] even when the columns are not laid out in the order of `tags`.
+	size_t* columns = malloc(tag_count*sizeof(size_t));
 	
-	Vector** vecs = malloc(2*sizeof(Vector*));
+	Vector** vecs = malloc(tag_count*sizeof(Vector*));
 	
-	for (int j = 0; j < tag_count; j++) {
+	for (size_t j = 0; j < tag_count; j++) {
 		vecs[j] = new_Vector(1000);
-		for (int i = 0; i < l; i++) {
+		int i = 0;
+		for (; i < l; i++) {
 			if(strcmp(tags[j], header[i]) == 0){
-				in[i] = true;
+				columns[j] = i;
 				break;
 			}
+		}
+		if(i == l){
+			fprintf(stderr, "Could not find ID `%s` in %s\n", tags[j], filename);
+			exit(1);
 		}
 	}
 	
@@ -95,11 +103,9 @@ Vector** read_log_column_with_ids( const char *filename, size_t burnin, const ch
 			ptr = reader->line;
 			l = 0;
 			temp = String_split_char_double( ptr, '\t', &l );
-			size_t index = 0;
-			for (int i = 0; i < l; i++) {
-				if(in[i]){
-					Vector_push(vecs[index], temp[i]);
-					index++;
+			for (size_t j = 0; j < tag_count; j++) {
+				if(columns[j] < (size_t)l){
+					Vector_push(vecs[j], temp[columns[j]]);
 				}
 			}
 			free(temp);
@@ -107,9 +113,9 @@ Vector** read_log_column_with_ids( const char *filename, size_t burnin, const ch
 		sample++;
 	}
 	free_FileReader(reader);
-	for (int j = 0; j < tag_count; j++) {
+	for (size_t j = 0; j < tag_count; j++) {
 		Vector_pack(vecs[j]);
 	}
-	free(in);
+	free(columns);
 	return  vecs;
 }

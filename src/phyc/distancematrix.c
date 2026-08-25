@@ -170,7 +170,7 @@ void _distance_jc69(const Sequences *sequences, double **matrix){
 	int i,j;
 	double d = 0;
 	int n = 0;
-	double fourThird = 4.f/3.f;
+	double fourThird = 4.0/3.0;
 	int length;
 	int n1,n2;
 	
@@ -213,7 +213,7 @@ void _distance_jc69_patterns(const SitePattern *patterns, double **matrix){
 	int i,j;
 	double d = 0;
 	int n = 0;
-	double fourThird = 4.f/3.f;
+	double fourThird = 4.0/3.0;
 	int n1,n2;
 	
 	for ( i = 0; i < patterns->size; i++ ) {
@@ -655,6 +655,10 @@ double ** SitePattern_distance( const SitePattern *patterns, distancematrix_mode
 Matrix* create_DistanceMatrix_from_json( json_node* node, Hashtable* hash ){
 	SitePattern* patterns = NULL;
 	json_node* patterns_node = get_json_node(node, "sitepattern");
+	if(patterns_node == NULL){
+		fprintf(stderr, "A distance matrix requires a \"sitepattern\"\n");
+		exit(2);
+	}
 	char* model = get_json_node_value_string(node, "model");
 	if(patterns_node->node_type == MJSON_STRING){
 		char* ref = (char*)patterns_node->value;
@@ -668,17 +672,34 @@ Matrix* create_DistanceMatrix_from_json( json_node* node, Hashtable* hash ){
 		Hashtable_add(hash, id, patterns);
 	}
 	distancematrix_model modelt = DISTANCE_MATRIX_UNCORRECTED;
-	if (strcasecmp(model, "uncorrected")) {
-		modelt = DISTANCE_MATRIX_UNCORRECTED;
+	if (model != NULL) {
+		if (strcasecmp(model, "uncorrected") == 0) {
+			modelt = DISTANCE_MATRIX_UNCORRECTED;
+		}
+		else if (strcasecmp(model, "jc69") == 0) {
+			modelt = DISTANCE_MATRIX_JC69;
+		}
+		else if (strcasecmp(model, "k2p") == 0) {
+			modelt = DISTANCE_MATRIX_K2P;
+		}
+		else if (strcasecmp(model, "kimura") == 0) {
+			modelt = DISTANCE_MATRIX_KIMURA;
+		}
+		else {
+			fprintf(stderr, "Unknown distance model: %s "
+			                "(uncorrected, jc69, k2p, kimura)\n", model);
+			free_SitePattern(patterns);
+			exit(2);
+		}
 	}
-	else if (strcasecmp(model, "jc69")) {
-		modelt = DISTANCE_MATRIX_JC69;
-	}
-	else if (strcasecmp(model, "k2p")) {
-		modelt = DISTANCE_MATRIX_K2P;
-	}
-	else if (strcasecmp(model, "kimura")) {
-		modelt = DISTANCE_MATRIX_KIMURA;
+	// Only the amino acid path implements Kimura's approximation; asking for it
+	// on nucleotide/codon data would trip an assert inside SitePattern_distance.
+	if (modelt == DISTANCE_MATRIX_KIMURA &&
+	    patterns->datatype->type != DATA_TYPE_AMINO_ACID) {
+		fprintf(stderr, "Distance model \"kimura\" is only available for amino "
+		                "acid data\n");
+		free_SitePattern(patterns);
+		exit(2);
 	}
 	double** matrix = SitePattern_distance(patterns, modelt);
 	Matrix * mat = new_Matrix_from(matrix, patterns->size, patterns->size);
