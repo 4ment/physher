@@ -429,6 +429,24 @@ static void meta_print_header(const OptimizerSchedule* schedule, const OptStopCr
 	       META_ALGO_WIDTH, "", logL, "-", (size_t)1);
 }
 
+// Is any likelihood on the schedule currently computing on the rescaled path?
+//
+// Underflow of the unscaled partials is detected inside _calculate, but reported
+// from here: the sweep loop switches rescaling back off once a sweep to probe
+// whether the cheaper unscaled path has become usable again, so it is the only
+// place that can tell a first underflow from the expected failure of its own
+// probe. Reading the flag rather than counting events is enough for both uses --
+// the probe leaves it off, so it is on afterwards exactly when something turned
+// it back on.
+static bool meta_rescaling_on(const OptimizerSchedule* schedule){
+	for (int i = 0; i < schedule->count; i++) {
+		if (schedule->optimizers[i]->treelikelihood == NULL) continue;
+		SingleTreeLikelihood* tlk = schedule->optimizers[i]->treelikelihood->obj;
+		if (tlk->scale) return true;
+	}
+	return false;
+}
+
 static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 	opt_func f = opt_meta->f;
 	void* data = opt_meta->data;
@@ -452,7 +470,16 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 	stop->f_eval_current = 1;
 	opt_result result = OPT_MAXITER;
 
-	if (verbosity > 0) meta_print_header(schedule, stop, name_width, opt_meta->maximize, sign*lnl_start);
+	// State the run starts in, and the baseline the sweep loop reports changes
+	// against.
+	bool rescaling = meta_rescaling_on(schedule);
+
+	if (verbosity > 0) {
+		if (rescaling) {
+			printf("\nPartials underflow at the starting point: rescaling enabled\n");
+		}
+		meta_print_header(schedule, stop, name_width, opt_meta->maximize, sign*lnl_start);
+	}
 
 	for (size_t sweep = 0; sweep < stop->iter_max; sweep++) {
 		double lnl_current = lnl;
@@ -564,6 +591,10 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 
 		opt_progress convergence = opt_check_progress(stop, lnl_current, lnl);
 
+		// The block above switched rescaling off; the evaluation just made says
+		// whether the unscaled path is usable at the point this sweep reached.
+		const bool rescaling_after = meta_rescaling_on(schedule);
+
 		if (verbosity > 0) {
 			char detail[64] = "";
 			if (convergence == OPT_PROGRESS_CONVERGED) {
@@ -577,11 +608,22 @@ static opt_result meta_optimize( Optimizer* opt_meta, double *fmin ){
 				// the run is called converged.
 				snprintf(detail, sizeof(detail), "flat %zu/%zu", stop->stall, stop->patience);
 			}
+			// Only a change in the rescaling state is worth a word, appended to
+			// whatever the convergence test had to say. Steady state is not
+			// reported: on an alignment whose partials underflow everywhere the
+			// probe fails every sweep, and a note per sweep repeats what the line
+			// above the table already said.
+			if (rescaling_after != rescaling) {
+				size_t n = strlen(detail);
+				snprintf(detail + n, sizeof(detail) - n, "%srescaling %s",
+				         n > 0 ? ", " : "", rescaling_after ? "on" : "off");
+			}
 			meta_print_row(name_width, sweep + 1, "= sweep", "", sign*lnl,
 			               sign*(lnl - lnl_current), stop->f_eval_current - evals_before,
 			               time_elapsed(&sweep_start), detail);
 			putchar('\n');
 		}
+		rescaling = rescaling_after;
 
 		if (convergence == OPT_PROGRESS_CONVERGED) {
 			result = OPT_SUCCESS;

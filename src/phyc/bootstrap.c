@@ -121,7 +121,11 @@ static void _bootstrap_run(Bootstrap* bootstrap) {
         bootstrap->loggers[i]->initialize(bootstrap->loggers[i]);
     }
 
-    for (size_t r = 0; r < bootstrap->replicates; r++) {
+    // include_observed prepends a fit on the observed data; it is extra, so the
+    // number of resampled replicates is `replicates` either way.
+    size_t rounds = bootstrap->replicates + (bootstrap->include_observed ? 1 : 0);
+
+    for (size_t r = 0; r < rounds; r++) {
         if (bootstrap->reset) {
             Parameters_restore_value(bootstrap->parameters, bootstrap->estimate);
         }

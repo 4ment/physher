@@ -61,6 +61,11 @@ struct _SingleTreeLikelihood{
 
 	bool scale;
 	double scaling_threshold;
+	// Node whose upper and lower partials the pattern likelihoods are currently
+	// being formed from, or -1 for the ordinary post-order pass ending at the
+	// root. getLogScalingFactor reads it to know which accumulation of scaling
+	// factors the partials in hand actually carry.
+	int scaling_node;
 	
 	int matrix_dim;
 	int matrix_size;

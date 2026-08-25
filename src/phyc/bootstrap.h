@@ -49,10 +49,10 @@ typedef struct Bootstrap {
     double* estimate;        // owned
     size_t estimate_size;
 
-    size_t replicates;
+    size_t replicates;      // resampled replicates, not counting the observed one
     bool compact;           // swap a compacted pattern set vs. overwrite weights
     bool reset;             // restart each replicate from the point estimate
-    bool include_observed;  // replicate 0 uses the observed weights
+    bool include_observed;  // prepend a round 0 fitted on the observed weights
 #ifndef GSL_DISABLED
     gsl_rng* rng;
 #endif

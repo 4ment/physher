@@ -769,6 +769,7 @@ SingleTreeLikelihood * new_SingleTreeLikelihood( Tree *tree, SubstitutionModel *
 	tlk->scale = false;
 	tlk->scaling_factors = NULL;
 	tlk->scaling_threshold = 1.E-40;
+	tlk->scaling_node = -1;
 	
 	tlk->node_id = -1;
 	tlk->recompute_count = 0;
@@ -951,6 +952,8 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	
 	newtlk->scale = tlk->scale;
 	newtlk->scaling_threshold = tlk->scaling_threshold;
+	// Only ever set for the duration of one upper-partials evaluation.
+	newtlk->scaling_node = -1;
 	
 	newtlk->matrix_size = tlk->matrix_size;
 	
@@ -1159,7 +1162,14 @@ double _calculate_simple( SingleTreeLikelihood *tlk ){
 		tlk->update_upper = true;
 	}
 	else if( isinf(tlk->lk) ){
-		fprintf(stdout, "_calculate: rescaling %f\n", tlk->lk);
+		// The unscaled partials underflowed. Switch rescaling on and recompute;
+		// the event is not reported from here. Whether it is worth reporting
+		// depends on why rescaling was off, which only the caller knows -- the
+		// meta optimizer switches it off once a sweep on purpose, to probe
+		// whether the cheaper unscaled path has become usable again, so a
+		// re-trigger there is the expected outcome of the probe and not news.
+		// meta_optimize reads tlk->scale around that probe and reports the
+		// transitions.
 		SingleTreeLikelihood_use_rescaling(tlk, true );
 		
 		SingleTreeLikelihood_update_all_nodes( tlk );
@@ -1606,21 +1616,45 @@ void SingleTreeLikelihood_scalePartials( SingleTreeLikelihood *tlk, int nodeInde
 	}
 }
 
-double getLogScalingFactor( const SingleTreeLikelihood *tlk, int pattern ) {
-	double log_scale_factor = 0.0;
-	if ( tlk->scale ) {
-		size_t rootId = Tree_root(tlk->tree)->id;
-		return tlk->scaling_factors[tlk->current_partials_indexes[rootId]][rootId][pattern];
-	}
-	return log_scale_factor;
-}
-
 double getLogScalingFactorAtNode( const SingleTreeLikelihood *tlk, int pattern, size_t index ) {
 	double log_scale_factor = 0.0;
 	if ( tlk->scale && tlk->scaling_factors[tlk->current_partials_indexes[index]][index] != NULL) {
 		log_scale_factor = tlk->scaling_factors[tlk->current_partials_indexes[index]][index][pattern];
 	}
 	return log_scale_factor;
+}
+
+// The scaling every partials block in hand carries, to be added back to the log
+// of the pattern likelihood built from them.
+//
+// Which blocks those are depends on the pass. The post-order pass ends at the
+// root, whose factors accumulate every scaling event in the tree, so the root's
+// entry is the whole correction. An upper-partials evaluation instead multiplies
+// the upper partials of a node by its own lower partials, and those two carry
+// their own accumulations: the lower half of the tree below the node, and the
+// upper pass down to it. The two together are *not* the root's -- along the path
+// from the node to the root the root's entry counts the lower-pass scaling
+// events, which the upper partials never went through, having scaled at their
+// own events instead. Charging the root's factor to an upper evaluation therefore
+// mixes two different accumulations, and since every log(scaleFactor) is negative
+// the likelihood comes out too low (~100 log units on a 927-taxon tree), leaving
+// the branch-length sweep comparing values on two different scales.
+double getLogScalingFactor( const SingleTreeLikelihood *tlk, int pattern ) {
+	if ( !tlk->scale ) return 0.0;
+
+	if ( tlk->scaling_node >= 0 ) {
+		double log_scale_factor = getLogScalingFactorAtNode(tlk, pattern,
+		                              tlk->upper_partial_indexes[tlk->scaling_node]);
+		// A tip stored as compressed states has no partials block, hence no
+		// factors of its own -- the same test scalePartials uses on its children.
+		if ( tlk->partials[0][tlk->scaling_node] != NULL ) {
+			log_scale_factor += getLogScalingFactorAtNode(tlk, pattern, tlk->scaling_node);
+		}
+		return log_scale_factor;
+	}
+
+	size_t rootId = Tree_root(tlk->tree)->id;
+	return tlk->scaling_factors[tlk->current_partials_indexes[rootId]][rootId][pattern];
 }
 
 // TODO: add calculate_branch_likelihood for codon and proteins and X even
@@ -3081,7 +3115,13 @@ double _calculate_uppper( SingleTreeLikelihood *tlk, Node *node ){
 	else{
 		memcpy(tlk->root_partials, spare_partials, sizeof(double)*tlk->sp->count*tlk->sp->nstate);
 	}
+	// The pattern likelihoods below come from the upper partials of this node
+	// times its lower partials, so point getLogScalingFactor at the node rather
+	// than let it charge the root's accumulation (see there). Cleared straight
+	// after: every other caller of node_log_likelihoods is on the post-order path.
+	tlk->scaling_node = nodeId;
 	tlk->node_log_likelihoods( tlk, tlk->root_partials, tlk->get_root_frequencies(tlk), tlk->pattern_lk);
+	tlk->scaling_node = -1;
 	
 	double lk = 0;
 	for ( int i = 0; i < tlk->sp->count; i++) {
