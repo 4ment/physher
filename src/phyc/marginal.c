@@ -15,11 +15,22 @@
 #include "mstring.h"
 #include "beta.h"
 
+// A trace with no usable samples silently turns every estimator into nan, and
+// the usual cause is a burnin larger than the number of rows in the file --
+// burnin counts logged samples, not MCMC iterations.
+static void check_samples(const char* filename, size_t size, size_t burnin){
+	if(size == 0){
+		fprintf(stderr, "No sample left in %s after discarding %zu of them as burnin.\n", filename, burnin);
+		fprintf(stderr, "`burnin` counts logged samples (rows), not MCMC iterations.\n\n");
+		exit(1);
+	}
+}
+
 double log_arithmetic_mean(const Vector* vecvalues){
 	double sum = -DBL_MAX;
 	const double* values = Vector_data(vecvalues);
 	size_t size = Vector_length(vecvalues);
-	for(int i = 0; i < size; i++){
+	for(size_t i = 0; i < size; i++){
 		sum = logaddexp(sum, values[i]);
 	}
 	return sum - log(size);
@@ -29,13 +40,13 @@ double log_harmonic_mean(const Vector* vecvalues){
 	double sum = 0;
 	const double* values = Vector_data(vecvalues);
 	size_t size = Vector_length(vecvalues);
-	for(int i = 0; i < size; i++){
+	for(size_t i = 0; i < size; i++){
 		sum += values[i];
 	}
 	
 	double denominator = -DBL_MAX;
 	
-	for(int i = 0; i < size; i++){
+	for(size_t i = 0; i < size; i++){
 		denominator = logaddexp(denominator, sum - values[i]);
 	}
 	return sum - denominator + log(size);
@@ -45,7 +56,7 @@ double log_smoothed_harmonic_mean(double logP, const Vector* values, double delt
 	double ldelta = log(delta);
 	double l1_delta = log(1.0-delta);
 	
-	int n = Vector_length(values);
+	size_t n = Vector_length(values);
 	double num = log(n) + ldelta - l1_delta + logP;
 	double denom = log(n) + ldelta - l1_delta;
 	
@@ -72,13 +83,13 @@ double log_stablilized_harmonic_mean(double guess, const Vector* values, double 
 // temperatures should be sorted in increasing order
 double log_marginal_stepping_stone(const Vector** values, size_t temp_count, const double* temperatures, double* lrssk){
 	double lrss = 0;
-	for(int i = 1; i < temp_count; i++){
+	for(size_t i = 1; i < temp_count; i++){
 		double tempdiff = temperatures[i]-temperatures[i-1];
 		const double* previousll = Vector_data(values[i-1]);
-		int size = Vector_length(values[i-1]);
+		size_t size = Vector_length(values[i-1]);
 		double logmaxll = dmax_vector(previousll, size);
 		double temp = 0;
-		for (int j = 0; j < size; j++) {
+		for (size_t j = 0; j < size; j++) {
 			temp += exp(tempdiff * (previousll[j] - logmaxll));
 		}
 		lrssk[i-1] = tempdiff*logmaxll + log(temp/size);
@@ -91,11 +102,11 @@ double log_marginal_stepping_stone(const Vector** values, size_t temp_count, con
 double log_marginal_path_sampling(const Vector** values, size_t temp_count, const double* temperatures, double* lrpsk){
 	double lrps = 0;
 	double* means = dvector(temp_count);
-	for(int i = 0; i < temp_count; i++){
+	for(size_t i = 0; i < temp_count; i++){
 		means[i] = dmean(Vector_data(values[i]), Vector_length(values[i]));
 	}
 	
-	for(int i = 1; i < temp_count; i++){
+	for(size_t i = 1; i < temp_count; i++){
 		double weight = temperatures[i]-temperatures[i-1];
 		lrpsk[i-1] = weight * (means[i]+means[i-1])/2.0;
 		lrps += lrpsk[i-1];
@@ -108,12 +119,12 @@ double log_marginal_path_sampling_modified(const Vector** values, size_t temp_co
 	double lrps = 0;
 	double* means = dvector(temp_count);
 	double* variances = dvector(temp_count);
-	for(int i = 0; i < temp_count; i++){
+	for(size_t i = 0; i < temp_count; i++){
 		means[i] = dmean(Vector_data(values[i]), Vector_length(values[i]));
 		variances[i] = variance(Vector_data(values[i]), Vector_length(values[i]), means[i]);
 	}
 	
-	for(int i = 1; i < temp_count; i++){
+	for(size_t i = 1; i < temp_count; i++){
 		double weight = temperatures[i]-temperatures[i-1];
 		lrpsk[i-1] = weight * (means[i]+means[i-1])/2.0 - ((weight*weight)/12)*(variances[i]-variances[i-1]);
 		lrps += lrpsk[i-1];
@@ -125,20 +136,24 @@ double log_marginal_path_sampling_modified(const Vector** values, size_t temp_co
 
 // temperatures should be sorted in increasing order
 double log_bf_stepping_stone(const Vector** values, const Vector** values1, size_t temp_count, const double* temperatures, double* lrssk){
-	double* diffll = dvector(Vector_length(values[0]));
+	size_t maxsize = 0;
+	for(size_t i = 0; i < temp_count; i++){
+		maxsize = fmax(maxsize, Vector_length(values[i]));
+	}
+	double* diffll = dvector(maxsize);
 	double lrss = 0;
-	for(int i = 1; i < temp_count; i++){
-		int size = Vector_length(values[i-1]);
+	for(size_t i = 1; i < temp_count; i++){
+		size_t size = Vector_length(values[i-1]);
 		double tempdiff = temperatures[i]-temperatures[i-1];
 		const double* v = Vector_data(values[i-1]);
 		const double* v1 = Vector_data(values1[i-1]);
 		double logmaxll = -INFINITY;
-		for (int j = 0; j < size; j++) {
+		for (size_t j = 0; j < size; j++) {
 			diffll[j] = v1[j] - v[j];
 			logmaxll = fmax(logmaxll, diffll[j]);
 		}
 		double temp = 0;
-		for (int j = 0; j < size; j++) {
+		for (size_t j = 0; j < size; j++) {
 			temp += exp(tempdiff * (diffll[j] - logmaxll));
 		}
 		lrssk[i-1] = tempdiff*logmaxll + log(temp/size);
@@ -152,18 +167,18 @@ double log_bf_stepping_stone(const Vector** values, const Vector** values1, size
 double log_bf_path_sampling(const Vector** values, const Vector** values1, size_t temp_count, const double* temperatures, double* lrpsk){
 	double lrps = 0;
 	double* means = dvector(temp_count);
-	for(int i = 0; i < temp_count; i++){
+	for(size_t i = 0; i < temp_count; i++){
 		size_t size = Vector_length(values[i]);
 		const double* v = Vector_data(values[i]);
 		const double* v1 = Vector_data(values1[i]);
 		double mean = 0;
-		for (int j = 0; j < size; j++) {
+		for (size_t j = 0; j < size; j++) {
 			mean += v1[j] - v[j];
 		}
 		means[i] = mean/size;
 	}
 	
-	for(int i = 1; i < temp_count; i++){
+	for(size_t i = 1; i < temp_count; i++){
 		double weight = temperatures[i]-temperatures[i-1];
 		lrpsk[i-1] = weight * (means[i]+means[i-1])/2.0;
 		lrps += lrpsk[i-1];
@@ -203,8 +218,6 @@ double ess(double* values, size_t samples, size_t stepSize) {
 		}
 	}
 	
-	// standard error of mean
-	double stdErrorOfMean = sqrt(varStat / samples);
 	double ACT;
 	double ESS;
 	
@@ -220,8 +233,7 @@ double ess(double* values, size_t samples, size_t stepSize) {
 	else
 		ESS = (stepSize * samples) / ACT;
 	
-	// standard deviation of autocorrelation time
-	double stdErrOfACT = (2.0 * sqrt(2.0 * (2.0 * (double) (maxLag + 1)) / samples) * (varStat / gammaStat[0]) * stepSize);
+	free(gammaStat);
 	return ESS;
 }
 
@@ -229,10 +241,10 @@ void test_marg(const Vector** values, size_t temp_count, const double* temperatu
 	const Vector** lls = malloc(temp_count*sizeof(Vector*));
 	double* temps = dvector(temp_count);
 	double* means = dvector(temp_count);
-	for (int i = 3; i< temp_count; i*=2) {
+	for (size_t i = 3; i < temp_count; i*=2) {
 		double incr = ((double)temp_count-0.5)/(i-1);
 		double dindex = 0;
-		for (int j = 0; j < i; j++) {
+		for (size_t j = 0; j < i; j++) {
 			int index = dindex;
 			lls[j] = values[index];
 			temps[j] = temperatures[index];
@@ -241,28 +253,28 @@ void test_marg(const Vector** values, size_t temp_count, const double* temperatu
 		double* lrssk = malloc(temp_count*sizeof(double));
 		
 		double lrss = log_marginal_stepping_stone(lls, i, temps, lrssk);
-		printf("%d Stepping stone marginal likelihood: %f\n", i, lrss);
+		printf("%zu Stepping stone marginal likelihood: %f\n", i, lrss);
 		//		for (int i = 0; i < temp_count-1; i++) {
 		//			printf("%f: %f\n", temperatures[i], lrssk[i]);
 		//		}
 		
 		double lrps = log_marginal_path_sampling(lls, i, temps, lrssk);
-		printf("%d Path sampling marginal likelihood: %f\n", i, lrps);
+		printf("%zu Path sampling marginal likelihood: %f\n", i, lrps);
 		//		for (int i = 0; i < temp_count-1; i++) {
 		//			printf("%f: %f\n", temperatures[i], lrssk[i]);
 		//		}
 		lrps = log_marginal_path_sampling_modified(lls, i, temps, lrssk);
-		printf("%d Modified Path sampling marginal likelihood: %f\n", i, lrps);
+		printf("%zu Modified Path sampling marginal likelihood: %f\n", i, lrps);
 		//		for (int i = 0; i < temp_count-1; i++) {
 		//			printf("%f: %f\n", temperatures[i], lrssk[i]);
 		//		}
 		free(lrssk);
 		
-		for (int j = 0; j < i; j++) {
+		for (size_t j = 0; j < i; j++) {
 			means[j] = dmean(Vector_data(lls[j]), Vector_length(lls[j]));
 		}
 		double S = 0;
-		for (int j = 0; j < i-1; j++) {
+		for (size_t j = 0; j < i-1; j++) {
 			S += (temps[j+1] - temps[j])*(means[j+1] - means[j]);
 			printf("  %f\n", (temps[j+1] - temps[j])*(means[j+1] - means[j]));
 		}
@@ -276,10 +288,10 @@ void test_marg(const Vector** values, size_t temp_count, const double* temperatu
 void test_marg_gss(const Vector** values, size_t temp_count, const double* temperatures){
 	const Vector** lls = malloc(temp_count*sizeof(Vector*));
 	double* temps = dvector(temp_count);
-	for (int i = 3; i< temp_count; i*=2) {
+	for (size_t i = 3; i < temp_count; i*=2) {
 		double incr = ((double)temp_count-0.5)/(i-1);
 		double dindex = 0;
-		for (int j = 0; j < i; j++) {
+		for (size_t j = 0; j < i; j++) {
 			int index = dindex;
 			lls[j] = values[index];
 			temps[j] = temperatures[index];
@@ -288,7 +300,7 @@ void test_marg_gss(const Vector** values, size_t temp_count, const double* tempe
 		double* lrssk = malloc(temp_count*sizeof(double));
 		
 		double lrss = log_marginal_stepping_stone(lls, i, temps, lrssk);
-		printf("%d Generalized stepping stone marginal likelihood: %f\n", i, lrss);
+		printf("%zu Generalized stepping stone marginal likelihood: %f\n", i, lrss);
 		free(lrssk);
 		
 	}
@@ -308,20 +320,21 @@ static void _bayes_factor_run(MarginaLikelihood* margl){
 	}
 	
 	// temperatures should be in decreasing order
-	for (int i = 0; i < margl->temperature_count; i++) {
+	for (size_t i = 0; i < margl->temperature_count; i++) {
 		// saved in increasing order
 		StringBuffer_empty(buffer);
 		if (start_file >= 0) {
 			StringBuffer_append_substring(buffer, margl->file, start_file+1);
-			StringBuffer_append_format(buffer, "%d%s",i, margl->file+start_file+1);
+			StringBuffer_append_format(buffer, "%zu%s",i, margl->file+start_file+1);
 
 		}
 		else{
-			StringBuffer_append_format(buffer, "%d%s",i, margl->file);
+			StringBuffer_append_format(buffer, "%zu%s",i, margl->file);
 		}
 		printf("Temperature: %f - %s\n", margl->temperatures[i],buffer->c);
 		lls[margl->temperature_count-i-1] = read_log_column_with_id(buffer->c, margl->burnin, margl->likelihood_tag[0]);
 		lls1[margl->temperature_count-i-1] = read_log_column_with_id(buffer->c, margl->burnin, margl->likelihood_tag[1]);
+		check_samples(buffer->c, Vector_length(lls[margl->temperature_count-i-1]), margl->burnin);
 		temperatures[margl->temperature_count-i-1] = margl->temperatures[i];
 	}
 
@@ -330,14 +343,14 @@ static void _bayes_factor_run(MarginaLikelihood* margl){
 	if(margl->ss){
 		double lrss = log_bf_stepping_stone(lls, lls1, margl->temperature_count, temperatures, lrssk);
 		printf("Stepping stone Bayes factor: %f\n", lrss);
-		for (int i = 0; i < margl->temperature_count-1; i++) {
+		for (size_t i = 0; i < margl->temperature_count-1; i++) {
 			printf("%f: %f\n", temperatures[i], lrssk[i]);
 		}
 	}
 	if (margl->ps) {
 		double lrps = log_bf_path_sampling(lls, lls1, margl->temperature_count, temperatures, lrssk);
 		printf("Path sampling Bayes factor: %f\n", lrps);
-		for (int i = 0; i < margl->temperature_count-1; i++) {
+		for (size_t i = 0; i < margl->temperature_count-1; i++) {
 			printf("%f: %f\n", temperatures[i], lrssk[i]);
 		}
 	}
@@ -346,7 +359,7 @@ static void _bayes_factor_run(MarginaLikelihood* margl){
 	
 	free_StringBuffer(buffer);
 	free(temperatures);
-	for (int i = 0; i < margl->temperature_count; i++) {
+	for (size_t i = 0; i < margl->temperature_count; i++) {
 		free_Vector((Vector*)lls[i]);
 		free_Vector((Vector*)lls1[i]);
 	}
@@ -361,6 +374,7 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 	
 	if(margl->temperature_count == 1){
 		lls[0] = read_log_column_with_id(margl->file, margl->burnin, margl->likelihood_tag[0]);
+		check_samples(margl->file, Vector_length(lls[0]), margl->burnin);
 	}
 	// Generalized stepping stone
 	else if(margl->refdist_tag != NULL){
@@ -374,54 +388,58 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 			if (margl->file[start_file] == '/') break;
 		}
 		
-		for (int i = 0; i < margl->temperature_count; i++) {
+		for (size_t i = 0; i < margl->temperature_count; i++) {
 			// saved in increasing order
 			StringBuffer_empty(buffer);
 			if (start_file >= 0) {
 				StringBuffer_append_substring(buffer, margl->file, start_file+1);
-				StringBuffer_append_format(buffer, "%d%s",i, margl->file+start_file+1);
+				StringBuffer_append_format(buffer, "%zu%s",i, margl->file+start_file+1);
     
 			}
 			else{
-				StringBuffer_append_format(buffer, "%d%s",i, margl->file);
+				StringBuffer_append_format(buffer, "%zu%s",i, margl->file);
 			}
-			// posterior (beta==1) is ignored for GSS but not for GPS
-			if (!file_exists(margl->file)) {
-				temperatures[margl->temperature_count-1] = margl->temperatures[0];
-				lls[margl->temperature_count-1] = NULL;
+			temperatures[margl->temperature_count-i-1] = margl->temperatures[i];
+			
+			// The posterior (beta==1) chain is not run for GSS, only for GPS, so
+			// its trace may be missing. Stepping stone never looks at that entry
+			// (it only reads values[0..count-2]) but path sampling does, so leave
+			// it NULL and let the GPS block below skip itself.
+			if (!file_exists(buffer->c)) {
+				printf("Temperature: %f - %s (not run)\n", margl->temperatures[i], buffer->c);
+				lls[margl->temperature_count-i-1] = NULL;
+				continue;
 			}
 			
 			printf("Temperature: %f - %s\n", margl->temperatures[i], buffer->c);
 			Vector** all = read_log_column_with_ids(buffer->c, margl->burnin, ids, 2);
 			size_t size = Vector_length(all[0]);
+			check_samples(buffer->c, size, margl->burnin);
 			lls[margl->temperature_count-i-1] = new_Vector(size);
-			for (int j = 0; j < size; j++) {
+			for (size_t j = 0; j < size; j++) {
 				Vector_push(lls[margl->temperature_count-i-1], Vector_at(all[0], j) - Vector_at(all[1], j));
 			}
 			free_Vector(all[0]);
 			free_Vector(all[1]);
 			free(all);
-			temperatures[margl->temperature_count-i-1] = margl->temperatures[i];
 		}
-		temperatures[margl->temperature_count-1] = margl->temperatures[0];
-		lls[margl->temperature_count-1] = NULL;
 		
 		double lrss = log_marginal_stepping_stone((const Vector**)lls, margl->temperature_count, temperatures, lrssk);
 		printf("Generalized stepping stone marginal likelihood: %f\n", lrss);
-		for (int i = 0; i < margl->temperature_count-1; i++) {
+		for (size_t i = 0; i < margl->temperature_count-1; i++) {
 			printf("%f: %f\n", temperatures[i], lrssk[i]);
 		}
 		
 		if (lls[margl->temperature_count-1] != NULL) {
 			double lrps = log_marginal_path_sampling((const Vector**)lls, margl->temperature_count, temperatures, lrssk);
 			printf("Generalized path sampling marginal likelihood: %f\n", lrps);
-			for (int i = 0; i < margl->temperature_count-1; i++) {
+			for (size_t i = 0; i < margl->temperature_count-1; i++) {
 				printf("%f: %f\n", temperatures[i], lrssk[i]);
 			}
 			
 			lrps = log_marginal_path_sampling_modified((const Vector**)lls, margl->temperature_count, temperatures, lrssk);
 			printf("Modified Path sampling marginal likelihood: %f\n", lrps);
-			for (int i = 0; i < margl->temperature_count-1; i++) {
+			for (size_t i = 0; i < margl->temperature_count-1; i++) {
 				printf("%f: %f\n", temperatures[i], lrssk[i]);
 			}
 		}
@@ -434,19 +452,20 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 		}
 		
 		// temperatures should be in decreasing order
-		for (int i = 0; i < margl->temperature_count; i++) {
+		for (size_t i = 0; i < margl->temperature_count; i++) {
 			// saved in increasing order
 			StringBuffer_empty(buffer);
 			if (start_file >= 0) {
 				StringBuffer_append_substring(buffer, margl->file, start_file+1);
-				StringBuffer_append_format(buffer, "%d%s",i, margl->file+start_file+1);
+				StringBuffer_append_format(buffer, "%zu%s",i, margl->file+start_file+1);
     
 			}
 			else{
-				StringBuffer_append_format(buffer, "%d%s",i, margl->file);
+				StringBuffer_append_format(buffer, "%zu%s",i, margl->file);
 			}
 			printf("Temperature: %f - %s\n", margl->temperatures[i],buffer->c);
 			lls[margl->temperature_count-i-1] = read_log_column_with_id(buffer->c, margl->burnin, margl->likelihood_tag[0]);
+			check_samples(buffer->c, Vector_length(lls[margl->temperature_count-i-1]), margl->burnin);
 //			double* data = Vector_data(lls[margl->temperature_count-i-1]);
 //			double n = Vector_length(lls[margl->temperature_count-i-1]);
 //			double esss = ess(data, n, n);
@@ -481,7 +500,7 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 			if(margl->ss){
 				double lrss = log_marginal_stepping_stone((const Vector**)lls, margl->temperature_count, temperatures, lrssk);
 				printf("Stepping stone marginal likelihood: %f\n", lrss);
-				for (int i = 0; i < margl->temperature_count-1; i++) {
+				for (size_t i = 0; i < margl->temperature_count-1; i++) {
 					printf("%f: %f\n", temperatures[i], lrssk[i]);
 				}
 			}
@@ -489,7 +508,7 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 			if(margl->ps){
 				double lrps = log_marginal_path_sampling((const Vector**)lls, margl->temperature_count, temperatures, lrssk);
 				printf("Path sampling marginal likelihood: %f\n", lrps);
-				for (int i = 0; i < margl->temperature_count-1; i++) {
+				for (size_t i = 0; i < margl->temperature_count-1; i++) {
 					printf("%f: %f\n", temperatures[i], lrssk[i]);
 				}
 			}
@@ -497,7 +516,7 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 			if(margl->ps2){
 				double lrps = log_marginal_path_sampling_modified((const Vector**)lls, margl->temperature_count, temperatures, lrssk);
 				printf("Modified Path sampling marginal likelihood: %f\n", lrps);
-				for (int i = 0; i < margl->temperature_count-1; i++) {
+				for (size_t i = 0; i < margl->temperature_count-1; i++) {
 					printf("%f: %f\n", temperatures[i], lrssk[i]);
 				}
 			}
@@ -511,7 +530,7 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 	
 	free_StringBuffer(buffer);
 	free(temperatures);
-	for (int i = 0; i < margl->temperature_count; i++) {
+	for (size_t i = 0; i < margl->temperature_count; i++) {
 		if(lls[i] != NULL)free_Vector(lls[i]);
 	}
 	free(lls);
@@ -519,8 +538,9 @@ static void _marginal_likelihood_run(MarginaLikelihood* margl){
 
 static void _free_MarginaLikelihood(MarginaLikelihood* margl){
 	free(margl->file);
-	free(margl->likelihood_tag[0]);
-	if (margl->bf) free(margl->likelihood_tag[1]);
+	for (size_t i = 0; i < margl->likelihood_tag_count; i++) {
+		free(margl->likelihood_tag[i]);
+	}
 	free(margl->likelihood_tag);
 	if(margl->refdist_tag != NULL) free(margl->refdist_tag);
 	if(margl->temperatures != NULL)free(margl->temperatures);
@@ -530,6 +550,8 @@ static void _free_MarginaLikelihood(MarginaLikelihood* margl){
 MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"algorithm", JSON_OPTIONAL, JSON_ANY},
+	    {"alpha", JSON_OPTIONAL, JSON_NUMBER},
+	    {"beta", JSON_OPTIONAL, JSON_NUMBER},
 	    {"burnin", JSON_OPTIONAL, JSON_ANY},
 	    {"distribution", JSON_OPTIONAL, JSON_ANY},
 	    {"file", JSON_OPTIONAL, JSON_ANY},
@@ -556,14 +578,20 @@ MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* h
 	
 	// BF
 	if (likelihood_node != NULL && likelihood_node->node_type == MJSON_ARRAY) {
+		if (likelihood_node->child_count != 2) {
+			fprintf(stderr, "Exactly 2 IDs should be given in `treelikelihood` to calculate a Bayes factor (got %zu)\n\n", (size_t)likelihood_node->child_count);
+			exit(1);
+		}
 		margl->bf = true;
-		margl->likelihood_tag = malloc(likelihood_node->child_count*sizeof(char*));
-		for (int i = 0; i < likelihood_node->child_count; i++) {
+		margl->likelihood_tag_count = likelihood_node->child_count;
+		margl->likelihood_tag = malloc(margl->likelihood_tag_count*sizeof(char*));
+		for (size_t i = 0; i < margl->likelihood_tag_count; i++) {
 			margl->likelihood_tag[i] = String_clone((char*)likelihood_node->children[i]->value);
 		}
 	}
 	else{
 		char* likelihood_tag = get_json_node_value_string(node, "treelikelihood");
+		margl->likelihood_tag_count = 1;
 		margl->likelihood_tag = malloc(sizeof(char*));
 		if(likelihood_tag == NULL){
 			margl->likelihood_tag[0] = String_clone("treelikelihood");
@@ -579,19 +607,31 @@ MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* h
 			exit(1);
 		}
 		margl->temperature_count = temp_node->child_count;
+		if (margl->temperature_count == 0) {
+			fprintf(stderr, "attribute `temperatures` should not be empty\n\n");
+			exit(1);
+		}
 		margl->temperatures = dvector(margl->temperature_count);
-		for (int i = 0; i < temp_node->child_count; i++) {
+		for (size_t i = 0; i < (size_t)temp_node->child_count; i++) {
 			margl->temperatures[i] = atof((char*)temp_node->children[i]->value);
 		}
 	}
 	else if (steps_node != NULL){
 		char* dist_string = get_json_node_value_string(node, "distribution");
 		margl->temperature_count = get_json_node_value_size_t(node, "steps", 100);
+		if (margl->temperature_count < 2) {
+			fprintf(stderr, "Attribute `steps` should be at least 2\n\n");
+			exit(1);
+		}
 		margl->temperatures = dvector(margl->temperature_count);
 		margl->temperatures[0] = 1;
 		margl->temperatures[margl->temperature_count-1] = 0;
 		
 		// temperatures are in descreasing order
+		if(dist_string == NULL){
+			fprintf(stderr, "Attribute `distribution` should be specified (`uniform` or `beta`)\n\n");
+			exit(1);
+		}
 		if(strcasecmp(dist_string, "beta") == 0){
 			double alpha = get_json_node_value_double(node, "alpha", 0.3);
 			double beta = get_json_node_value_double(node, "beta", 1.0);
@@ -620,21 +660,35 @@ MarginaLikelihood* new_MarginaLikelihood_from_json(json_node* node, Hashtable* h
 	json_node* algorithm = get_json_node(node, "algorithm");
 	margl->shm = margl->hm = margl->ss = margl->ps = margl->ps2 = true; // default is calculate everything
 	if(algorithm != NULL){
-		if (algorithm->node_type == MJSON_STRING) {
-			char* meth_string = get_json_node_value_string(node, "algorithm");
-			margl->ss = strcasecmp(meth_string, "ss") == 0;
-			margl->ps = strcasecmp(meth_string, "ps") == 0;
-			margl->ps2 = strcasecmp(meth_string, "ps2") == 0;
-			margl->hm = strcasecmp(meth_string, "hm") == 0;
-			margl->shm = strcasecmp(meth_string, "shm") == 0;
+		if (algorithm->node_type != MJSON_STRING) {
+			fprintf(stderr, "Attribute `algorithm` should be a string (`ss`, `ps`, `ps2`, `hm` or `shm`)\n\n");
+			exit(1);
+		}
+		char* meth_string = get_json_node_value_string(node, "algorithm");
+		margl->ss = strcasecmp(meth_string, "ss") == 0;
+		margl->ps = strcasecmp(meth_string, "ps") == 0;
+		margl->ps2 = strcasecmp(meth_string, "ps2") == 0;
+		margl->hm = strcasecmp(meth_string, "hm") == 0;
+		margl->shm = strcasecmp(meth_string, "shm") == 0;
+		if(!(margl->ss || margl->ps || margl->ps2 || margl->hm || margl->shm)){
+			fprintf(stderr, "Unknown `algorithm` `%s` (should be `ss`, `ps`, `ps2`, `hm` or `shm`)\n\n", meth_string);
+			exit(1);
 		}
 	}
 	
 	char* file = get_json_node_value_string(node, "file");
+	if(file == NULL){
+		fprintf(stderr, "Attribute `file` should be specified (the log file the chains were written to)\n\n");
+		exit(1);
+	}
 	margl->file = String_clone(file);
 	margl->run = _marginal_likelihood_run;
 	margl->free = _free_MarginaLikelihood;
 	if (margl->bf) {
+		if (margl->temperature_count < 2) {
+			fprintf(stderr, "Attribute `temperatures` or `steps` should be specified to calculate a Bayes factor\n\n");
+			exit(1);
+		}
 		margl->run = _bayes_factor_run;
 	}
 	return margl;

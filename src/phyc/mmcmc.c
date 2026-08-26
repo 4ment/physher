@@ -15,13 +15,13 @@ void mmcmc_run(MMCMC* mmcmc){
 	MCMC* mcmc = mmcmc->mcmc;
 	char** filenames = malloc(sizeof(char*)*mcmc->log_count);
 	
-	for (int j = 0; j < mcmc->log_count; j++) {
+	for (size_t j = 0; j < mcmc->log_count; j++) {
 		filenames[j] = NULL;
 		if(mcmc->logs[j]->filename != NULL){
 			filenames[j] = String_clone(mcmc->logs[j]->filename);
 		}
 	}
-	int i = 0;
+	size_t i = 0;
 	size_t temperature_count = mmcmc->temperature_count;
 	if (mmcmc->gss) {
 		mcmc->generalized = true;
@@ -37,43 +37,46 @@ void mmcmc_run(MMCMC* mmcmc){
 	// Check that we can sample directly from prior withtou MCMC
 	bool sampleable = mmcmc->prior_samples > 0;
 	CompoundModel* cm = (CompoundModel*)(mcmc->model->obj);
-	for (int i = 1; i < cm->count; i++) {
-		sampleable &= cm->models[i]->samplable;
+	for (size_t k = 1; k < cm->count; k++) {
+		sampleable &= cm->models[k]->samplable;
 	}
 	
 	// temperatures should be in decreasing order
 	for (; i < temperature_count; i++) {
-		for (int j = 0; j < mcmc->log_count; j++) {
+		// the name of the first renamed logger, only used to report progress
+		const char* logname = NULL;
+		for (size_t j = 0; j < mcmc->log_count; j++) {
 			if(filenames[j] != NULL){
 				StringBuffer_empty(buffer);
-				StringBuffer_append_format(buffer, "%d%s",i, filenames[j]);
+				StringBuffer_append_format(buffer, "%zu%s",i, filenames[j]);
 				free(mcmc->logs[j]->filename);
 				mcmc->logs[j]->filename = StringBuffer_tochar(buffer);
+				if(logname == NULL) logname = mcmc->logs[j]->filename;
 			}
 		}
-		printf("Temperature: %e - %s\n", mmcmc->temperatures[i],buffer->c);
+		printf("Temperature: %e - %s\n", mmcmc->temperatures[i], logname == NULL ? "" : logname);
 		mcmc->chain_temperature = mmcmc->temperatures[i];
 		
 		if(sampleable && mcmc->chain_temperature == 0){
 			// Initialize loggers
-			for (int j = 0; j < mcmc->log_count; j++) {
+			for (size_t j = 0; j < mcmc->log_count; j++) {
 				mcmc->logs[j]->initialize(mcmc->logs[j]);
 			}
 			
 			for (size_t s = 0; s < mmcmc->prior_samples; s++) {
-				for (int j = 1; j < cm->count; j++) {
+				for (size_t j = 1; j < cm->count; j++) {
 					cm->models[j]->sample(cm->models[j]);
 					cm->models[j]->logP(cm->models[j]);
 				}
 				mcmc->model->logP(mcmc->model);
-				for (int j = 0; j < mcmc->log_count; j++) {
+				for (size_t j = 0; j < mcmc->log_count; j++) {
 					// log every sample to file but not to stdout
 					if(filenames[j] != NULL || (s % mcmc->logs[j]->every == 0 && filenames[j] == NULL)){
 						mcmc->logs[j]->write(mcmc->logs[j], s);
 					}
 				}
 			}
-			for (int j = 0; j < mcmc->log_count; j++) {
+			for (size_t j = 0; j < mcmc->log_count; j++) {
 				mcmc->logs[j]->finalize(mcmc->logs[j]);
 			}
 		}
@@ -84,7 +87,7 @@ void mmcmc_run(MMCMC* mmcmc){
 	
 	// Leave it as a standard mcmc with original loggers
 	mcmc->chain_temperature = -1;
-	for (int j = 0; j < mcmc->log_count; j++) {
+	for (size_t j = 0; j < mcmc->log_count; j++) {
 		if(filenames[j] != NULL){
 			free(mcmc->logs[j]->filename);
 			mcmc->logs[j]->filename = String_clone(filenames[j]);
@@ -107,7 +110,9 @@ static void _free_MMCMC(MMCMC* mmcmc){
 
 MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
+	    {"alpha", JSON_OPTIONAL, JSON_NUMBER},
 	    {"bf", JSON_OPTIONAL, JSON_BOOL},
+	    {"beta", JSON_OPTIONAL, JSON_NUMBER},
 	    {"distribution", JSON_OPTIONAL, JSON_STRING},
 	    {"gss", JSON_OPTIONAL, JSON_BOOL},
 	    {"mcmc", JSON_REQUIRED, JSON_OBJECT},
@@ -128,6 +133,10 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	// By default the posterior with beta==1 is not sampled since GSS does not need it
 	// For GPS we need start==0
 	mmcmc->start = get_json_node_value_int(node, "start", 1);
+	if (mmcmc->start < 0) {
+		fprintf(stderr, "Attribute `start` should not be negative\n\n");
+		exit(1);
+	}
 	
 	if (temp_node != NULL) {
 		if (temp_node->node_type != MJSON_ARRAY) {
@@ -135,19 +144,31 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 			exit(1);
 		}
 		mmcmc->temperature_count = temp_node->child_count;
+		if (mmcmc->temperature_count == 0) {
+			fprintf(stderr, "attribute `temperatures` should not be empty\n\n");
+			exit(1);
+		}
 		mmcmc->temperatures = dvector(mmcmc->temperature_count);
-		for (int i = 0; i < temp_node->child_count; i++) {
+		for (size_t i = 0; i < (size_t)temp_node->child_count; i++) {
 			mmcmc->temperatures[i] = atof((char*)temp_node->children[i]->value);
 		}
 	}
 	else if (steps_node != NULL){
 		char* dist_string = get_json_node_value_string(node, "distribution");
 		mmcmc->temperature_count = get_json_node_value_size_t(node, "steps", 100);
+		if (mmcmc->temperature_count < 2) {
+			fprintf(stderr, "Attribute `steps` should be at least 2\n\n");
+			exit(1);
+		}
 		mmcmc->temperatures = dvector(mmcmc->temperature_count);
 		mmcmc->temperatures[0] = 1;
 		mmcmc->temperatures[mmcmc->temperature_count-1] = 0;
 		
 		// temperatures are in descreasing order
+		if(dist_string == NULL){
+			fprintf(stderr, "Attribute `distribution` should be specified (`uniform` or `beta`)\n\n");
+			exit(1);
+		}
 		if(strcasecmp(dist_string, "beta") == 0){
 			double alpha = get_json_node_value_double(node, "alpha", 0.3);
 			double beta = get_json_node_value_double(node, "beta", 1.0);
@@ -171,6 +192,11 @@ MMCMC* new_MMCMC_from_json(json_node* node, Hashtable* hash){
 	}
 	else{
 		fprintf(stderr, "Attribute `temperatures` or `steps` should be specified\n\n");
+		exit(1);
+	}
+	if (mmcmc->gss && (size_t)mmcmc->start >= mmcmc->temperature_count) {
+		fprintf(stderr, "Attribute `start` (%d) should be smaller than the number of temperatures (%zu)\n\n",
+		        mmcmc->start, mmcmc->temperature_count);
 		exit(1);
 	}
 	mmcmc->mcmc = new_MCMC_from_json(mcmc_node, hash);

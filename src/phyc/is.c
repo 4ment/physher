@@ -12,7 +12,12 @@ double _calculate_importance_sampler( ImportanceSampler* mvb ){
 	Model* posterior = mvb->model;
 	size_t n = mvb->samples;
 	double lmarg;
-	size_t dim = Parameters_count(mvb->parameters);
+	// Parameters_store_value writes one double per *element*, so the backup is
+	// sized by the summed dimension, not by the number of parameters.
+	size_t dim = 0;
+	for (size_t i = 0; i < Parameters_count(mvb->parameters); i++) {
+		dim += Parameter_size(Parameters_at(mvb->parameters, i));
+	}
 	double* backup = dvector(dim);
 	Parameters_store_value(mvb->parameters, backup);
 	if(mvb->normalize == false){
@@ -67,8 +72,11 @@ double _calculate_importance_sampler( ImportanceSampler* mvb ){
 }
 void _free_ImportanceSampler(ImportanceSampler* mvb){
 	mvb->model->free(mvb->model);
+	// Each was retained with ref_count++ in the constructor, so release it the
+	// same way: free() on the Model itself would drop a reference the
+	// hashtable still holds, and leave physher freeing it a second time.
 	for (int i = 0; i < mvb->distribution_count; i++) {
-		free(mvb->distribution[i]);
+		mvb->distribution[i]->free(mvb->distribution[i]);
 	}
 	free(mvb->distribution);
 	free(mvb->weights);
@@ -127,7 +135,13 @@ ImportanceSampler* new_ImportanceSampler_from_json(json_node* node, Hashtable* h
 	mvb->calculate = _calculate_importance_sampler;
 	mvb->free = _free_ImportanceSampler;
 	mvb->parameters = new_Parameters(1);
-	get_parameters_references(node, hash, mvb->parameters);
+	// Optional: what is snapshotted before the draws and put back afterwards,
+	// so the run continues from the point it reached rather than from the last
+	// sample. get_parameters_references dereferences the node it looks up, so
+	// it cannot be handed a missing key.
+	if (get_json_node(node, "parameters") != NULL) {
+		get_parameters_references(node, hash, mvb->parameters);
+	}
 	mvb->normalize = get_json_node_value_bool(node, "normalize", true);
 	mvb->rng = Hashtable_get(hash, "RANDOM_GENERATOR!@");
 	return mvb;
