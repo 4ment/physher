@@ -38,6 +38,7 @@
 #include "phyc/optimizer.h"
 #include "phyc/sampler.h"
 #include "phyc/bootstrap.h"
+#include "phyc/crossvalidation.h"
 
 #include "phyc/physhercmd.h"
 #include "phyc/utils.h"
@@ -272,6 +273,11 @@ int main(int argc, const char* argv[]){
 		}
 		else if(strcasecmp(type, "cat") == 0){
 			cat_estimator_from_json(child, hash2);
+		}
+		else if (strcasecmp(type, "crossvalidation") == 0) {
+			CrossValidation* cv = new_CrossValidation_from_json(child, hash2);
+			cv->run(cv);
+			cv->free(cv);
 		}
 		else if (strcasecmp(type, "bootstrap") == 0) {
 			Bootstrap* bootstrap = new_Bootstrap_from_json(child, hash2);

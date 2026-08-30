@@ -50,6 +50,9 @@ target_link_libraries(test_optimizer phyc)
 add_executable(test_cat test_cat.c)
 target_link_libraries(test_cat phyc)
 
+add_executable(test_crossvalidation test_crossvalidation.c)
+target_link_libraries(test_crossvalidation phyc)
+
 
 # Refresh test fixtures on every build (not just at configure time) so that
 # added/edited files under data/ are picked up by an existing build tree.
@@ -66,6 +69,10 @@ add_custom_target(test_data ALL
 # add_test (NAME Test_clone
 # 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 # 		COMMAND test_clone)
+
+add_test (NAME Test_crossvalidation
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_crossvalidation)
 
 add_test (NAME Test_json
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"

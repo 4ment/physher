@@ -174,6 +174,19 @@ typedef struct CatMixture {
 // "distribution": "discrete" site model -- needs to be handed the same model.
 CatMixture cat_mixture(SingleTreeLikelihood* tlk, int verbosity);
 
+// As cat_mixture, but also writes the per-pattern log density of the mixture into
+// `pattern_logP` (length tlk->sp->count) when that is not NULL.
+//
+// This is the array a site the fit never saw must be scored with. A held-out site
+// has no label, and reading one off its own column is exactly the leakage
+// cross-validation exists to prevent -- note that a pattern carrying no training
+// weight at all is still handed an arg-max label by cat_assign, computed from its
+// own profile, so the *conditional* score leaks even where the assignment looks
+// innocent. The mixture density depends only on the category rates and their
+// weights, both of which the training sites fixed, so it does not.
+CatMixture cat_mixture_patterns(SingleTreeLikelihood* tlk, int verbosity,
+                                double* pattern_logP);
+
 // Read the CAT keys ("assignment", "prior", "probe", "npmle_iterations",
 // "npmle_tolerance", "verbosity") off `node`, on top of the defaults the assignment
 // rule implies. Shared by the standalone "cat" estimator and by "algorithm": "cat"

@@ -870,7 +870,8 @@ CatResult cat_assign(SingleTreeLikelihood* tlk, const CatOptions* options){
 // assignment probes the *raw* grid, before _cat_update divides through by the
 // weighted mean; marginalizing that one would score a mixture at another tree
 // scale. K traversals is the price of the honest version.
-CatMixture cat_mixture(SingleTreeLikelihood* tlk, int verbosity){
+CatMixture cat_mixture_patterns(SingleTreeLikelihood* tlk, int verbosity,
+                                double* pattern_logP){
 	SiteModel* sm = tlk->sm;
 	const int cat_count = sm->cat_count;
 	const int pattern_count = tlk->sp->count;
@@ -940,6 +941,11 @@ CatMixture cat_mixture(SingleTreeLikelihood* tlk, int verbosity){
 		for (int k = 0; k < cat_count; k++) {
 			total += exp(profile[k*pattern_count + i] + log_weight[k] - max);
 		}
+		// The per-pattern log density of the mixture, which is the quantity a
+		// site the fit never saw has to be scored with: it depends on the rates
+		// and the weights, not on the label of the pattern it belongs to. The
+		// weighted sum below is the in-sample reading of the same array.
+		if (pattern_logP != NULL) pattern_logP[i] = max + log(total);
 		mixture.logP_mixture += tlk->sp->weights[i]*(max + log(total));
 		// The same sum with the mixture replaced by a point mass on the selected
 		// category: an ELBO, hence a lower bound, for any assignment at all.
@@ -967,6 +973,10 @@ CatMixture cat_mixture(SingleTreeLikelihood* tlk, int verbosity){
 	free(profile);
 	free(stored);
 	return mixture;
+}
+
+CatMixture cat_mixture(SingleTreeLikelihood* tlk, int verbosity){
+	return cat_mixture_patterns(tlk, verbosity, NULL);
 }
 
 // The three numbers side by side, in the order they should be read: the one that

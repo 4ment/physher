@@ -177,7 +177,7 @@ Operator* new_HMCOperator_from_json(json_node* node, Hashtable* hash){
 	    {"parameters", JSON_OPTIONAL, JSON_ANY},
 	    {"stepsize", JSON_OPTIONAL, JSON_NUMBER},
 	    {"steps", JSON_OPTIONAL, JSON_NUMBER},
-	    {"target", JSON_REQUIRED, JSON_NUMBER},
+	    {"target", JSON_REQUIRED, JSON_STRING},
 	    {"target_acceptance_probability", JSON_OPTIONAL, JSON_NUMBER},
 	    {"weight", JSON_OPTIONAL, JSON_NUMBER},
 	    {"x", JSON_REQUIRED, JSON_ANY},
