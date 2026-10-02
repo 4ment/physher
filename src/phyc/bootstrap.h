@@ -45,6 +45,16 @@ typedef struct Bootstrap {
     Trace** loggers;
     size_t logger_count;
 
+    // Per-pattern state of the site models, as it stood when the bootstrap
+    // started. Only the empirical CAT site model keeps any: an assignment of
+    // patterns to rate categories, and its own reference to the pattern set it
+    // normalises the category rates against. A compacted replicate installs a
+    // pattern set whose indices are not the original ones, so both have to be
+    // rebuilt from here for each replicate rather than carried over positionally.
+    // Indexed by tree likelihood; the entries are NULL for every other site model.
+    int** site_categories;        // owned
+    SitePattern** site_patterns;  // borrowed
+
     Parameters* parameters;  // restored to `estimate` before each replicate
     double* estimate;        // owned
     size_t estimate_size;

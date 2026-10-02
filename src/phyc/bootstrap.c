@@ -73,6 +73,57 @@ static void _bootstrap_draw(Bootstrap* bootstrap, size_t p) {
     }
 }
 
+// Take the per-pattern site-model state every replicate has to be rebuilt from.
+// Only the empirical CAT site model keeps any; see the fields in bootstrap.h.
+static void _bootstrap_store_assignments(Bootstrap* bootstrap) {
+    for (size_t i = 0; i < bootstrap->treelikelihood_count; i++) {
+        if (bootstrap->site_categories[i] != NULL) free(bootstrap->site_categories[i]);
+        bootstrap->site_categories[i] = NULL;
+        bootstrap->site_patterns[i] = NULL;
+
+        SingleTreeLikelihood* tlk = bootstrap->treelikelihoods[i]->obj;
+        if (tlk->sm == NULL || tlk->sm->site_category == NULL) continue;
+
+        const SitePattern* sp = bootstrap->patterns[bootstrap->pattern_index[i]];
+        bootstrap->site_categories[i] = clone_ivector(tlk->sm->site_category, sp->count);
+        bootstrap->site_patterns[i] = tlk->sm->sp;
+    }
+}
+
+// Reinstate the per-pattern site-model state of tree likelihood `i` for the
+// pattern set that has just been installed. Under compaction the surviving
+// patterns are packed densely, so position k of the replicate is the k-th
+// original pattern with a nonzero multiplicity and the assignment is gathered in
+// that order; carrying it over positionally would score every pattern with
+// another pattern's rate category. The site model also holds its own reference
+// to the pattern set, which is what _cat_update normalises the category rates
+// against and which SingleTreeLikelihood_set_sitepattern does not move.
+//
+// Gathering from the stored assignment overrides any carry-over between
+// replicates under "reset": false. There is nothing to carry over: consecutive
+// replicates compact to different pattern sets, so the previous assignment is
+// indexed in a space this one does not share.
+static void _bootstrap_apply_sitemodel(Bootstrap* bootstrap, size_t i, size_t p,
+                                       const double* multiplicities) {
+    SingleTreeLikelihood* tlk = bootstrap->treelikelihoods[i]->obj;
+    SiteModel* sm = tlk->sm;
+    if (sm == NULL || sm->site_category == NULL) return;
+
+    if (bootstrap->compact) {
+        const SitePattern* sp = bootstrap->patterns[p];
+        const int* stored = bootstrap->site_categories[i];
+        size_t k = 0;
+        for (int j = 0; j < sp->count; j++) {
+            if (multiplicities[j] != 0.0) sm->site_category[k++] = stored[j];
+        }
+        sm->sp = bootstrap->views[p];
+    }
+    // The CAT normaliser is a function of the weights, and nothing else marks it
+    // stale when they move underneath it, as _cv_install in crossvalidation.c
+    // also has to do.
+    sm->need_update = true;
+}
+
 // Install `counts` (or the observed weights when counts is NULL) as the pattern
 // multiplicities of pattern set p, and invalidate every likelihood reading it.
 static void _bootstrap_apply(Bootstrap* bootstrap, size_t p, const double* counts) {
@@ -93,6 +144,7 @@ static void _bootstrap_apply(Bootstrap* bootstrap, size_t p, const double* count
         } else {
             SingleTreeLikelihood_update_weights(tlk);
         }
+        _bootstrap_apply_sitemodel(bootstrap, i, p, multiplicities);
     }
 }
 
@@ -110,12 +162,24 @@ static void _bootstrap_restore_observed(Bootstrap* bootstrap) {
             } else {
                 SingleTreeLikelihood_update_weights(tlk);
             }
+            // The observed weights are back in place, so the assignment and the
+            // site model's own reference to the pattern set go back with them:
+            // the site model outlives the bootstrap and frees that reference.
+            SiteModel* sm = tlk->sm;
+            if (sm != NULL && sm->site_category != NULL &&
+                bootstrap->site_categories[i] != NULL) {
+                memcpy(sm->site_category, bootstrap->site_categories[i],
+                       sizeof(int) * sp->count);
+                sm->sp = bootstrap->site_patterns[i];
+                sm->need_update = true;
+            }
         }
     }
 }
 
 static void _bootstrap_run(Bootstrap* bootstrap) {
     Parameters_store_value(bootstrap->parameters, bootstrap->estimate);
+    _bootstrap_store_assignments(bootstrap);
 
     for (size_t i = 0; i < bootstrap->logger_count; i++) {
         bootstrap->loggers[i]->initialize(bootstrap->loggers[i]);
@@ -175,8 +239,11 @@ static void _free_Bootstrap(Bootstrap* bootstrap) {
     free(bootstrap->pattern_index);
 
     for (size_t i = 0; i < bootstrap->treelikelihood_count; i++) {
+        free(bootstrap->site_categories[i]);
         bootstrap->treelikelihoods[i]->free(bootstrap->treelikelihoods[i]);
     }
+    free(bootstrap->site_categories);
+    free(bootstrap->site_patterns);
     free(bootstrap->treelikelihoods);
 
     for (size_t i = 0; i < bootstrap->optimizer_count; i++) {
@@ -204,6 +271,10 @@ static void _bootstrap_collect_models(Bootstrap* bootstrap, json_node* node,
     bootstrap->treelikelihoods = malloc(sizeof(Model*) * count);
     bootstrap->pattern_index = malloc(sizeof(size_t) * count);
     bootstrap->treelikelihood_count = count;
+    // Filled by _bootstrap_store_assignments when the run starts, which is the
+    // first moment the point estimate, and so the assignment, is in place.
+    bootstrap->site_categories = calloc(count, sizeof(int*));
+    bootstrap->site_patterns = calloc(count, sizeof(SitePattern*));
     bootstrap->patterns = malloc(sizeof(SitePattern*) * count);
     bootstrap->pattern_count = 0;
 

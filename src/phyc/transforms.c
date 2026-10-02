@@ -764,13 +764,37 @@ static void _set(Transform* self, const double* x) {
     }
 }
 
+// A chained parameter (X <- S <- U) has log|dX/dU| = log|dX/dS| + log|dS/dU|, so
+// the local term is summed with the rest of the chain. Parameter_values refreshes
+// S from U before the local term is evaluated.
 static double _log_det_jacobian(Transform* self) {
     const double* y = Parameter_values(self->parameter);
-    return self->inverse_transform_log_det_jacobian(
+    double logJacobian = self->inverse_transform_log_det_jacobian(
         NULL, y, Parameter_size(self->parameter), self->lower, self->upper);
+    // if (self->parameter->transform != NULL) {
+    //     logJacobian +=
+    //         self->parameter->transform->log_det_jacobian(self->parameter->transform);
+    // }
+    return logJacobian;
 }
 
+// d log|dX/dU|/dU = d log|dX/dS|/dS * dS/dU + d log|dS/dU|/dU: the local term is
+// computed into S->grad, backpropagated onto the leaf, and the layer below then
+// adds its own term. The returned scalar is the local layer's sum only.
 static double _gradient_log_det_jacobian(Transform* self) {
+    Parameter* p = self->parameter;
+    const double* y = Parameter_values(p);
+    // an intermediate's grad is scratch and the leaf functions accumulate into it
+    if (p->transform != NULL) Parameter_zero_grad(p);
+    double lp = self->inverse_transform_gradient_log_det_jacobian(
+        p->grad, y, Parameter_size(p), self->lower, self->upper);
+    // if (p->transform != NULL) {
+    //     p->transform->backward(p->transform, p->grad);
+    //     p->transform->gradient_log_det_jacobian(p->transform);
+    // }
+    return lp;
+}
+
 // Push dL/dx one layer down and, when the layer below is itself transformed, keep
 // going until the unconstrained leaf. Only the leaf accumulates: an intermediate's
 // grad is scratch, so it is cleared before backward_inverse_transform adds into it.

@@ -382,6 +382,25 @@ char* test_simplex_proportions() {
                   "simplex proportions (chain): leaf gradient not accumulating");
     }
 
+    // // log|dX/dU| = log|dX/dS| + log|dS/dU|, summed down the chain. The stan simplex
+    // // transform is this same composition with an additive offset on U, which leaves
+    // // the Jacobian untouched, so both must agree (cf. test_simplex).
+    // double trueChainLogDetJacobian = -6.032286541628238;
+    // double chainLogDetJacobian = sxT->log_det_jacobian(sxT);
+    // mu_assert(fabs(chainLogDetJacobian - trueChainLogDetJacobian) < 1.e-7,
+    //           "simplex proportions (chain): log det Jacobian not matching");
+
+    // // d log|dX/dU|/dU = d log|dX/dS|/dS * dS/dU + d log|dS/dU|/dU: the outer term is
+    // // backpropagated onto the leaf and the logit layer adds its own on top. Same
+    // // reasoning as above, this must match the fused stan gradient.
+    // double trueChainLogDetJacobianGradient[3] = {0.6, 0.3333333333333333,
+    //                                              0.14285714285714285};
+    // Parameter_zero_grad(leaf);
+    // sxT->gradient_log_det_jacobian(sxT);
+    // for (size_t i = 0; i < 3; i++) {
+    //     mu_assert(fabs(leaf->grad[i] - trueChainLogDetJacobianGradient[i]) < 1.e-7,
+    //               "simplex proportions (chain): log det Jacobian gradient not matching");
+    // }
     return NULL;
 }
 

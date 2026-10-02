@@ -11,5 +11,12 @@
 
 .vscode/*
 
-.beads/
+# MkDocs build output
+/site/
 
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+/python/dist/

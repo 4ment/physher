@@ -3855,8 +3855,8 @@ void _calculate_gradient(Model *model,
 	bool siteModelGrad = Parameters_count(siteModelParameters) != 0;
 	bool substitutionModelGrad = Parameters_count(substitutionModelParameters) != 0;
 	// The empirical CAT site model keeps one category per pattern rather than mixing
-	// them, which the branch-length gradient below knows about and the two paths here
-	// do not.
+	// them, which the branch-length gradient below knows about and the site model
+	// path here does not.
 	bool cat_sitemodel = tlk->sm->site_category != NULL;
 
 	// CAT's category rates are empirical -- cluster centres of per-pattern posterior
@@ -3870,15 +3870,14 @@ void _calculate_gradient(Model *model,
 		                "use a derivative-free optimizer such as \"algorithm\": \"serial\"\n");
 		exit(2);
 	}
-	// gradient_substitution_model_aux integrates the branch partials over the category
-	// proportions, which under CAT would read cat_count blocks out of the single block
-	// its partials hold. Reachable but not yet written.
-	if(cat_sitemodel && substitutionModelGrad){
-		fprintf(stderr, "_calculate_gradient: the substitution model gradient is not "
-		                "implemented for the CAT site model; use a derivative-free "
-		                "optimizer such as \"algorithm\": \"serial\"\n");
-		exit(2);
-	}
+
+	// The substitution model gradient needs no CAT path of its own. Its one
+	// category-shaped step is the integrate_partials call in
+	// gradient_substitution_model_aux, and every kernel behind it loops over
+	// tlk->cat_count -- which is 1 under CAT (see allocate_storage) -- so it copies
+	// the single block the branch partials produced instead of summing K of them.
+	// The matrices still hold one block per category and the branch kernel picks
+	// each pattern's own out of them, which is the whole of what CAT changes here.
 
 	// per category gradient wrt branch lengths
 	if (branchModelGrad || treeModelGrad || siteModelGrad) {

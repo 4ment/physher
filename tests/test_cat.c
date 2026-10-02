@@ -1442,6 +1442,132 @@ static char* test_branch_gradient_without_cat(void) {
     return _check_branch_gradient("jc69-freerate.json", true, false);
 }
 
+// The substitution model gradient under CAT, against central finite differences.
+//
+// Same one-block problem as the branch lengths: gradient_substitution_model_aux
+// integrates the branch partials over the category proportions, which reads
+// cat_count blocks. Under CAT there is one block and each pattern has already
+// picked its own category out of it, so the CAT path skips the integration and
+// reads that block directly. Finite differences of the likelihood do not care
+// which of the two ran.
+static char* _check_substitution_gradient(const char* file, bool sse, bool assign,
+                                          bool scale) {
+    Hashtable* hash = _new_hash();
+    Model* model = _treelikelihood_from_file(file, hash);
+    SingleTreeLikelihood* tlk = model->obj;
+    SingleTreeLikelihood_enable_SSE(tlk, sse);
+    // Scaled partials are not in the units the pattern likelihoods are in, so the
+    // ratio has to be taken against a likelihood the same kernel produced. That is a
+    // separate branch of gradient_substitution_model_aux.
+    SingleTreeLikelihood_use_rescaling(tlk, scale);
+    if (assign) {
+        CatOptions options = cat_options_default(CAT_ASSIGNMENT_POSTERIOR_MEAN);
+        cat_assign(tlk, &options);
+    }
+
+    // The unconstrained parameters the variational and gradient-based optimizers
+    // actually carry: the exchangeabilities (a scalar rate, or the simplex behind
+    // one) and the frequency simplex, which reach gradient_substitution_model
+    // through different branches of it.
+    Parameters* parameters = new_Parameters(1);
+    for (size_t i = 0; i < Parameters_count(tlk->m->rates); i++) {
+        Parameter* rate = Parameters_at(tlk->m->rates, i);
+        Parameters_add(parameters,
+                       rate->transform != NULL ? rate->transform->parameter : rate);
+    }
+    if (tlk->m->rates_simplex != NULL) {
+        Parameters_add(parameters, tlk->m->rates_simplex->transform->parameter);
+    }
+    if (tlk->m->simplex != NULL) {
+        Parameters_add(parameters, tlk->m->simplex->transform->parameter);
+    }
+
+    // Finite differences first: the analytic pass leaves the upper partials live.
+    size_t total = 0;
+    for (size_t i = 0; i < Parameters_count(parameters); i++) {
+        total += Parameter_size(Parameters_at(parameters, i));
+    }
+    double* numeric = dvector(total);
+    size_t offset = 0;
+    for (size_t i = 0; i < Parameters_count(parameters); i++) {
+        Parameter* parameter = Parameters_at(parameters, i);
+        Model_first_derivatives(model, parameter, 1.e-6, numeric + offset);
+        offset += Parameter_size(parameter);
+    }
+
+    Parameters_zero_grad(parameters);
+    model->gradient(model, parameters);
+
+    char* failure = NULL;
+    offset = 0;
+    for (size_t i = 0; i < Parameters_count(parameters) && failure == NULL; i++) {
+        Parameter* parameter = Parameters_at(parameters, i);
+        for (size_t j = 0; j < Parameter_size(parameter) && failure == NULL; j++) {
+            double analytic = parameter->grad[j];
+            double tolerance = 1.e-4 * (1.0 + fabs(numeric[offset + j]));
+            if (!isfinite(analytic)) {
+                failure = (char*)"CAT: the substitution model gradient is not finite";
+            }
+            else if (fabs(analytic - numeric[offset + j]) > tolerance) {
+                failure = (char*)"CAT: the substitution model gradient disagrees with "
+                                 "finite differences";
+            }
+        }
+        offset += Parameter_size(parameter);
+    }
+
+    free(numeric);
+    free_Parameters(parameters);
+    model->free(model);
+    free_Hashtable(hash);
+    return failure;
+}
+
+static char* test_substitution_gradient_SSE(void) {
+    return _check_substitution_gradient("gtr-cat.json", true, true, false);
+}
+
+static char* test_substitution_gradient(void) {
+    return _check_substitution_gradient("gtr-cat.json", false, true, false);
+}
+
+// A scalar exchangeability rather than a simplex of them, so the loop over
+// tlk->m->rates carries the derivative instead of the rates_simplex branch.
+static char* test_substitution_gradient_hky(void) {
+    return _check_substitution_gradient("hky-cat.json", true, true, false);
+}
+
+// One category leaves nothing for the per-pattern selection to get wrong, so it
+// separates a broken block layout from a broken derivative.
+static char* test_substitution_gradient_single_category(void) {
+    return _check_substitution_gradient("gtr-cat1.json", true, true, false);
+}
+
+// Before any assignment every pattern sits in category 0.
+static char* test_substitution_gradient_before_assignment(void) {
+    return _check_substitution_gradient("gtr-cat.json", true, false, false);
+}
+
+// The scaled branch, which recomputes the likelihood through the same kernel
+// rather than reading the pattern likelihoods.
+static char* test_substitution_gradient_scaled(void) {
+    return _check_substitution_gradient("gtr-cat.json", true, true, true);
+}
+
+static char* test_substitution_gradient_scaled_SIMD_off(void) {
+    return _check_substitution_gradient("gtr-cat.json", false, true, true);
+}
+
+// The same checks on a model that is not CAT. If these failed too, the check
+// itself would be wrong rather than the CAT gradient.
+static char* test_substitution_gradient_without_cat(void) {
+    return _check_substitution_gradient("gtr-freerate.json", true, false, false);
+}
+
+static char* test_substitution_gradient_scaled_without_cat(void) {
+    return _check_substitution_gradient("gtr-freerate.json", true, false, true);
+}
+
 static char* all_tests() {
     mu_suite_start();
     mu_run_test(test_options_default);
@@ -1491,6 +1617,15 @@ static char* all_tests() {
     mu_run_test(test_branch_gradient_single_category);
     mu_run_test(test_branch_gradient_before_assignment);
     mu_run_test(test_branch_gradient_without_cat);
+    mu_run_test(test_substitution_gradient_SSE);
+    mu_run_test(test_substitution_gradient);
+    mu_run_test(test_substitution_gradient_hky);
+    mu_run_test(test_substitution_gradient_single_category);
+    mu_run_test(test_substitution_gradient_before_assignment);
+    mu_run_test(test_substitution_gradient_scaled);
+    mu_run_test(test_substitution_gradient_scaled_SIMD_off);
+    mu_run_test(test_substitution_gradient_without_cat);
+    mu_run_test(test_substitution_gradient_scaled_without_cat);
     return NULL;
 }
 

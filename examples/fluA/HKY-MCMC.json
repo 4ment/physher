@@ -6,7 +6,7 @@
       {
         "id": "treelikelihood",
         "type": "treelikelihood",
-        "include_jacobian": true,
+        "include_jacobian": false,
         "tree": {
           "id": "tree",
           "type": "tree",
@@ -33,7 +33,7 @@
               "x": 0.0
             }
           },
-                    "taxa":{
+          "taxa": {
             "id": "taxa",
             "type": "Taxa",
             "taxa": [
@@ -535,7 +535,7 @@
           "frequencies": {
             "id": "frequencies",
             "type": "simplex",
-            "x": [0.25, 0.25, 0.25, 0.25]
+            "dimension": 4
           },
           "datatype": "nucleotide",
           "rates": {
@@ -575,11 +575,11 @@
         "type": "coalescent",
         "kind": "constant",
         "theta": {
-            "id": "n0",
-            "type": "parameter",
-            "x": 3,
-            "lower": 0.0,
-            "upper": "infinity"
+          "id": "n0",
+          "type": "parameter",
+          "x": 3,
+          "lower": 0.0,
+          "upper": "infinity"
         },
         "tree": "@tree"
       },
@@ -622,7 +622,8 @@
         "x": [
           "&kappa"
         ]
-      }
+      },
+      "@tree"
     ]
   },
   "physher": [
