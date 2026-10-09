@@ -493,7 +493,9 @@ Model * new_TreeLikelihoodModel_from_json(json_node*node, Hashtable*hash){
 		mm->ref_count++;
 	}
 	else{
+		char* id = get_json_node_value_string(m_node, "id");
 		mm = new_SubstitutionModel_from_json(m_node, hash);
+		if (id != NULL) Hashtable_add(hash, id, mm);
 	}
 
 	

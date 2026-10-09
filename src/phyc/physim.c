@@ -23,12 +23,55 @@
 
 
 
+// Number of sites a conditional CAT simulation produces: one per site of the
+// alignment the assignment was made on, so that every site keeps its own category.
+unsigned Sequence_simulate_cat_length( const SiteModel *sm ){
+    unsigned len = 0;
+    for ( int i = 0; i < sm->sp->count; i++ ) {
+        len += lround(sm->sp->weights[i]);
+    }
+    return len;
+}
+
+// The rate category of every simulated site under a CAT site model. A CAT site
+// model has no mixture weights (its proportions are all 1), so the categories are
+// read off the per-pattern assignment instead of drawn from get_proportions.
+static void _cat_site_categories( const SiteModel *sm, cat_simulation_t mode, int *rates, unsigned len ){
+    const SitePattern *sp = sm->sp;
+    if ( mode == CAT_SIMULATION_CONDITIONAL ) {
+        // Each pattern contributes as many sites as it stands for, all in the
+        // category it was assigned to. The site order of the original alignment is
+        // not kept (sp->indexes does not map sites to patterns), but sites are
+        // exchangeable under the model so the order carries no information.
+        unsigned k = 0;
+        for ( int i = 0; i < sp->count; i++ ) {
+            long n = lround(sp->weights[i]);
+            for ( long j = 0; j < n; j++ ) {
+                rates[k++] = sm->site_category[i];
+            }
+        }
+        assert(k == len);
+    }
+    else {
+        // The K-component mixture cat_mixture scores: the category label is drawn
+        // with the site-weighted assignment frequencies as weights.
+        double *weights = dvector(sm->cat_count);
+        for ( int i = 0; i < sp->count; i++ ) {
+            weights[sm->site_category[i]] += sp->weights[i] / sp->nsites;
+        }
+        for ( int i = 0; i < len; i++ ) {
+            rates[i] = roulette_wheel(weights, sm->cat_count);
+        }
+        free(weights);
+    }
+}
+
 // for codons len is the number of codons
-Sequences * Sequence_simulate( Tree *tree, SubstitutionModel *m, SiteModel *sm, BranchModel *bm, DataType *datatype, unsigned len, bool keep_internal ){
+Sequences * Sequence_simulate( Tree *tree, SubstitutionModel *m, SiteModel *sm, BranchModel *bm, DataType *datatype, unsigned len, bool keep_internal, cat_simulation_t cat_mode ){
     int nstate = m->nstate;
     double *p = dvector(nstate*nstate);
     int *rates = ivector(len);
-    
+
     const double *freqs = m->get_frequencies(m);
     
     double accum = 0;
@@ -46,8 +89,11 @@ Sequences * Sequence_simulate( Tree *tree, SubstitutionModel *m, SiteModel *sm, 
     
     m->need_update = true;
     sm->need_update = true;
-    
-    if( sm->distribution != DISTRIBUTION_UNIFORM ){
+
+    if( sm->site_category != NULL ){
+        _cat_site_categories(sm, cat_mode, rates, len);
+    }
+    else if( sm->distribution != DISTRIBUTION_UNIFORM ){
         double accum = 0;
         for ( int i = 0; i < sm->cat_count; i++ ) {
             accum += sm->get_proportion(sm,i);
@@ -286,6 +332,8 @@ char * Node_get_string_from_info2( const Node *node, const char *str ){
 void SimulateSequences_from_json(json_node* node, Hashtable* hash){
 	static const json_field schema[] = {
 	    {"branchmodel", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
+	    // CAT site model only: "conditional" or "mixture" (see cat_simulation_t).
+	    {"cat", JSON_OPTIONAL, JSON_STRING},
 	    {"datatype", JSON_OPTIONAL, JSON_ANY},
 	    {"distribution", JSON_OPTIONAL, JSON_OBJECT | JSON_STRING},
 	    {"format", JSON_OPTIONAL, JSON_STRING},
@@ -306,7 +354,6 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     json_node* tree_node = get_json_node(node, "tree");
 	json_node* m_node = get_json_node(node, "substitutionmodel");
 	json_node* sm_node = get_json_node(node, "sitemodel");
-    char* sm_type = get_json_node_value_string(sm_node, "type");
     json_node* bm_node = get_json_node(node, "branchmodel");
     json_node* datatype_node = get_json_node(node, "datatype");
     int length = get_json_node_value_int(node, "length", 1000);
@@ -315,6 +362,17 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     double seed = get_json_node_value_double(node, "seed", 1.0);
     char* rate_dist = get_json_node_value_string(node, "distribution");
 	int verbosity = get_json_node_value_int(node, "verbosity", 1);
+	char* cat_mode_name = get_json_node_value_string(node, "cat");
+	cat_simulation_t cat_mode = CAT_SIMULATION_CONDITIONAL;
+	if (cat_mode_name != NULL) {
+		if (strcasecmp(cat_mode_name, "mixture") == 0) {
+			cat_mode = CAT_SIMULATION_MIXTURE;
+		}
+		else if (strcasecmp(cat_mode_name, "conditional") != 0) {
+			fprintf(stderr, "simulator: \"cat\" must be \"conditional\" or \"mixture\", not \"%s\"\n", cat_mode_name);
+			exit(1);
+		}
+	}
     
     Model* mtree = NULL;
 	Model* msm = NULL; // SiteModel or DistributionModel
@@ -329,8 +387,7 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     
     if (tree_node->node_type == MJSON_STRING) {
         char* ref = (char*)tree_node->value;
-        // check it starts with a &
-        mtree = Hashtable_get(hash, ref+1);
+        mtree = safe_get_reference_model(ref, hash, "simulator");
         mtree->ref_count++;
     }
     else{
@@ -341,9 +398,8 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     
     if (m_node->node_type == MJSON_STRING) {
         char* ref = (char*)m_node->value;
-        // check it starts with a &
-        msm = Hashtable_get(hash, ref+1);
-        msm->ref_count++;
+        mm = safe_get_reference_model(ref, hash, "simulator");
+        mm->ref_count++;
     }
     else{
         char* id = get_json_node_value_string(m_node, "id");
@@ -354,11 +410,11 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
 	
 	if (sm_node->node_type == MJSON_STRING) {
 		char* ref = (char*)sm_node->value;
-		// check it starts with a &
-		msm = Hashtable_get(hash, ref+1);
+		msm = safe_get_reference_model(ref, hash, "simulator");
 		msm->ref_count++;
 	}
 	else{
+        char* sm_type = get_json_node_value_string(sm_node, "type");
         if(strcasecmp(sm_type, "sitemodel") == 0){
             msm = new_SiteModel_from_json(sm_node, hash);
         }
@@ -372,8 +428,7 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
     if(bm_node != NULL){
         if (bm_node->node_type == MJSON_STRING) {
             char* ref = (char*)bm_node->value;
-            // check it starts with a &
-            mbm = Hashtable_get(hash, ref+1);
+            mbm = safe_get_reference_model(ref, hash, "simulator");
             mbm->ref_count++;
         }
         else{
@@ -382,8 +437,16 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
         bm = mbm->obj;
     }
     
+    // A referenced site model has no "type" key to read, so the kind is taken
+    // from the model itself.
+    bool is_sitemodel = msm->type == MODEL_SITEMODEL;
+    
     DataType* datatype = NULL;
-    if(datatype_node->node_type == MJSON_STRING){
+    if(datatype_node == NULL){
+        datatype = ((SubstitutionModel*)mm->obj)->datatype;
+        datatype->ref_count++;
+    }
+    else if(datatype_node->node_type == MJSON_STRING){
         char* ref = (char*)datatype_node->value;
         if(ref[0] == '&'){
             datatype = Hashtable_get(hash, ref + 1);
@@ -553,13 +616,21 @@ void SimulateSequences_from_json(json_node* node, Hashtable* hash){
 //        StringBuffer_append_format(buffer, "\nRate min = %f max = %f mean = %f median = %f\n", min,max,mean,median);
         
         free(rates);
-        free(rate_dist);
     }
     
     Sequences *sim = NULL;
     
-    if(strcasecmp(sm_type, "sitemodel") == 0){
-        sim = Sequence_simulate(tree, mm->obj, msm->obj, bm, datatype, length, internal);
+    if(is_sitemodel){
+        SiteModel* sm = msm->obj;
+        if(sm->site_category != NULL && cat_mode == CAT_SIMULATION_CONDITIONAL){
+            unsigned cat_length = Sequence_simulate_cat_length(sm);
+            if(get_json_node(node, "length") != NULL && length != cat_length){
+                fprintf(stderr, "simulator: a conditional CAT simulation has one site per site of the alignment (%u), not \"length\" %d. Drop \"length\" or use \"cat\": \"mixture\".\n", cat_length, length);
+                exit(1);
+            }
+            length = cat_length;
+        }
+        sim = Sequence_simulate(tree, mm->obj, sm, bm, datatype, length, internal, cat_mode);
     }
     else{
         sim = Sequence_simulate_dist(tree, mm->obj, msm->obj, bm, datatype, length, internal);
