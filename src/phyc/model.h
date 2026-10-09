@@ -162,7 +162,7 @@ struct _Model {
 	void(*accept)(Model*);
 	double lp;
 	double storedLogP;
-	double stored;
+	bool stored;
 	bool samplable; // model is a distribution that can sampled directly
 	void (*print)(Model*, FILE*);
 

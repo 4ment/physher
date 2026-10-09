@@ -334,7 +334,8 @@ Parameter* new_Parameter_from_json(json_node* node, Hashtable* hash) {
 
     if (node->node_type == MJSON_STRING) {
         char* ref = (char*)node->value;
-        Parameter* p = Hashtable_get(hash, ref + 1);
+        Parameter* p = safe_get_reference_parameter(
+            ref, hash, node->key != NULL ? node->key : "parameter");
         p->refCount++;
         return p;
     }
@@ -525,8 +526,17 @@ Parameter * clone_Parameter( Parameter *p ){
 	pnew->stored = p->stored;
 	pnew->simplex = p->simplex;
 	memcpy(pnew->value, p->value, sizeof(double)* p->dim);
+	memcpy(pnew->stored_value, p->stored_value, sizeof(double)* p->dim);
 	if(p->grad != NULL){
-		pnew->grad = clone_dvector(p->grad, p->dim);
+		memcpy(pnew->grad, p->grad, sizeof(double)* p->dim);
+	}
+	if(p->transform != NULL){
+		Transform* transform = malloc(sizeof(Transform));
+		assert(transform);
+		*transform = *p->transform;
+		transform->parameter = clone_Parameter(p->transform->parameter);
+		transform->parameter->listeners->add_parameter(transform->parameter->listeners, pnew);
+		pnew->transform = transform;
 	}
 	return pnew;
 }

@@ -771,10 +771,10 @@ static double _log_det_jacobian(Transform* self) {
     const double* y = Parameter_values(self->parameter);
     double logJacobian = self->inverse_transform_log_det_jacobian(
         NULL, y, Parameter_size(self->parameter), self->lower, self->upper);
-    // if (self->parameter->transform != NULL) {
-    //     logJacobian +=
-    //         self->parameter->transform->log_det_jacobian(self->parameter->transform);
-    // }
+    if (self->parameter->transform != NULL) {
+        logJacobian +=
+            self->parameter->transform->log_det_jacobian(self->parameter->transform);
+    }
     return logJacobian;
 }
 
@@ -788,10 +788,10 @@ static double _gradient_log_det_jacobian(Transform* self) {
     if (p->transform != NULL) Parameter_zero_grad(p);
     double lp = self->inverse_transform_gradient_log_det_jacobian(
         p->grad, y, Parameter_size(p), self->lower, self->upper);
-    // if (p->transform != NULL) {
-    //     p->transform->backward(p->transform, p->grad);
-    //     p->transform->gradient_log_det_jacobian(p->transform);
-    // }
+    if (p->transform != NULL) {
+        p->transform->backward(p->transform, p->grad);
+        p->transform->gradient_log_det_jacobian(p->transform);
+    }
     return lp;
 }
 

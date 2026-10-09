@@ -89,7 +89,7 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	model->store = _dummy_store;
 	model->accept = _dummy_accept;
 	model->stored = false;
-	model->logP = 0;
+	model->storedLogP = 0;
 	model->lp = 0;
 	model->sample = _dummy_sample;
 	model->rsample = _dummy_rsample;

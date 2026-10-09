@@ -3,6 +3,7 @@
 
 #include "jacobian.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 static double _jacobian_model_logP(Model* self) {
@@ -64,6 +65,23 @@ static void _jacobian_model_accept(Model* self){
     }
 }
 
+// The log det of a chained parameter (X <- S <- U) covers the whole chain, so a
+// list holding both X and S would count log|dS/dU| twice.
+static void _check_no_nested(const Parameters* parameters, const char* id) {
+    for (size_t i = 0; i < Parameters_count(parameters); i++) {
+        Parameter* p = Parameters_at(parameters, i);
+        for (Transform* t = p->transform; t != NULL; t = t->parameter->transform) {
+            if (Parameters_contains(parameters, t->parameter)) {
+                fprintf(stderr,
+                        "%s - parameter %s is part of the transform chain of %s, whose "
+                        "log Jacobian determinant already includes it.\n",
+                        id, Parameter_name(t->parameter), Parameter_name(p));
+                exit(2);
+            }
+        }
+    }
+}
+
 Model* new_JacobianModel(const char* id, Parameters* parameters) {
     Model* model = new_Model(MODEL_JACOBIAN, id, parameters);
     model->logP = _jacobian_model_logP;
@@ -86,6 +104,7 @@ Model* new_JacobianModel_from_json(json_node* node, Hashtable* hash) {
     grab_parameters(parametersNode, hash, parameters);
     const char* id = get_json_node_value_string(node, "id");
     Parameters_check_transformed(parameters, id);
+    _check_no_nested(parameters, id);
     Model* model = new_JacobianModel(id, parameters);
     Hashtable_add(hash, id, model);
     return model;

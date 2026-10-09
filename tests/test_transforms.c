@@ -382,25 +382,56 @@ char* test_simplex_proportions() {
                   "simplex proportions (chain): leaf gradient not accumulating");
     }
 
-    // // log|dX/dU| = log|dX/dS| + log|dS/dU|, summed down the chain. The stan simplex
-    // // transform is this same composition with an additive offset on U, which leaves
-    // // the Jacobian untouched, so both must agree (cf. test_simplex).
-    // double trueChainLogDetJacobian = -6.032286541628238;
-    // double chainLogDetJacobian = sxT->log_det_jacobian(sxT);
-    // mu_assert(fabs(chainLogDetJacobian - trueChainLogDetJacobian) < 1.e-7,
-    //           "simplex proportions (chain): log det Jacobian not matching");
+    // log|dX/dU| = log|dX/dS| + log|dS/dU|, summed down the chain. The stan simplex
+    // transform is this same composition with an additive offset on U, which leaves
+    // the Jacobian untouched, so both must agree (cf. test_simplex).
+    double trueChainLogDetJacobian = -6.032286541628238;
+    double chainLogDetJacobian = sxT->log_det_jacobian(sxT);
+    mu_assert(fabs(chainLogDetJacobian - trueChainLogDetJacobian) < 1.e-7,
+              "simplex proportions (chain): log det Jacobian not matching");
 
-    // // d log|dX/dU|/dU = d log|dX/dS|/dS * dS/dU + d log|dS/dU|/dU: the outer term is
-    // // backpropagated onto the leaf and the logit layer adds its own on top. Same
-    // // reasoning as above, this must match the fused stan gradient.
-    // double trueChainLogDetJacobianGradient[3] = {0.6, 0.3333333333333333,
-    //                                              0.14285714285714285};
-    // Parameter_zero_grad(leaf);
-    // sxT->gradient_log_det_jacobian(sxT);
-    // for (size_t i = 0; i < 3; i++) {
-    //     mu_assert(fabs(leaf->grad[i] - trueChainLogDetJacobianGradient[i]) < 1.e-7,
-    //               "simplex proportions (chain): log det Jacobian gradient not matching");
-    // }
+    // d log|dX/dU|/dU = d log|dX/dS|/dS * dS/dU + d log|dS/dU|/dU: the outer term is
+    // backpropagated onto the leaf and the logit layer adds its own on top. Same
+    // reasoning as above, this must match the fused stan gradient.
+    double trueChainLogDetJacobianGradient[3] = {0.6, 0.3333333333333333,
+                                                 0.14285714285714285};
+    Parameter_zero_grad(leaf);
+    sxT->gradient_log_det_jacobian(sxT);
+    for (size_t i = 0; i < 3; i++) {
+        mu_assert(fabs(leaf->grad[i] - trueChainLogDetJacobianGradient[i]) < 1.e-7,
+                  "simplex proportions (chain): log det Jacobian gradient not matching");
+    }
+
+    // Calling it twice must accumulate on the leaf: the intermediate s->grad is
+    // scratch and cleared by each pass.
+    sxT->gradient_log_det_jacobian(sxT);
+    for (size_t i = 0; i < 3; i++) {
+        mu_assert(
+            fabs(leaf->grad[i] - 2.0 * trueChainLogDetJacobianGradient[i]) < 1.e-7,
+            "simplex proportions (chain): log det Jacobian gradient not accumulating");
+    }
+
+    // A three-layer chain X = exp(Y), Y = exp(U) checks that the recursion keeps
+    // going past the first intermediate: log|dX/dU| = log X + log Y = e^U + U and
+    // d/dU = e^U + 1.
+    double u0 = 0.3;
+    Parameter* u3 = new_Parameter2("u3", &u0, 1, new_Constraint(-INFINITY, INFINITY));
+    double y0 = exp(u0);
+    Parameter* y3 = new_Parameter2("y3", &y0, 1, new_Constraint(0.0, INFINITY));
+    y3->transform = new_Transform_with_parameter(NULL, 0.0, INFINITY, u3);
+    u3->listeners->add_parameter(u3->listeners, y3);
+    double x0 = exp(y0);
+    Parameter* x3 = new_Parameter2("x3", &x0, 1, new_Constraint(0.0, INFINITY));
+    x3->transform = new_Transform_with_parameter(NULL, 0.0, INFINITY, y3);
+    y3->listeners->add_parameter(y3->listeners, x3);
+    mu_assert(fabs(x3->transform->log_det_jacobian(x3->transform) - (exp(u0) + u0)) <
+                  1.e-7,
+              "nested exp: log det Jacobian not matching");
+    Parameter_zero_grad(u3);
+    x3->transform->gradient_log_det_jacobian(x3->transform);
+    mu_assert(fabs(u3->grad[0] - (exp(u0) + 1.0)) < 1.e-7,
+              "nested exp: log det Jacobian gradient not matching");
+    free_Parameter(x3);
     return NULL;
 }
 

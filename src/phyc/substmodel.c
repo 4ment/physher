@@ -297,8 +297,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable* hash) {
             Parameter_set_model(frequencies, MODEL_SUBSTITUTION);
         } else {
             char* ref = (char*)freqs_node->value;
-            // check it starts with a &
-            frequencies = Hashtable_get(hash, ref + 1);
+            frequencies = safe_get_reference_parameter(ref, hash, id);
             frequencies->refCount++;
         }
         Parameter_set_model(frequencies, MODEL_SUBSTITUTION);
@@ -320,8 +319,7 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable* hash) {
                 Hashtable_add(hash, Parameter_name(rateSimplex), rateSimplex);
             } else if (rates_node->node_type == MJSON_STRING) {
                 char* ref = (char*)rates_node->value;
-                // check it starts with a &
-                rateSimplex = Hashtable_get(hash, ref + 1);
+                rateSimplex = safe_get_reference_parameter(ref, hash, id);
                 rateSimplex->refCount++;
             }
             Parameter_set_model(rateSimplex, MODEL_SUBSTITUTION);
@@ -1395,12 +1393,11 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 	
 	if (datatype->type == DATA_TYPE_NUCLEOTIDE) {
 		check_constraints((Parameters*)rates, 0, INFINITY, 0.001, 100);
-		bool equal_frequencies = false;
+		bool equal_frequencies = !Parameter_estimate(freqSimplex);
 		const double* frequencies = Parameter_values(freqSimplex);
-		for (int i = 0; i < K; i++) {
-			if (Parameter_estimate(freqSimplex) != false || frequencies[i] != 0.25) {
-				equal_frequencies = true;
-				break;
+		for (int i = 0; i < K && equal_frequencies; i++) {
+			if (frequencies[i] != 0.25) {
+				equal_frequencies = false;
 			}
 		}
 		char* model_string2 = NULL;
@@ -1501,18 +1498,16 @@ SubstitutionModel * SubstitutionModel_factory( const char* model_string, DataTyp
 		}
 	}
 	else if (datatype->type == DATA_TYPE_CODON) {
-		if ( strcasecmp("GY94", model_string) == 0) {
-			
-		}
-		else if ( strcasecmp("MG94", model_string) == 0) {
-			
-		}
-		else{
-			fprintf(stderr, "Codon Subsitution model unknown: %s\n", model_string);
+		// GY94/MG94 exist (gy94.c, mg94.c) but are not wired to the factory yet
+		if ( strcasecmp("GY94", model_string) == 0 || strcasecmp("MG94", model_string) == 0) {
+			fprintf(stderr, "Codon substitution model %s is not supported yet\n", model_string);
 			exit(1);
 		}
+		fprintf(stderr, "Codon Subsitution model unknown: %s\n", model_string);
+		exit(1);
 	}
 	else if (datatype->type == DATA_TYPE_GENERIC) {
+		fprintf(stderr, "Substitution model %s not supported for a generic datatype\n", model_string);
 		exit(1);
 	}
 	else{
