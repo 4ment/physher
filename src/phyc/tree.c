@@ -374,12 +374,12 @@ void Tree_revert(Tree* tree){
 		Node* n = tree->stored_nodes[i];
 		if(n->parent != NULL && tree->nodes[i]->parent->id != n->parent->id){
 			Parameter_fire(n->distance, Node_id(n));
-			Parameter_restore_quietly(n->distance);
+			Parameter_restore(n->distance);
 			Tree_set_topology_changed(tree);
 		}
 		else if(Parameter_changed(n->distance)){
 			Parameter_fire(n->distance, Node_id(n));
-			Parameter_restore_quietly(n->distance);
+			Parameter_restore(n->distance);
 		}
 		if(!Node_isleaf(n)){
 			tree->nodes[n->id]->left = tree->nodes[n->left->id];

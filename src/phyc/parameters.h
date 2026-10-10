@@ -173,8 +173,6 @@ void Parameter_store(Parameter *p);
 
 void Parameter_restore(Parameter *p);
 
-void Parameter_restore_quietly(Parameter *p);
-
 void Parameter_accept(Parameter* p);
 
 bool Parameter_changed(Parameter *p);

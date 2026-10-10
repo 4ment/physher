@@ -813,16 +813,6 @@ void Parameter_restore(Parameter* p) {
     }
 }
 
-void Parameter_restore_quietly(Parameter* p) {
-	if(p->stored){
-		memcpy(p->value, p->stored_value, sizeof(double) * p->dim);
-		if (p->transform != NULL) {
-			Parameter_restore_quietly(p->transform->parameter);
-		}
-		p->stored = false;
-	}
-}
-
 void Parameter_accept(Parameter* p) {
 	p->stored = false;
 	if (p->transform != NULL) {
