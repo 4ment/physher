@@ -1,10 +1,15 @@
 // Copyright (C) 2010-2026 Mathieu Fourment
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
 #include "minunit.h"
 #include "phyc/filereader.h"
 #include "phyc/hashtable.h"
 #include "phyc/matrix.h"
+#include "phyc/mstring.h"
 #include "phyc/treelikelihood.h"
 
 char* test_treelikelihood_time() {
@@ -798,6 +803,120 @@ char* test_treelikelihood_time_leaf_gradient_fd() {
 //     return NULL;
 // }
 
+// A tree likelihood on tiny.fa with the given substitution model, a fixed tree
+// (the NJ tree) and frequencies (0.3, 0.2, 0.2, 0.3).
+static double _tiny_logP(const char* substitution) {
+    Hashtable* hash = new_Hashtable_string(10);
+    hashtable_set_key_ownership(hash, false);
+    hashtable_set_value_ownership(hash, false);
+    char content[2048];
+    snprintf(content, sizeof(content),
+             "{\"id\": \"treelikelihood\", \"type\": \"treelikelihood\","
+             " \"sitepattern\": {\"id\": \"patterns\", \"type\": \"sitepattern\","
+             "   \"datatype\": \"nucleotide\","
+             "   \"alignment\": {\"id\": \"seqs\", \"type\": \"alignment\","
+             "     \"file\": \"tiny.fa\"}},"
+             " \"sitemodel\": {\"id\": \"sitemodel\", \"type\": \"sitemodel\"},"
+             " \"substitutionmodel\": %s,"
+             " \"tree\": {\"id\": \"tree\", \"type\": \"tree\","
+             "   \"branch_lengths\": {\"id\": \"tree.distances\", \"type\": \"parameter\","
+             "     \"dimension\": 17, \"x\": 0.1},"
+             "   \"initializer\": {\"id\": \"nj\", \"algorithm\": \"nj\","
+             "     \"model\": \"jc69\", \"sitepattern\": \"&patterns\"}}}",
+             substitution);
+    json_node* json = create_json_tree(content);
+    Model* model = new_TreeLikelihoodModel_from_json(json, hash);
+    double logP = model->logP(model);
+    model->free(model);
+    free_Hashtable(hash);
+    json_free_tree(json);
+    return logP;
+}
+
+// A general model whose structure gives the transitions (A-G, C-T) a rate class
+// of their own is HKY with kappa the ratio of the two rates.
+char* test_treelikelihood_general_structure() {
+    double hky = _tiny_logP(
+        "{\"id\": \"sm\", \"type\": \"substitutionmodel\", \"kind\": \"hky\","
+        " \"datatype\": \"nucleotide\","
+        " \"frequencies\": {\"id\": \"freqs\", \"type\": \"simplex\","
+        "   \"x\": [0.3, 0.2, 0.2, 0.3]},"
+        " \"rates\": {\"kappa\": {\"id\": \"kappa\", \"type\": \"parameter\","
+        "   \"x\": 3.5, \"lower\": 0}}}");
+    double general = _tiny_logP(
+        "{\"id\": \"sm\", \"type\": \"substitutionmodel\", \"kind\": \"general\","
+        " \"datatype\": \"nucleotide\","
+        " \"frequencies\": {\"id\": \"freqs\", \"type\": \"simplex\","
+        "   \"x\": [0.3, 0.2, 0.2, 0.3]},"
+        " \"structure\": {\"id\": \"classes\", \"type\": \"discreteparameter\","
+        "   \"x\": [0, 1, 0, 0, 1, 0]},"
+        " \"rates\": {"
+        "   \"transversion\": {\"id\": \"transversion\", \"type\": \"parameter\","
+        "     \"x\": 1.0, \"lower\": 0},"
+        "   \"transition\": {\"id\": \"transition\", \"type\": \"parameter\","
+        "     \"x\": 3.5, \"lower\": 0}}}");
+    mu_assert(isfinite(hky), "HKY logP not finite");
+    mu_assert(fabs(hky - general) < 1e-8, "general structured model is not HKY");
+    return NULL;
+}
+
+// jc69-time.json with its tree reparameterized by shifts rather than ratios.
+static Model* _load_shift_tree(Hashtable* hash, json_node** json) {
+    char* content = load_file("jc69-time.json");
+    *json = create_json_tree(content);
+    free(content);
+    json_node* model_node = (*json)->children[0];
+    json_node* tree_node = get_json_node(model_node, "tree");
+    // dropped by json_prune_underscored
+    const char* replaced[] = {"proportions", "root_height"};
+    for (size_t i = 0; i < 2; i++) {
+        json_node* child = get_json_node(tree_node, replaced[i]);
+        char* key = malloc(strlen(child->key) + 2);
+        sprintf(key, "_%s", child->key);
+        free(child->key);
+        child->key = key;
+    }
+    json_prune_underscored(*json);
+    json_node* shifts = create_json_tree(
+        "{\"id\": \"shifts\", \"type\": \"parameter\", \"lower\": 0,"
+        " \"x\": {\"id\": \"shifts.unconstrained\", \"type\": \"parameter\","
+        "   \"dimension\": 68, \"x\": 0.0}}");
+    shifts->key = String_clone("shifts");
+    add_json_node(tree_node, shifts);
+    return new_TreeLikelihoodModel_from_json(model_node, hash);
+}
+
+// A shift moves its node and every ancestor it is the tallest lineage of, root
+// included; the cached likelihood must be the one recomputed from scratch.
+char* test_treelikelihood_shift_update() {
+    Hashtable* hash = new_Hashtable_string(10);
+    hashtable_set_key_ownership(hash, false);
+    hashtable_set_value_ownership(hash, false);
+    json_node* json = NULL;
+    Model* model = _load_shift_tree(hash, &json);
+    Parameter* shifts = Hashtable_get(hash, "shifts.unconstrained");
+    mu_assert(shifts != NULL && Parameter_size(shifts) == 68, "no shift parameter");
+    model->logP(model);
+
+    for (size_t i = 0; i < Parameter_size(shifts); i++) {
+        double value = Parameter_value_at(shifts, i);
+        Parameter_set_value_at(shifts, value + 0.3, i);
+        double cached = model->logP(model);
+        // Any change to the shifts recomputes every height; a value moved and put
+        // back leaves them as they are.
+        double first = Parameter_value_at(shifts, 0);
+        Parameter_set_value_at(shifts, first + 1e-3, 0);
+        Parameter_set_value_at(shifts, first, 0);
+        double recomputed = model->full_logP(model);
+        mu_assert(fabs(cached - recomputed) < 1e-8,
+                  "a shift change left part of the likelihood stale");
+    }
+    model->free(model);
+    free_Hashtable(hash);
+    json_free_tree(json);
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
     // mu_run_test(test_treelikelihood_time);
@@ -807,6 +926,8 @@ char* all_tests() {
     mu_run_test(test_treelikelihood_branch_gradient_tipright_fd);
     mu_run_test(test_treelikelihood_time_gradient_fd);
     mu_run_test(test_treelikelihood_time_leaf_gradient_fd);
+    mu_run_test(test_treelikelihood_general_structure);
+    mu_run_test(test_treelikelihood_shift_update);
 
     return NULL;
 }

@@ -952,21 +952,26 @@ static void _tree_transform_model_handle_change_shift(Model *self, Model *model,
         else{
             node = Tree_node(tt->tree, tt->tipCount + (index - offset));
         }
-        Node* root = Tree_root(tt->tree);
-        while(node != root){
-            /* This guarantees that branches above are updated.
-            In the treelikelihood the sibling node also need to be updated since they are the start of the branches
-            If node + is updated, then branches starting from node - also needs to be updated because h_*=max(h_+,h_-) + s_*.
-            All branches need to be updated except the 2 branches starting from C and D.
+        /* This guarantees that branches above are updated.
+        In the treelikelihood the sibling node also need to be updated since they are the start of the branches
+        If node + is updated, then branches starting from node - also needs to be updated because h_*=max(h_+,h_-) + s_*.
+        All branches need to be updated except the 2 branches starting from C and D.
 
-              -*-
-             |   |
-             +   -
-            | | | |
-            A B C D
-            */
+          -*-
+         |   |
+         +   -
+        | | | |
+        A B C D
+
+        The root is included: its height moves with the rest of the path, and with
+        it the branch to the child off the path, which nothing else marks. A change
+        to the shift of the root itself reaches the tree only from here.
+        */
+        Node* root = Tree_root(tt->tree);
+        while(true){
             // treelikelihood marks both children of node as dirty
             self->listeners->fire(self->listeners, self, parameter, Node_id(node));
+            if(node == root) break;
             node = node->parent;
         }
     }

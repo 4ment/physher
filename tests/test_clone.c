@@ -224,12 +224,45 @@ char* test_gtr_priors_clone() {
         "}");
 }
 
+// general model with a rate-class structure, which the substitution model holds
+// as a submodel
+char* test_general_structure_clone() {
+    return _check_clone_json(
+        "{"
+        "\"model\": {"
+        "  \"id\": \"treelikelihood\", \"type\": \"treelikelihood\","
+        "  \"sitepattern\": {\"id\": \"patterns\", \"type\": \"sitepattern\","
+        "    \"datatype\": \"nucleotide\","
+        "    \"alignment\": {\"id\": \"seqs\", \"type\": \"alignment\","
+        "      \"file\": \"tiny.fa\"}},"
+        "  \"sitemodel\": {\"id\": \"sitemodel\", \"type\": \"sitemodel\"},"
+        "  \"substitutionmodel\": {\"id\": \"sm\", \"type\": \"substitutionmodel\","
+        "    \"kind\": \"general\", \"datatype\": \"nucleotide\","
+        "    \"frequencies\": {\"id\": \"freqs\", \"type\": \"simplex\","
+        "      \"x\": [0.3, 0.2, 0.2, 0.3]},"
+        "    \"structure\": {\"id\": \"classes\", \"type\": \"discreteparameter\","
+        "      \"x\": [0, 1, 0, 0, 1, 0]},"
+        "    \"rates\": {"
+        "      \"transversion\": {\"id\": \"transversion\", \"type\": \"parameter\","
+        "        \"x\": 1.0, \"lower\": 0},"
+        "      \"transition\": {\"id\": \"transition\", \"type\": \"parameter\","
+        "        \"x\": 3.5, \"lower\": 0}}},"
+        "  \"tree\": {\"id\": \"tree\", \"type\": \"tree\","
+        "    \"branch_lengths\": {\"id\": \"tree.distances\", \"type\": \"parameter\","
+        "      \"dimension\": 17, \"x\": 0.1},"
+        "    \"initializer\": {\"id\": \"nj\", \"algorithm\": \"nj\","
+        "      \"model\": \"jc69\", \"sitepattern\": \"&patterns\"}}"
+        "}"
+        "}");
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_jc69_clone);
     mu_run_test(test_distance_clone);
     mu_run_test(test_time_clone);
     mu_run_test(test_gtr_priors_clone);
+    mu_run_test(test_general_structure_clone);
     return NULL;
 }
 

@@ -109,7 +109,10 @@ static void _substitution_model_free( Model *self ){
 		if( m->Q != NULL ) free_dmatrix(m->Q, m->nstate);
 		if( m->PP != NULL ) free_dmatrix(m->PP, m->nstate);
 		if( m->rates != NULL ) free_Parameters(m->rates);
-		if( m->model != NULL ) m->model->free(m->model);
+		// With a submodel (a general model's rate assignment, see
+		// new_SubstitutionModel_from_json) m->model is that submodel's object,
+		// released with it above.
+		if( m->model != NULL && self->data == NULL ) m->model->free(m->model);
 		if( m->dQ != NULL ) free(m->dQ);
 		free_Parameter(m->simplex);
 		free_Parameter(m->rates_simplex);
@@ -312,7 +315,20 @@ Model* new_SubstitutionModel_from_json(json_node* node, Hashtable* hash) {
     // General model
     // TODO: use rate simplex
     if (structure_node != NULL) {
-        Model* mdp = new_DiscreteParameterModel_from_json(model_node, hash);
+        // The general matrix is sized by its frequencies and fills its entries
+        // from the rates the structure assigns them.
+        if (frequencies == NULL || Parameters_count(rates) == 0) {
+            json_die(node, "%s - a \"structure\" needs \"frequencies\" and the "
+                           "\"rates\" it assigns", id);
+        }
+        Model* mdp = NULL;
+        if (structure_node->node_type == MJSON_STRING) {
+            mdp = safe_get_reference_model((char*)structure_node->value, hash, id);
+            mdp->ref_count++;
+        } else {
+            mdp = new_DiscreteParameterModel_from_json(structure_node, hash);
+            Hashtable_add(hash, mdp->name, mdp);
+        }
         check_constraints(rates, 0, INFINITY, 0.001, 1000);
         SubstitutionModel* m = new_GeneralModel_with_parameters(
             datatype, mdp->obj, rates, frequencies, -1, normalize);
