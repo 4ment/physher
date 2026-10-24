@@ -1,0 +1,40 @@
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[project]
+name = "phyforge"
+version = "0.1.0"
+description = "Build physher JSON configuration files"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Mathieu Fourment", email = "mathieu.fourment@uts.edu.au" }]
+keywords = ["phylogenetics", "variational", "Bayes", "likelihood"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = []
+
+[project.scripts]
+phyforge = "phyforge.cli.main:main"
+
+[dependency-groups]
+dev = ["flake8", "pytest", "ruff"]
+
+[tool.uv.build-backend]
+module-name = "phyforge"
+module-root = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["I"]
