@@ -59,6 +59,15 @@ typedef struct Bootstrap {
     double* estimate;        // owned
     size_t estimate_size;
 
+    // Everything a replicate fit can move: the parameters of the optimizers,
+    // including those they find through a tree likelihood rather than declare
+    // (a branch-length sweep, EM), i.e. the estimated untransformed parameters of
+    // the tree likelihoods. A worker restarts each replicate from `state_estimate`
+    // and hands its fit back through it. It is also the default `parameters`.
+    Parameters* state;
+    double* state_estimate;  // owned
+    size_t state_size;
+
     size_t replicates;      // resampled replicates, not counting the observed one
     bool compact;           // swap a compacted pattern set vs. overwrite weights
     bool reset;             // restart each replicate from the point estimate
@@ -66,6 +75,15 @@ typedef struct Bootstrap {
 #ifndef GSL_DISABLED
     gsl_rng* rng;
 #endif
+
+    // Replicates fitted concurrently, each worker on a clone of the model graph
+    // (see Model_clone_into) with optimizers rebuilt from `optimizer_node`
+    // against its hashtable. Replicates are drawn in order from `rng` and logged
+    // in order from the original graph, so the output does not depend on the
+    // number of threads.
+    size_t threads;
+    Hashtable* hash;            // borrowed, the graph the workers clone
+    json_node* optimizer_node;  // borrowed, "optimizer" of the bootstrap node
 
     void (*run)(struct Bootstrap*);
     void (*free)(struct Bootstrap*);

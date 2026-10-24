@@ -1264,51 +1264,46 @@ static void _tree_model_free( Model *self ){
 	}
 }
 
+static Tree* _clone_Tree_with_distances( const Tree *tree, Parameter* distances );
+
 static Model* _tree_model_clone( Model *self, Hashtable *hash ){
-	if (Hashtable_exists(hash, self->name)) {
-		return Hashtable_get(hash, self->name);
-	}
-	size_t treename_offset = strlen(self->name)+1;
 	Tree *tree = (Tree*)self->obj;
-	Tree *clonetree = clone_Tree(tree);
-	for (int i = 0; i < Tree_node_count(clonetree); i++) {
-		Node* node = Tree_node(clonetree, i);
-		if(node->distance != NULL){
-			char* name = String_clone(node->distance->name+treename_offset);
-			Parameter_set_name(node->distance, name);
-			free(name);
-		}
-		if(node->height != NULL){
-			char* name = String_clone(node->height->name+treename_offset);
-			Parameter_set_name(node->height, name);
-			free(name);
-		}
+	// Shared with whatever else reads the branch lengths (a prior, an optimizer),
+	// so it may have been cloned already.
+	Parameter* distances = clone_Parameter_into(tree->distances, hash);
+	Tree *clonetree = _clone_Tree_with_distances(tree, distances); // takes our reference
+
+	Model* mtt = NULL;
+	if(tree->tt != NULL){
+		mtt = TreeTransformModel_clone_with_tree(self->data, clonetree, hash);
+		clonetree->tt = mtt->obj;
 	}
-	Model* clone = new_TreeModel(self->name, clonetree);
-	Hashtable_add(hash, clone->name, clone);
-	
-	// Parameters_set_name2(clonetree->distances, Parameters_name2(tree->distances));
-	// Hashtable_add(hash, Parameters_name2(clonetree->distances), clonetree->distances);
-	
+	Model* clone = new_TreeModel2(self->name, clonetree, mtt);
+	if(mtt != NULL){
+		mtt->data = clone; // as TreeTransformModel_add_tree_model, a weak reference
+	}
+
+	// new_TreeModel2 prefixes every node height with the tree id. Put back the
+	// names of the original, which may have been renamed after that (the root
+	// height of a "root_height" tree), and which are what references resolve.
+	for (int i = 0; i < Tree_node_count(clonetree); i++) {
+		Parameter* height = Tree_node(clonetree, i)->height;
+		Parameter* original = Tree_node(tree, i)->height;
+		if(height == NULL) continue;
+		Parameter_set_name(height, Parameter_name(original));
+		if(Hashtable_exists(hash, Parameter_name(height))){
+			fprintf(stderr, "clone: node height %s of tree %s was cloned before the "
+			        "tree\n", Parameter_name(height), self->name);
+			exit(1);
+		}
+		Hashtable_add(hash, Parameter_name(height), height);
+	}
 	if(Parameters_name2(tree->heights) != NULL){
 		Parameters_set_name2(clonetree->heights, Parameters_name2(tree->heights));
-		Hashtable_add(hash, Parameters_name2(clonetree->heights), clonetree->heights);
+		Parameters_register_into(clonetree->heights, hash);
 	}
-	
-	for (int i = 0; i < Tree_node_count(clonetree); i++) {
-		Node* node = Tree_node(clonetree, i);
-		if(node->distance != NULL){
-			Hashtable_add(hash, node->distance->name, node->distance);
-		}
-		if(node->height != NULL){
-			Hashtable_add(hash, node->height->name, node->height);
-		}
-	}
-	clone->print = self->print;
-	clone->log_count = self->log_count;
-	clone->log_name = self->log_name;
-	clone->log_value = self->log_value;
-	//TODO: clone treetransform
+
+	Model_copy_behaviour(clone, self);
 	return clone;
 }
 
@@ -2018,8 +2013,26 @@ Node * clone_Tree_aux( Tree *tree, const Node *node, Node *parent ){
 	return newNode;
 }
 
+// Clone of the whole tree reading its branch lengths from `distances`, which it
+// takes over. NULL leaves a tree without branch-length parameter (only a subtree
+// clone has no use for one).
+static Tree* _clone_Tree_with_distances( const Tree *tree, Parameter* distances ){
+	Tree* clone = clone_SubTree(tree, tree->root);
+	if(distances != NULL){
+		clone->distances = distances;
+		for(size_t i = 0; i < Tree_node_count(clone); i++){
+			Node* node = Tree_node(clone, i);
+			node->distance = distances;
+			distances->refCount++;
+		}
+		Tree_update_branch_indices(clone);
+	}
+	return clone;
+}
+
 Tree * clone_Tree( const Tree *tree ){
-	return clone_SubTree(tree, tree->root);
+	Parameter* distances = tree->distances == NULL ? NULL : clone_Parameter(tree->distances);
+	return _clone_Tree_with_distances(tree, distances);
 }
 
 void _Tree_count_nodes( Node *node, int *tips, int *nodes){
@@ -2064,6 +2077,9 @@ Tree * clone_SubTree( const Tree *tree, Node *node ){
 	newTree->needUpdateBranchLengths = tree->needUpdateBranchLengths;
 	
 	init_parameter_arrays(newTree);
+	newTree->branchLengths = dvector(newTree->nNodes);
+	newTree->storedBranchLengths = dvector(newTree->nNodes);
+	newTree->needUpdateBranchLengths = true;
 	// copy unknown-leaf flags before building the transform, which reads them
 	if(tree->unknownLeaves != NULL && Tree_tip_count(newTree) == Tree_tip_count(tree)){
 		newTree->unknownLeaves = bvector(Tree_tip_count(newTree));

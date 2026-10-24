@@ -194,44 +194,23 @@ static void _branch_model_free( Model *self ){
 }
 
 static Model* _branch_model_clone( Model* self, Hashtable *hash ){
-	if (Hashtable_exists(hash, self->name)) {
-		return Hashtable_get(hash, self->name);
-	}
 	Model** models = (Model**)self->data;
-	
-	Model* mtree = models[0];
-	Model* mtreeclone = NULL;
-	// Tree may have been parsed already
-	if (Hashtable_exists(hash, mtree->name)) {
-		mtreeclone = Hashtable_get(hash, mtree->name);
-	}
-	else{
-		mtreeclone = mtree->clone(mtree, hash);
-		Hashtable_add(hash, mtree->name, mtreeclone);
-	}
-	
-	// SSVS
-	Model* mdpclone = NULL;
-	DiscreteParameter* dpclone = NULL;
-	if(models[1] != NULL){
-		Model* mdp = models[1];
-		if (Hashtable_exists(hash, mdp->name)) {
-			mdpclone = Hashtable_get(hash, mdp->name);
-		}
-		else{
-			mdpclone = mdp->clone(mdp, hash);
-			Hashtable_add(hash, mtree->name, mdpclone);
-		}
-		dpclone = mdpclone->obj;
-	}
-	
-	BranchModel*bmclone = clone_BranchModel((BranchModel*)self->obj, (Tree*)mtreeclone->obj, dpclone);
-	for (int i = 0; i < Parameters_count(bmclone->rates); i++) {
-		Hashtable_add(hash, Parameters_name(bmclone->rates, i), Parameters_at(bmclone->rates, i));
-	}
-	
+	Model* mtreeclone = Model_clone_into(models[0], hash);
+	Model* mdpclone = Model_clone_into(models[1], hash); // SSVS indicators
+
+	BranchModel* bm = (BranchModel*)self->obj;
+	BranchModel* bmclone = clone_BranchModel(bm, (Tree*)mtreeclone->obj,
+	                                         mdpclone == NULL ? NULL : mdpclone->obj);
+	// clone_BranchModel copies the rates; they may be shared with the rest of the
+	// graph (a prior on the rate), so take them from the clone hashtable instead.
+	free_Parameters(bmclone->rates);
+	bmclone->rates = clone_Parameters_into(bm->rates, hash);
+	Parameters_register_into(bmclone->rates, hash);
+
 	Model* clone = new_BranchModel2(self->name, bmclone, mtreeclone, mdpclone);
-	Hashtable_add(hash, clone->name, clone);
+	Model_copy_behaviour(clone, self);
+	mtreeclone->free(mtreeclone);
+	if(mdpclone != NULL) mdpclone->free(mdpclone);
 	return clone;
 }
 
@@ -417,6 +396,7 @@ BranchModel * clone_BranchModel(const BranchModel *bm, Tree *tree, DiscreteParam
 	newbm->tree = tree;
 	newbm->ssvs	= dp;
 	newbm->ssvs_map = NULL;
+	newbm->ssvs_map2 = NULL;
 	if(bm->ssvs_map != NULL){
 		newbm->ssvs_map = clone_uivector(bm->ssvs_map, Tree_node_count(tree));
 		newbm->ssvs_map2 = clone_uivector(bm->ssvs_map2, Tree_node_count(tree));

@@ -50,6 +50,11 @@ void TreeTransform_vjp_with_heights(TreeTransform *tt, const double* heights, co
 
 void TreeTransformModel_add_tree_model(Model* self, Model* tree);
 
+// Clone the transform model `self` for `tree`, the clone of the tree it belongs
+// to. Its parameters are cloned into `hash` (see Model_clone_into); the caller
+// attaches the result to the cloned tree model.
+Model* TreeTransformModel_clone_with_tree(Model* self, Tree* tree, Hashtable* hash);
+
 Model* new_TreeTransformModel(const char* name, TreeTransform* tt, Model* tree);
 
 Model* new_TreeTransformModel_from_json(json_node* node, Hashtable* hash);

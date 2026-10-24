@@ -511,20 +511,26 @@ Parameters * new_Parameters_from_json(json_node* node, Hashtable* hash){
 	return parameters;
 }
 
-Parameter * clone_Parameter( Parameter *p ){
-	Parameter *pnew = NULL;
+// Whether a parameter can be looked up by name in a clone hashtable. Generated
+// parameters may carry an empty name, which would make unrelated ones collide.
+static bool _has_clone_key(const char* name){
+	return name != NULL && name[0] != '\0';
+}
+
+static Parameter* _clone_parameter(Parameter* p, Hashtable* hash){
 	Constraint *cnstr = NULL;
 
 	if( p->cnstr != NULL ){
 		cnstr = clone_Constraint(p->cnstr);
 	}
 	
-	pnew = new_Parameter2( p->name, p->value, p->dim,  cnstr );//pnew ref_count is reset to 1
+	Parameter *pnew = new_Parameter2( p->name, p->value, p->dim,  cnstr );//pnew ref_count is reset to 1
 	pnew->estimate = p->estimate;
 	pnew->id = p->id;
 	pnew->model = p->model;
 	pnew->stored = p->stored;
 	pnew->simplex = p->simplex;
+	pnew->update = p->update;
 	memcpy(pnew->value, p->value, sizeof(double)* p->dim);
 	memcpy(pnew->stored_value, p->stored_value, sizeof(double)* p->dim);
 	if(p->grad != NULL){
@@ -534,11 +540,51 @@ Parameter * clone_Parameter( Parameter *p ){
 		Transform* transform = malloc(sizeof(Transform));
 		assert(transform);
 		*transform = *p->transform;
-		transform->parameter = clone_Parameter(p->transform->parameter);
+		transform->parameter = hash == NULL ? clone_Parameter(p->transform->parameter)
+		                                    : clone_Parameter_into(p->transform->parameter, hash);
 		transform->parameter->listeners->add_parameter(transform->parameter->listeners, pnew);
 		pnew->transform = transform;
 	}
 	return pnew;
+}
+
+Parameter * clone_Parameter( Parameter *p ){
+	return _clone_parameter(p, NULL);
+}
+
+Parameter* clone_Parameter_into(Parameter* p, Hashtable* hash){
+	if(p == NULL) return NULL;
+	bool keyed = _has_clone_key(p->name);
+	if(keyed && Hashtable_exists(hash, p->name)){
+		Parameter* clone = Hashtable_get(hash, p->name);
+		if(phyc_tag_of(clone) != PHYC_TAG_PARAMETER){
+			fprintf(stderr, "clone: '%s' is a %s, expected a parameter\n", p->name,
+			        phyc_tag_name(clone));
+			exit(1);
+		}
+		clone->refCount++;
+		return clone;
+	}
+	Parameter* clone = _clone_parameter(p, hash);
+	if(keyed) Hashtable_add(hash, clone->name, clone);
+	return clone;
+}
+
+Parameters* clone_Parameters_into(Parameters* ps, Hashtable* hash){
+	if(ps == NULL) return NULL;
+	Parameters* clone = new_Parameters(ps->capacity);
+	for(size_t i = 0; i < ps->count; i++){
+		Parameters_move(clone, clone_Parameter_into(ps->list[i], hash));
+	}
+	if(ps->name != NULL){
+		Parameters_set_name2(clone, ps->name);
+	}
+	return clone;
+}
+
+void Parameters_register_into(Parameters* ps, Hashtable* hash){
+	if(ps == NULL || !_has_clone_key(ps->name) || Hashtable_exists(hash, ps->name)) return;
+	Hashtable_add(hash, ps->name, ps);
 }
 
 void free_Parameter( Parameter *p ){

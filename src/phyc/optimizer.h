@@ -164,6 +164,10 @@ int opt_f_evaluations( Optimizer *opt );
 
 Parameters* opt_parameters( Optimizer *opt );
 
+// Add to `parameters` every parameter `opt` moves, including those of the
+// optimizers it schedules (a meta optimizer has no list of its own), each once.
+void opt_collect_parameters( Optimizer *opt, Parameters *parameters );
+
 void opt_set_update_data_function( Optimizer *opt, opt_update_data uf );
 
 opt_result opt_check_stop( OptStopCriterion *stop, Parameters *x, double fx );

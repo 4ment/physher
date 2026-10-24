@@ -123,83 +123,43 @@ static void _substitution_model_free( Model *self ){
 }
 
 static Model* _substitution_model_clone(Model* self, Hashtable *hash){
-	if (Hashtable_exists(hash, self->name)) {
-		return Hashtable_get(hash, self->name);
-	}
 	SubstitutionModel* subst = (SubstitutionModel*)self->obj;
-	
-	// Model* msimplex_freq_clone = NULL;
-	// Model* msimplex_rates_clone = NULL;
-	
-	if(self->data != NULL){
-		// Model** msimplex = (Model**)self->data;
-		// if(subst->simplex != NULL){
-		// 	if (Hashtable_exists(hash, msimplex[0]->name)) {
-		// 		msimplex_freq_clone = Hashtable_get(hash, msimplex[0]->name);
-		// 		msimplex_freq_clone->ref_count++;
-		// 	}
-		// 	else{
-		// 		msimplex_freq_clone = msimplex[0]->clone(msimplex[0], hash);
-		// 		Hashtable_add(hash, msimplex_freq_clone->name, msimplex_freq_clone);
-		// 	}
-		// }
-		
-		// if(subst->rates_simplex != NULL){
-		// 	if (Hashtable_exists(hash, msimplex[1]->name)) {
-		// 		msimplex_rates_clone = Hashtable_get(hash, msimplex[1]->name);
-		// 		msimplex_rates_clone->ref_count++;
-		// 	}
-		// 	else{
-		// 		msimplex_rates_clone = msimplex[1]->clone(msimplex[1], hash);
-		// 		Hashtable_add(hash, msimplex_rates_clone->name, msimplex_rates_clone);
-		// 	}
-		// }
-		//TODO: discrete parameter
-	}
-	
-	Parameter* frequencies = NULL;
-	Parameters* rates = NULL;
-	Parameter* rates_simplex = NULL;
-	if(Parameters_count(subst->rates) > 0){
-		rates = new_Parameters(1);
-		for (int i = 0; i < Parameters_count(subst->rates); i++) {
-			char* name = Parameters_name(subst->rates, i);
-			if (Hashtable_exists(hash, name)) {
-				Parameters_add(rates, Hashtable_get(hash, name));
-			}
-			else{
-				Parameter* p = clone_Parameter(Parameters_at(subst->rates, i));
-				Parameters_move(rates, p);
-				Hashtable_add(hash, name, p);
-			}
-		}
-	}
-	else if(subst->rates_simplex != NULL){
-		rates_simplex = clone_Parameter(subst->rates_simplex);
-	}
-	
-	if(subst->simplex != NULL){
-		frequencies = clone_Parameter(subst->simplex);
-	}
-
-	SubstitutionModel* mclone = NULL;
-	if(frequencies != NULL){
-		mclone = clone_substitution_model_with(subst, rates, frequencies);
-	}
-	else{
-		mclone = clone_substitution_model_with(subst, rates, NULL);
-	}
-
-
-	if (mclone->model != NULL) {
-		//TODO: use discreteparameter
-//		Hashtable_add(hash, mclone->model->name, mclone->model);
-	}
-	mclone->datatype = subst->datatype;
+	SubstitutionModel* mclone = malloc(sizeof(SubstitutionModel));
+	assert(mclone);
+	// Scalars and the model's function table carry over as they are.
+	*mclone = *subst;
+	mclone->name = String_clone(subst->name);
 	mclone->datatype->ref_count++;
-	Model *clone = new_SubstitutionModel2(self->name, mclone);
-	Hashtable_add(hash, clone->name, clone);
-	free_Parameters(rates);
+	mclone->simplex = clone_Parameter_into(subst->simplex, hash);
+	mclone->rates_simplex = clone_Parameter_into(subst->rates_simplex, hash);
+	mclone->rates = clone_Parameters_into(subst->rates, hash);
+	if(subst->eigendcmp != NULL){
+		mclone->eigendcmp = clone_EigenDecomposition(subst->eigendcmp);
+	}
+	if(subst->Q != NULL){
+		mclone->Q = clone_dmatrix(subst->Q, subst->nstate, subst->nstate);
+	}
+	if(subst->PP != NULL){
+		mclone->PP = clone_dmatrix(subst->PP, subst->nstate, subst->nstate);
+	}
+	if(subst->dQ != NULL){
+		mclone->dQ = clone_dvector(subst->dQ, subst->nstate*subst->nstate);
+	}
+
+	// The rate assignment of a general model, held both as a submodel and
+	// directly by the substitution model, as new_SubstitutionModel_from_json does.
+	Model* mdp = NULL;
+	if(self->data != NULL){
+		mdp = Model_clone_into(self->data, hash);
+		mclone->model = mdp->obj;
+	}
+	else if(subst->model != NULL){
+		mclone->model = subst->model->clone(subst->model);
+	}
+
+	Model *clone = new_SubstitutionModel3(self->name, mclone, mdp);
+	if(mdp != NULL) mdp->free(mdp);
+	Model_copy_behaviour(clone, self);
 	return clone;
 }
 
@@ -1012,57 +972,6 @@ SubstitutionModel * clone_substitution_model(SubstitutionModel *m){
 	
 	clone->need_update = false;
 	clone->dQ_need_update = false;
-	clone->relativeTo = m->relativeTo;
-
-	clone->grad_wrt_reparam = m->grad_wrt_reparam;
-	
-	return clone;
-}
-
-SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Parameters* rates, Parameter* simplex){
-	SubstitutionModel *clone =  create_substitution_model( m->name, m->modeltype, m->datatype, simplex);
-	clone->nstate = m->nstate;
-	clone->simplex = simplex;
-	
-	if(rates != NULL){
-		clone->rates = new_Parameters(Parameters_count(rates));
-		Parameters_add_parameters(clone->rates, rates);
-	}
-	
-	if( m->Q != NULL ){
-		clone->eigendcmp = clone_EigenDecomposition(m->eigendcmp);
-		clone->Q = clone_dmatrix( m->Q, m->nstate, m->nstate );
-		clone->PP = clone_dmatrix( m->PP, m->nstate, m->nstate );
-	}
-	
-	clone->gen_code = m->gen_code;
-	clone->reversible = m->reversible;
-	clone->normalize = m->normalize;
-	
-	// Functions
-	clone->p_t   = m->p_t;
-	clone->p_t_transpose   = m->p_t_transpose;
-	
-	clone->dp_dt   = m->dp_dt;
-	clone->dp_dt_transpose   = m->dp_dt_transpose;
-	
-	clone->d2p_d2t   = m->d2p_d2t;
-	clone->d2p_d2t_transpose   = m->d2p_d2t_transpose;
-	
-	clone->dPdp = m->dPdp;
-	if( m->dQ != NULL ) clone->dQ = clone_dvector(m->dQ, m->nstate*m->nstate);
-	
-	clone->update_Q = m->update_Q;
-	clone->set_rates = m->set_rates;
-	clone->set_rate = m->set_rate;
-	
-	clone->free = m->free;
-	clone->clone = m->clone;
-	
-	if( m->model != NULL ) clone->model = m->model->clone(m->model);
-	
-	clone->need_update = true;
-	clone->dQ_need_update = true;
 	clone->relativeTo = m->relativeTo;
 
 	clone->grad_wrt_reparam = m->grad_wrt_reparam;

@@ -105,6 +105,7 @@ CompoundModel* clone_compound_model(CompoundModel* cm){
 	clone->remove = cm->remove;
 	clone->removeAll = cm->removeAll;
 	clone->logP = cm->logP;
+	clone->full_logP = cm->full_logP;
 	clone->free = cm->free;
     clone->weights = NULL;
 	return clone;
@@ -114,47 +115,16 @@ CompoundModel* clone_compound_model(CompoundModel* cm){
 #pragma mark Model
 
 static Model* _compound_model_clone( Model *self, Hashtable* hash ){
-	if (Hashtable_exists(hash, self->name)) {
-		return Hashtable_get(hash, self->name);
-	}
 	CompoundModel* cm = self->obj;
 	CompoundModel* cmclone = clone_compound_model(cm);
 	for (int i = 0; i < cm->count; i++) {
-		Model* m = cm->models[i];
-		Model* mclone = NULL;
-		if (Hashtable_exists(hash, m->name)) {
-			mclone = Hashtable_get(hash, m->name);
-			mclone->ref_count++;
-		}
-		else{
-			mclone = m->clone(m, hash);
-			Hashtable_add(hash, mclone->name, mclone);
-		}
+		Model* mclone = Model_clone_into(cm->models[i], hash);
 		cmclone->add(cmclone, mclone);
 		mclone->free(mclone);
 	}
-	if(cm->weights != NULL){
-		Parameter* weights_clone = NULL;
-		if (Hashtable_exists(hash, Parameter_name(cm->weights))) {
-			weights_clone = Hashtable_get(hash, Parameter_name(cm->weights));
-			weights_clone->refCount++;
-		}
-		else{
-			weights_clone = clone_Parameter(cm->weights);
-			Hashtable_add(hash, Parameter_name(weights_clone), weights_clone);
-		}
-		cmclone->weights = weights_clone;
-	}
+	cmclone->weights = clone_Parameter_into(cm->weights, hash);
 	Model* clone = new_CompoundModel2(self->name, cmclone);
-	
-	Hashtable_add(hash, clone->name, clone);
-	clone->store = self->store;
-	clone->restore = self->restore;
-	clone->storedLogP = self->storedLogP;
-	clone->lp = self->lp;
-	clone->samplable = self->samplable;
-	clone->sample = self->sample;
-	clone->full_logP = self->full_logP;
+	Model_copy_behaviour(clone, self);
 	return clone;
 }
 

@@ -86,13 +86,27 @@ static void _BoundModel_free(Model* self) {
 	}
 }
 
+static Model* _BoundModel_clone(Model* self, Hashtable* hash) {
+    Bound* bound = self->obj;
+    Model* joint = Model_clone_into(bound->joint, hash);
+    Model* variational = Model_clone_into(bound->variational, hash);
+    // new_Bound takes over both references
+    Bound* clonebound = new_Bound(joint, variational, bound->samples, bound->entropy);
+    clonebound->kSamples = bound->kSamples;
+    clonebound->logP = bound->logP;
+    clonebound->gradient = bound->gradient;
+    Model* clone = new_BoundModel(self->name, clonebound);
+    Model_copy_behaviour(clone, self);
+    return clone;
+}
+
 Model* new_BoundModel(const char* name, Bound* bound) {
     Model* model = new_Model(MODEL_BOUNDMODEL, name, bound);
     model->logP = _BoundModel_logP;
     model->full_logP = _BoundModel_full_logP;
     model->gradient = _BoundModel_gradient;
     model->free = _BoundModel_free;
-    model->clone = NULL;
+    model->clone = _BoundModel_clone;
     // store/restore/accept keep the safe no-op dummies from new_Model: this is a
     // variational-only model that never participates in MCMC state rollback.
     model->sample = NULL;

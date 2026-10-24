@@ -148,76 +148,15 @@ static void _site_model_free( Model *self ){
 	}
 }
 
-static Model* _site_model_clone( Model *self, Hashtable* hash ){
-	if (Hashtable_exists(hash, self->name)) {
-		return Hashtable_get(hash, self->name);
-	}
-	Model* mprop = (Model*)self->data;
-	Model* mpropclone = NULL;
-    Parameter* propclone = NULL;
+static SiteModel* _clone_SiteModel(const SiteModel* sm, Hashtable* hash);
 
-    if(mprop != NULL){
-        if (Hashtable_exists(hash, mprop->name)) {
-            mpropclone = Hashtable_get(hash, mprop->name);
-            mpropclone->ref_count++; // it is decremented at the end using free
-        }
-        else{
-            mpropclone = mprop->clone(mprop, hash);
-            Hashtable_add(hash, mpropclone->name, mpropclone);
-        }
-        propclone = mpropclone->obj;
-    }
-	
-	SiteModel* sm = (SiteModel*)self->obj;
-	Parameters* ps = new_Parameters(1);
-	for (int i = 0; i < Parameters_count(sm->rates); i++) {
-		char* name = Parameters_name(sm->rates, i);
-		if (Hashtable_exists(hash, name)) {
-			Parameters_add(ps, Hashtable_get(hash, name));
-		}
-		else{
-			Parameter* p = clone_Parameter(Parameters_at(sm->rates, i));
-			Parameters_move(ps, p);
-			Hashtable_add(hash, name, p);
-		}
-	}
-	Parameter* mu = NULL;
-	if (sm->mu != NULL) {
-		char* name = Parameter_name(sm->mu);
-		if (Hashtable_exists(hash, name)) {
-			mu = Hashtable_get(hash, name);
-			mu->refCount++;
-		}
-		else{
-			mu = clone_Parameter(sm->mu);
-			Hashtable_add(hash, name, mu);
-		}
-	}
-	Parameter* class_rate = NULL;
-	if (sm->class_rate != NULL) {
-		char* name = Parameter_name(sm->class_rate);
-		if (Hashtable_exists(hash, name)) {
-			class_rate = Hashtable_get(hash, name);
-			class_rate->refCount++;
-		}
-		else{
-			class_rate = clone_Parameter(sm->class_rate);
-			Hashtable_add(hash, name, class_rate);
-		}
-	}
-	SiteModel* smclone = clone_SiteModel_with_parameters(sm, propclone, ps, mu);
-	// Before new_SiteModel2, which registers the model as a listener of it.
-	if (class_rate != NULL) {
-		SiteModel_set_class_rate(smclone, class_rate,
-		                         sm->class_rate_parameterization);
-	}
-	free_Parameters(ps);
-	free_Parameter(mu);
-	free_Parameter(class_rate);
+static Model* _site_model_clone( Model *self, Hashtable* hash ){
+	SiteModel* smclone = _clone_SiteModel(self->obj, hash);
 	Model* clone = new_SiteModel2(self->name, smclone);
-	Hashtable_add(hash, clone->name, clone);
-	if(mpropclone != NULL)mpropclone->free(mpropclone);
-	clone->print = self->print;
+	if(self->data != NULL){
+		clone->data = Model_clone_into(self->data, hash);
+	}
+	Model_copy_behaviour(clone, self);
 	return clone;
 }
 
@@ -1519,16 +1458,29 @@ SiteModel * new_CATSiteModel_with_parameters( const Parameters *params,  const s
 
 #pragma endregion
 
-SiteModel * clone_SiteModel( const SiteModel *sm ){
-	return clone_SiteModel_with(sm);
-}
+// Copy of `sm` with parameters of its own: cloned into `hash` (see
+// clone_Parameter_into) or, without one, plain copies. The pattern set of the
+// empirical CAT model is shared, reference counted.
+static SiteModel* _clone_SiteModel(const SiteModel* sm, Hashtable* hash){
+	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
+	assert(newsm);
+	// Scalars and the model's function table carry over as they are.
+	*newsm = *sm;
 
-// The pattern set and the per-pattern category assignment, shared by both clone
-// entry points. Both are NULL on everything but the empirical CAT model, but they
-// are read unconditionally (get_site_category is copied along with the rest of the
-// vtable), so they must be set either way.
-static void _clone_SiteModel_categories( const SiteModel *sm, SiteModel *newsm ){
-	newsm->sp = sm->sp;
+	if(hash != NULL){
+		newsm->rates = clone_Parameters_into(sm->rates, hash);
+		Parameters_register_into(newsm->rates, hash);
+		newsm->proportions = clone_Parameter_into(sm->proportions, hash);
+		newsm->mu = clone_Parameter_into(sm->mu, hash);
+		newsm->class_rate = clone_Parameter_into(sm->class_rate, hash);
+	}
+	else{
+		newsm->rates = sm->rates == NULL ? NULL : clone_Parameters(sm->rates);
+		newsm->proportions = sm->proportions == NULL ? NULL : clone_Parameter(sm->proportions);
+		newsm->mu = sm->mu == NULL ? NULL : clone_Parameter(sm->mu);
+		newsm->class_rate = sm->class_rate == NULL ? NULL : clone_Parameter(sm->class_rate);
+	}
+
 	if ( sm->sp != NULL ){
 		sm->sp->ref_count++;
 	}
@@ -1536,125 +1488,21 @@ static void _clone_SiteModel_categories( const SiteModel *sm, SiteModel *newsm )
 	if ( sm->site_category != NULL ){
 		newsm->site_category = clone_ivector(sm->site_category, sm->sp->count);
 	}
+
+	newsm->cat_rates = clone_dvector(sm->cat_rates, sm->cat_count);
+	newsm->cat_proportions = NULL;
+	if ( sm->cat_proportions != NULL ){
+		newsm->cat_proportions = clone_dvector(sm->cat_proportions, sm->cat_count);
+	}
+	return newsm;
+}
+
+SiteModel * clone_SiteModel( const SiteModel *sm ){
+	return _clone_SiteModel(sm, NULL);
 }
 
 SiteModel * clone_SiteModel_with( const SiteModel *sm ){
-	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
-	assert(newsm);
-
-	newsm->rates = NULL;
-
-	newsm->cat_count = sm->cat_count;
-
-	if ( sm->rates != NULL ){
-		newsm->rates = clone_Parameters(sm->rates);
-	}
-
-	// A CAT site model reads the pattern weights and carries one category per
-	// pattern; the clone needs both or it dereferences whatever malloc left behind.
-	// The pattern set is shared rather than deep-copied -- it is immutable here and
-	// reference counted.
-	_clone_SiteModel_categories(sm, newsm);
-
-	newsm->proportions = NULL;
-	if ( sm->proportions != NULL ){
-		newsm->proportions = clone_Parameter(sm->proportions);
-	}
-
-	newsm->mu = NULL;
-	if ( sm->mu != NULL ){
-		newsm->mu = clone_Parameter(sm->mu);
-	}
-
-	newsm->class_rate = NULL;
-	newsm->class_rate_parameterization = sm->class_rate_parameterization;
-	if ( sm->class_rate != NULL ){
-		newsm->class_rate = clone_Parameter(sm->class_rate);
-	}
-
-	newsm->cat_rates = clone_dvector(sm->cat_rates, sm->cat_count);
-	
-	newsm->cat_proportions = NULL;
-	if ( sm->cat_proportions != NULL ){
-		newsm->cat_proportions = clone_dvector(sm->cat_proportions, sm->cat_count);
-	}
-	
-	newsm->integrate = sm->integrate;
-	newsm->need_update = false;
-
-	newsm->get_rate        = sm->get_rate;
-	newsm->get_proportion  = sm->get_proportion;
-	newsm->get_proportions = sm->get_proportions;
-    newsm->get_site_category = sm->get_site_category;
-	newsm->update = sm->update;
-	
-	newsm->distribution = sm->distribution;
-	newsm->invariant = sm->invariant;
-	newsm->quadrature = sm->quadrature;
-	newsm->rate_parameterization = sm->rate_parameterization;
-
-	newsm->gradient = sm->gradient;
-	newsm->derivative = sm->derivative;
-
-	// newsm->epsilon = sm->epsilon;
-	return newsm;
-}
-
-SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* props, const Parameters* params, Parameter* mu ){
-	SiteModel *newsm = (SiteModel *)malloc(sizeof(SiteModel));
-	assert(newsm);
-	newsm->proportions = props;
-	newsm->distribution = sm->distribution;
-	newsm->invariant = sm->invariant;
-	newsm->quadrature = sm->quadrature;
-	newsm->rate_parameterization = sm->rate_parameterization;
-
-	newsm->rates = NULL;
-
-	newsm->cat_count = sm->cat_count;
-
-	if ( sm->rates != NULL ){
-		newsm->rates = new_Parameters(Parameters_count(sm->rates));
-		for (int i = 0; i < Parameters_count(sm->rates); i++) {
-			Parameters_add(newsm->rates, Parameters_at(params, i));
-		}
-	}
-
-	// See clone_SiteModel_with: CAT's pattern set and category assignment.
-	_clone_SiteModel_categories(sm, newsm);
-
-	newsm->mu = NULL;
-	if ( mu != NULL ){
-		newsm->mu = mu;
-		mu->refCount++;
-	}
-
-	// The rate of a free class is attached by the caller (_site_model_clone),
-	// which resolves it against the hashtable as it does every other parameter.
-	newsm->class_rate = NULL;
-	newsm->class_rate_parameterization = sm->class_rate_parameterization;
-
-	newsm->cat_rates = clone_dvector(sm->cat_rates, sm->cat_count);
-	
-	newsm->cat_proportions = NULL;
-	if ( sm->cat_proportions != NULL ){
-		newsm->cat_proportions = clone_dvector(sm->cat_proportions, sm->cat_count);
-	}
-	
-	newsm->integrate = sm->integrate;
-	newsm->need_update = false;
-
-	newsm->get_rate        = sm->get_rate;
-	newsm->get_proportion  = sm->get_proportion;
-	newsm->get_proportions = sm->get_proportions;
-    newsm->get_site_category = sm->get_site_category;
-	newsm->update = sm->update;
-	
-	newsm->gradient = sm->gradient;
-	newsm->derivative = sm->derivative;
-
-	// newsm->epsilon = sm->epsilon;
-	return newsm;
+	return _clone_SiteModel(sm, NULL);
 }
 
 

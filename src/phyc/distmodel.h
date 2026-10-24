@@ -107,11 +107,15 @@ DistributionModel* new_UniformTreeDistribution(Tree* tree);
 
 DistributionModel* new_DistributionModel(Parameters* p, Parameters* x);
 
-DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm, Parameters* params, Parameters* x);
 
 Model* new_DistributionModel2(const char* name, DistributionModel* dm);
 
 Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* amodel);
+
+// Clone of the distribution model `self` into `hash` (see Model_clone_into). Data
+// private to a distribution type (anything dm->data holds that is not the
+// submodel) is left NULL for that type's own clone to fill in.
+Model* DistributionModel_clone_model(Model* self, Hashtable* hash);
 
 void distmodel_get_parameters(json_node* parameters_node, Hashtable* hash, Parameters* parameters);
 

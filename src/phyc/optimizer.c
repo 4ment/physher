@@ -953,6 +953,20 @@ int opt_f_evaluations( Optimizer *opt ){
 Parameters* opt_parameters( Optimizer *opt ){
 	return opt->parameters;
 }
+void opt_collect_parameters( Optimizer *opt, Parameters *parameters ){
+	if( opt->parameters != NULL ){
+		for( size_t i = 0; i < Parameters_count(opt->parameters); i++ ){
+			Parameter* p = Parameters_at(opt->parameters, i);
+			if( !Parameters_contains(parameters, p) ) Parameters_add(parameters, p);
+		}
+	}
+	if( opt->schedule != NULL ){
+		for( size_t i = 0; i < opt->schedule->count; i++ ){
+			opt_collect_parameters(opt->schedule->optimizers[i], parameters);
+		}
+	}
+}
+
 // Meta optimizer
 
 void opt_add_optimizer(Optimizer *opt_meta, Optimizer *opt){

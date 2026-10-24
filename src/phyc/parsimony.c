@@ -940,25 +940,13 @@ static void _parsimony_model_free( Model *self ){
 }
 
 static Model* _parsimony_model_clone(Model* self, Hashtable* hash){
-	Model* mtree = self->data;
-	Model *mtreeclone = NULL;
-
-	if(Hashtable_exists(hash, mtree->name)){
-		mtreeclone = Hashtable_get(hash, mtree->name);
-		mtreeclone->ref_count++;
-	}
-	else{
-		mtreeclone = mtree->clone(mtree, hash);
-		Hashtable_add(hash, mtreeclone->name, mtreeclone);
-	}
-	
+	Model *mtreeclone = Model_clone_into(self->data, hash);
 	Parsimony* parsimony = (Parsimony*)self->obj;
 	Parsimony* clonetlk = new_Parsimony(parsimony->sp, mtreeclone->obj);
-	
+	parsimony->sp->ref_count++; // shared, released by _parsimony_model_free
 	Model* clone = new_ParsimonyModel(self->name, clonetlk, mtreeclone);
-	Hashtable_add(hash, clone->name, clone);
+	Model_copy_behaviour(clone, self);
 	mtreeclone->free(mtreeclone);
-
 	return clone;
 }
 

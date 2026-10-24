@@ -338,7 +338,7 @@ DistributionModel* new_MultivariateNormalDistributionModel_with_parameters(Param
 }
 
 static Model* _dist_model_clone_mvn( Model *self, Hashtable* hash ){
-    Model* clone = self->clone(self, hash);
+    Model* clone = DistributionModel_clone_model(self, hash);
     DistributionModel* clonedm = clone->obj;
     DistributionModel* dm = self->obj;
     gsl_multivariate_normal_wrapper_t* wrapper = dm->data;

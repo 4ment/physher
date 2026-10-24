@@ -108,13 +108,10 @@ static void _discrete_parameter_model_free( Model *self ){
 }
 
 static Model* _discrete_parameter_model_clone(Model* self, Hashtable *hash){
-	if (Hashtable_exists(hash, self->name)) {
-		return Hashtable_get(hash, self->name);
-	}
 	DiscreteParameter* dp = (DiscreteParameter*)self->obj;
 	DiscreteParameter* sclone = dp->clone(dp);
 	Model *clone = new_DiscreteParameterModel(self->name, sclone);
-	Hashtable_add(hash, clone->name, clone);
+	Model_copy_behaviour(clone, self);
 	return clone;
 }
 

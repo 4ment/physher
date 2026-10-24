@@ -132,8 +132,6 @@ SiteModel * clone_SiteModel( const SiteModel *sm );
 
 SiteModel * clone_SiteModel_with( const SiteModel *sm );
 
-SiteModel * clone_SiteModel_with_parameters( const SiteModel *sm, Parameter* props, const Parameters* params, Parameter* mu );
-
 void SiteModel_set_mu(SiteModel *sm, Parameter* mu);
 
 // Unpin the rate of category 0, turning the invariant class (+I) into a free

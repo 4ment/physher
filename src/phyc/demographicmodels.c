@@ -190,98 +190,51 @@ static void _coalescent_model_free( Model *self ){
 	}
 }
 
-//MARK: TODO
 static Model* _coalescent_model_clone( Model *self, Hashtable* hash ){
-	if (Hashtable_exists(hash, self->name)) {
-		return Hashtable_get(hash, self->name);
-	}
-	
 	Model** models = (Model**)self->data;
-	Model *mtree = models[0];
-	Model *mgroup = models[1];
-	Model* mtreeclone = NULL;
-	Model* mgroupclone = NULL;
-	DiscreteParameter* groupclone = NULL;
-    
-	if(models != NULL){
-		if (Hashtable_exists(hash, mtree->name)) {
-			mtreeclone = Hashtable_get(hash, mtree->name);
-			mtreeclone->ref_count++; // it is decremented at the end using free
-		}
-		else{
-			mtreeclone = mtree->clone(mtree, hash);
-			Hashtable_add(hash, mtreeclone->name, mtreeclone);
-		}
-		
-		if(mgroup != NULL){
-			if (Hashtable_exists(hash, mgroup->name)) {
-				mgroupclone = Hashtable_get(hash, mgroup->name);
-				mgroupclone->ref_count++; // it is decremented at the end using free
-			}
-			else{
-				mgroupclone = mgroup->clone(mgroup, hash);
-				Hashtable_add(hash, mgroupclone->name, mgroupclone);
-			}
-			groupclone = mgroupclone->obj;
-		}
-	}
+	Model* mtreeclone = models == NULL ? NULL : Model_clone_into(models[0], hash);
+	Model* mgroupclone = models == NULL ? NULL : Model_clone_into(models[1], hash);
+
 	Coalescent* coalescent = self->obj;
-	size_t size = coalescent->n;
-	Coalescent* clone = create_Coalescent(coalescent->type, size);
-	clone->calculate = coalescent->calculate;
-	memcpy(clone->lineages, coalescent->lineages, sizeof(int)*size);
-	memcpy(clone->times, coalescent->times, sizeof(double)*size);
-	memcpy(clone->stored_lineages, coalescent->stored_lineages, sizeof(int)*size);
-	memcpy(clone->stored_times, coalescent->stored_times, sizeof(double)*size);
-	memcpy(clone->iscoalescent, coalescent->iscoalescent, sizeof(bool)*size);
-	memcpy(clone->stored_iscoalescent, coalescent->stored_iscoalescent, sizeof(bool)*size);
-	
-	clone->p = new_Parameters(Parameters_count(coalescent->p));
-	if(Parameters_name2(coalescent->p) != NULL){
-		Parameters_set_name2(clone->p, Parameters_name2(coalescent->p));
-		Hashtable_add(hash, Parameters_name2(clone->p), clone->p);
-	}
-	
-	for (int i = 0; i < Parameters_count(coalescent->p); i++) {
-		char* name = Parameters_name(coalescent->p, i);
-		if (Hashtable_exists(hash, name)) {
-			Parameters_add(clone->p, Hashtable_get(hash, name));
-		}
-		else{
-			Parameter* p = clone_Parameter(Parameters_at(coalescent->p, i));
-			Parameters_move(clone->p, p);
-			Hashtable_add(hash, name, p);
-		}
-	}
-	
-	clone->need_update_intervals = coalescent->need_update_intervals;
-	clone->need_update = coalescent->need_update;
-	
-	if(mtreeclone != NULL){
-		clone->tree = mtreeclone->obj;
-		clone->nodes = malloc(size*sizeof(double_int_pair_t*));
-		for (int i = 0; i < size; i++) {
+	size_t n = coalescent->n;
+	Coalescent* clone = (Coalescent*)malloc(sizeof(Coalescent));
+	assert(clone);
+	// Scalars and the demography's function table carry over as they are.
+	*clone = *coalescent;
+	clone->tree = mtreeclone == NULL ? NULL : mtreeclone->obj;
+	clone->groups = mgroupclone == NULL ? NULL : mgroupclone->obj;
+	clone->p = clone_Parameters_into(coalescent->p, hash);
+	Parameters_register_into(clone->p, hash);
+
+	clone->lineages = clone_ivector(coalescent->lineages, n);
+	clone->stored_lineages = clone_ivector(coalescent->stored_lineages, n);
+	clone->times = clone_dvector(coalescent->times, n);
+	clone->stored_times = clone_dvector(coalescent->stored_times, n);
+	clone->iscoalescent = clone_bvector(coalescent->iscoalescent, n);
+	clone->stored_iscoalescent = clone_bvector(coalescent->stored_iscoalescent, n);
+	clone->nodes = NULL;
+	if(coalescent->nodes != NULL){
+		clone->nodes = malloc(n*sizeof(double_int_pair_t*));
+		assert(clone->nodes);
+		for (size_t i = 0; i < n; i++) {
 			clone->nodes[i] = malloc(sizeof(double_int_pair_t));
+			assert(clone->nodes[i]);
+			*clone->nodes[i] = *coalescent->nodes[i];
 		}
-		clone->need_update_intervals = true;
-		clone->need_update = true;
-		clone->need_update_gradient = true;
 	}
-	
-	clone->gridCount = coalescent->gridCount;
 	clone->grid = NULL;
 	if(coalescent->grid != NULL){
-		clone->grid = clone_dvector(coalescent->grid, coalescent->gridCount-1); // not 0 at grid[0]
+		clone->grid = clone_dvector(coalescent->grid, coalescent->gridCount);
 	}
-	clone->groups = groupclone;
-    clone->grad = NULL;
-	if (coalescent->grad != NULL) {
-		clone->grad = clone_dvector(coalescent->grad, size);
+	clone->grad = NULL;
+	if(coalescent->grad != NULL){
+		clone->grad = clone_dvector(coalescent->grad, coalescent->gradient_length);
 	}
+
 	Model* mclone = new_CoalescentModel2(self->name, clone, mtreeclone, mgroupclone);
-	if(mtreeclone!=NULL) mtreeclone->free(mtreeclone);
-	if(mgroupclone != NULL)mgroupclone->free(mgroupclone);
-	
+	Model_copy_behaviour(mclone, self);
+	if(mtreeclone != NULL) mtreeclone->free(mtreeclone);
+	if(mgroupclone != NULL) mgroupclone->free(mgroupclone);
 	return mclone;
 }
 

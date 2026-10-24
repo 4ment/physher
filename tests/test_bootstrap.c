@@ -1,7 +1,14 @@
 // Copyright (C) 2010-2026 Mathieu Fourment
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <stdio.h>
+
+#ifndef GSL_DISABLED
+#include <gsl/gsl_rng.h>
+#endif
+
 #include "minunit.h"
+#include "phyc/bootstrap.h"
 #include "phyc/filereader.h"
 #include "phyc/hashtable.h"
 #include "phyc/matrix.h"
@@ -101,10 +108,71 @@ char* test_bootstrap_tippartials() {
     return _test_bootstrap_paths("jc69-distance-partials.json");
 }
 
+// Run a bootstrap of the jc69.json likelihood with `threads` workers, logging
+// every replicate to `file`.
+static void _run_bootstrap(size_t threads, const char* file) {
+    Hashtable* hash = new_Hashtable_string(10);
+    hashtable_set_key_ownership(hash, false);
+    hashtable_set_value_ownership(hash, false);
+#ifndef GSL_DISABLED
+    gsl_rng* rng = gsl_rng_alloc(gsl_rng_taus);
+    gsl_rng_set(rng, 3);
+    Hashtable_add(hash, "RANDOM_GENERATOR!@", rng);
+#endif
+    // Kept until the end, as physher does: the hashtable keys point into it.
+    char* content = load_file("jc69.json");
+    json_node* config = create_json_tree(content);
+    free(content);
+    Model* model = new_TreeLikelihoodModel_from_json(config->children[0], hash);
+    Hashtable_add(hash, model->name, model);
+
+    char node[1024];
+    snprintf(node, sizeof(node),
+             "{\"id\": \"boot\", \"type\": \"bootstrap\", \"replicates\": 6,"
+             " \"include_observed\": true, \"threads\": %zu,"
+             " \"treelikelihood\": \"@treelikelihood\","
+             " \"optimizer\": {\"id\": \"opt\", \"type\": \"optimizer\","
+             "   \"algorithm\": \"bfgs\", \"target\": \"@treelikelihood\","
+             "   \"parameters\": \"&tree.distances\", \"verbosity\": 0},"
+             " \"loggers\": [{\"id\": \"log\", \"type\": \"logger\","
+             "   \"file\": \"%s\", \"every\": 1,"
+             "   \"columns\": [\"@treelikelihood\", \"&tree.distances\"]}]}",
+             threads, file);
+    json_node* json = create_json_tree(node);
+    Bootstrap* bootstrap = new_Bootstrap_from_json(json, hash);
+    bootstrap->run(bootstrap);
+    bootstrap->free(bootstrap);
+    json_free_tree(json);
+
+    model->free(model);
+    free_Hashtable(hash);
+    json_free_tree(config);
+#ifndef GSL_DISABLED
+    gsl_rng_free(rng);
+#endif
+}
+
+// Replicates are drawn in order and logged in order from the original model,
+// so the log must not depend on how many workers fitted them.
+char* test_bootstrap_threads() {
+    _run_bootstrap(1, "bootstrap-threads1.csv");
+    _run_bootstrap(3, "bootstrap-threads3.csv");
+    char* serial = load_file("bootstrap-threads1.csv");
+    char* threaded = load_file("bootstrap-threads3.csv");
+    mu_assert(strlen(serial) > 0, "nothing logged");
+    mu_assert(strcmp(serial, threaded) == 0, "threaded log differs from the serial one");
+    free(serial);
+    free(threaded);
+    remove("bootstrap-threads1.csv");
+    remove("bootstrap-threads3.csv");
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_bootstrap_tipstates);
     mu_run_test(test_bootstrap_tippartials);
+    mu_run_test(test_bootstrap_threads);
     return NULL;
 }
 

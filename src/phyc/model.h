@@ -186,6 +186,24 @@ Model * new_Model( model_t type, const char *name, void *obj );
 
 void free_Model( Model *model );
 
+// Clone `model` into the graph being built in `hash`, where every cloned model
+// and parameter is registered under the name of its original. A model shared in
+// the original graph is cloned once: if `hash` already holds a clone of it, that
+// clone is returned. The caller owns one reference either way.
+//
+// Every Model->clone implementation follows the same contract: it obtains its
+// submodels through Model_clone_into and its parameters through
+// clone_Parameter_into, and builds the clone with the constructor the original
+// came from; Model_clone_into registers it in `hash`. Data is shared rather than
+// copied: alignments, data types, and the site patterns of tree likelihoods (so a
+// caller that rewrites pattern weights in place, as the bootstrap does with
+// "compact": false, must give each clone a pattern set of its own).
+Model* Model_clone_into(Model* model, Hashtable* hash);
+
+// Give `clone` the function table and flags of `model`, its original, which may
+// have been changed after construction (by a *_from_json for instance).
+void Model_copy_behaviour(Model* clone, const Model* model);
+
 double Model_first_derivative( Model *model, Parameter* parameter, double eps );
 
 void Model_first_derivatives( Model *model, Parameter* parameter, double eps, double* grad );

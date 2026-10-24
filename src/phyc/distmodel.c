@@ -51,78 +51,39 @@ static void _free_partial_distribution(DistributionModel*dm){
 //	free(dm);
 //}
 
-static DistributionModel* DistributionMode_clone(DistributionModel* dm){
-    Parameters* parameters = NULL;
-    Parameters* x = NULL;
-    // Simplex* simplex = NULL;
-    
-    if(dm->parameters != NULL){
-		parameters = new_Parameters(Parameters_count(dm->parameters));
-		for (size_t j = 0; j < Parameters_count(dm->parameters); j++) {
-			Parameters_move(parameters, clone_Parameter(Parameters_at(dm->parameters, j)));
-		}
-    }
-	if(dm->x != NULL){
-		x = new_Parameters(Parameters_count(dm->x));
-		for (size_t j = 0; j < Parameters_count(dm->x); j++) {
-			Parameters_move(parameters, clone_Parameter(Parameters_at(dm->x, j)));
-		}
-	}
-    
-	return clone_DistributionModel_with_parameters(dm, parameters, x);
-}
-
-DistributionModel* clone_DistributionModel_with_parameters(DistributionModel* dm, Parameters* params, Parameters* x){
+// Copy of `dm` reading `params` and `x` (its own references are taken), with
+// scratch buffers of its own. Whatever `data` and `tree` point to is left to the
+// caller.
+static DistributionModel* _clone_DistributionModel(const DistributionModel* dm,
+                                                   Parameters* params, Parameters* x){
 	DistributionModel* clone = (DistributionModel*)malloc(sizeof(DistributionModel));
 	assert(clone);
-	clone->type = dm->type;
+	// Scalars and the distribution's function table carry over as they are.
+	*clone = *dm;
 	clone->parameters = NULL;
-    size_t sizeP = 0;
-	if(dm->parameters != NULL){
-		clone->parameters = new_Parameters(Parameters_count(dm->parameters));
-		for (size_t j = 0; j < Parameters_count(dm->parameters); j++) {
-			Parameters_add(clone->parameters, Parameters_at(params, j));
-			sizeP += Parameter_size(Parameters_at(params, j));
-		}
+	if(params != NULL){
+		clone->parameters = new_Parameters(Parameters_count(params));
+		Parameters_add_parameters(clone->parameters, params);
 	}
 	clone->x = NULL;
 	size_t sizeX = 0;
 	if(x != NULL){
-		clone->x = new_Parameters(Parameters_count(dm->x));
-		for (size_t j = 0; j < Parameters_count(dm->x); j++) {
-			Parameters_add(clone->x, Parameters_at(x, j));
-			sizeX += Parameter_size(Parameters_at(x, j));
-		}
+		clone->x = new_Parameters(Parameters_count(x));
+		Parameters_add_parameters(clone->x, x);
+		sizeX = Parameters_size(x);
 	}
+	// Both are sized by the random variable, as new_DistributionModel does.
+	clone->tempx = dm->tempx == NULL ? NULL : clone_dvector(dm->tempx, sizeX);
+	clone->tempp = dm->tempp == NULL ? NULL : clone_dvector(dm->tempp, sizeX);
+	return clone;
+}
 
-	clone->logP = dm->logP;
-	clone->gradient = dm->gradient;
-	clone->rgradient = dm->rgradient;
-	clone->sample = dm->sample;
-	clone->rsample = dm->rsample;
-	clone->entropy = dm->entropy;
-	clone->gradient_entropy = dm->gradient_entropy;
-	clone->clone = dm->clone;
-	clone->free = dm->free;
-	clone->tempp = NULL;
-	clone->tempx = NULL;
-    if(dm->tempp != NULL && sizeP != 0){
-        clone->tempp = clone_dvector(dm->tempp, sizeP);
-    }
-	if(dm->tempx != NULL && sizeX != 0){
-		clone->tempx = clone_dvector(dm->tempx, sizeX);
-	}
-	clone->lp = dm->lp;
-    clone->stored_lp = dm->stored_lp;
-	clone->shift = dm->shift;
-	clone->type = dm->type;
-	clone->parameterization = dm->parameterization;
-#ifndef GSL_DISABLED	
-	clone->rng = dm->rng;
-#endif
-    clone->data = NULL;
-	clone->support[0] = dm->support[0];
-	clone->support[1] = dm->support[1];
+static DistributionModel* DistributionMode_clone(DistributionModel* dm){
+	Parameters* parameters = dm->parameters == NULL ? NULL : clone_Parameters(dm->parameters);
+	Parameters* x = dm->x == NULL ? NULL : clone_Parameters(dm->x);
+	DistributionModel* clone = _clone_DistributionModel(dm, parameters, x);
+	free_Parameters(parameters);
+	free_Parameters(x);
 	return clone;
 }
 
@@ -280,68 +241,43 @@ static void _dist_model_free( Model *self ){
 	}
 }
 
-static Model* _dist_model_clone( Model *self, Hashtable* hash ){
-	if(Hashtable_exists(hash, self->name)){
-		return Hashtable_get(hash, self->name);
-	}
+Model* DistributionModel_clone_model(Model* self, Hashtable* hash){
 	DistributionModel* dm = (DistributionModel*)self->obj;
-	
-	// Model* msimplex = (Model*)self->data;
-	// Model* msimplexclone = NULL;
-	
-	Parameters* x = new_Parameters(Parameters_count(dm->x));
-	if(dm->x != NULL){
-		for (size_t i = 0; i < Parameters_count(dm->x); i++) {
-			char* name = Parameters_name(dm->x, i);
-			if(Hashtable_exists(hash, name)){
-				Parameters_add(x, Hashtable_get(hash, name));
-			}
-			else{
-				Parameter* p = clone_Parameter(Parameters_at(dm->x, i));
-				Parameters_move(x, p);
-				Hashtable_add(hash, name, p);
-			}
-		}
-	}
-
-	Parameters* params = new_Parameters(Parameters_count(dm->parameters));
-	
-	// Flat dirichlet does not have parameters
-	if(dm->parameters != NULL){
-		for (size_t i = 0; i < Parameters_count(dm->parameters); i++) {
-			char* name = Parameters_name(dm->parameters, i);
-			if(Hashtable_exists(hash, name)){
-				Parameters_add(params, Hashtable_get(hash, name));
-			}
-			else{
-				Parameter* p = clone_Parameter(Parameters_at(dm->parameters, i));
-				Parameters_move(params, p);
-				Hashtable_add(hash, name, p);
-			}
-		}
-	}
-	// Simplex* s = NULL;
-	// if(msimplexclone != NULL){
-	// 	s = (Simplex*)msimplexclone->obj;
-	// }
-	DistributionModel* dmclone = clone_DistributionModel_with_parameters(dm, params, x);
-
-    free_Parameters(x);
+	Parameters* x = clone_Parameters_into(dm->x, hash);
+	Parameters* params = clone_Parameters_into(dm->parameters, hash);
+	DistributionModel* dmclone = _clone_DistributionModel(dm, params, x);
+	free_Parameters(x);
 	free_Parameters(params);
 
-	Model* clone = new_DistributionModel2(self->name, dmclone);
-	Hashtable_add(hash, clone->name, clone);
-	// if(msimplexclone != NULL){
-	// 	msimplexclone->free(msimplexclone);
-	// }
-	clone->store = self->store;
-	clone->restore = self->restore;
-	clone->storedLogP = self->storedLogP;
-	clone->lp = self->lp;
-	clone->sample = self->sample;
-	clone->rsample = self->rsample;
-	clone->samplable = self->samplable;
-    // clone->need_update = self->need_update;
+	// The model the density reads (a tree, a coalescent), held both as the
+	// submodel and through dm->tree or dm->data.
+	Model* amodel = self->data;
+	Model* amodelclone = Model_clone_into(amodel, hash);
+	if(dm->tree != NULL){
+		if(amodel == NULL || dm->tree != amodel->obj){
+			fprintf(stderr, "clone: distribution %s reads a tree it does not hold\n", self->name);
+			exit(1);
+		}
+		dmclone->tree = amodelclone->obj;
+	}
+	dmclone->data = NULL;
+	if(dm->data != NULL && amodel != NULL && dm->data == amodel->obj){
+		dmclone->data = amodelclone->obj;
+	}
+
+	Model* clone = new_DistributionModel3(self->name, dmclone, amodelclone);
+	if(amodelclone != NULL) amodelclone->free(amodelclone);
+	Model_copy_behaviour(clone, self);
+	return clone;
+}
+
+static Model* _dist_model_clone( Model *self, Hashtable* hash ){
+	Model* clone = DistributionModel_clone_model(self, hash);
+	DistributionModel* dm = self->obj;
+	if(dm->data != NULL && ((DistributionModel*)clone->obj)->data == NULL){
+		fprintf(stderr, "clone: distribution %s holds data it cannot clone\n", self->name);
+		exit(1);
+	}
 	return clone;
 }
 

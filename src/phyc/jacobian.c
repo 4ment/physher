@@ -82,6 +82,15 @@ static void _check_no_nested(const Parameters* parameters, const char* id) {
     }
 }
 
+Model* new_JacobianModel(const char* id, Parameters* parameters);
+
+static Model* _jacobian_model_clone(Model* self, Hashtable* hash) {
+    Parameters* parameters = clone_Parameters_into(self->obj, hash);
+    Model* clone = new_JacobianModel(self->name, parameters);
+    Model_copy_behaviour(clone, self);
+    return clone;
+}
+
 Model* new_JacobianModel(const char* id, Parameters* parameters) {
     Model* model = new_Model(MODEL_JACOBIAN, id, parameters);
     model->logP = _jacobian_model_logP;
@@ -91,6 +100,7 @@ Model* new_JacobianModel(const char* id, Parameters* parameters) {
     model->restore = _jacobian_model_restore;
     model->accept = _jacobian_model_accept;
     model->free = _jacobian_model_free;
+    model->clone = _jacobian_model_clone;
     return model;
 }
 

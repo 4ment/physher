@@ -853,50 +853,28 @@ TreeTransform *new_HeightTreeTransform2(Parameters* parameters, tree_transform_t
     return tt;
 }
 
-Model *clone_HeightTreeTransform(Model *self, Hashtable *hash) {
-    TreeTransform *tt = self->obj;
-    Model *mtree = self->data;
-    Model *mtreeclone = NULL;
-    if (Hashtable_exists(hash, mtree->name)) {
-        mtreeclone = Hashtable_get(hash, mtree->name);
-        mtreeclone->ref_count++;  // it is decremented at the end using free
-    } else {
-        mtreeclone = mtree->clone(mtree, hash);
-        Hashtable_add(hash, mtreeclone->name, mtreeclone);
+Model* TreeTransformModel_clone_with_tree(Model* self, Tree* tree, Hashtable* hash) {
+    TreeTransform* tt = self->obj;
+    TreeTransform* ttnew = malloc(sizeof(TreeTransform));
+    assert(ttnew);
+    // Scalars and the parameterization's function table carry over as they are.
+    *ttnew = *tt;
+    ttnew->tree = tree;
+    ttnew->parameters = clone_Parameters_into(tt->parameters, hash);
+    Parameters_register_into(ttnew->parameters, hash);
+    ttnew->lowers = NULL;
+    if (tt->lowers != NULL) {
+        ttnew->lowers = clone_dvector(tt->lowers, Tree_node_count(tree));
     }
-
-    TreeTransform *ttnew = malloc(sizeof(TreeTransform));
-    ttnew->tipCount = tt->tipCount;
-    ttnew->tree = mtree->obj;
-    ttnew->parameters = new_Parameters(2);
-    Parameters_set_name2(ttnew->parameters, Parameters_name2(tt->parameters));
-    ttnew->lowers = clone_dvector(tt->lowers, Tree_node_count(ttnew->tree));
     ttnew->unknownLeaves = NULL;
     ttnew->unknownLeafSlot = NULL;
-    if(tt->unknownLeaves != NULL){
-        ttnew->unknownLeaves = bvector(tt->tipCount);
-        memcpy(ttnew->unknownLeaves, tt->unknownLeaves, sizeof(bool)*tt->tipCount);
+    if (tt->unknownLeaves != NULL) {
+        ttnew->unknownLeaves = clone_bvector(tt->unknownLeaves, tt->tipCount);
         _build_unknown_leaf_slots(ttnew);
     }
-    ttnew->update = tt->update;
-    ttnew->update_lowers = tt->update_lowers;
-    ttnew->inverse_transform = tt->inverse_transform;
-    ttnew->log_jacobian = tt->log_jacobian;
-    ttnew->dlog_jacobian = tt->dlog_jacobian;
-    ttnew->log_jacobian_gradient = tt->log_jacobian_gradient;
-    ttnew->vjp = tt->vjp;
 
-    Parameter* ratios = clone_Parameter(Parameters_at(tt->parameters, 0));
-    Parameter* rootHeight = clone_Parameter(Parameters_at(tt->parameters, 1));
-
-     Parameters_move(ttnew->parameters, ratios);
-     Parameters_move(ttnew->parameters, rootHeight);
-
-    Model *clone = new_Model(MODEL_TREE_TRANSFORM, self->name, ttnew);
-    for (size_t i = 0; i < Parameters_count(ttnew->parameters); i++) {
-        Parameters_at(ttnew->parameters, i)->listeners->add(Parameters_at(ttnew->parameters, i)->listeners, clone);
-    }
-    Hashtable_add(hash, clone->name, clone);
+    Model* clone = new_TreeTransformModel(self->name, ttnew, NULL);
+    Model_copy_behaviour(clone, self);
     return clone;
 }
 
@@ -1029,12 +1007,14 @@ static void _tree_transform_model_free(Model *self) {
     }
 }
 
+// The transform belongs to the tree whose node heights it computes, and is cloned
+// along with it (see _tree_model_clone).
 static Model *_tree_transform_model_clone(Model *self, Hashtable *hash) {
-    if (Hashtable_exists(hash, self->name)) {
-        return Hashtable_get(hash, self->name);
-    }
-
-    return NULL;
+    Model* mtree = Model_clone_into(self->data, hash);
+    Model* clone = mtree->data;
+    clone->ref_count++;
+    mtree->free(mtree);
+    return clone;
 }
 
 static double _tree_transform_model_logP(Model *self) {

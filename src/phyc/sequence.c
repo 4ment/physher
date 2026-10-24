@@ -713,10 +713,17 @@ void free_Alignment( Model *model ){
 	
 }
 
+// An alignment is data, never written once read: clones share it.
+static Model* _alignment_clone( Model *self, Hashtable* hash ){
+	self->ref_count++;
+	return self;
+}
+
 Model* new_Alignment_from_json(json_node* node, Hashtable* hash){
     Sequences* sequences = new_Sequences_from_json(node, hash);
     char* id = get_json_node_value_string(node, "id");
     Model* model = new_Model(MODEL_ALIGNMENT, id, sequences);
     model->free = free_Alignment;
+    model->clone = _alignment_clone;
     return model;
 }

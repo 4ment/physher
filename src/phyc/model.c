@@ -106,6 +106,57 @@ Model * new_Model( model_t type, const char *name, void *obj ){
 	return model;
 }
 
+void Model_copy_behaviour(Model* clone, const Model* model){
+	clone->logP = model->logP;
+	clone->full_logP = model->full_logP;
+	clone->gradient = model->gradient;
+	clone->hessian = model->hessian;
+	clone->clone = model->clone;
+	clone->free = model->free;
+	clone->update = model->update;
+	clone->reset = model->reset;
+	clone->sample = model->sample;
+	clone->rsample = model->rsample;
+	clone->get = model->get;
+	clone->set = model->set;
+	clone->store = model->store;
+	clone->restore = model->restore;
+	clone->accept = model->accept;
+	clone->print = model->print;
+	clone->log_count = model->log_count;
+	clone->log_name = model->log_name;
+	clone->log_value = model->log_value;
+	clone->jsonize = model->jsonize;
+	clone->samplable = model->samplable;
+	clone->epsilon = model->epsilon;
+	clone->lp = model->lp;
+	clone->storedLogP = model->storedLogP;
+}
+
+Model* Model_clone_into(Model* model, Hashtable* hash){
+	if(model == NULL) return NULL;
+	if(Hashtable_exists(hash, model->name)){
+		Model* clone = Hashtable_get(hash, model->name);
+		if(phyc_tag_of(clone) != PHYC_TAG_MODEL){
+			fprintf(stderr, "clone: '%s' is a %s, expected a model\n", model->name,
+			        phyc_tag_name(clone));
+			exit(1);
+		}
+		clone->ref_count++;
+		return clone;
+	}
+	if(model->clone == NULL){
+		fprintf(stderr, "clone: model '%s' (%s) cannot be cloned\n", model->name,
+		        model_type_strings[model->type]);
+		exit(1);
+	}
+	Model* clone = model->clone(model, hash);
+	if(!Hashtable_exists(hash, clone->name)){
+		Hashtable_add(hash, clone->name, clone);
+	}
+	return clone;
+}
+
 void free_Model( Model *model ){
 	assert(model->ref_count >= 1);
 	if(model->ref_count == 1){
@@ -407,12 +458,19 @@ static void _cat_parameter_model_free( Model *self ){
 	}
 }
 
+static Model* _cat_parameter_model_clone( Model *self, Hashtable* hash ){
+	Model* clone = new_CatParameterModel(self->name, clone_Parameters_into(self->obj, hash));
+	Model_copy_behaviour(clone, self);
+	return clone;
+}
+
 Model * new_CatParameterModel( const char* name, Parameters *parameters ){
 	Model *model = new_Model(MODEL_PARAMETERS, name, parameters);
 
 	model->free = _cat_parameter_model_free;
 	model->get = _cat_parameter_model_get;
 	model->set = _cat_parameter_model_set;
+	model->clone = _cat_parameter_model_clone;
 	return model;
 }
 

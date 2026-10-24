@@ -2,8 +2,8 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
 #add_definitions("-DUNIT_TESTING")
 
-# add_executable(test_clone test_clone.c)
-# target_link_libraries(test_clone phyc)
+add_executable(test_clone test_clone.c)
+target_link_libraries(test_clone phyc)
 
 add_executable(test_json test_json.c)
 target_link_libraries(test_json phyc)
@@ -133,6 +133,10 @@ add_test (NAME Test_optimizer
 add_test (NAME Test_cat
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_cat)
+
+add_test (NAME Test_clone
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_clone)
 
 
 find_program(VALGRIND "valgrind")

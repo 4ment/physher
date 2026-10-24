@@ -133,7 +133,6 @@ SubstitutionModel * create_general_model( const char *name, const modeltype mode
 
 SubstitutionModel * clone_substitution_model(SubstitutionModel *m);
 
-SubstitutionModel * clone_substitution_model_with(SubstitutionModel *m, const Parameters* rates, Parameter* simplex);
 
 void free_SubstitutionModel( SubstitutionModel *m);
 

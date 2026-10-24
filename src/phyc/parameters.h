@@ -136,6 +136,14 @@ void free_Parameter( Parameter *p );
 
 Parameter * clone_Parameter( Parameter *p );
 
+// Clone `p` into the model graph whose objects are registered by name in `hash`
+// (see Model->clone). A parameter shared in the original graph is cloned once:
+// if `hash` already holds a clone under p's name it is returned with its
+// reference count incremented. Otherwise the new clone, and the unconstrained
+// parameter of its transform, are registered there. The caller owns one
+// reference either way. NULL in, NULL out.
+Parameter* clone_Parameter_into(Parameter* p, Hashtable* hash);
+
 json_node* Parameter_to_json(Parameter* parameter, json_node* parent);
 
 json_node* Parameters_to_json(Parameters* parameters, json_node* parent);
@@ -230,6 +238,13 @@ void free_Parameters( Parameters *ps );
 void free_Parameters_weak( Parameters *ps );
 
 Parameters * clone_Parameters( Parameters *p );
+
+// A new list holding clone_Parameter_into of every element of `ps`, under the
+// same name. The list itself is not registered: see Parameters_register_into.
+Parameters* clone_Parameters_into(Parameters* ps, Hashtable* hash);
+
+// Register `ps` under its name in `hash`, unless it has none or the name is taken.
+void Parameters_register_into(Parameters* ps, Hashtable* hash);
 
 void Parameters_set_name2(Parameters* ps, const char* name);
 

@@ -267,72 +267,26 @@ static void _treeLikelihood_model_free( Model *self ){
 	}
 }
 
+// The site pattern is shared with the clone: see Model_clone_into.
 static Model* _treeLikelihood_model_clone(Model* self, Hashtable* hash){
 	Model** list = (Model**)self->data;
-	Model* mtree = list[0];
-	Model* mm = list[1];
-	Model* msm = list[2];
-	Model* mbm = list[3];
-	Model *mtreeclone = NULL;
-	Model *mmclone = NULL;
-	Model *msmclone = NULL;
-	Model* mbmclone = NULL;
-	
-	if(Hashtable_exists(hash, mtree->name)){
-		mtreeclone = Hashtable_get(hash, mtree->name);
-		mtreeclone->ref_count++;
-	}
-	else{
-		mtreeclone = mtree->clone(mtree, hash);
-		Hashtable_add(hash, mtreeclone->name, mtreeclone);
-	}
-	
-	if(Hashtable_exists(hash, mm->name)){
-		mmclone = Hashtable_get(hash, mm->name);
-		mmclone->ref_count++;
-	}
-	else{
-		mmclone = mm->clone(mm, hash);
-		Hashtable_add(hash, mmclone->name, mmclone);
-	}
-	
-	if(Hashtable_exists(hash, msm->name)){
-		msmclone = Hashtable_get(hash, msm->name);
-		msmclone->ref_count++;
-	}
-	else{
-		msmclone = msm->clone(msm, hash);
-		Hashtable_add(hash, msmclone->name, msmclone);
-	}
-	
+	Model* mtreeclone = Model_clone_into(list[0], hash);
+	Model* mmclone = Model_clone_into(list[1], hash);
+	Model* msmclone = Model_clone_into(list[2], hash);
+	Model* mbmclone = Model_clone_into(list[3], hash);
+
 	SingleTreeLikelihood* tlk = (SingleTreeLikelihood*)self->obj;
-	SingleTreeLikelihood* clonetlk;
-	
-	if(mbm != NULL){
-		if(Hashtable_exists(hash, mbm->name)){
-			mbmclone = Hashtable_get(hash, mbm->name);
-			mbmclone->ref_count++;
-		}
-		else{
-			mbmclone = mbm->clone(mbm, hash);
-			Hashtable_add(hash, mbmclone->name, mbmclone);
-		}
-		clonetlk = clone_SingleTreeLikelihood_with(tlk, (Tree*)mtreeclone->obj, (SubstitutionModel*)mmclone->obj, (SiteModel*)msmclone->obj, tlk->sp, (BranchModel*)mbmclone->obj);
-	}
-	else{
-		clonetlk = clone_SingleTreeLikelihood_with(tlk, (Tree*)mtreeclone->obj, (SubstitutionModel*)mmclone->obj, (SiteModel*)msmclone->obj, tlk->sp, NULL);
-	}
-	Model* clone = new_TreeLikelihoodModel(self->name, clonetlk, mtreeclone, mmclone, msmclone, mbmclone);
+	SingleTreeLikelihood* clonetlk = clone_SingleTreeLikelihood_with(
+		tlk, mtreeclone->obj, mmclone->obj, msmclone->obj, tlk->sp,
+		mbmclone == NULL ? NULL : mbmclone->obj);
+	Model* clone = new_TreeLikelihoodModel(self->name, clonetlk, mtreeclone, mmclone,
+	                                       msmclone, mbmclone);
+	Model_copy_behaviour(clone, self);
 	Hashtable_add(hash, clone->name, clone);
 	mtreeclone->free(mtreeclone);
 	mmclone->free(mmclone);
 	msmclone->free(msmclone);
-	if(mbmclone) mbmclone->free(mbmclone);
-	clone->store = self->store;
-	clone->restore = self->restore;
-	clone->storedLogP = self->storedLogP;
-	clone->lp = self->lp;
-	clone->full_logP = self->full_logP;
+	if(mbmclone != NULL) mbmclone->free(mbmclone);
 	return clone;
 }
 
@@ -905,7 +859,9 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood( SingleTreeLikelihood *tlk ){
 		}
 		bm = clone_BranchModel(tlk->bm, tree, dp);
 	}
-	return clone_SingleTreeLikelihood_with( tlk, tree, m, sm, sp, bm  );
+	SingleTreeLikelihood* clone = clone_SingleTreeLikelihood_with( tlk, tree, m, sm, sp, bm  );
+	free_SitePattern(sp); // clone_SingleTreeLikelihood_with took its own reference
+	return clone;
 }
 
 static void _singletreellikelihood_copy(SingleTreeLikelihood *source, SingleTreeLikelihood *dest, Node *snode, Node *dnode){
@@ -966,6 +922,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	
 	newtlk->pattern_lk = clone_dvector( tlk->pattern_lk, tlk->pattern_lk_size );
 	newtlk->lk = tlk->lk;
+	newtlk->stored_lk = tlk->stored_lk;
 	newtlk->recompute_count = tlk->recompute_count;
 
 	newtlk->calculate            = tlk->calculate;
@@ -1008,6 +965,8 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
     memcpy(newtlk->current_matrices_indexes, tlk->current_matrices_indexes, 2*nodeCount*sizeof(unsigned));
     memcpy(newtlk->current_partials_indexes, tlk->current_partials_indexes, 2*nodeCount*sizeof(unsigned));
 	int i = 0;
+	// Sized as allocate_storage sizes them.
+	size_t mat_len = tlk->matrix_size*matrix_cat_count(tlk);
 	for ( ; i < nodeCount; i++ ) {
 		if( newtlk->partials[0][Node_id(nodes[i])] != NULL ){
 			memcpy(newtlk->partials[0][Node_id( nodes[i] )], tlk->partials[0][Node_id( nodes[i] )], tlk->partials_size * sizeof(double));
@@ -1018,7 +977,7 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	}
 
 	for ( int i = 0; i < tlk->matrix_dim; i++ ) {
-		memcpy(newtlk->matrices[0][i], tlk->matrices[0][i], tlk->matrix_size*tlk->sm->cat_count * sizeof(double));
+		memcpy(newtlk->matrices[0][i], tlk->matrices[0][i], mat_len * sizeof(double));
 	}
     
    if(tlk->partials[1] != NULL){
@@ -1036,11 +995,11 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
         }
 
         for ( int i = 0; i < tlk->matrix_dim; i++ ) {
-            memcpy(newtlk->matrices[1][i], tlk->matrices[1][i], tlk->matrix_size*tlk->sm->cat_count * sizeof(double));
+            memcpy(newtlk->matrices[1][i], tlk->matrices[1][i], mat_len * sizeof(double));
         }
    }
 	
-	newtlk->root_partials = (double*)malloc( newtlk->root_partials_size*sizeof(double) );
+	newtlk->root_partials = aligned16_malloc( newtlk->root_partials_size*sizeof(double) );
     assert(newtlk->root_partials);
 	memcpy(newtlk->root_partials, tlk->root_partials, newtlk->root_partials_size * sizeof(double));
     
@@ -1055,6 +1014,8 @@ SingleTreeLikelihood * clone_SingleTreeLikelihood_with( SingleTreeLikelihood *tl
 	newtlk->include_jacobian = tlk->include_jacobian;
 	
 	newtlk->gradient = NULL;
+	newtlk->gradient_length = 0;
+	newtlk->prepared_gradient = 0;
 	if(tlk->gradient != NULL){
 		newtlk->gradient = clone_dvector(tlk->gradient, tlk->gradient_length);
 		newtlk->gradient_length = tlk->gradient_length;
