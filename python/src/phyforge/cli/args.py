@@ -8,7 +8,9 @@ without going through argv.
 from __future__ import annotations
 
 import argparse
-from typing import Optional, Sequence
+import json
+from dataclasses import replace
+from typing import Dict, Optional, Sequence
 
 from ..spec import (
     CAT_ASSIGNMENTS,
@@ -17,6 +19,7 @@ from ..spec import (
     LADDERS,
     MARGINAL_ALGORITHMS,
     METHODS,
+    PRIOR_DISTRIBUTIONS,
     RATE_PARAMETERIZATIONS,
     SITE_MODELS,
     SUBSTITUTION_MODELS,
@@ -30,10 +33,14 @@ from ..spec import (
     MarginalOptions,
     MCMCOptions,
     OptimizerOptions,
+    ParameterOverride,
+    PriorChoice,
     PriorSpec,
     SiteModelSpec,
     SubstitutionSpec,
+    Values,
     VariationalOptions,
+    parse_values,
 )
 
 
@@ -71,6 +78,7 @@ def make_parser() -> argparse.ArgumentParser:
     _add_variational(parser)
     _add_marginal(parser)
     _add_bootstrap(parser)
+    _add_parameters(parser)
     return parser
 
 
@@ -174,6 +182,12 @@ def _add_site(parser: argparse.ArgumentParser) -> None:
         "--shape", type=float, default=0.1, help="initial rate distribution shape"
     )
     group.add_argument(
+        "--pinv",
+        type=float,
+        default=0.1,
+        help="initial proportion of invariant sites",
+    )
+    group.add_argument(
         "--rate-parameterization",
         default="rate_increments",
         choices=RATE_PARAMETERIZATIONS,
@@ -234,6 +248,12 @@ def _add_clock(parser: argparse.ArgumentParser) -> None:
         "--rate-init", type=float, default=1e-3, help="initial substitution rate"
     )
     group.add_argument(
+        "--ncln-scale",
+        type=float,
+        default=0.5,
+        help="initial spread of the per-branch rates of an ncln clock",
+    )
+    group.add_argument(
         "--root-height",
         type=float,
         default=5.0,
@@ -270,6 +290,12 @@ def _add_coalescent(parser: argparse.ArgumentParser) -> None:
         "--theta", type=float, default=3.0, help="initial population size"
     )
     group.add_argument(
+        "--growth",
+        type=float,
+        default=0.0,
+        help="initial growth rate of an exponential coalescent",
+    )
+    group.add_argument(
         "--grid", type=int, help="number of grid points for skygrid/skyglide"
     )
     group.add_argument("--cutoff", type=float, help="oldest grid point")
@@ -277,6 +303,12 @@ def _add_coalescent(parser: argparse.ArgumentParser) -> None:
         "--no-gmrf",
         action="store_true",
         help="drop the GMRF smoothing prior on a piecewise coalescent",
+    )
+    group.add_argument(
+        "--gmrf-precision",
+        type=float,
+        default=0.1,
+        help="initial precision of the GMRF",
     )
 
 
@@ -297,6 +329,12 @@ def _add_priors(parser: argparse.ArgumentParser) -> None:
     )
     group.add_argument(
         "--clock-prior-mean", type=float, default=1000.0, help="its mean"
+    )
+    group.add_argument(
+        "--shape-prior-mean",
+        type=float,
+        default=1.0,
+        help="mean of the exponential prior on the rate distribution shape",
     )
 
 
@@ -459,6 +497,81 @@ def _add_variational(parser: argparse.ArgumentParser) -> None:
         "--entropy", action="store_true", help="use the entropy rather than log q"
     )
     group.add_argument("--checkpoint", help="write optimizer checkpoints here")
+    group.add_argument(
+        "--vi-update", default="adam", help="stochastic optimizer update rule"
+    )
+    group.add_argument(
+        "--vi-sigma-init",
+        type=float,
+        default=0.308,
+        help="initial scale of every variational factor",
+    )
+
+
+def _add_parameters(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group(
+        "parameters",
+        "Override one parameter at a time, by its id; --list-parameters shows "
+        "the ids this analysis has, with their defaults.  Each flag may be "
+        "repeated, and wins over the shorthand options above (--kappa, "
+        "--shape, ...).  VALUES is a number, or one number per element "
+        "separated by commas.",
+    )
+    group.add_argument(
+        "--list-parameters",
+        action="store_true",
+        help="print the parameters of this analysis and exit",
+    )
+    group.add_argument(
+        "--params",
+        metavar="FILE",
+        help="JSON object of overrides keyed by parameter id, as the GUI saves "
+        "them; the flags below are applied on top",
+    )
+    group.add_argument(
+        "--init",
+        action="append",
+        default=[],
+        metavar="ID=VALUES",
+        help="starting value",
+    )
+    group.add_argument(
+        "--fix",
+        action="append",
+        default=[],
+        metavar="ID[=VALUES]",
+        help="hold a parameter at its starting value (or at VALUES)",
+    )
+    group.add_argument(
+        "--prior",
+        action="append",
+        default=[],
+        metavar="ID=PRIOR",
+        help="prior, e.g. kappa='lognormal(mu=1,sigma=1.25)', "
+        "frequencies='dirichlet(alpha=[1,1,1,1])', or ID=none to drop it; "
+        f"one of {', '.join(PRIOR_DISTRIBUTIONS)}",
+    )
+    group.add_argument(
+        "--vi-mu",
+        action="append",
+        default=[],
+        metavar="ID=VALUES",
+        help="advi: location of the variational normal, unconstrained",
+    )
+    group.add_argument(
+        "--vi-sigma",
+        action="append",
+        default=[],
+        metavar="ID=VALUES",
+        help="advi: scale of the variational normal, unconstrained",
+    )
+    group.add_argument(
+        "--weight",
+        action="append",
+        default=[],
+        metavar="ID=W",
+        help="mcmc: weight of the parameter's operators (default: its dimension)",
+    )
 
 
 def to_spec(arguments: argparse.Namespace) -> AnalysisSpec:
@@ -488,6 +601,7 @@ def to_spec(arguments: argparse.Namespace) -> AnalysisSpec:
             invariant=arguments.invariant,
             quadrature=arguments.quadrature,
             shape_init=arguments.shape,
+            proportion_invariant_init=arguments.pinv,
             rate_parameterization=arguments.rate_parameterization,
             free_rate_em=arguments.cat_em,
             cat=CATSpec(
@@ -502,6 +616,7 @@ def to_spec(arguments: argparse.Namespace) -> AnalysisSpec:
             kind=arguments.clock,
             rate=arguments.rate,
             rate_init=arguments.rate_init,
+            ncln_scale_init=arguments.ncln_scale,
             root_height_init=arguments.root_height,
             dates=DatesSpec(
                 source=arguments.dates,
@@ -516,12 +631,15 @@ def to_spec(arguments: argparse.Namespace) -> AnalysisSpec:
             cutoff=arguments.cutoff,
             grid=arguments.grid,
             gmrf=not arguments.no_gmrf,
+            growth_init=arguments.growth,
+            precision_init=arguments.gmrf_precision,
         ),
         priors=PriorSpec(
             branch_lengths=arguments.branch_length_prior,
             branch_lengths_mean=arguments.branch_length_mean,
             clock=arguments.clock_prior,
             clock_mean=arguments.clock_prior_mean,
+            shape_mean=arguments.shape_prior_mean,
         ),
         optimizer=OptimizerOptions(
             iterations=arguments.iterations,
@@ -564,8 +682,72 @@ def to_spec(arguments: argparse.Namespace) -> AnalysisSpec:
             samples=arguments.samples,
             entropy=arguments.entropy,
             checkpoint=arguments.checkpoint,
+            update=arguments.vi_update,
+            sigma_init=arguments.vi_sigma_init,
         ),
+        parameters=parameter_overrides(arguments),
     )
+
+
+def parameter_overrides(arguments: argparse.Namespace) -> Dict[str, ParameterOverride]:
+    """The ``--params`` file, with the per-parameter flags applied on top."""
+    overrides: Dict[str, ParameterOverride] = {}
+    if arguments.params:
+        with open(arguments.params) as fp:
+            data = json.load(fp)
+        for id_, fields in data.items():
+            overrides[id_] = ParameterOverride.from_dict(fields)
+
+    def update(flag: str, item: str, **changes) -> None:
+        id_ = _parameter_id(flag, item)
+        current = overrides.get(id_, ParameterOverride())
+        overrides[id_] = replace(current, **changes)
+
+    for item in arguments.init:
+        update("--init", item, init=_values("--init", item))
+    for item in arguments.fix:
+        _, equals, _ = item.partition("=")
+        changes = {"estimate": False}
+        if equals:
+            changes["init"] = _values("--fix", item)
+        update("--fix", item, **changes)
+    for item in arguments.prior:
+        try:
+            prior = PriorChoice.parse(_value_text("--prior", item))
+        except ValueError as error:
+            raise argparse.ArgumentTypeError(f"--prior {item}: {error}") from None
+        update("--prior", item, prior=prior)
+    for item in arguments.vi_mu:
+        update("--vi-mu", item, mu=_values("--vi-mu", item))
+    for item in arguments.vi_sigma:
+        update("--vi-sigma", item, sigma=_values("--vi-sigma", item))
+    for item in arguments.weight:
+        value = _values("--weight", item)
+        if isinstance(value, list):
+            raise argparse.ArgumentTypeError(f"--weight {item}: takes one number")
+        update("--weight", item, weight=value)
+    return {id_: o for id_, o in overrides.items() if not o.is_empty}
+
+
+def _parameter_id(flag: str, item: str) -> str:
+    id_ = item.partition("=")[0].strip()
+    if not id_:
+        raise argparse.ArgumentTypeError(f"{flag} {item}: expected ID=...")
+    return id_
+
+
+def _value_text(flag: str, item: str) -> str:
+    id_, equals, text = item.partition("=")
+    if not equals or not text.strip():
+        raise argparse.ArgumentTypeError(f"{flag} {item}: expected {id_ or 'ID'}=...")
+    return text
+
+
+def _values(flag: str, item: str) -> Values:
+    try:
+        return parse_values(_value_text(flag, item))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"{flag} {item}: {error}") from None
 
 
 def parse(argv: Optional[Sequence[str]] = None) -> AnalysisSpec:

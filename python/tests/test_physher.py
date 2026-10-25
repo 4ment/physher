@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from phyforge import AnalysisSpec, build
+from phyforge import AnalysisSpec, ParameterOverride, PriorChoice, build
 from phyforge.spec import (
     BootstrapOptions,
     CATSpec,
@@ -376,3 +376,96 @@ def test_bootstrap_replicates_vary(alignment, tree_file, tmp_path):
     assert len(rows) == 6  # a header, then one row per replicate
     trees = (tmp_path / "boot.bootstrap.trees").read_text().splitlines()
     assert len(trees) == 5
+
+
+# --------------------------------------------------------------------------
+# per-parameter overrides
+# --------------------------------------------------------------------------
+
+
+def logged(output, name):
+    """The last value the screen logger printed for ``name``."""
+    value = None
+    for line in output.splitlines():
+        if line.startswith(f"{name}:"):
+            value = [float(v) for v in line.split(":")[1].split()]
+    if value is None:
+        raise AssertionError(f"no {name} in output:\n{output}")
+    return value[0] if len(value) == 1 else value
+
+
+def test_fixing_a_parameter_at_its_estimate_keeps_the_fit(
+    alignment, tree_file, tmp_path
+):
+    """Holding the shape at its ML estimate leaves the same optimum to find."""
+    hky_g4 = dict(substitution=SubstitutionSpec(kind="HKY"), site=SiteModelSpec(4))
+    output = run(
+        build(spec_for(alignment, tree_file, **hky_g4)), tmp_path, alignment, tree_file
+    )
+    shape = logged(output, "shape")
+
+    fixed = spec_for(
+        alignment,
+        tree_file,
+        parameters={"shape": ParameterOverride(estimate=False, init=shape)},
+        **hky_g4,
+    )
+    refit = run(build(fixed), tmp_path, alignment, tree_file)
+    assert "shape:" not in refit
+    assert likelihood(refit) == pytest.approx(likelihood(output), abs=0.05)
+
+
+def test_a_tight_prior_pulls_the_map_estimate(alignment, tree_file, tmp_path):
+    """kappa's ML estimate is above 5; a lognormal pinned near 2 overrides it.
+
+    The prior is tight enough that at the starting kappa of 1 its density
+    underflows a double, so this also checks physher evaluates the log density
+    directly rather than as the log of the density.
+    """
+    spec = spec_for(
+        alignment,
+        tree_file,
+        method="map",
+        substitution=SubstitutionSpec(kind="HKY"),
+        parameters={
+            "kappa": ParameterOverride(
+                prior=PriorChoice("lognormal", {"mu": 0.6931471805599453, "sigma": 0.01})
+            )
+        },
+    )
+    output = run(build(spec), tmp_path, alignment, tree_file)
+    assert logged(output, "kappa") == pytest.approx(2.0, rel=0.05)
+
+
+def test_advi_takes_per_parameter_factors(alignment, tree_file, tmp_path):
+    spec = spec_for(
+        alignment,
+        tree_file,
+        method="advi",
+        substitution=SubstitutionSpec(kind="HKY"),
+        variational=VariationalOptions(iterations=200, samples=10),
+        parameters={
+            "kappa": ParameterOverride(mu=1.5, sigma=0.05),
+            "frequencies": ParameterOverride(sigma=[0.1, 0.1, 0.1]),
+        },
+    )
+    run(build(spec), tmp_path, alignment, tree_file)
+
+
+def test_mcmc_takes_weights_and_fixed_parameters(alignment, tree_file, tmp_path):
+    spec = spec_for(
+        alignment,
+        tree_file,
+        method="mcmc",
+        substitution=SubstitutionSpec(kind="HKY"),
+        mcmc=MCMCOptions(length=2000, every=100),
+        parameters={
+            "kappa": ParameterOverride(
+                weight=10, prior=PriorChoice("exponential", {"mean": 2.0})
+            ),
+            "frequencies": ParameterOverride(estimate=False, init=[0.3, 0.2, 0.2, 0.3]),
+        },
+    )
+    output = run(build(spec), tmp_path, alignment, tree_file)
+    assert "op.scaler.kappa" in output
+    assert "op.dirichlet.frequencies" not in output

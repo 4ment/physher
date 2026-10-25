@@ -9,8 +9,9 @@ spec through JSON for session save/load.
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field, replace
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 __all__ = [
     "DataSpec",
@@ -41,6 +42,18 @@ __all__ = [
     "MARGINAL_POSTERIOR",
     "MARGINAL_IMPORTANCE",
     "LADDERS",
+    "REAL",
+    "POSITIVE",
+    "UNIT",
+    "SIMPLEX",
+    "PARAMETER_KINDS",
+    "PriorFamily",
+    "PRIOR_DISTRIBUTIONS",
+    "NO_PRIOR",
+    "PriorChoice",
+    "ParameterOverride",
+    "format_values",
+    "parse_values",
 ]
 
 METHODS = ("ml", "map", "mcmc", "advi")
@@ -103,6 +116,54 @@ LADDERS = ("beta", "uniform")
 
 CLOCK_MODELS = ("strict", "ncln")
 COALESCENT_MODELS = ("constant", "exponential", "skyride", "skygrid", "skyglide")
+
+#: The constraint a free parameter carries, which picks its transform and the
+#: priors that are densities on it.
+REAL = "real"
+POSITIVE = "positive"
+UNIT = "unit"
+SIMPLEX = "simplex"
+PARAMETER_KINDS = (REAL, POSITIVE, UNIT, SIMPLEX)
+
+#: A scalar, or one value per element of a vector parameter.
+Values = Union[float, List[float]]
+
+
+@dataclass(frozen=True)
+class PriorFamily:
+    """A physher distribution used as a prior: what it takes, what it covers."""
+
+    #: the hyperparameter sets physher accepts; a prior gives exactly one
+    hyperparameters: Tuple[Tuple[str, ...], ...]
+    #: the parameter kinds it is a density on
+    kinds: Tuple[str, ...]
+
+
+#: The distributions a parameter override may name, keyed by the name physher
+#: reads (``distmodelfactory.c``), with the hyperparameter keys each
+#: ``new_*DistributionModel_from_json`` looks for.
+PRIOR_DISTRIBUTIONS: Dict[str, PriorFamily] = {
+    "exponential": PriorFamily((("lambda",), ("mean",)), (POSITIVE,)),
+    "gamma": PriorFamily((("shape", "rate"), ("shape", "scale")), (POSITIVE,)),
+    "lognormal": PriorFamily((("mu", "sigma"), ("mean", "stdev")), (POSITIVE,)),
+    "halfnormal": PriorFamily((("sigma",), ("tau",)), (POSITIVE,)),
+    "weibull": PriorFamily((("shape", "scale"),), (POSITIVE,)),
+    "betaprime": PriorFamily((("alpha", "beta"),), (POSITIVE,)),
+    "oneonx": PriorFamily(((),), (POSITIVE,)),
+    "ctmcscale": PriorFamily(((),), (POSITIVE,)),
+    "beta": PriorFamily((("alpha", "beta"),), (UNIT,)),
+    "kumaraswamy": PriorFamily((("a", "b"),), (UNIT,)),
+    "normal": PriorFamily((("mu", "sigma"), ("mu", "tau")), (REAL,)),
+    "cauchy": PriorFamily((("location", "scale"),), (REAL,)),
+    "dirichlet": PriorFamily(((), ("alpha",)), (SIMPLEX,)),
+}
+
+#: The prior name that removes a parameter's prior altogether.
+NO_PRIOR = "none"
+
+#: Hyperparameters that may take any real value; every other one is a rate, a
+#: scale, a shape or a concentration and has to be positive.
+REAL_HYPERPARAMETERS = ("mu", "location")
 
 
 @dataclass
@@ -464,6 +525,137 @@ class VariationalOptions:
     sigma_init: float = 0.308
 
 
+def format_values(values: Values) -> str:
+    """Write a scalar or a vector the way :func:`parse_values` reads it."""
+    if isinstance(values, (list, tuple)):
+        return ",".join(_format_number(value) for value in values)
+    return _format_number(values)
+
+
+def parse_values(text: str) -> Values:
+    """Read ``1.5`` as a scalar and ``0.1,0.2,0.7`` as a vector."""
+    items = [item.strip() for item in text.strip().strip("[]").split(",")]
+    if not items or any(item == "" for item in items):
+        raise ValueError(f"expected a number or a comma-separated list, not {text!r}")
+    numbers = [float(item) for item in items]
+    return numbers[0] if len(numbers) == 1 else numbers
+
+
+def _format_number(value: float) -> str:
+    if float(value).is_integer() and abs(value) < 1e15:
+        return str(int(value))
+    return repr(float(value))
+
+
+_PRIOR_PATTERN = re.compile(r"^\s*([A-Za-z]+)\s*(?:\((.*)\))?\s*$", re.DOTALL)
+
+
+@dataclass
+class PriorChoice:
+    """A prior on one parameter: a distribution and its hyperparameters.
+
+    A vector hyperparameter gives one value per element of the parameter,
+    which is physher's mean-field form of a distribution.
+    """
+
+    distribution: str
+    parameters: Dict[str, Values] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        if not self.parameters:
+            return self.distribution
+        inner = ",".join(
+            f"{key}={_format_hyperparameter(value)}"
+            for key, value in self.parameters.items()
+        )
+        return f"{self.distribution}({inner})"
+
+    @classmethod
+    def parse(cls, text: str) -> "PriorChoice":
+        """Read ``gamma(shape=2,rate=10)``, ``dirichlet(alpha=[1,1,2,2])`` or
+        a bare name such as ``oneonx`` or ``none``."""
+        match = _PRIOR_PATTERN.match(text)
+        if match is None:
+            raise ValueError(f"expected DISTRIBUTION(key=value,...), not {text!r}")
+        name, inner = match.group(1).lower(), match.group(2)
+        parameters: Dict[str, Values] = {}
+        for item in _split_hyperparameters(inner or ""):
+            key, equals, value = item.partition("=")
+            if not equals or not key.strip():
+                raise ValueError(f"expected key=value in {text!r}, not {item!r}")
+            try:
+                parameters[key.strip()] = parse_values(value)
+            except ValueError:
+                raise ValueError(
+                    f"{key.strip()} in {text!r} is not a number or a list of numbers"
+                ) from None
+        return cls(name, parameters)
+
+
+def _format_hyperparameter(value: Values) -> str:
+    if isinstance(value, (list, tuple)):
+        return f"[{format_values(value)}]"
+    return format_values(value)
+
+
+def _split_hyperparameters(inner: str) -> List[str]:
+    """Split on the commas that are not inside a ``[...]`` vector."""
+    items, depth, current = [], 0, ""
+    for char in inner:
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+        if char == "," and depth == 0:
+            items.append(current.strip())
+            current = ""
+        else:
+            current += char
+    if current.strip():
+        items.append(current.strip())
+    return items
+
+
+@dataclass
+class ParameterOverride:
+    """What the user changed about one free parameter, by its id.
+
+    Every field left at its default means "whatever the model builder would
+    have chosen", so an override only ever records a departure from the
+    defaults that :func:`phyforge.build.describe` reports.
+    """
+
+    #: starting value: a scalar fills a vector, a list gives every element
+    init: Optional[Values] = None
+    #: False holds the parameter at its starting value: it gets no prior, no
+    #: optimizer, no operator and no variational factor
+    estimate: bool = True
+    #: the prior, replacing the builder's default; ``none`` removes it
+    prior: Optional[PriorChoice] = None
+    #: advi: location of the variational normal, in the unconstrained space
+    mu: Optional[Values] = None
+    #: advi: scale of the variational normal, in the unconstrained space
+    sigma: Optional[Values] = None
+    #: mcmc: weight of each of the parameter's operators
+    weight: Optional[float] = None
+
+    @property
+    def is_empty(self) -> bool:
+        return self == ParameterOverride()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ParameterOverride":
+        """Rebuild an override from ``asdict`` output or a ``--params`` file,
+        where a prior may also be written as a string."""
+        kwargs = dict(data)
+        prior = kwargs.get("prior")
+        if isinstance(prior, str):
+            kwargs["prior"] = PriorChoice.parse(prior)
+        elif isinstance(prior, dict):
+            kwargs["prior"] = PriorChoice(**prior)
+        return cls(**kwargs)
+
+
 @dataclass
 class AnalysisSpec:
     """A complete description of one physher run."""
@@ -481,6 +673,10 @@ class AnalysisSpec:
     marginal: MarginalOptions = field(default_factory=MarginalOptions)
     bootstrap: BootstrapOptions = field(default_factory=BootstrapOptions)
     variational: VariationalOptions = field(default_factory=VariationalOptions)
+    #: per-parameter overrides, keyed by parameter id (``kappa``,
+    #: ``tree.distances``, ...); they take precedence over the shorthand
+    #: options above, such as ``substitution.kappa_init``
+    parameters: Dict[str, ParameterOverride] = field(default_factory=dict)
 
     @property
     def uses_priors(self) -> bool:
@@ -560,4 +756,13 @@ class AnalysisSpec:
             if "dates" in clock:
                 clock["dates"] = DatesSpec(**clock["dates"])
             kwargs["clock"] = ClockSpec(**clock)
+        if "parameters" in kwargs:
+            kwargs["parameters"] = {
+                id_: ParameterOverride.from_dict(override)
+                for id_, override in kwargs["parameters"].items()
+            }
         return cls(**kwargs)
+
+    def override(self, id_: str) -> ParameterOverride:
+        """The override for ``id_``, or an empty one."""
+        return self.parameters.get(id_) or ParameterOverride()

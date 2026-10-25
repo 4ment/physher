@@ -6,7 +6,14 @@ reading the alignment and tree the spec names.  That is what lets a GUI reuse
 the whole layer.
 """
 
-from .analysis import build, make_context
+from .analysis import ParameterInfo, build, describe, make_context
 from .context import BuildContext, FreeParameter
 
-__all__ = ["build", "make_context", "BuildContext", "FreeParameter"]
+__all__ = [
+    "build",
+    "describe",
+    "make_context",
+    "BuildContext",
+    "FreeParameter",
+    "ParameterInfo",
+]

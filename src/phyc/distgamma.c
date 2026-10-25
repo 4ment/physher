@@ -83,6 +83,14 @@ double gamma_p_grad_a(double a, double x) {
     return -expL * (dh + h * dLda);
 }
 
+// Log density with shape a and scale b, computed directly: log(gsl_ran_gamma_pdf)
+// underflows to -inf far in the tail.  Matches gsl_ran_gamma_pdf at the boundary.
+static double _gamma_log_density(double x, double a, double b){
+    if (x < 0) return -INFINITY;
+    if (x == 0) return a == 1 ? -log(b) : -INFINITY;
+    return (a - 1)*log(x) - x/b - lgamma(a) - a*log(b);
+}
+
 double DistributionModel_log_gamma(DistributionModel* dm){
     if(!dm->need_update) return dm->lp;
     dm->lp = 0.0;
@@ -102,7 +110,7 @@ double DistributionModel_log_gamma(DistributionModel* dm){
             size_t dim = Parameter_size(x);
             const double* values = Parameter_values(x);
             for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(gsl_ran_gamma_pdf(values[i] - dm->shift, *alpha, betaValue));
+                dm->lp += _gamma_log_density(values[i] - dm->shift, *alpha, betaValue);
             }
         }
     }
@@ -118,7 +126,7 @@ double DistributionModel_log_gamma(DistributionModel* dm){
                 if (dm->parameterization == DISTRIBUTION_GAMMA_SHAPE_RATE) {
                     betaValue = 1.0/betaValue;
                 }
-                dm->lp += log(gsl_ran_gamma_pdf(values[i] - dm->shift, alpha[index], betaValue));
+                dm->lp += _gamma_log_density(values[i] - dm->shift, alpha[index], betaValue);
                 index++;
             }
         }

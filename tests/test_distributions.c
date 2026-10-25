@@ -45,7 +45,7 @@ char* test_exponential_distribution_aux(Parameter* x, Parameter* lambda,
             logP2 += log(gsl_ran_exponential_pdf(xValues[i], 1 / lambdaValues[0]));
         }
     }
-    mu_assert(logP2 == logP, "logP not matching");
+    mu_assert(fabs(logP2 - logP) < 1e-10 * (1.0 + fabs(logP)), "logP not matching");
     printf("LogP: %f, LogP2: %f\n", logP, logP2);
     Parameters* ps = new_Parameters(2);
     Parameters_add(ps, lambda);
@@ -138,7 +138,7 @@ char* test_normal_distribution_aux(Parameter* x, Parameter* mu, Parameter* sigma
                 log(gsl_ran_gaussian_pdf(xValues[i] - muValues[0], sigmaValues[0]));
         }
     }
-    mu_assert(logP2 == logP, "logP not matching");
+    mu_assert(fabs(logP2 - logP) < 1e-10 * (1.0 + fabs(logP)), "logP not matching");
     printf("LogP: %f, LogP2: %f\n", logP, logP2);
     Parameters* ps = new_Parameters(3);
     Parameters_add(ps, mu);
@@ -422,7 +422,7 @@ char* test_half_normal_distribution_aux(Parameter* x, Parameter* sigma, double* 
         }
     }
     printf("LogP: %f, LogP2: %f\n", logP, logP2);
-    mu_assert(logP2 == logP, "logP not matching");
+    mu_assert(fabs(logP2 - logP) < 1e-10 * (1.0 + fabs(logP)), "logP not matching");
     Parameters* ps = new_Parameters(2);
     Parameters_add(ps, sigma);
     Parameters_add(ps, x);
@@ -512,7 +512,7 @@ char* test_lognormal_distribution_aux(Parameter* x, Parameter* mu, Parameter* si
                 log(gsl_ran_lognormal_pdf(xValues[i], muValues[0], sigmaValues[0]));
         }
     }
-    mu_assert(logP2 == logP, "logP not matching");
+    mu_assert(fabs(logP2 - logP) < 1e-10 * (1.0 + fabs(logP)), "logP not matching");
     printf("LogP: %f, LogP2: %f\n", logP, logP2);
     Parameters* ps = new_Parameters(3);
     Parameters_add(ps, mu);
@@ -608,7 +608,7 @@ char* test_lognormal_distribution_prior_mean_stdev() {
         double mu = log(mValue) - 0.5 * sigma * sigma;
         logP2 += log(gsl_ran_lognormal_pdf(x3Values[i], mu, sigma));
     }
-    mu_assert(logP2 == logP, "logP not matching");
+    mu_assert(fabs(logP2 - logP) < 1e-10 * (1.0 + fabs(logP)), "logP not matching");
     printf("LogP: %f, LogP2: %f\n", logP, logP2);
     Parameters* ps = new_Parameters(3);
     Parameters_add(ps, m);
@@ -862,7 +862,7 @@ char* test_gamma_distribution_aux(Parameter* x, Parameter* alpha, Parameter* bet
         }
     }
     printf("LogP: %f, LogP2: %f\n", logP, logP2);
-    mu_assert(logP2 == logP, "logP not matching");
+    mu_assert(fabs(logP2 - logP) < 1e-10 * (1.0 + fabs(logP)), "logP not matching");
     Parameters* ps = new_Parameters(3);
     Parameters_add(ps, alpha);
     Parameters_add(ps, beta);
@@ -1214,7 +1214,7 @@ char* test_weibull_distribution_aux(Parameter* x, Parameter* scale, Parameter* s
         }
     }
     printf("LogP: %f, LogP2: %f\n", logP, logP2);
-    mu_assert(logP2 == logP, "logP not matching");
+    mu_assert(fabs(logP2 - logP) < 1e-10 * (1.0 + fabs(logP)), "logP not matching");
     Parameters* ps = new_Parameters(3);
     Parameters_add(ps, scale);
     Parameters_add(ps, shape);
@@ -1946,6 +1946,80 @@ char* test_multivariate_normal_entropy() {
 
 #pragma endregion
 
+// logP far in the tail, where the density itself underflows to 0 and taking
+// its log would give -inf: each x below is placed so that the GSL pdf is 0.
+typedef DistributionModel* (*tail_factory)(Parameters*, Parameters*);
+
+static DistributionModel* tail_normal(Parameters* p, Parameters* x) {
+    return new_NormalDistributionModel_with_parameters(p, x,
+                                                       DISTRIBUTION_NORMAL_MEAN_SIGMA);
+}
+static DistributionModel* tail_lognormal(Parameters* p, Parameters* x) {
+    return new_LogNormalDistributionModel_with_parameters(
+        p, x, DISTRIBUTION_LOGNORMAL_MU_SIGMA);
+}
+static DistributionModel* tail_gamma(Parameters* p, Parameters* x) {
+    return new_GammaDistributionModel_with_parameters(p, x,
+                                                      DISTRIBUTION_GAMMA_SHAPE_SCALE);
+}
+static DistributionModel* tail_weibull(Parameters* p, Parameters* x) {
+    return new_WeibullDistributionModel_with_parameters(p, x);
+}
+
+static char* check_tail(tail_factory factory, double x, double p0, double p1,
+                        double expected, const char* name) {
+    Parameters* xs = new_Parameters(1);
+    Parameters_move(xs, new_Parameter("x", x, new_Constraint(-INFINITY, INFINITY)));
+    Parameters* ps = new_Parameters(2);
+    Parameters_move(ps, new_Parameter("p0", p0, new_Constraint(-INFINITY, INFINITY)));
+    Parameters_move(ps, new_Parameter("p1", p1, new_Constraint(0, INFINITY)));
+    Model* model = new_DistributionModel2("dist", factory(ps, xs));
+    double logP = model->logP(model);
+    model->free(model);
+    if (!isfinite(logP) || fabs(logP - expected) > 1e-8 * fabs(expected)) {
+        fprintf(stderr, "%s: logP %g, expected %g\n", name, logP, expected);
+        return (char*)name;
+    }
+    return NULL;
+}
+
+char* test_log_densities_in_the_tail() {
+    char* message;
+    // N(1; 0, 0.01): 100 sigma out
+    double z = 100.0;
+    message = check_tail(tail_normal, 1.0, 0.0, 0.01,
+                         -0.5 * log(2 * M_PI) - log(0.01) - 0.5 * z * z,
+                         "normal tail is not the log density");
+    if (message) return message;
+    // LogNormal(1; log 2, 0.01): kappa at 1 under a prior pinned at 2
+    z = (0.0 - log(2.0)) / 0.01;
+    message = check_tail(tail_lognormal, 1.0, log(2.0), 0.01,
+                         -0.5 * log(2 * M_PI) - log(0.01) - 0.0 - 0.5 * z * z,
+                         "lognormal tail is not the log density");
+    if (message) return message;
+    // Gamma(1000; shape 2, scale 1)
+    message = check_tail(tail_gamma, 1000.0, 2.0, 1.0,
+                         log(1000.0) - 1000.0 - lgamma(2.0),
+                         "gamma tail is not the log density");
+    if (message) return message;
+    // Weibull(10; scale 1, shape 3)
+    message = check_tail(tail_weibull, 10.0, 1.0, 3.0,
+                         log(3.0) + 2 * log(10.0) - 1000.0,
+                         "weibull tail is not the log density");
+    if (message) return message;
+    // and outside the support, still -inf
+    Parameters* xs = new_Parameters(1);
+    Parameters_move(xs, new_Parameter("x", -1.0, new_Constraint(-INFINITY, INFINITY)));
+    Parameters* ps = new_Parameters(2);
+    Parameters_move(ps, new_Parameter("p0", 0.0, new_Constraint(-INFINITY, INFINITY)));
+    Parameters_move(ps, new_Parameter("p1", 1.0, new_Constraint(0, INFINITY)));
+    Model* model = new_DistributionModel2("dist", tail_lognormal(ps, xs));
+    double logP = model->logP(model);
+    model->free(model);
+    mu_assert(isinf(logP) && logP < 0, "lognormal below 0 should be -inf");
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_exponential_distribution);
@@ -1978,6 +2052,8 @@ char* all_tests() {
     mu_run_test(test_gamma_distribution_multi_prior_transformed);
     mu_run_test(test_gamma_p_grad_a);
     mu_run_test(test_gamma_rgradient);
+
+    mu_run_test(test_log_densities_in_the_tail);
 
     mu_run_test(test_weibull_distribution);
     mu_run_test(test_weibull_distribution_prior);

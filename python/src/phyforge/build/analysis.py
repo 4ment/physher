@@ -7,18 +7,20 @@ reference ids declared before it.  The ordering below reflects that.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
 
 from ..io.dates import dates_from_csv, dates_from_names
 from ..io.fasta import read_fasta
 from ..io.trees import taxa_from_tree
 from ..nodes import compound, model_ref
-from ..spec import AnalysisSpec
-from ..validate import validate
+from ..spec import AnalysisSpec, PriorChoice, Values
+from ..validate import SpecError, check, validate
 from . import actions, likelihood, priors, variational
 from .context import BuildContext
+from .overrides import check_unused
 
-__all__ = ["build", "make_context"]
+__all__ = ["build", "describe", "make_context", "ParameterInfo"]
 
 
 def build(spec: AnalysisSpec, context: Optional[BuildContext] = None) -> Dict:
@@ -30,7 +32,89 @@ def build(spec: AnalysisSpec, context: Optional[BuildContext] = None) -> Dict:
     validate(spec)
     if context is None:
         context = make_context(spec)
+    document = _assemble(spec, context)
+    check_unused(context)
+    if context.problems:
+        raise context.problems[0]
+    return document
 
+
+@dataclass
+class ParameterInfo:
+    """One parameter of an analysis, as a front end shows it for editing.
+
+    Each ``default_*`` is what the builders choose on their own; the field
+    without the prefix is what the document actually carries once the spec's
+    overrides are applied.  ``mu``/``sigma`` are only set under advi and
+    ``weight`` only under mcmc.
+    """
+
+    id: str
+    role: str
+    kind: str
+    dimension: int
+    #: number of unconstrained values: one fewer than ``dimension`` for a
+    #: transformed simplex
+    free_dimension: int
+    estimated: bool
+    init: Values
+    default_init: Values
+    prior: Optional[PriorChoice]
+    default_prior: Optional[PriorChoice]
+    #: why the prior cannot be overridden, when it is part of the model
+    prior_note: Optional[str]
+    mu: Optional[Values]
+    sigma: Optional[Values]
+    weight: Optional[float]
+
+    @property
+    def prior_editable(self) -> bool:
+        return self.prior_note is None
+
+
+def describe(
+    spec: AnalysisSpec, *, strict: bool = True
+) -> Tuple[List[ParameterInfo], List[SpecError]]:
+    """Every parameter of ``spec``'s analysis, and every problem with the spec.
+
+    This is a dry run of :func:`build` that reports rather than raises: a
+    front end calls it to list what can be edited, and to show every problem
+    at once.  With ``strict=False`` an override naming a parameter this
+    analysis does not have is not a problem -- a GUI keeps those around for
+    when the model that has the parameter is selected again.  Nothing is
+    listed while the spec itself is invalid, since then there is no model.
+    """
+    problems = check(spec)
+    if problems:
+        return [], problems
+    context = make_context(spec)
+    _assemble(spec, context)
+    if strict:
+        check_unused(context)
+    rows = [
+        ParameterInfo(
+            id=free.id,
+            role=free.role,
+            kind=free.kind,
+            dimension=free.dimension,
+            free_dimension=free.free_dimension,
+            estimated=free.estimated,
+            init=free.init,
+            default_init=free.default_init,
+            prior=free.prior,
+            default_prior=free.default_prior,
+            prior_note=free.prior_note,
+            mu=free.mu,
+            sigma=free.sigma,
+            weight=free.weight,
+        )
+        for free in context.all_parameters
+    ]
+    return rows, list(context.problems)
+
+
+def _assemble(spec: AnalysisSpec, context: BuildContext) -> Dict:
+    """Every node of the document, recording override problems on ``context``."""
     document: Dict[str, object] = {}
     ids = context.ids
 

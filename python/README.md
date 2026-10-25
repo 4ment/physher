@@ -14,6 +14,30 @@ editable mode, so `uv run phyforge` picks up edits to `src/` immediately. To
 use it outside this checkout, `uv tool install .` puts the `phyforge` command
 on your PATH, and `uv build` writes a wheel and sdist to `dist/`.
 
+## GUI
+
+```bash
+uv run phyforge gui                 # or, installed:  pip install 'phyforge[gui]'
+```
+
+A [Streamlit](https://streamlit.io) app laid out like
+[torchseed](https://github.com/4ment/torchseed): one tab per part of the
+analysis (alignment, dates, tree, site model, clock, priors, algorithm,
+output), an alignment and a tree viewer, a date histogram and a root-to-tip
+regression that searches every branch for the best root. The method is picked
+in the sidebar, which also saves and reloads a session -- uploaded files
+included.
+
+The GUI builds the same `AnalysisSpec` the CLI does, and the Output tab shows
+the `phyforge` command that writes the identical configuration, so an analysis
+set up by hand can be scripted afterwards. Every problem `check` or the
+builders report is shown under the setting that causes it. Arguments after
+`gui` go to `streamlit run` (`phyforge gui --server.port 8600`); the app only
+listens on `localhost` unless `--server.address` says otherwise.
+
+The `gui` extra (streamlit, plotly, pandas, numpy) is optional: nothing outside
+`phyforge.gui` imports it, and the CLI keeps working without it.
+
 ## Methods
 
 | Command | What it writes |
@@ -199,6 +223,56 @@ physher registers every optimizer it reads.
 | `--no-bootstrap-compact` | overwrite the pattern weights in place instead of swapping in a pattern set with the undrawn patterns dropped |
 | `--bootstrap-threads N` | fit N replicates concurrently, each thread on its own copy of the model; the output does not depend on N. Not compatible with `--bootstrap-continue` or `--no-bootstrap-compact` |
 
+## Editing parameters
+
+Every free parameter can be changed individually, by its id. The shorthand
+options (`--kappa`, `--shape`, `--theta`, ...) still set starting values; a
+per-parameter flag wins over them.
+
+| Flag | Effect |
+| --- | --- |
+| `--list-parameters` | print the parameters of the analysis the rest of the command describes, with their defaults, and exit |
+| `--init ID=VALUES` | starting value |
+| `--fix ID[=VALUES]` | hold the parameter at its starting value: no prior, optimizer, operator or variational factor |
+| `--prior ID=PRIOR` | replace its prior, or give one to a parameter that has none (`ID=none` drops it) |
+| `--vi-mu ID=VALUES`, `--vi-sigma ID=VALUES` | advi: where its normal factor starts, on the unconstrained scale |
+| `--weight ID=W` | mcmc: weight of its operators (default: its dimension) |
+| `--params FILE` | a JSON object of the above keyed by id; the flags are applied on top |
+
+`VALUES` is a number, or one number per element separated by commas. A
+simplex takes proportions summing to one; `--vi-mu`/`--vi-sigma` take one
+fewer value than it has elements, since that is its dimension on the
+unconstrained scale. A prior is written `name(key=value,...)`, a vector
+hyperparameter in brackets, and is any of physher's distributions that is a
+density on the parameter's kind -- `exponential`, `gamma`, `lognormal`,
+`halfnormal`, `weibull`, `betaprime`, `oneonx`, `ctmcscale` on a positive
+parameter, `beta` and `kumaraswamy` on a unit one, `normal` and `cauchy` on a
+real one, `dirichlet` on a simplex.
+
+```bash
+$ phyforge mcmc -i fluA.fa -t fluA.tree -m HKY -C 4 --list-parameters
+id              kind      dim  estimate  init       prior                   weight
+shape           positive  1    yes       0.1        exponential(lambda=1)   1
+frequencies     simplex   4    yes       0.25 (x4)  dirichlet               4
+kappa           positive  1    yes       1          -                       1
+tree.distances  positive  135  yes       0.1        exponential(lambda=10)  135
+
+$ phyforge mcmc -i fluA.fa -t fluA.tree -m HKY -C 4 \
+    --prior 'kappa=lognormal(mu=1,sigma=1.25)' --weight kappa=10 \
+    --fix shape=0.5 --init frequencies=0.3,0.2,0.2,0.3 -o hky.json
+```
+
+Which ids exist depends on the model, so an override naming one this analysis
+does not have is an error, as is a prior that is no density on the parameter
+(a `beta` on `kappa`), a vector of the wrong length, or a starting value
+outside the parameter's support. Three priors are part of the model rather
+than a choice and cannot be replaced: the coalescent on a time tree's node
+heights, the GMRF on a piecewise coalescent's population sizes, and the
+reference lognormal of the `ncln` clock's branch rates; their hyperparameters
+(the GMRF precision, say) can still be given priors of their own. Starting
+branch lengths cannot be set while the parsimony initializer or
+`--keep-branch-lengths` would overwrite them.
+
 ## Examples
 
 ```bash
@@ -245,7 +319,15 @@ that to the builders; nothing below `phyforge.cli` knows argparse exists, so a
 GUI can drive the same code:
 
 ```python
-from phyforge import AnalysisSpec, build, check
+from phyforge import (
+    AnalysisSpec,
+    ParameterOverride,
+    PriorChoice,
+    build,
+    check,
+    describe,
+)
+from phyforge.cli.argv import to_command
 from phyforge.spec import ClockSpec, DataSpec, SubstitutionSpec
 
 spec = AnalysisSpec(
@@ -257,12 +339,24 @@ spec = AnalysisSpec(
 
 problems = check(spec)  # [] when the spec is usable
 document = build(spec)  # the physher JSON, as a dict
+
+rows, problems = describe(spec)  # every parameter, defaults and overrides
+spec.parameters["kappa"] = ParameterOverride(
+    prior=PriorChoice.parse("gamma(shape=2,rate=1)")
+)
+
+to_command(spec)  # 'phyforge mcmc -i fluA.fa ... --prior kappa=...'
 ```
 
 `check` returns every problem it finds, each carrying the `field` that caused
-it, so the same validation drives a CLI error message and a red form field.
-`AnalysisSpec.to_dict()` / `from_dict()` round-trip through JSON, which is
-enough for a GUI to save and reload a session.
+it -- the dotted path of the spec attribute, such as `site.categories` or
+`parameters.kappa.prior` -- so the same validation drives a CLI error message
+and a red form field. `describe` is a dry run of `build` that lists the
+parameters instead of raising, with what they default to and what the
+overrides make of them. `phyforge.cli.argv.to_command` writes a spec back as
+the command that parses into it, listing only what differs from the CLI's
+defaults. `AnalysisSpec.to_dict()` / `from_dict()` round-trip through JSON,
+which is what a GUI session file is made of.
 
 ### Layout
 
@@ -273,7 +367,8 @@ ids.py        the ids given to generated objects
 nodes.py      primitive physher JSON nodes
 io/           reading alignments, trees and dates
 build/        spec -> physher JSON
-cli/          argv -> spec, and printing the result
+cli/          argv -> spec, spec -> argv, and printing the result
+gui/          the Streamlit app: widgets -> spec (needs the gui extra)
 ```
 
 The piece that ties it together is the **free-parameter registry**
@@ -282,7 +377,11 @@ whether that parameter is estimated, its dimension, and whether it is
 transformed. Everything downstream — MCMC operators, the variational factors,
 the log Jacobian term, which columns to log, which parameters an optimizer
 moves — is a map over that list rather than a second guess at the model
-structure.
+structure. It is also where per-parameter overrides are applied: a builder
+hands `free_parameter` its default starting value and gets back the node the
+override asks for, a fixed parameter is registered apart from the free ones,
+and every prior goes through `overrides.PriorWriter`, which writes the
+override's distribution or the builder's default.
 
 ## Adding to it
 
@@ -313,11 +412,12 @@ uv run pytest
 `tests/test_physher.py` runs generated configurations through a real physher
 binary (`../build/physher`, or `PHYSHER_BIN`) and checks they reach the
 expected optimum on the `examples/fluA` data; it is skipped when no binary is
-found.
+found. `tests/test_gui.py` drives the app headless through Streamlit's
+`AppTest` and is skipped without the `gui` extra.
 
 ## Known physher issues
 
-Two things phyforge works around or cannot express:
+Things phyforge works around or cannot express:
 
 - **Codon models are refused.** physher's codon data type needs a genetic code
   alongside it, which its JSON reader cannot express as a bare `"codon"`

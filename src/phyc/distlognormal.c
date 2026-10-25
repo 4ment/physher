@@ -3,6 +3,7 @@
 
 #include "distlognormal.h"
 
+#include <math.h>
 #include <strings.h>
 
 #include <gsl/gsl_randist.h>
@@ -14,6 +15,15 @@
 #include "statistics.h"
 #include "gaussian.h"
 
+
+// Log density computed directly: log(gsl_ran_lognormal_pdf) underflows to -inf
+// once the density drops below DBL_MIN, which a tight prior reaches quickly.
+static double _lognormal_log_density(double x, double mu, double sigma){
+    if (x <= 0) return -INFINITY;
+    double logx = log(x);
+    double z = (logx - mu)/sigma;
+    return -0.5*(M_LN2 + log(M_PI)) - log(sigma) - logx - 0.5*z*z;
+}
 
 double DistributionModel_lognormal_logP(DistributionModel* dm){
     if(!dm->need_update) return dm->lp;
@@ -29,7 +39,7 @@ double DistributionModel_lognormal_logP(DistributionModel* dm){
             size_t dim = Parameter_size(x);
             const double* values = Parameter_values(x);
             for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(gsl_ran_lognormal_pdf(values[i], *mu, *sigma));
+                dm->lp += _lognormal_log_density(values[i], *mu, *sigma);
             }
         }
     }
@@ -41,7 +51,7 @@ double DistributionModel_lognormal_logP(DistributionModel* dm){
             size_t dim = Parameter_size(x);
             const double* values = Parameter_values(x);
             for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(gsl_ran_lognormal_pdf(values[i], mu[index], sigma[index]));
+                dm->lp += _lognormal_log_density(values[i], mu[index], sigma[index]);
                 index++;
             }
         }
@@ -66,7 +76,7 @@ double DistributionModel_lognormal_mean_stdev_logP(DistributionModel* dm){
             size_t dim = Parameter_size(x);
             const double* values = Parameter_values(x);
             for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(gsl_ran_lognormal_pdf(values[i], mu, sigma));
+                dm->lp += _lognormal_log_density(values[i], mu, sigma);
             }
         }
     }
@@ -80,7 +90,7 @@ double DistributionModel_lognormal_mean_stdev_logP(DistributionModel* dm){
             for (size_t i = 0; i < dim; i++) {
                 double sigma = sqrt(log(1.0 + (sd[index] * sd[index]) / (mean[index] * mean[index])));
                 double mu = log(mean[index]) - 0.5 * sigma * sigma;
-                dm->lp += log(gsl_ran_lognormal_pdf(values[i], mu, sigma));
+                dm->lp += _lognormal_log_density(values[i], mu, sigma);
                 index++;
             }
         }

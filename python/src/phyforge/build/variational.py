@@ -10,7 +10,9 @@ from __future__ import annotations
 from typing import List, Tuple
 
 from ..nodes import compound, distribution, model_ref, param_ref, parameter
-from .context import BuildContext
+from ..spec import Values
+from .context import BuildContext, FreeParameter
+from .overrides import vector_length_problem
 
 __all__ = ["build", "build_jacobian", "build_bounds"]
 
@@ -25,14 +27,16 @@ def build(context: BuildContext) -> Tuple[dict, List[str]]:
     for free in context.free_parameters:
         dimension = free.free_dimension
         vector = dimension > 1
+        free.mu = _factor(context, free, "mu", free.unconstrained_init)
+        free.sigma = _factor(context, free, "sigma", options.sigma_init)
         mu = parameter(
             f"mu.{free.id}",
-            free.unconstrained_init,
+            free.mu,
             dimension=dimension if vector else None,
         )
         sigma = parameter(
             f"sigma.{free.id}",
-            options.sigma_init,
+            free.sigma,
             dimension=dimension if vector else None,
             lower=0,
         )
@@ -47,6 +51,26 @@ def build(context: BuildContext) -> Tuple[dict, List[str]]:
         variational_parameters.extend((param_ref(mu["id"]), param_ref(sigma["id"])))
 
     return compound(ids.variational, distributions), variational_parameters
+
+
+def _factor(
+    context: BuildContext, free: FreeParameter, name: str, default: Values
+) -> Values:
+    """The override's ``mu`` or ``sigma`` for ``free``, or ``default``.
+
+    Both live in the unconstrained space, so a simplex of K proportions takes
+    K - 1 of them.
+    """
+    value = getattr(context.override(free.id), name)
+    if value is None:
+        return default
+    problem = vector_length_problem(value, free.free_dimension)
+    if problem:
+        context.problem(f"{name} for {free.id}: {problem}", free.id, name)
+        return default
+    if isinstance(value, list) and len(value) == 1:
+        return value[0]
+    return value
 
 
 def build_jacobian(context: BuildContext) -> dict:

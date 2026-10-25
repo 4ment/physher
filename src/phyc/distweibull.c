@@ -20,6 +20,15 @@
 //   f(x; a, b) = (b/a) (x/a)^(b-1) exp(-(x/a)^b)
 //   gsl_ran_weibull_pdf(x, a, b) with a = scale, b = shape
 
+// Log density computed directly: log(gsl_ran_weibull_pdf) underflows to -inf
+// far in the tail.  Matches gsl_ran_weibull_pdf at the boundary.
+static double _weibull_log_density(double x, double scale, double shape){
+    if (x < 0) return -INFINITY;
+    if (x == 0) return shape == 1 ? -log(scale) : -INFINITY;
+    double z = x/scale;
+    return log(shape/scale) + (shape - 1)*log(z) - pow(z, shape);
+}
+
 double DistributionModel_weibull_logP(DistributionModel* dm){
     if(!dm->need_update) return dm->lp;
     dm->lp = 0.0;
@@ -34,7 +43,7 @@ double DistributionModel_weibull_logP(DistributionModel* dm){
             size_t dim = Parameter_size(x);
             const double* values = Parameter_values(x);
             for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(gsl_ran_weibull_pdf(values[i] - dm->shift, scale[0], shape[0]));
+                dm->lp += _weibull_log_density(values[i] - dm->shift, scale[0], shape[0]);
             }
         }
     }
@@ -46,7 +55,7 @@ double DistributionModel_weibull_logP(DistributionModel* dm){
             size_t dim = Parameter_size(x);
             const double* values = Parameter_values(x);
             for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(gsl_ran_weibull_pdf(values[i] - dm->shift, scale[index], shape[index]));
+                dm->lp += _weibull_log_density(values[i] - dm->shift, scale[index], shape[index]);
                 index++;
             }
         }

@@ -46,6 +46,22 @@ def build(context: BuildContext) -> dict:
         )
         node["taxa"] = build_taxa(context)
     else:
+        if context.override(ids.branch_lengths).init is not None and (
+            spec.uses_parsimony or spec.data.keep_branch_lengths
+        ):
+            # Either one writes the branch lengths after this node is read,
+            # so the override would be silently replaced.
+            context.problem(
+                "starting branch lengths would be overwritten by "
+                + (
+                    "those in the tree file"
+                    if spec.data.keep_branch_lengths
+                    else "the parsimony initializer (turn it off with "
+                    "--no-init-parsimony)"
+                ),
+                ids.branch_lengths,
+                "init",
+            )
         node["branch_lengths"] = free_parameter(
             context,
             ids.branch_lengths,

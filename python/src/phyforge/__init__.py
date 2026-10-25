@@ -12,19 +12,26 @@ A front end only needs the first four::
 
     from phyforge import AnalysisSpec, build
     document = build(AnalysisSpec(method="ml", ...))
+
+``describe(spec)`` lists the parameters of the analysis -- their starting
+values, priors and the rest -- which ``AnalysisSpec.parameters`` overrides by
+id.
 """
 
-from .build import build, make_context
-from .spec import AnalysisSpec
+from .build import build, describe, make_context
+from .spec import AnalysisSpec, ParameterOverride, PriorChoice
 from .validate import SpecError, check, validate
 
 __version__ = "0.1.0"
 
 __all__ = [
     "AnalysisSpec",
+    "ParameterOverride",
+    "PriorChoice",
     "SpecError",
     "build",
     "check",
+    "describe",
     "make_context",
     "validate",
     "__version__",

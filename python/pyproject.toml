@@ -22,8 +22,16 @@ dependencies = []
 [project.scripts]
 phyforge = "phyforge.cli.main:main"
 
+[project.optional-dependencies]
+gui = [
+    "numpy>=2.0.2",
+    "pandas>=2.3.3",
+    "plotly>=7.1.0",
+    "streamlit>=1.50.0",
+]
+
 [dependency-groups]
-dev = ["flake8", "pytest", "ruff"]
+dev = ["flake8", "pytest", "ruff", "phyforge[gui]"]
 
 [tool.uv.build-backend]
 module-name = "phyforge"

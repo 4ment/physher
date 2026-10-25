@@ -31,7 +31,7 @@ def test_valid_spec_has_no_problems(alignment, tree_file):
 
 def test_missing_alignment_is_reported(tree_file):
     problems = check(AnalysisSpec(data=DataSpec(tree=tree_file)))
-    assert [problem.field for problem in problems] == ["alignment"]
+    assert [problem.field for problem in problems] == ["data.alignment"]
 
 
 def test_parsimony_is_accepted_on_an_unrooted_tree(alignment, tree_file):
@@ -46,7 +46,7 @@ def test_parsimony_is_refused_on_a_time_tree(alignment, tree_file):
         data=DataSpec(alignment=alignment, tree=tree_file, init_parsimony=True),
         clock=ClockSpec(kind="strict"),
     )
-    assert [problem.field for problem in check(spec)] == ["init_parsimony"]
+    assert [problem.field for problem in check(spec)] == ["data.init_parsimony"]
 
 
 def test_parsimony_and_keep_branch_lengths_conflict(alignment, tree_file):
@@ -58,7 +58,7 @@ def test_parsimony_and_keep_branch_lengths_conflict(alignment, tree_file):
             keep_branch_lengths=True,
         )
     )
-    assert [problem.field for problem in check(spec)] == ["init_parsimony"]
+    assert [problem.field for problem in check(spec)] == ["data.init_parsimony"]
 
 
 def test_parsimony_is_on_by_default_on_an_unrooted_tree(alignment, tree_file):
@@ -95,7 +95,7 @@ def test_the_default_is_not_a_conflict(alignment, tree_file):
         assert [
             problem.field
             for problem in check(spec)
-            if problem.field.startswith("init_parsimony")
+            if problem.field.startswith("data.init_parsimony")
         ] == []
 
 
@@ -108,7 +108,7 @@ def test_parsimony_floor_needs_parsimony(alignment, tree_file):
             init_parsimony_min=1e-8,
         )
     )
-    assert [problem.field for problem in check(spec)] == ["init_parsimony_min"]
+    assert [problem.field for problem in check(spec)] == ["data.init_parsimony_min"]
 
 
 def test_parsimony_floor_must_not_be_negative(alignment, tree_file):
@@ -120,14 +120,14 @@ def test_parsimony_floor_must_not_be_negative(alignment, tree_file):
             init_parsimony_min=-1.0,
         )
     )
-    assert [problem.field for problem in check(spec)] == ["init_parsimony_min"]
+    assert [problem.field for problem in check(spec)] == ["data.init_parsimony_min"]
 
 
 def test_unknown_model_is_reported(alignment, tree_file):
     problems = check(
         base(alignment, tree_file, substitution=SubstitutionSpec(kind="TN93"))
     )
-    assert problems[0].field == "model"
+    assert problems[0].field == "substitution.kind"
 
 
 def test_coalescent_needs_a_clock(alignment, tree_file):
@@ -152,14 +152,17 @@ def test_skygrid_needs_a_grid_and_cutoff(alignment, tree_file):
             coalescent=CoalescentSpec(kind="skygrid"),
         )
     )
-    assert {problem.field for problem in problems} == {"grid", "cutoff"}
+    assert {problem.field for problem in problems} == {
+        "coalescent.grid",
+        "coalescent.cutoff",
+    }
 
 
 def test_codon_models_are_refused(alignment, tree_file):
     problems = check(
         base(alignment, tree_file, substitution=SubstitutionSpec(kind="GY94"))
     )
-    assert problems[0].field == "model"
+    assert problems[0].field == "substitution.kind"
 
 
 def test_free_rates_refuse_the_gradient_methods(alignment, tree_file):
@@ -175,7 +178,7 @@ def test_free_rates_refuse_the_gradient_methods(alignment, tree_file):
             optimizer=OptimizerOptions(algorithm="bfgs"),
         )
     )
-    assert problems[0].field == "algorithm"
+    assert problems[0].field == "optimizer.algorithm"
 
 
 def test_em_refuses_what_physher_declines_to_run(alignment, tree_file):
@@ -192,7 +195,7 @@ def test_em_refuses_what_physher_declines_to_run(alignment, tree_file):
             ),
         )
     )
-    assert [problem.field for problem in problems] == ["em"]
+    assert [problem.field for problem in problems] == ["site.free_rate_em"]
 
     problems = check(
         base(
@@ -204,7 +207,7 @@ def test_em_refuses_what_physher_declines_to_run(alignment, tree_file):
             ),
         )
     )
-    assert "em" in {problem.field for problem in problems}
+    assert "site.free_rate_em" in {problem.field for problem in problems}
 
     problems = check(
         base(
@@ -216,7 +219,7 @@ def test_em_refuses_what_physher_declines_to_run(alignment, tree_file):
             ),
         )
     )
-    assert "em" in {problem.field for problem in problems}
+    assert "site.free_rate_em" in {problem.field for problem in problems}
 
 
 def test_em_needs_a_mixture_to_split(alignment, tree_file):
@@ -227,7 +230,7 @@ def test_em_needs_a_mixture_to_split(alignment, tree_file):
             site=SiteModelSpec(categories=4, distribution="gamma", free_rate_em=True),
         )
     )
-    assert [problem.field for problem in problems] == ["em"]
+    assert [problem.field for problem in problems] == ["site.free_rate_em"]
 
 
 def test_em_accepts_the_free_rate_default(alignment, tree_file):
@@ -258,7 +261,7 @@ def test_ordered_free_rates_have_no_invariant_form(alignment, tree_file):
             ),
         )
     )
-    assert problems[0].field == "invariant"
+    assert problems[0].field == "site.invariant"
 
 
 def test_cat_is_maximum_likelihood_only(alignment, tree_file):
@@ -299,7 +302,7 @@ def test_cat_prior_is_npmle_or_a_shape(alignment, tree_file):
 
     assert problems_for("npmle") == []
     assert problems_for("3.0") == []
-    assert problems_for("gamma")[0].field == "cat_prior"
+    assert problems_for("gamma")[0].field == "site.cat.prior"
 
 
 def test_a_probe_grid_only_means_something_to_the_posterior_mean(alignment, tree_file):
@@ -314,27 +317,27 @@ def test_a_probe_grid_only_means_something_to_the_posterior_mean(alignment, tree
             ),
         )
     )
-    assert problems[0].field == "cat_probe"
+    assert problems[0].field == "site.cat.probe"
 
 
 def test_cpo_needs_a_posterior_sample(alignment, tree_file):
     spec = base(alignment, tree_file, method="ml")
     spec.mcmc.cpo = True
-    assert [problem.field for problem in check(spec)] == ["cpo"]
+    assert [problem.field for problem in check(spec)] == ["mcmc.cpo"]
 
 
 def test_cpo_and_stepping_stone_are_refused(alignment, tree_file):
     spec = base(alignment, tree_file, method="mcmc")
     spec.mcmc.cpo = True
     spec.marginal = MarginalOptions(algorithms=("ss",), steps=10)
-    assert [problem.field for problem in check(spec)] == ["cpo"]
+    assert [problem.field for problem in check(spec)] == ["mcmc.cpo"]
 
 
 def test_cpo_burnin_cannot_swallow_the_chain(alignment, tree_file):
     spec = base(alignment, tree_file, method="mcmc")
     spec.mcmc.cpo = True
     spec.mcmc.cpo_burnin = spec.mcmc.pattern_samples()
-    assert [problem.field for problem in check(spec)] == ["cpo_burnin"]
+    assert [problem.field for problem in check(spec)] == ["mcmc.cpo_burnin"]
 
 
 def test_cpo_off_is_never_checked(alignment, tree_file):
@@ -346,14 +349,14 @@ def test_cpo_off_is_never_checked(alignment, tree_file):
 def test_lppd_needs_a_posterior_sample(alignment, tree_file):
     spec = base(alignment, tree_file, method="ml")
     spec.mcmc.lppd = True
-    assert [problem.field for problem in check(spec)] == ["lppd"]
+    assert [problem.field for problem in check(spec)] == ["mcmc.lppd"]
 
 
 def test_lppd_burnin_cannot_swallow_the_chain(alignment, tree_file):
     spec = base(alignment, tree_file, method="mcmc")
     spec.mcmc.lppd = True
     spec.mcmc.lppd_burnin = spec.mcmc.pattern_samples()
-    assert [problem.field for problem in check(spec)] == ["lppd_burnin"]
+    assert [problem.field for problem in check(spec)] == ["mcmc.lppd_burnin"]
 
 
 def test_lppd_and_cpo_are_checked_independently(alignment, tree_file):
@@ -361,7 +364,7 @@ def test_lppd_and_cpo_are_checked_independently(alignment, tree_file):
     spec.mcmc.cpo = True
     spec.mcmc.lppd = True
     spec.marginal = MarginalOptions(algorithms=("ss",), steps=10)
-    assert [problem.field for problem in check(spec)] == ["cpo", "lppd"]
+    assert [problem.field for problem in check(spec)] == ["mcmc.cpo", "mcmc.lppd"]
 
 
 def test_lppd_off_is_never_checked(alignment, tree_file):
@@ -383,20 +386,20 @@ def test_no_marginal_estimator_is_not_a_problem(alignment, tree_file):
 def test_unknown_estimator_is_refused(alignment, tree_file):
     spec = base(alignment, tree_file, method="mcmc")
     spec.marginal = MarginalOptions(algorithms=("gss",))
-    assert [problem.field for problem in check(spec)] == ["marginal"]
+    assert [problem.field for problem in check(spec)] == ["marginal.algorithms"]
 
 
 def test_stepping_stone_needs_a_ladder(alignment, tree_file):
     spec = base(alignment, tree_file, method="mcmc")
     spec.marginal = MarginalOptions(algorithms=("ss",))
-    assert [problem.field for problem in check(spec)] == ["steps"]
+    assert [problem.field for problem in check(spec)] == ["marginal.steps"]
 
 
 def test_a_ladder_nothing_reads_is_refused(alignment, tree_file):
     """Every chain but the last would be thrown away."""
     spec = base(alignment, tree_file, method="mcmc")
     spec.marginal = MarginalOptions(algorithms=("hm",), steps=8)
-    assert [problem.field for problem in check(spec)] == ["steps"]
+    assert [problem.field for problem in check(spec)] == ["marginal.steps"]
 
 
 def test_the_harmonic_mean_needs_no_ladder(alignment, tree_file):
@@ -408,13 +411,13 @@ def test_the_harmonic_mean_needs_no_ladder(alignment, tree_file):
 def test_chain_estimators_need_a_chain(alignment, tree_file):
     spec = base(alignment, tree_file, method="ml")
     spec.marginal = MarginalOptions(algorithms=("ss",), steps=8)
-    assert [problem.field for problem in check(spec)] == ["marginal"]
+    assert [problem.field for problem in check(spec)] == ["marginal.algorithms"]
 
 
 def test_importance_sampling_needs_an_approximation(alignment, tree_file):
     spec = base(alignment, tree_file, method="mcmc")
     spec.marginal = MarginalOptions(algorithms=("is",))
-    assert [problem.field for problem in check(spec)] == ["marginal"]
+    assert [problem.field for problem in check(spec)] == ["marginal.algorithms"]
 
 
 def test_importance_sampling_runs_under_advi(alignment, tree_file):
@@ -428,13 +431,13 @@ def test_marginal_burnin_cannot_swallow_the_chain(alignment, tree_file):
     spec.marginal = MarginalOptions(
         algorithms=("hm",), burnin=spec.mcmc.logged_samples()
     )
-    assert [problem.field for problem in check(spec)] == ["marginal_burnin"]
+    assert [problem.field for problem in check(spec)] == ["marginal.burnin"]
 
 
 def test_the_ladder_shape_is_checked(alignment, tree_file):
     spec = base(alignment, tree_file, method="mcmc")
     spec.marginal = MarginalOptions(algorithms=("ss",), steps=4, ladder_alpha=0)
-    assert [problem.field for problem in check(spec)] == ["ladder_alpha"]
+    assert [problem.field for problem in check(spec)] == ["marginal.ladder_alpha"]
 
 
 # --------------------------------------------------------------------------
@@ -450,7 +453,7 @@ def test_no_bootstrap_is_not_a_problem(alignment, tree_file):
 def test_the_bootstrap_needs_a_point_estimate(alignment, tree_file):
     spec = base(alignment, tree_file, method="mcmc")
     spec.bootstrap = BootstrapOptions(replicates=100)
-    assert [problem.field for problem in check(spec)] == ["bootstrap"]
+    assert [problem.field for problem in check(spec)] == ["bootstrap.replicates"]
 
 
 @pytest.mark.parametrize("method", ["ml", "map"])
@@ -463,29 +466,60 @@ def test_the_bootstrap_runs_after_either_point_estimate(alignment, tree_file, me
 def test_negative_replicates_are_refused(alignment, tree_file):
     spec = base(alignment, tree_file, method="ml")
     spec.bootstrap = BootstrapOptions(replicates=-1)
-    assert [problem.field for problem in check(spec)] == ["bootstrap"]
+    assert [problem.field for problem in check(spec)] == ["bootstrap.replicates"]
 
 
 @pytest.mark.parametrize("threads", [0, -2])
 def test_threads_below_one_are_refused(alignment, tree_file, threads):
     spec = base(alignment, tree_file, method="ml")
     spec.bootstrap = BootstrapOptions(replicates=10, threads=threads)
-    assert [problem.field for problem in check(spec)] == ["bootstrap"]
+    assert [problem.field for problem in check(spec)] == ["bootstrap.threads"]
 
 
 def test_threads_need_independent_replicates(alignment, tree_file):
     spec = base(alignment, tree_file, method="ml")
     spec.bootstrap = BootstrapOptions(replicates=10, threads=4, reset=False)
-    assert [problem.field for problem in check(spec)] == ["bootstrap"]
+    assert [problem.field for problem in check(spec)] == ["bootstrap.threads"]
 
 
 def test_threads_need_compacted_pattern_sets(alignment, tree_file):
     spec = base(alignment, tree_file, method="ml")
     spec.bootstrap = BootstrapOptions(replicates=10, threads=4, compact=False)
-    assert [problem.field for problem in check(spec)] == ["bootstrap"]
+    assert [problem.field for problem in check(spec)] == ["bootstrap.threads"]
 
 
 def test_threads_are_valid_with_the_defaults(alignment, tree_file):
     spec = base(alignment, tree_file, method="ml")
     spec.bootstrap = BootstrapOptions(replicates=10, threads=4)
     assert check(spec) == []
+
+
+# --------------------------------------------------------------------------
+# error fields
+# --------------------------------------------------------------------------
+
+
+def test_every_error_field_names_a_spec_attribute():
+    """A front end looks the field up on the spec, so each one has to resolve."""
+    import ast
+    import importlib
+    import inspect
+
+    validate = importlib.import_module("phyforge.validate")
+
+    fields = {"mcmc.cpo", "mcmc.cpo_burnin", "mcmc.lppd", "mcmc.lppd_burnin"}
+    for node in ast.walk(ast.parse(inspect.getsource(validate))):
+        if (
+            isinstance(node, ast.Call)
+            and getattr(node.func, "id", None) == "SpecError"
+            and len(node.args) == 2
+            and isinstance(node.args[1], ast.Constant)
+        ):
+            fields.add(node.args[1].value)
+
+    assert len(fields) > 30
+    for path in fields:
+        target = AnalysisSpec()
+        for name in path.split("."):
+            assert hasattr(target, name), path
+            target = getattr(target, name)

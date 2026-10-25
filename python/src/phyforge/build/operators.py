@@ -16,18 +16,26 @@ from .context import SIMPLEX, UNIT, BuildContext, FreeParameter
 def build(context: BuildContext) -> List[dict]:
     operators: List[dict] = []
     for free in context.free_parameters:
-        operators.extend(_operators_for(free))
+        free.weight = weight(context, free)
+        operators.extend(_operators_for(free, free.weight))
     return operators
 
 
-def _operators_for(free: FreeParameter) -> List[dict]:
+def weight(context: BuildContext, free: FreeParameter) -> float:
+    """How often the operators on ``free`` are picked, unless overridden.
+
+    An operator is picked in proportion to its weight, and each proposal moves
+    one parameter, so a scalar and a vector of branch lengths sharing a weight
+    would give every branch length 1/N of the attention the scalar gets.
+    Weighting by the dimension the operator moves keeps the per-element
+    proposal rate the same across the whole model.
+    """
+    override = context.override(free.id).weight
+    return free.dimension if override is None else override
+
+
+def _operators_for(free: FreeParameter, weight: float) -> List[dict]:
     x = param_ref(free.id)
-    # An operator is picked in proportion to its weight, and each proposal
-    # moves one parameter, so a scalar and a vector of branch lengths sharing a
-    # weight would give every branch length 1/N of the attention the scalar
-    # gets. Weighting by the dimension the operator moves keeps the per-element
-    # proposal rate the same across the whole model.
-    weight = free.dimension
     if free.kind == SIMPLEX:
         return [_operator("dirichlet", free.id, x, weight)]
     if free.kind == UNIT:

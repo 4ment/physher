@@ -1,10 +1,17 @@
-"""Priors over the free parameters of the evolutionary model."""
+"""Priors over the free parameters of the evolutionary model.
+
+Each builder below names the *default* prior on the parameters it covers; the
+:class:`~phyforge.build.overrides.PriorWriter` swaps in the user's choice where
+an override gives one, and gives the parameters with no default a prior of
+their own when asked.
+"""
 
 from __future__ import annotations
 
 from typing import List
 
-from ..nodes import compound, distribution, model_ref, param_ref
+from ..nodes import compound, distribution, param_ref
+from ..spec import PriorChoice
 from . import coalescent as coalescent_builder
 from .branchmodel import (
     NCLN_REFERENCE_MU,
@@ -14,6 +21,7 @@ from .branchmodel import (
     ROLE_RATE,
 )
 from .context import POSITIVE, SIMPLEX, BuildContext
+from .overrides import PriorWriter
 from .sitemodel import (
     ROLE_SHAPE,
     ROLE_SITE_PROPORTIONS,
@@ -21,7 +29,10 @@ from .sitemodel import (
     ROLE_TOP_RATE,
 )
 from .substitution import ROLE_FREQUENCIES, ROLE_RATES
-from .tree import ROLE_BRANCH_LENGTHS
+from .tree import ROLE_BRANCH_LENGTHS, ROLE_PROPORTIONS
+
+#: The flat prior every estimated simplex gets.
+FLAT_DIRICHLET = PriorChoice("dirichlet")
 
 
 def build(context: BuildContext) -> dict:
@@ -31,69 +42,57 @@ def build(context: BuildContext) -> dict:
     been registered.
     """
     spec = context.spec
+    writer = PriorWriter(context)
     distributions: List[dict] = []
 
     if spec.clock.is_time_tree:
         if spec.coalescent.kind is not None:
             distributions.append(coalescent_builder.build(context))
-            distributions.extend(coalescent_builder.build_priors(context))
+            # The coalescent is the density of the node heights, so it is what
+            # the height proportions are distributed as.
+            writer.structural(
+                context.by_role(ROLE_PROPORTIONS), "the coalescent tree prior"
+            )
+            distributions.extend(coalescent_builder.build_priors(context, writer))
         if spec.clock.estimates_rate:
-            distributions.extend(_clock_prior(context))
-        distributions.extend(_relaxed_clock_priors(context))
+            distributions.extend(_clock_prior(context, writer))
+        distributions.extend(_relaxed_clock_priors(context, writer))
     else:
-        distributions.extend(_branch_length_prior(context))
+        distributions.extend(_branch_length_prior(context, writer))
 
-    distributions.extend(_substitution_priors(context))
-    distributions.extend(_site_model_priors(context))
+    distributions.extend(_substitution_priors(context, writer))
+    distributions.extend(_site_model_priors(context, writer))
+    distributions.extend(writer.remaining())
 
     return compound(context.ids.prior, distributions)
 
 
-def _branch_length_prior(context: BuildContext) -> List[dict]:
+def _branch_length_prior(context: BuildContext, writer: PriorWriter) -> List[dict]:
     spec = context.spec.priors
-    branch_lengths = context.by_role(ROLE_BRANCH_LENGTHS)
-    if branch_lengths is None or spec.branch_lengths == "none":
-        return []
-    if spec.branch_lengths != "exponential":
+    if spec.branch_lengths == "none":
+        default = None
+    elif spec.branch_lengths == "exponential":
+        default = PriorChoice("exponential", {"lambda": 1.0 / spec.branch_lengths_mean})
+    else:
         raise ValueError(f"unsupported branch length prior {spec.branch_lengths!r}")
-    return [
-        distribution(
-            "prior.branch_lengths",
-            "exponential",
-            param_ref(branch_lengths.id),
-            parameters={"lambda": 1.0 / spec.branch_lengths_mean},
-        )
-    ]
+    return writer.write(
+        context.by_role(ROLE_BRANCH_LENGTHS), "prior.branch_lengths", default
+    )
 
 
-def _clock_prior(context: BuildContext) -> List[dict]:
+def _clock_prior(context: BuildContext, writer: PriorWriter) -> List[dict]:
     spec = context.spec.priors
-    rate = context.by_role(ROLE_RATE)
-    if rate is None:
-        return []
     if spec.clock == "ctmcscale":
         # The CTMC scale reference prior, which needs the tree to scale itself.
-        return [
-            distribution(
-                "prior.rate",
-                "ctmcscale",
-                param_ref(rate.id),
-                tree=model_ref(context.ids.tree),
-            )
-        ]
-    if spec.clock == "exponential":
-        return [
-            distribution(
-                "prior.rate",
-                "exponential",
-                param_ref(rate.id),
-                parameters={"lambda": spec.clock_mean},
-            )
-        ]
-    raise ValueError(f"unsupported clock prior {spec.clock!r}")
+        default = PriorChoice("ctmcscale")
+    elif spec.clock == "exponential":
+        default = PriorChoice("exponential", {"lambda": spec.clock_mean})
+    else:
+        raise ValueError(f"unsupported clock prior {spec.clock!r}")
+    return writer.write(context.by_role(ROLE_RATE), "prior.rate", default)
 
 
-def _relaxed_clock_priors(context: BuildContext) -> List[dict]:
+def _relaxed_clock_priors(context: BuildContext, writer: PriorWriter) -> List[dict]:
     """The reference lognormal on an ``ncln`` clock's raw branch rates.
 
     Its mu and sigma are the constants the branch model's transform is written
@@ -103,60 +102,48 @@ def _relaxed_clock_priors(context: BuildContext) -> List[dict]:
     rates = context.by_role(ROLE_BRANCH_RATES)
     if rates is None:
         return []
+    reference = PriorChoice(
+        "lognormal", {"mu": NCLN_REFERENCE_MU, "sigma": NCLN_REFERENCE_SIGMA}
+    )
+    # Written directly rather than through the writer: an override must not
+    # replace it, but the parameter should still report what it is.
+    rates.prior = rates.default_prior = reference
+    writer.structural(rates, "the reference lognormal of the ncln clock")
     priors = [
-        distribution(
-            "prior.branch_rates",
-            "lognormal",
-            param_ref(rates.id),
-            parameters={
-                "mu": NCLN_REFERENCE_MU,
-                "sigma": NCLN_REFERENCE_SIGMA,
-            },
-        )
+        _node("prior.branch_rates", reference, rates.id),
     ]
-    scale = context.by_role(ROLE_CLOCK_SCALE)
-    if scale is not None:
-        priors.append(
-            distribution(
-                "prior.clock_scale",
-                "exponential",
-                param_ref(scale.id),
-                parameters={"lambda": 1.0},
-            )
+    priors.extend(
+        writer.write(
+            context.by_role(ROLE_CLOCK_SCALE),
+            "prior.clock_scale",
+            PriorChoice("exponential", {"lambda": 1.0}),
         )
+    )
     return priors
 
 
-def _substitution_priors(context: BuildContext) -> List[dict]:
+def _substitution_priors(context: BuildContext, writer: PriorWriter) -> List[dict]:
     """A flat Dirichlet on each estimated simplex."""
     priors = []
     for role, id_ in (
         (ROLE_FREQUENCIES, "prior.frequencies"),
         (ROLE_RATES, "prior.rates"),
     ):
-        parameter = context.by_role(role)
-        if parameter is not None:
-            priors.append(distribution(id_, "dirichlet", param_ref(parameter.id)))
+        priors.extend(writer.write(context.by_role(role), id_, FLAT_DIRICHLET))
     return priors
 
 
-def _site_model_priors(context: BuildContext) -> List[dict]:
-    priors = []
-    shape = context.by_role(ROLE_SHAPE)
-    if shape is not None:
-        priors.append(
-            distribution(
-                "prior.shape",
-                "exponential",
-                param_ref(shape.id),
-                parameters={"lambda": 1.0 / context.spec.priors.shape_mean},
-            )
-        )
-    priors.extend(_free_rate_priors(context))
+def _site_model_priors(context: BuildContext, writer: PriorWriter) -> List[dict]:
+    priors = writer.write(
+        context.by_role(ROLE_SHAPE),
+        "prior.shape",
+        PriorChoice("exponential", {"lambda": 1.0 / context.spec.priors.shape_mean}),
+    )
+    priors.extend(_free_rate_priors(context, writer))
     return priors
 
 
-def _free_rate_priors(context: BuildContext) -> List[dict]:
+def _free_rate_priors(context: BuildContext, writer: PriorWriter) -> List[dict]:
     """Priors on the free category rates and their weights.
 
     Flat on the simplices, as everywhere else.  The positive parameters get an
@@ -176,14 +163,16 @@ def _free_rate_priors(context: BuildContext) -> List[dict]:
         if parameter is None:
             continue
         if parameter.kind == SIMPLEX:
-            priors.append(distribution(id_, "dirichlet", param_ref(parameter.id)))
+            default = FLAT_DIRICHLET
         elif parameter.kind == POSITIVE:
-            priors.append(
-                distribution(
-                    id_,
-                    "exponential",
-                    param_ref(parameter.id),
-                    parameters={"lambda": 1.0},
-                )
-            )
+            default = PriorChoice("exponential", {"lambda": 1.0})
+        else:
+            default = None
+        priors.extend(writer.write(parameter, id_, default))
     return priors
+
+
+def _node(id_: str, choice: PriorChoice, x: str) -> dict:
+    return distribution(
+        id_, choice.distribution, param_ref(x), parameters=dict(choice.parameters)
+    )

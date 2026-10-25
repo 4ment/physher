@@ -20,18 +20,27 @@ from .spec import (
     MARGINAL_IMPORTANCE,
     MARGINAL_TEMPERED,
     METHODS,
+    NO_PRIOR,
+    PRIOR_DISTRIBUTIONS,
     RATE_PARAMETERIZATIONS,
     RATE_PARAMETERIZATIONS_WITH_INVARIANT,
+    REAL_HYPERPARAMETERS,
     SITE_MODELS,
     SUBSTITUTION_MODELS,
     AnalysisSpec,
+    PriorChoice,
 )
 
-__all__ = ["SpecError", "check", "validate"]
+__all__ = ["SpecError", "check", "check_prior", "validate"]
 
 
 class SpecError(ValueError):
-    """A problem with an analysis spec, tied to the field that caused it."""
+    """A problem with an analysis spec, tied to the field that caused it.
+
+    ``field`` is the dotted path of the spec attribute at fault, e.g.
+    ``site.categories`` or ``parameters.kappa.prior``, so a front end can put
+    the message next to the widget or flag that sets it.
+    """
 
     def __init__(self, message: str, field: Optional[str] = None):
         super().__init__(message)
@@ -69,6 +78,7 @@ def check(spec: AnalysisSpec) -> List[SpecError]:
     problems.extend(_check_mcmc(spec))
     problems.extend(_check_marginal(spec))
     problems.extend(_check_bootstrap(spec))
+    problems.extend(_check_parameters(spec))
     return problems
 
 
@@ -116,7 +126,7 @@ def _check_pattern_estimator(
             SpecError(
                 f"{label} is estimated from a "
                 f"posterior sample, which {spec.method} does not draw",
-                name,
+                f"mcmc.{name}",
             )
         )
         return problems
@@ -129,7 +139,7 @@ def _check_pattern_estimator(
         problems.append(
             SpecError(
                 f"{name} cannot be combined with stepping stone (--steps)",
-                name,
+                f"mcmc.{name}",
             )
         )
 
@@ -139,20 +149,20 @@ def _check_pattern_estimator(
             SpecError(
                 f"a chain of {options.length} sampled every {options.every} "
                 f"writes no pattern log likelihoods for {name} to read",
-                name,
+                f"mcmc.{name}",
             )
         )
     elif burnin is not None:
         if burnin < 0:
             problems.append(
-                SpecError(f"{name} burnin cannot be negative", f"{name}_burnin")
+                SpecError(f"{name} burnin cannot be negative", f"mcmc.{name}_burnin")
             )
         elif burnin >= samples:
             problems.append(
                 SpecError(
                     f"a burnin of {burnin} leaves nothing of the "
                     f"{samples} logged samples",
-                    f"{name}_burnin",
+                    f"mcmc.{name}_burnin",
                 )
             )
     return problems
@@ -169,7 +179,7 @@ def _check_marginal(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"unknown marginal likelihood estimator {algorithm!r} (choose "
                 f"from {', '.join(MARGINAL_ALGORITHMS)})",
-                "marginal",
+                "marginal.algorithms",
             )
         )
     if unknown:
@@ -184,7 +194,7 @@ def _check_marginal(spec: AnalysisSpec) -> List[SpecError]:
                 f"{', '.join(chain)} {'estimate' if len(chain) > 1 else 'estimates'} "
                 f"the marginal likelihood from a chain, which {spec.method} does "
                 "not run",
-                "marginal",
+                "marginal.algorithms",
             )
         )
     if marginal.importance and spec.method != "advi":
@@ -192,7 +202,7 @@ def _check_marginal(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "importance sampling reweights draws from a variational "
                 f"approximation, which {spec.method} does not fit",
-                "marginal",
+                "marginal.algorithms",
             )
         )
 
@@ -202,15 +212,19 @@ def _check_marginal(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"{', '.join(tempered)} integrates over a ladder of tempered "
                 "chains, so it needs at least 2 steps",
-                "steps",
+                "marginal.steps",
             )
         )
     if marginal.steps == 1:
         problems.append(
-            SpecError("a ladder of 1 step has nothing to integrate over", "steps")
+            SpecError(
+                "a ladder of 1 step has nothing to integrate over", "marginal.steps"
+            )
         )
     elif marginal.steps < 0:
-        problems.append(SpecError("the number of steps cannot be negative", "steps"))
+        problems.append(
+            SpecError("the number of steps cannot be negative", "marginal.steps")
+        )
     elif marginal.steps > 1 and not tempered:
         # Running the ladder is the expensive part; without an estimator that
         # reads it, every chain but the last is thrown away.
@@ -218,7 +232,7 @@ def _check_marginal(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "a ladder of tempered chains is only read by "
                 f"{', '.join(MARGINAL_TEMPERED)}; none was asked for",
-                "steps",
+                "marginal.steps",
             )
         )
 
@@ -227,24 +241,28 @@ def _check_marginal(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"unknown temperature ladder {marginal.ladder!r} (choose from "
                 f"{', '.join(LADDERS)})",
-                "ladder",
+                "marginal.ladder",
             )
         )
     if marginal.ladder == "beta":
         if marginal.ladder_alpha <= 0:
             problems.append(
-                SpecError("the beta ladder's alpha must be positive", "ladder_alpha")
+                SpecError(
+                    "the beta ladder's alpha must be positive", "marginal.ladder_alpha"
+                )
             )
         if marginal.ladder_beta <= 0:
             problems.append(
-                SpecError("the beta ladder's beta must be positive", "ladder_beta")
+                SpecError(
+                    "the beta ladder's beta must be positive", "marginal.ladder_beta"
+                )
             )
 
     if marginal.importance and marginal.samples < 1:
         problems.append(
             SpecError(
                 "importance sampling needs at least one draw to reweight",
-                "marginal_samples",
+                "marginal.samples",
             )
         )
 
@@ -256,14 +274,14 @@ def _check_marginal(spec: AnalysisSpec) -> List[SpecError]:
                     f"a chain of {spec.mcmc.length} sampled every "
                     f"{spec.mcmc.every} writes nothing for the marginal "
                     "likelihood estimators to read",
-                    "marginal",
+                    "marginal.algorithms",
                 )
             )
         elif marginal.burnin is not None:
             if marginal.burnin < 0:
                 problems.append(
                     SpecError(
-                        "the marginal burnin cannot be negative", "marginal_burnin"
+                        "the marginal burnin cannot be negative", "marginal.burnin"
                     )
                 )
             elif marginal.burnin >= samples:
@@ -271,7 +289,7 @@ def _check_marginal(spec: AnalysisSpec) -> List[SpecError]:
                     SpecError(
                         f"a burnin of {marginal.burnin} leaves nothing of the "
                         f"{samples} logged samples",
-                        "marginal_burnin",
+                        "marginal.burnin",
                     )
                 )
     return problems
@@ -283,11 +301,13 @@ def _check_bootstrap(spec: AnalysisSpec) -> List[SpecError]:
     problems: List[SpecError] = []
     if options.replicates < 0:
         problems.append(
-            SpecError("the number of replicates cannot be negative", "bootstrap")
+            SpecError(
+                "the number of replicates cannot be negative", "bootstrap.replicates"
+            )
         )
     if options.threads < 1:
         problems.append(
-            SpecError("the number of threads must be at least 1", "bootstrap")
+            SpecError("the number of threads must be at least 1", "bootstrap.threads")
         )
     if not options.enabled:
         return problems
@@ -298,7 +318,7 @@ def _check_bootstrap(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "threads need every replicate to start from the point estimate, "
                 "which --bootstrap-continue turns off",
-                "bootstrap",
+                "bootstrap.threads",
             )
         )
     if options.threads > 1 and not options.compact:
@@ -306,7 +326,7 @@ def _check_bootstrap(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "threads need the compacted pattern sets: without them a replicate "
                 "rewrites the weights every thread reads",
-                "bootstrap",
+                "bootstrap.threads",
             )
         )
     if spec.method not in ("ml", "map"):
@@ -314,7 +334,7 @@ def _check_bootstrap(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "the bootstrap refits a point estimate on resampled alignments, "
                 f"and {spec.method} does not produce one",
-                "bootstrap",
+                "bootstrap.replicates",
             )
         )
     return problems
@@ -323,14 +343,16 @@ def _check_bootstrap(spec: AnalysisSpec) -> List[SpecError]:
 def _check_data(spec: AnalysisSpec) -> List[SpecError]:
     problems = []
     if spec.data.alignment is None:
-        problems.append(SpecError("an alignment is required", "alignment"))
+        problems.append(SpecError("an alignment is required", "data.alignment"))
     elif not os.path.exists(spec.data.alignment):
-        problems.append(SpecError(f"{spec.data.alignment} does not exist", "alignment"))
+        problems.append(
+            SpecError(f"{spec.data.alignment} does not exist", "data.alignment")
+        )
 
     if spec.data.tree is None:
-        problems.append(SpecError("a tree is required", "tree"))
+        problems.append(SpecError("a tree is required", "data.tree"))
     elif not os.path.exists(spec.data.tree):
-        problems.append(SpecError(f"{spec.data.tree} does not exist", "tree"))
+        problems.append(SpecError(f"{spec.data.tree} does not exist", "data.tree"))
 
     problems.extend(_check_parsimony(spec))
     return problems
@@ -349,7 +371,7 @@ def _check_parsimony(spec: AnalysisSpec) -> List[SpecError]:
                 SpecError(
                     "parsimony initializes branch lengths, which a time tree "
                     "does not have",
-                    "init_parsimony",
+                    "data.init_parsimony",
                 )
             )
 
@@ -359,7 +381,7 @@ def _check_parsimony(spec: AnalysisSpec) -> List[SpecError]:
                     "--init-parsimony and --keep-branch-lengths both set the "
                     "starting branch lengths; parsimony would overwrite the ones "
                     "read from the tree file",
-                    "init_parsimony",
+                    "data.init_parsimony",
                 )
             )
 
@@ -369,14 +391,14 @@ def _check_parsimony(spec: AnalysisSpec) -> List[SpecError]:
                 SpecError(
                     "a parsimony branch length floor needs the parsimony "
                     "initializer, which is off for this analysis",
-                    "init_parsimony_min",
+                    "data.init_parsimony_min",
                 )
             )
         elif spec.data.init_parsimony_min < 0:
             problems.append(
                 SpecError(
                     "the parsimony branch length floor cannot be negative",
-                    "init_parsimony_min",
+                    "data.init_parsimony_min",
                 )
             )
     return problems
@@ -389,7 +411,7 @@ def _check_substitution(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"unknown substitution model {spec.substitution.kind!r} (choose "
                 f"from {', '.join(sorted(SUBSTITUTION_MODELS))})",
-                "model",
+                "substitution.kind",
             )
         ]
     if SUBSTITUTION_MODELS[kind] == "codon":
@@ -399,7 +421,7 @@ def _check_substitution(spec: AnalysisSpec) -> List[SpecError]:
         return [
             SpecError(
                 f"{kind} is a codon model, which phyforge cannot configure yet",
-                "model",
+                "substitution.kind",
             )
         ]
     if spec.substitution.frequencies not in ("equal", "estimate"):
@@ -407,7 +429,7 @@ def _check_substitution(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"frequencies must be 'equal' or 'estimate', not "
                 f"{spec.substitution.frequencies!r}",
-                "frequencies",
+                "substitution.frequencies",
             )
         ]
     return []
@@ -418,14 +440,16 @@ def _check_site(spec: AnalysisSpec) -> List[SpecError]:
     problems = []
     if site.categories < 1:
         problems.append(
-            SpecError("the number of rate categories must be at least 1", "categories")
+            SpecError(
+                "the number of rate categories must be at least 1", "site.categories"
+            )
         )
     if site.distribution not in SITE_MODELS:
         return problems + [
             SpecError(
                 f"unknown site rate model {site.distribution!r} "
                 f"(choose from {', '.join(SITE_MODELS)})",
-                "site_distribution",
+                "site.distribution",
             )
         ]
     if site.distribution in ("discrete", "cat") and site.categories < 2:
@@ -433,7 +457,7 @@ def _check_site(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"{site.distribution!r} is a mixture over rate categories, so it "
                 "needs at least 2 of them",
-                "categories",
+                "site.categories",
             )
         )
     if site.is_cat:
@@ -445,7 +469,7 @@ def _check_site(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "EM splits a free-rate mixture, and there is none here (it "
                 "needs 'discrete' with at least 2 categories)",
-                "em",
+                "site.free_rate_em",
             )
         )
     return problems
@@ -460,7 +484,7 @@ def _check_free_rates(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"unknown rate parameterization {site.rate_parameterization!r} "
                 f"(choose from {', '.join(RATE_PARAMETERIZATIONS)})",
-                "rate_parameterization",
+                "site.rate_parameterization",
             )
         )
     elif (
@@ -473,7 +497,7 @@ def _check_free_rates(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"{site.rate_parameterization} has no invariant form (use "
                 f"{' or '.join(RATE_PARAMETERIZATIONS_WITH_INVARIANT)})",
-                "invariant",
+                "site.invariant",
             )
         )
     if site.quadrature is not None:
@@ -481,7 +505,7 @@ def _check_free_rates(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "a quadrature discretizes a continuous distribution; free rates "
                 "have none to discretize",
-                "quadrature",
+                "site.quadrature",
             )
         )
     if site.free_rate_em:
@@ -509,7 +533,7 @@ def _check_free_rate_em(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "EM is implemented for the rate_increments chart only, not "
                 f"{site.rate_parameterization}",
-                "em",
+                "site.free_rate_em",
             )
         )
     if spec.method not in ("ml", "map"):
@@ -517,7 +541,7 @@ def _check_free_rate_em(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "EM is an entry in the optimizer schedule, and only ml and map "
                 "run an optimizer",
-                "em",
+                "site.free_rate_em",
             )
         )
     if spec.clock.is_time_tree:
@@ -529,7 +553,7 @@ def _check_free_rate_em(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "EM re-imposes the unit-mean constraint by scaling branch "
                 "lengths, which a time tree does not own",
-                "em",
+                "site.free_rate_em",
             )
         )
     if (site.categories + 1) * site.categories * 1e-4 >= 1.0:
@@ -539,7 +563,7 @@ def _check_free_rate_em(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"{site.categories} categories cannot all clear the weight "
                 "floor EM applies",
-                "categories",
+                "site.categories",
             )
         )
     return problems
@@ -556,7 +580,7 @@ def _check_cat(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "the CAT likelihood kernels are implemented for nucleotides only, "
                 f"and {spec.substitution.kind} is a {datatype} model",
-                "site_distribution",
+                "site.distribution",
             )
         )
     if spec.method != "ml":
@@ -577,7 +601,7 @@ def _check_cat(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "CAT reads its categories off the alignment and takes no "
                 "invariant class",
-                "invariant",
+                "site.invariant",
             )
         )
     if spec.site.quadrature is not None:
@@ -585,7 +609,7 @@ def _check_cat(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "CAT reads its categories off the alignment rather than "
                 "discretizing a distribution",
-                "quadrature",
+                "site.quadrature",
             )
         )
     if cat.assignment not in CAT_ASSIGNMENTS:
@@ -593,7 +617,7 @@ def _check_cat(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"unknown CAT assignment {cat.assignment!r} (choose from "
                 f"{', '.join(CAT_ASSIGNMENTS)})",
-                "cat_assignment",
+                "site.cat.assignment",
             )
         )
     if cat.prior is not None and cat.prior != "npmle":
@@ -603,13 +627,13 @@ def _check_cat(spec: AnalysisSpec) -> List[SpecError]:
             problems.append(
                 SpecError(
                     f"the CAT prior is 'npmle' or a Gamma shape, not {cat.prior!r}",
-                    "cat_prior",
+                    "site.cat.prior",
                 )
             )
         else:
             if shape < 0:
                 problems.append(
-                    SpecError("a Gamma shape cannot be negative", "cat_prior")
+                    SpecError("a Gamma shape cannot be negative", "site.cat.prior")
                 )
     if cat.probe is not None:
         if cat.assignment == "argmax":
@@ -617,11 +641,13 @@ def _check_cat(spec: AnalysisSpec) -> List[SpecError]:
                 SpecError(
                     "the probe grid is what the posterior mean is taken over; "
                     "argmax reads the categories themselves",
-                    "cat_probe",
+                    "site.cat.probe",
                 )
             )
         elif cat.probe < 1:
-            problems.append(SpecError("the probe grid must be positive", "cat_probe"))
+            problems.append(
+                SpecError("the probe grid must be positive", "site.cat.probe")
+            )
     if spec.optimizer.algorithm in GRADIENT_ALGORITHMS:
         # physher does not guard its branch-length gradient against CAT: a
         # gradient-based run reads past the end of the partials buffer rather
@@ -630,7 +656,7 @@ def _check_cat(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 "the empirical CAT rates are not differentiable, so the site "
                 "model has no gradient; use the meta optimizer",
-                "algorithm",
+                "optimizer.algorithm",
             )
         )
     return problems
@@ -651,7 +677,7 @@ def _check_derivative_free(spec: AnalysisSpec, reason: str) -> List[SpecError]:
         problems.append(
             SpecError(
                 f"{reason} no gradient; use the meta optimizer",
-                "algorithm",
+                "optimizer.algorithm",
             )
         )
     return problems
@@ -666,20 +692,24 @@ def _check_clock(spec: AnalysisSpec) -> List[SpecError]:
         problems.append(
             SpecError(
                 f"unknown clock {clock.kind!r} (choose from {', '.join(CLOCK_MODELS)})",
-                "clock",
+                "clock.kind",
             )
         )
     if clock.rate is not None and clock.rate <= 0:
-        problems.append(SpecError("a fixed rate must be positive", "rate"))
+        problems.append(SpecError("a fixed rate must be positive", "clock.rate"))
     if clock.dates.source not in ("regex", "csv", "zero"):
         problems.append(
-            SpecError(f"unknown date source {clock.dates.source!r}", "dates")
+            SpecError(
+                f"unknown date source {clock.dates.source!r}", "clock.dates.source"
+            )
         )
     if clock.dates.source == "csv":
         if clock.dates.path is None:
-            problems.append(SpecError("a date file is required", "dates"))
+            problems.append(SpecError("a date file is required", "clock.dates.path"))
         elif not os.path.exists(clock.dates.path):
-            problems.append(SpecError(f"{clock.dates.path} does not exist", "dates"))
+            problems.append(
+                SpecError(f"{clock.dates.path} does not exist", "clock.dates.path")
+            )
     return problems
 
 
@@ -692,7 +722,7 @@ def _check_coalescent(spec: AnalysisSpec) -> List[SpecError]:
         problems.append(
             SpecError(
                 "a coalescent is a prior on a time tree, so it needs a clock",
-                "coalescent",
+                "coalescent.kind",
             )
         )
     if coalescent.kind not in COALESCENT_MODELS:
@@ -700,21 +730,132 @@ def _check_coalescent(spec: AnalysisSpec) -> List[SpecError]:
             SpecError(
                 f"unknown coalescent {coalescent.kind!r} (choose from "
                 f"{', '.join(COALESCENT_MODELS)})",
-                "coalescent",
+                "coalescent.kind",
             )
         )
     if coalescent.kind in ("skygrid", "skyglide"):
         if coalescent.grid is None:
             problems.append(
-                SpecError(f"{coalescent.kind} needs a number of grid points", "grid")
+                SpecError(
+                    f"{coalescent.kind} needs a number of grid points",
+                    "coalescent.grid",
+                )
             )
         if coalescent.cutoff is None:
-            problems.append(SpecError(f"{coalescent.kind} needs a cutoff", "cutoff"))
+            problems.append(
+                SpecError(f"{coalescent.kind} needs a cutoff", "coalescent.cutoff")
+            )
     if not spec.uses_priors and coalescent.kind is not None:
         problems.append(
             SpecError(
                 "a coalescent prior has no effect on a maximum likelihood run",
-                "coalescent",
+                "coalescent.kind",
             )
         )
     return problems
+
+
+def _check_parameters(spec: AnalysisSpec) -> List[SpecError]:
+    """Per-parameter overrides, as far as they can be judged on their own.
+
+    Whether an id exists, and whether a prior or a starting value suits the
+    parameter it names, depends on the model; the builder checks those once
+    it has declared every parameter (see ``build.overrides``).
+    """
+    problems: List[SpecError] = []
+    for id_, override in spec.parameters.items():
+        where = f"parameters.{id_}"
+        if not override.estimate:
+            given = [
+                name
+                for name in ("prior", "mu", "sigma", "weight")
+                if getattr(override, name) is not None
+            ]
+            if given:
+                problems.append(
+                    SpecError(
+                        f"{id_} is fixed, so it has no {' or '.join(given)}",
+                        f"{where}.{given[0]}",
+                    )
+                )
+        if override.prior is not None:
+            if not spec.uses_priors:
+                problems.append(
+                    SpecError(
+                        f"a prior on {id_} has no effect on a maximum likelihood run",
+                        f"{where}.prior",
+                    )
+                )
+            problems.extend(check_prior(override.prior, f"{where}.prior"))
+        for name in ("mu", "sigma"):
+            if getattr(override, name) is not None and spec.method != "advi":
+                problems.append(
+                    SpecError(
+                        f"{name} places the variational approximation of {id_}, "
+                        f"and only advi fits one",
+                        f"{where}.{name}",
+                    )
+                )
+        if override.sigma is not None and any(
+            value <= 0 for value in _as_list(override.sigma)
+        ):
+            problems.append(
+                SpecError(f"the scale of {id_} must be positive", f"{where}.sigma")
+            )
+        if override.weight is not None:
+            if spec.method != "mcmc":
+                problems.append(
+                    SpecError(
+                        f"weight sets how often an operator moves {id_}, and only "
+                        "mcmc has operators",
+                        f"{where}.weight",
+                    )
+                )
+            elif override.weight <= 0:
+                problems.append(
+                    SpecError(
+                        f"the operator weight of {id_} must be positive",
+                        f"{where}.weight",
+                    )
+                )
+    return problems
+
+
+def check_prior(prior: PriorChoice, field: str) -> List[SpecError]:
+    """Check a prior's distribution and hyperparameters against physher's."""
+    if prior.distribution == NO_PRIOR:
+        if prior.parameters:
+            return [SpecError("'none' takes no hyperparameters", field)]
+        return []
+    family = PRIOR_DISTRIBUTIONS.get(prior.distribution)
+    if family is None:
+        return [
+            SpecError(
+                f"unknown prior {prior.distribution!r} (choose from "
+                f"{', '.join(list(PRIOR_DISTRIBUTIONS) + [NO_PRIOR])})",
+                field,
+            )
+        ]
+    if set(prior.parameters) not in [set(keys) for keys in family.hyperparameters]:
+        accepted = " or ".join(
+            "(" + ", ".join(keys) + ")" if keys else "nothing"
+            for keys in family.hyperparameters
+        )
+        return [
+            SpecError(
+                f"{prior.distribution} takes {accepted}, not "
+                f"({', '.join(prior.parameters)})",
+                field,
+            )
+        ]
+    problems = []
+    for key, value in prior.parameters.items():
+        if key not in REAL_HYPERPARAMETERS and any(v <= 0 for v in _as_list(value)):
+            problems.append(
+                SpecError(f"the {prior.distribution} {key} must be positive", field)
+            )
+    return problems
+
+
+def _as_list(values) -> List[float]:
+    return list(values) if isinstance(values, (list, tuple)) else [values]

@@ -281,3 +281,125 @@ def test_an_unusable_marginal_request_is_reported(alignment, tree_file, capsys):
     code = main(["ml", "-i", alignment, "-t", tree_file, "--marginal", "hm"])
     assert code != 0
     assert "marginal" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# per-parameter overrides
+# --------------------------------------------------------------------------
+
+
+def test_parameter_flags_become_overrides(alignment, tree_file):
+    from phyforge.spec import ParameterOverride, PriorChoice
+
+    spec = parse(
+        [
+            "mcmc",
+            "-i",
+            alignment,
+            "-t",
+            tree_file,
+            "-m",
+            "HKY",
+            "--init",
+            "kappa=2",
+            "--prior",
+            "kappa=lognormal(mu=1,sigma=1.25)",
+            "--weight",
+            "kappa=10",
+            "--fix",
+            "frequencies=0.1,0.2,0.3,0.4",
+            "--fix",
+            "tree.distances",
+        ]
+    )
+    assert spec.parameters == {
+        "kappa": ParameterOverride(
+            init=2.0,
+            prior=PriorChoice("lognormal", {"mu": 1.0, "sigma": 1.25}),
+            weight=10.0,
+        ),
+        "frequencies": ParameterOverride(estimate=False, init=[0.1, 0.2, 0.3, 0.4]),
+        "tree.distances": ParameterOverride(estimate=False),
+    }
+
+
+def test_flags_are_applied_on_top_of_a_params_file(alignment, tree_file, tmp_path):
+    params = tmp_path / "params.json"
+    params.write_text(
+        json.dumps(
+            {
+                "kappa": {"init": 3.0, "prior": "exponential(mean=2)"},
+                "shape": {"estimate": False, "init": 0.5},
+            }
+        )
+    )
+    spec = parse(
+        [
+            "map",
+            "-i",
+            alignment,
+            "-t",
+            tree_file,
+            "--params",
+            str(params),
+            "--init",
+            "kappa=4",
+        ]
+    )
+    assert spec.parameters["kappa"].init == 4.0
+    assert str(spec.parameters["kappa"].prior) == "exponential(mean=2)"
+    assert spec.parameters["shape"].estimate is False
+
+
+def test_a_params_file_round_trips_the_spec_overrides(alignment, tree_file, tmp_path):
+    """The file is ``spec.to_dict()["parameters"]``, which is what the GUI saves."""
+    spec = parse(["advi", "-i", alignment, "-t", tree_file, "--vi-sigma", "kappa=0.1"])
+    params = tmp_path / "params.json"
+    params.write_text(json.dumps(spec.to_dict()["parameters"]))
+    again = parse(["advi", "-i", alignment, "-t", tree_file, "--params", str(params)])
+    assert again.parameters == spec.parameters
+
+
+def test_a_malformed_override_is_a_usage_error(alignment, tree_file, capsys):
+    import pytest
+
+    with pytest.raises(SystemExit) as exit_:
+        main(["map", "-i", alignment, "-t", tree_file, "--init", "kappa=one"])
+    assert exit_.value.code == 2
+    assert "--init kappa=one" in capsys.readouterr().err
+
+
+def test_an_unknown_parameter_is_reported(alignment, tree_file, capsys):
+    code = main(["ml", "-i", alignment, "-t", tree_file, "--init", "kappa=2"])
+    assert code == 1
+    assert "no parameter 'kappa'" in capsys.readouterr().err
+
+
+def test_list_parameters_prints_a_table(alignment, tree_file, capsys):
+    code = main(
+        [
+            "mcmc",
+            "-i",
+            alignment,
+            "-t",
+            tree_file,
+            "-m",
+            "HKY",
+            "--fix",
+            "kappa=2",
+            "--list-parameters",
+        ]
+    )
+    assert code == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].split() == [
+        "id",
+        "kind",
+        "dim",
+        "estimate",
+        "init",
+        "prior",
+        "weight",
+    ]
+    kappa = next(line for line in lines if line.startswith("kappa"))
+    assert kappa.split()[3:5] == ["fixed", "2"]

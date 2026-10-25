@@ -25,6 +25,13 @@ double rnormal(const gsl_rng *rng, double mu, double sigma){
     return gsl_ran_gaussian(rng, sigma) + mu;
 }
 
+// Log density computed directly: log(gsl_ran_gaussian_pdf) underflows to -inf
+// once the density drops below DBL_MIN, about 37 sigma from the mean.
+static double _normal_log_density(double x, double mu, double sigma){
+    double z = (x - mu)/sigma;
+    return -0.5*LOG_TWO_PI - log(sigma) - 0.5*z*z;
+}
+
 double DistributionModel_normal_logP(DistributionModel* dm){
     if(!dm->need_update) return dm->lp;
     dm->lp = 0.0;
@@ -43,7 +50,7 @@ double DistributionModel_normal_logP(DistributionModel* dm){
             size_t dim = Parameter_size(x);
             const double* values = Parameter_values(x);
             for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(gsl_ran_gaussian_pdf(values[i] - *mu, sigmaValue));
+                dm->lp += _normal_log_density(values[i], *mu, sigmaValue);
             }
         }
     }
@@ -59,7 +66,7 @@ double DistributionModel_normal_logP(DistributionModel* dm){
                 if (dm->parameterization == DISTRIBUTION_NORMAL_MEAN_TAU) {
                     sigmaValue = sqrt(1.0/sigmaValue);
                 }
-                dm->lp += log(gsl_ran_gaussian_pdf(values[i] - mu[index], sigmaValue));
+                dm->lp += _normal_log_density(values[i], mu[index], sigmaValue);
                 index++;
             }
         }

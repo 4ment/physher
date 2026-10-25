@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ..nodes import distribution, model_ref, param_ref
+from ..spec import PriorChoice
 from .context import POSITIVE, REAL, BuildContext
 from .parameters import free_parameter
+
+if TYPE_CHECKING:
+    from .overrides import PriorWriter
 
 ROLE_THETA = "theta"
 ROLE_GROWTH = "growth"
@@ -67,13 +73,17 @@ def build(context: BuildContext) -> dict:
     return node
 
 
-def build_priors(context: BuildContext) -> list:
+def build_priors(context: BuildContext, writer: "PriorWriter") -> list:
     """Hyperpriors on the coalescent's own parameters."""
     spec = context.spec.coalescent
     ids = context.ids
     theta = context.by_role(ROLE_THETA)
     priors = []
 
+    if theta is None:
+        # Held fixed by an override: there is nothing left to smooth or to
+        # put a reference prior on.
+        return priors
     if spec.kind in PIECEWISE_MODELS:
         if spec.gmrf:
             precision = free_parameter(
@@ -83,6 +93,7 @@ def build_priors(context: BuildContext) -> list:
                 role=ROLE_PRECISION,
                 kind=POSITIVE,
             )
+            writer.structural(theta, "the GMRF smoothing the log population sizes")
             priors.append(
                 distribution(
                     "prior.gmrf",
@@ -91,15 +102,14 @@ def build_priors(context: BuildContext) -> list:
                     parameters={"precision": precision},
                 )
             )
-            priors.append(
-                distribution(
+            priors.extend(
+                writer.write(
+                    context.by_role(ROLE_PRECISION),
                     "prior.gmrf.precision",
-                    "gamma",
-                    param_ref(ids.precision),
-                    parameters={"shape": 0.001, "rate": 0.001},
+                    PriorChoice("gamma", {"shape": 0.001, "rate": 0.001}),
                 )
             )
     else:
         # The scale-invariant 1/x reference prior on a population size.
-        priors.append(distribution("prior.theta", "oneonx", param_ref(theta.id)))
+        priors.extend(writer.write(theta, "prior.theta", PriorChoice("oneonx")))
     return priors
