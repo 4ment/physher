@@ -860,6 +860,48 @@ char* test_treelikelihood_general_structure() {
     return NULL;
 }
 
+// GTR with 5 rate parameters: the missing one is the reference, fixed at 1. The
+// model is invariant to scaling the exchangeabilities, so AC as the reference
+// with rates (2,3,4,5,6) is GT as the reference with rates (1,2,3,4,5)/6. Only
+// a reference of GT used to be read correctly: any other one set every rate
+// after it to 1.
+static double _tiny_gtr_logP(const char* names[5], const double rates[5]) {
+    char rates_json[1024] = "";
+    for (int i = 0; i < 5; i++) {
+        char entry[160];
+        snprintf(entry, sizeof(entry),
+                 "%s\"%s\": {\"id\": \"%s\", \"type\": \"parameter\", \"x\": %.17g,"
+                 " \"lower\": 0}",
+                 i == 0 ? "" : ",", names[i], names[i], rates[i]);
+        strcat(rates_json, entry);
+    }
+    char substitution[1536];
+    snprintf(substitution, sizeof(substitution),
+             "{\"id\": \"sm\", \"type\": \"substitutionmodel\", \"kind\": \"gtr\","
+             " \"datatype\": \"nucleotide\","
+             " \"frequencies\": {\"id\": \"freqs\", \"type\": \"simplex\","
+             "   \"x\": [0.3, 0.2, 0.2, 0.3]},"
+             " \"rates\": {%s}}",
+             rates_json);
+    return _tiny_logP(substitution);
+}
+
+char* test_treelikelihood_gtr_reference_rate() {
+    const char* gtNames[5] = {"ac", "ag", "at", "cg", "ct"};
+    const double gtRates[5] = {1.0 / 6, 2.0 / 6, 3.0 / 6, 4.0 / 6, 5.0 / 6};
+    const char* acNames[5] = {"ag", "at", "cg", "ct", "gt"};
+    const double acRates[5] = {2, 3, 4, 5, 6};
+    const char* cgNames[5] = {"ac", "ag", "at", "ct", "gt"};
+    const double cgRates[5] = {0.25, 0.5, 0.75, 1.25, 1.5};
+    double gt = _tiny_gtr_logP(gtNames, gtRates);
+    double ac = _tiny_gtr_logP(acNames, acRates);
+    double cg = _tiny_gtr_logP(cgNames, cgRates);
+    mu_assert(isfinite(gt), "GTR logP not finite");
+    mu_assert(fabs(gt - ac) < 1e-8, "GTR with AC as the reference rate");
+    mu_assert(fabs(gt - cg) < 1e-8, "GTR with CG as the reference rate");
+    return NULL;
+}
+
 // jc69-time.json with its tree reparameterized by shifts rather than ratios.
 static Model* _load_shift_tree(Hashtable* hash, json_node** json) {
     char* content = load_file("jc69-time.json");
@@ -927,6 +969,7 @@ char* all_tests() {
     mu_run_test(test_treelikelihood_time_gradient_fd);
     mu_run_test(test_treelikelihood_time_leaf_gradient_fd);
     mu_run_test(test_treelikelihood_general_structure);
+    mu_run_test(test_treelikelihood_gtr_reference_rate);
     mu_run_test(test_treelikelihood_shift_update);
 
     return NULL;

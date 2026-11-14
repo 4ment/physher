@@ -2355,7 +2355,10 @@ void gradient_substitution_model_aux(SingleTreeLikelihood *tlk, Parameter* param
 #if defined (SSE3_ENABLED) || (AVX_ENABLED)
 	free(mat_transpose);
 #endif
-	parameter->grad[index] += dlnldQ;
+	// `index` is an element of a vector parameter (frequencies, rate simplex), or
+	// the position of a scalar rate within m->rates, which dQdp needs but which
+	// is not an element of that scalar
+	parameter->grad[Parameter_size(parameter) == 1 ? 0 : index] += dlnldQ;
 }
 
 void gradient_substitution_model(SingleTreeLikelihood *tlk, Parameters* parameters, const double* pattern_likelihoods){
@@ -4054,13 +4057,17 @@ void TreeLikelihood_calculate_gradient( Model *model, int flags, double* grads )
 	bool prepare_substitution_model_frequencies = prepare_substitution_model || (flags & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_FREQUENCIES);
 	
 	size_t nodeCount = Tree_node_count(tlk->tree);
-	size_t catCount = tlk->sm->cat_count;
-	double* cat_branch_gradient = dvector(nodeCount*catCount);
-	double* branch_lengths = dvector(nodeCount);
-	// calculate per category gradient and gradient of branch lengths
 	Node** nodes = Tree_nodes(tlk->tree);
 	bool time_mode = Tree_is_time_mode(tlk->tree);
-	
+
+	// The gradient of a time tree is reported wrt its reparameterization (ratios
+	// and root height); a time tree built without a transform has none.
+	if(prepare_tree && time_mode && get_reparams(tlk->tree) == NULL){
+		fprintf(stderr, "TreeLikelihood_gradient: the gradient of a time tree needs "
+		                "a reparameterized tree (ratios or shifts)\n");
+		exit(2);
+	}
+
 
 	Parameters* treeModelParameters = new_Parameters(1);
 	Parameters* siteModelParameters = new_Parameters(1);
@@ -4077,7 +4084,9 @@ void TreeLikelihood_calculate_gradient( Model *model, int flags, double* grads )
 		}
 	}
 	if(prepare_site_model){
-		if(Parameters_count(tlk->sm->rates) != 1){
+		// a single rate parameter is the shape of the rate distribution, the only
+		// one gradient_discrete_sitemodel differentiates
+		if(Parameters_count(tlk->sm->rates) == 1){
 			Parameters_add(siteModelParameters, Parameters_at(tlk->sm->rates, 0));
 		}
 		if(tlk->sm->proportions != NULL){
@@ -4090,7 +4099,7 @@ void TreeLikelihood_calculate_gradient( Model *model, int flags, double* grads )
 	if(prepare_branch_model){
 		Parameters_add_parameters(branchModelParameters, tlk->bm->rates);
 	}
-	if(prepare_substitution_model){
+	if(prepare_substitution_model_rates || prepare_substitution_model_frequencies){
 		if(flags & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_UNCONSTRAINED){
 			if(tlk->m->simplex != NULL){
 				Parameters_add(substitutionModelParameters, tlk->m->simplex->transform->parameter);
@@ -4141,12 +4150,14 @@ void TreeLikelihood_calculate_gradient( Model *model, int flags, double* grads )
 			grads[offset++] = rootHeight->grad[0];
 		}
 		else{
+			// one entry per free branch length, in branch-index order (the pinned
+			// child of the root has none)
 			memcpy(grads, nodes[0]->distance->grad , sizeof(double)*(nodeCount-2));
-			offset += nodeCount;// - 2;
+			offset += nodeCount - 2;
 		}
 	}
 	if(prepare_site_model){
-		if(Parameters_count(tlk->sm->rates) != 0){
+		if(Parameters_count(tlk->sm->rates) == 1){
 			Parameter* shape = Parameters_at(tlk->sm->rates, 0);
 			grads[offset++] = shape->grad[0];
 		}
@@ -4166,10 +4177,9 @@ void TreeLikelihood_calculate_gradient( Model *model, int flags, double* grads )
 			memcpy(grads+offset, rate->grad , sizeof(double)*(nodeCount-1));
 			offset += nodeCount - 1;
 		}
-		Parameters_add_parameters(branchModelParameters, tlk->bm->rates);
 	}
 	
-	if(prepare_substitution_model){
+	if(prepare_substitution_model_rates || prepare_substitution_model_frequencies){
 		if(flags & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_UNCONSTRAINED){
 			if(tlk->m->rates_simplex != NULL){
 				memcpy(grads+offset, tlk->m->rates_simplex->transform->parameter->grad, sizeof(double)*Parameter_size(tlk->m->rates_simplex->transform->parameter));
@@ -4181,13 +4191,22 @@ void TreeLikelihood_calculate_gradient( Model *model, int flags, double* grads )
 			}
 		}
 		else{
+			// rates (plain rate parameters or the rate simplex) then frequencies, the
+			// order the parameters were added in above
 			if(flags & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_RATES || flags & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL){
-				offset += Parameter_size(tlk->m->rates_simplex);
-				memcpy(grads+offset, tlk->m->rates_simplex->grad, sizeof(double)*Parameter_size(tlk->m->rates_simplex));
+				for(size_t i = 0; i < Parameters_count(tlk->m->rates); i++){
+					Parameter* rate = Parameters_at(tlk->m->rates, i);
+					memcpy(grads+offset, rate->grad, sizeof(double)*Parameter_size(rate));
+					offset += Parameter_size(rate);
+				}
+				if(tlk->m->rates_simplex != NULL){
+					memcpy(grads+offset, tlk->m->rates_simplex->grad, sizeof(double)*Parameter_size(tlk->m->rates_simplex));
+					offset += Parameter_size(tlk->m->rates_simplex);
+				}
 			}
 			if(flags & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL_FREQUENCIES || flags & TREELIKELIHOOD_FLAG_SUBSTITUTION_MODEL){
-				offset += Parameter_size(tlk->m->simplex);
 				memcpy(grads+offset, tlk->m->simplex->grad, sizeof(double)*Parameter_size(tlk->m->simplex));
+				offset += Parameter_size(tlk->m->simplex);
 			}
 		}
 	}

@@ -1176,9 +1176,16 @@ void Parameters_set_values( Parameters *p, const double* values ){
 	Parameter_fire(p->list[0], -1);
 }
 
+// values is the concatenation of every parameter's elements, as in
+// Parameters_set_values and Parameters_store_value
 void Parameters_set_values_quietly( Parameters *p, const double* values ){
+	size_t offset = 0;
 	for (size_t i = 0; i < Parameters_count(p); ++i) {
-		Parameters_set_value_quietly(p, i, values[i]);
+		Parameter* parameter = Parameters_at(p, i);
+		for (size_t j = 0; j < Parameter_size(parameter); j++) {
+			Parameter_set_value_at_quietly(parameter, values[offset + j], j);
+		}
+		offset += Parameter_size(parameter);
 	}
 }
 

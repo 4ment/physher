@@ -1066,7 +1066,7 @@ SitePattern* new_SitePattern_from_json(json_node* node, Hashtable* hash){
 			for ( ; j < alignment_node->child_count; j++) {
 				if(alignment_node->children[j] == seq_node) break;
 			}
-			for ( ; j < alignment_node->child_count; j++) {
+			for ( ; j < alignment_node->child_count - 1; j++) {
 				alignment_node->children[j] = alignment_node->children[j+1];
 			}
 			alignment_node->child_count--;

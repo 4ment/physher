@@ -1894,13 +1894,34 @@ Model* new_TreeModel_from_json(json_node* node, Hashtable* hash){
 	return mtree;
 }
 
+// Number of tips of a binary tree in newick format: one more than the number of
+// commas, ignoring those inside [comments] (e.g. BEAST annotations).
+static size_t _newick_tip_count(const char* newick){
+	size_t commas = 0;
+	int depth = 0;
+	for(const char* c = newick; *c != '\0'; c++){
+		if(*c == '[') depth++;
+		else if(*c == ']') depth--;
+		else if(*c == ',' && depth == 0) commas++;
+	}
+	return commas + 1;
+}
+
 // Create a tree that is either unrooted tree or a reparameterized time tree.
 Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* dates){
 	
 	Model* mtree = NULL;
 	Tree* tree = NULL;
 	bool time_tree = dates != NULL;
-	tree = new_Tree_with_taxa(newick, NULL, taxa, !time_tree);
+	// new_Tree_with_taxa allocates the 2n-2 branch lengths of a rooted tree when
+	// given none; an unrooted tree has 2n-3, the right child of the root being
+	// pinned to 0 (see Tree_update_branch_indices)
+	Parameter* branchLengths = NULL;
+	if(!time_tree){
+		size_t branchCount = 2*_newick_tip_count(newick) - 3;
+		branchLengths = new_Parameter_full("", BL_DEFAULT, branchCount, new_Constraint(0.0, INFINITY));
+	}
+	tree = new_Tree_with_taxa(newick, branchLengths, taxa, !time_tree);
 	
 	// parse date dictionary for dated trees
 	// tip heights are intialized
@@ -1923,6 +1944,9 @@ Model* new_TreeModel_from_newick(const char* newick, char** taxa, const double* 
 		TreeTransform_initialize_from_heights(tree->tt);
 	}
 	else{
+		// branch lengths read from the newick string, the two branches at the root
+		// merged into the left one (as "keep_branch_lengths" in JSON)
+		Tree_init_branch_lengths(tree);
 		mtree = new_TreeModel("treemodel", tree);
 	}
 	// see note in new_TreeModel_from_json: the zero-length right root branch is

@@ -46,20 +46,46 @@ UnRootedTreeModelInterface::UnRootedTreeModelInterface(
 
     InitializeMap(taxa);
     parameterCount_ = nodeCount_ - 2;
+
+    // The branch lengths are exposed in node order (nodeMap_). The right child of
+    // the root is pinned to length 0 and its sibling carries the length of the
+    // unrooted branch. When that pinned child is a tip, the sibling takes the
+    // tip's slot so that every taxon keeps its own index. physher itself stores
+    // (and differentiates) the branch lengths by branch index, which is a
+    // different order, so branchToParameter_ maps one onto the other.
+    Node *root = Tree_root(tree_);
+    branchToParameter_.resize(parameterCount_);
+    for (size_t i = 0; i < nodeCount_; i++) {
+        Node *node = Tree_node(tree_, i);
+        if (node->branch_index == NODE_NO_BRANCH) continue;
+        size_t index = nodeMap_[node->id];
+        if (node == root->left && Node_isleaf(root->right)) {
+            index = nodeMap_[root->right->id];
+        }
+        branchToParameter_[node->branch_index] = index;
+    }
 }
 
 void UnRootedTreeModelInterface::SetParameters(const double *parameters) {
-    Node **nodes = Tree_nodes(tree_);
-    Node *root = Tree_root(tree_);
     for (size_t i = 0; i < nodeCount_; i++) {
-        Node *node = nodes[i];
-        if (node == root || node == root->left || node == root->right) continue;
-        Node_set_distance(node, parameters[nodeMap_[node->id]]);
+        Node *node = Tree_node(tree_, i);
+        if (node->branch_index == NODE_NO_BRANCH) continue;
+        Node_set_distance(node, parameters[branchToParameter_[node->branch_index]]);
     }
-    if (Node_isleaf(root->right)) {
-        Node_set_distance(root->left, parameters[nodeMap_[root->right->id]]);
-    } else {
-        Node_set_distance(root->left, parameters[nodeMap_[root->left->id]]);
+}
+
+void UnRootedTreeModelInterface::GetParameters(double *parameters) {
+    for (size_t i = 0; i < nodeCount_; i++) {
+        Node *node = Tree_node(tree_, i);
+        if (node->branch_index == NODE_NO_BRANCH) continue;
+        parameters[branchToParameter_[node->branch_index]] = Node_distance(node);
+    }
+}
+
+void UnRootedTreeModelInterface::BranchToParameterOrder(double *values) {
+    std::vector<double> branchOrder(values, values + parameterCount_);
+    for (size_t i = 0; i < parameterCount_; i++) {
+        values[branchToParameter_[i]] = branchOrder[i];
     }
 }
 
@@ -88,7 +114,10 @@ void TimeTreeModelInterface::SetParameters(const double *parameters) {
             Node_set_height_quietly(nodes[i], parameters[nodes[i]->class_id]);
         }
     }
-    model_->listeners->fire(model_->listeners, model_, nullptr, -1);
+    // Go through the tree model's own update rather than firing its listeners
+    // directly: it is what invalidates the cached branch lengths before telling
+    // the listeners that every node changed.
+    model_->update(model_, model_, nullptr, -1);
 }
 
 void TimeTreeModelInterface::GetParameters(double *parameters) {
@@ -108,8 +137,7 @@ ReparameterizedTimeTreeModelInterface::ReparameterizedTimeTreeModelInterface(
     const std::string &newick, const std::vector<std::string> &taxa,
     const std::vector<double> dates, TreeTransformFlags transform)
     : TimeTreeModelInterface(newick, taxa, dates) {
-    int int_transform =
-        static_cast<std::underlying_type<TreeLikelihoodGradientFlags>::type>(transform);
+    int int_transform = static_cast<std::underlying_type<TreeTransformFlags>::type>(transform);
     TreeModel_set_transform(model_, int_transform);
     transformModel_ = reinterpret_cast<Model *>(model_->data);
 }
@@ -122,7 +150,7 @@ void ReparameterizedTimeTreeModelInterface::SetParameters(const double *paramete
 
 void ReparameterizedTimeTreeModelInterface::GetParameters(double *parameters) {
     TreeTransform *tt = reinterpret_cast<TreeTransform *>(transformModel_->obj);
-    Parameters_set_values(tt->parameters, parameters);
+    Parameters_store_value(tt->parameters, parameters);
 }
 
 void ReparameterizedTimeTreeModelInterface::GetNodeHeights(double *heights) {
@@ -334,9 +362,33 @@ void GeneralSubstitutionModelInterface::SetParameters(const double *parameters) 
 
 void SiteModelInterface::SetMu(double mu) { Parameter_set_value(siteModel_->mu, mu); }
 
+// The site model consumes the weight of the invariant class as the 2-simplex
+// X = [p, 1-p], driven by the scalar p through the "proportions" transform (the
+// same construction as "proportion_invariant" in new_SiteModel_from_json). The
+// gradient code differentiates wrt p through that transform, so it is required.
+// The transform owns p; the site model owns X.
+static Parameter *new_InvariantSimplex(double proportionInvariant) {
+    Parameter *proportion = new_Parameter("proportion_invariant", proportionInvariant,
+                                          new_Constraint(0, 1));
+    Transform *transform = new_SimplexTransform_with_parameter("proportions", proportion);
+    double values[2];
+    transform->get(transform, values);
+    Parameter *simplex = new_Parameter2("proportion_invariant.simplex", values, 2,
+                                        new_Constraint(0, 1));
+    simplex->transform = transform;
+    simplex->simplex = true;
+    proportion->listeners->add_parameter(proportion->listeners, simplex);
+    return simplex;
+}
+
+void SiteModelInterface::SetProportionInvariant(double value) {
+    Parameter_set_value(siteModel_->proportions->transform->parameter, value);
+}
+
 ConstantSiteModelInterface::ConstantSiteModelInterface(std::optional<double> mu) {
-    siteModel_ = new_SiteModel_with_parameters(
-        nullptr, nullptr, 1, DISTRIBUTION_UNIFORM, false, QUADRATURE_QUANTILE_MEDIAN);
+    siteModel_ = new_SiteModel_with_parameters(nullptr, nullptr, 1, DISTRIBUTION_UNIFORM,
+                                               false, QUADRATURE_QUANTILE_MEDIAN,
+                                               RATE_PARAMETERIZATION_AUTO);
     if (mu.has_value()) {
         Parameter *mu_param = new_Parameter("mu", *mu, new_Constraint(0, INFINITY));
         SiteModel_set_mu(siteModel_, mu_param);
@@ -366,11 +418,10 @@ void ConstantSiteModelInterface::GetProportions(double *proportions) {
 
 InvariantSiteModelInterface::InvariantSiteModelInterface(double proportionInvariant,
                                                          std::optional<double> mu) {
-    Parameter* prop_parameter = new_Parameter("general_frequencies", proportionInvariant, new_Constraint(0, 1));
-
-    siteModel_ =
-        new_SiteModel_with_parameters(nullptr, prop_parameter, 1, DISTRIBUTION_DISCRETE,
-                                      true, QUADRATURE_QUANTILE_MEDIAN);
+    // +I: one variable category plus the invariant one
+    siteModel_ = new_SiteModel_with_parameters(
+        nullptr, new_InvariantSimplex(proportionInvariant), 1, DISTRIBUTION_DISCRETE,
+        true, QUADRATURE_QUANTILE_MEDIAN, RATE_PARAMETERIZATION_AUTO);
     if (mu.has_value()) {
         Parameter *mu_param = new_Parameter("mu", *mu, new_Constraint(0, INFINITY));
         SiteModel_set_mu(siteModel_, mu_param);
@@ -378,17 +429,13 @@ InvariantSiteModelInterface::InvariantSiteModelInterface(double proportionInvari
     }
 
     model_ = new_SiteModel2("sitemodel", siteModel_);
-    parameterCount_ = 1 + siteModel_->mu != nullptr;
-}
-
-void InvariantSiteModelInterface::SetProportionInvariant(double value) {
-    Parameter_set_value(siteModel_->proportions, value);
+    parameterCount_ = 1 + (siteModel_->mu != nullptr ? 1 : 0);
 }
 
 void InvariantSiteModelInterface::SetParameters(const double *parameters) {
     size_t shift = 0;
     if (siteModel_->proportions != nullptr) {
-        Parameter_set_value(siteModel_->proportions, *parameters);
+        SetProportionInvariant(parameters[0]);
         shift++;
     }
 
@@ -429,36 +476,29 @@ DiscretizedSiteModelInterface::DiscretizedSiteModelInterface(
 
     Parameter *propInvSimplex = nullptr;
     if (proportionInvariant.has_value()) {
-        double values[2] = {proportionInvariant.value(), 1.0 - proportionInvariant.value()};
-        propInvSimplex = new_Parameter2("proportionInvariant", values, 2, new_Constraint(0, 1));
+        propInvSimplex = new_InvariantSimplex(*proportionInvariant);
     }
 
     siteModel_ = new_SiteModel_with_parameters(
-        params, propInvSimplex, categories, distribution,
-        proportionInvariant.has_value(), QUADRATURE_QUANTILE_MEDIAN);
+        params, propInvSimplex, categories, distribution, proportionInvariant.has_value(),
+        QUADRATURE_QUANTILE_MEDIAN, RATE_PARAMETERIZATION_AUTO);
     if (mu.has_value()) {
         Parameter *mu_param = new_Parameter("mu", *mu, new_Constraint(0, INFINITY));
         SiteModel_set_mu(siteModel_, mu_param);
         free_Parameter(mu_param);
     }
-    siteModel_->epsilon = 1.e-6;
 
     model_ = new_SiteModel2("sitemodel", siteModel_);
     free_Parameters(params);
-    parameterCount_ = Parameters_size(siteModel_->rates) + siteModel_->mu != nullptr;
-    if (propInvSimplex != nullptr) {
-        parameterCount_++;
-    }
+    parameterCount_ = Parameters_size(siteModel_->rates) +
+                      (siteModel_->mu != nullptr ? 1 : 0) +
+                      (propInvSimplex != nullptr ? 1 : 0);
+    // the cat_count of the site model includes the invariant category
     categoryCount_ = siteModel_->cat_count;
 }
 
 void DiscretizedSiteModelInterface::SetParameter(double parameter) {
     Parameters_set_value(siteModel_->rates, 0, parameter);
-}
-
-void DiscretizedSiteModelInterface::SetProportionInvariant(double value) {
-    double values[2] = {value, 1.0 - value};
-    Parameter_set_values(siteModel_->proportions, values);
 }
 
 void DiscretizedSiteModelInterface::SetParameters(const double *parameters) {
@@ -468,8 +508,7 @@ void DiscretizedSiteModelInterface::SetParameters(const double *parameters) {
         shift++;
     }
     if (siteModel_->proportions != nullptr) {
-        double values[2] = {parameters[shift], 1.0 - parameters[shift]};
-        Parameter_set_values(siteModel_->proportions, values);
+        SetProportionInvariant(parameters[shift]);
         shift++;
     }
 
@@ -514,9 +553,9 @@ void GammaSiteModelInterface::SetShape(double shape) {
     Parameters_set_value(siteModel_->rates, 0, shape);
 }
 
-void GammaSiteModelInterface::SetEpsilon(double epsilon) {
-    siteModel_->epsilon = epsilon;
-}
+// The gamma shape derivative is analytic now, so there is no finite-difference
+// step left to set. Kept so that existing callers still link.
+void GammaSiteModelInterface::SetEpsilon(double epsilon) {}
 
 TreeLikelihoodInterface::TreeLikelihoodInterface(
     const std::vector<std::pair<std::string, std::string>> &alignment,
@@ -615,6 +654,13 @@ void TreeLikelihoodInterface::Gradient(double *gradient, std::vector<GradientFla
         }
     }
     TreeLikelihood_gradient(model_, treelikelihoodFlags, gradient);
+
+    // physher returns the branch length gradient in branch-index order; put it
+    // back in the order SetParameters takes the branch lengths in.
+    auto *unrooted = dynamic_cast<UnRootedTreeModelInterface *>(treeModel_);
+    if (unrooted != nullptr && (treelikelihoodFlags & TREELIKELIHOOD_FLAG_TREE_MODEL)) {
+        unrooted->BranchToParameterOrder(gradient);
+    }
 }
 
 void TreeLikelihoodInterface::EnableSSE(bool flag) {
@@ -633,14 +679,15 @@ int CallableModelInterface::ConvertFlags(std::vector<GradientFlags> flags){
 CTMCScaleModelInterface::CTMCScaleModelInterface(const std::vector<double> rates,
                                                  TreeModelInterface *treeModel)
     : treeModel_(treeModel) {
-    Parameters *rates_param = new_Parameters(rates.size());
-    for (size_t i = 0; i < rates.size(); i++) {
-        Parameters_move(rates_param, new_Parameter("ctmcscale.x", rates[i],
-                                                   new_Constraint(0, INFINITY)));
-    }
+    // The CTMC scale prior is evaluated at every element of its first parameter,
+    // so the rates go into a single vector parameter.
+    Parameters *rates_param = new_Parameters(1);
+    Parameters_move(rates_param, new_Parameter2("ctmcscale.x", rates.data(), rates.size(),
+                                                new_Constraint(0, INFINITY)));
     ctmcScale_ = new_CTMCScale_with_parameters(
         rates_param, reinterpret_cast<Tree *>(treeModel_->GetManagedObject()));
     model_ = new_CTMCScaleModel("ctmcscale", ctmcScale_, treeModel_->GetModel());
+    free_Parameters(rates_param);
     parameterCount_ = 0;
 }
 
@@ -690,7 +737,7 @@ PiecewiseConstantCoalescentInterface::PiecewiseConstantCoalescentInterface(
     coalescent_ =
         new_SkyrideCoalescent(reinterpret_cast<Tree *>(treeModel->GetManagedObject()),
                               thetas_param);
-    // free_Parameters(thetas_param);
+    free_Parameter(thetas_param);
     model_ =
         new_CoalescentModel2("slyride", coalescent_, treeModel->GetModel(), nullptr);
     parameterCount_ = thetas.size();
@@ -704,7 +751,7 @@ PiecewiseConstantCoalescentGridInterface::PiecewiseConstantCoalescentGridInterfa
     coalescent_ =
         new_GridCoalescent(reinterpret_cast<Tree *>(treeModel->GetManagedObject()),
                            thetas_param, thetas.size(), cutoff);
-    // free_Parameters(thetas_param);
+    free_Parameter(thetas_param);
     model_ =
         new_CoalescentModel2("skygrid", coalescent_, treeModel->GetModel(), nullptr);
     parameterCount_ = thetas.size();
@@ -718,7 +765,7 @@ PiecewiseLinearCoalescentGridInterface::PiecewiseLinearCoalescentGridInterface(
     coalescent_ = new_PiecewiseLinearGridCoalescent(
         reinterpret_cast<Tree *>(treeModel->GetManagedObject()), thetas_param,
         thetas.size(), cutoff);
-    // free_Parameters(thetas_param);
+    free_Parameter(thetas_param);
     model_ = new_CoalescentModel2("piecewise-linear", coalescent_,
                                   treeModel->GetModel(), nullptr);
     parameterCount_ = thetas.size();

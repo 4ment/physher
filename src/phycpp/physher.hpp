@@ -137,7 +137,14 @@ class UnRootedTreeModelInterface : public TreeModelInterface {
 
     void SetParameters(const double *parameters) override;
 
-    void GetParameters(double *parameters) override {}
+    void GetParameters(double *parameters) override;
+
+    // Reorder a vector of nodeCount-2 values indexed by branch index (how physher
+    // returns the branch length gradient) into the order of SetParameters.
+    void BranchToParameterOrder(double *values);
+
+   private:
+    std::vector<size_t> branchToParameter_;
 };
 
 class TimeTreeModelInterface : public TreeModelInterface {
@@ -276,6 +283,9 @@ class SiteModelInterface : public ModelInterface {
    public:
     void SetMu(double mu);
 
+    // Weight of the invariant category; only for models built with one.
+    void SetProportionInvariant(double value);
+
     virtual void GetRates(double *rates) = 0;
 
     virtual void GetProportions(double *proportions) = 0;
@@ -301,8 +311,6 @@ class InvariantSiteModelInterface : public SiteModelInterface {
    public:
     InvariantSiteModelInterface(double proportionInvariant, std::optional<double> mu);
 
-    void SetProportionInvariant(double value);
-
     void SetParameters(const double *parameters) override;
 
     void GetParameters(double *parameters) override;
@@ -320,8 +328,6 @@ class DiscretizedSiteModelInterface : public SiteModelInterface {
                                   std::optional<double> mu);
 
     void SetParameter(double parameter);
-
-    void SetProportionInvariant(double value);
 
     void SetParameters(const double *parameters) override;
 
@@ -354,9 +360,7 @@ class GammaSiteModelInterface : public DiscretizedSiteModelInterface {
                             std::optional<double> proportionInvariant,
                             std::optional<double> mu)
         : DiscretizedSiteModelInterface(DISTRIBUTION_GAMMA, shape, categories,
-                                        proportionInvariant, mu) {
-        siteModel_->epsilon = 1.e-6;
-    }
+                                        proportionInvariant, mu) {}
 
     void SetShape(double shape);
 

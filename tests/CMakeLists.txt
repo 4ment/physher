@@ -53,6 +53,16 @@ target_link_libraries(test_cat phyc)
 add_executable(test_crossvalidation test_crossvalidation.c)
 target_link_libraries(test_crossvalidation phyc)
 
+# C++ wrapper
+if(TARGET phycpp)
+	add_executable(test_phycpp test_phycpp.cpp)
+	target_link_libraries(test_phycpp phycpp)
+	set_target_properties(test_phycpp PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+	add_test (NAME Test_phycpp
+			WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+			COMMAND test_phycpp)
+endif()
+
 
 # Refresh test fixtures on every build (not just at configure time) so that
 # added/edited files under data/ are picked up by an existing build tree.

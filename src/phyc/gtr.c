@@ -162,11 +162,14 @@ SubstitutionModel * new_GTR_with_simplexes( Parameter* freqs, Parameter* rates){
 void gtr_update_Q( SubstitutionModel *m ){
 	if(!m->need_update) return;
 	double temp;
+	// slot runs over the exchangeabilities (AC, AG, ..., GT); the reference rate
+	// (relativeTo) is fixed at 1 and has no entry in m->rates
+	int slot = 0;
 	int index = 0;
 	const double* freqs = m->get_frequencies(m);
 	for ( int i = 0; i < 4; i++ )  {
-		for ( int j = i + 1; j < 4; j++ ) {
-			if(m->relativeTo != index){
+		for ( int j = i + 1; j < 4; j++, slot++ ) {
+			if(m->relativeTo != slot){
 				temp = Parameters_value(m->rates, index++);
 			}
 			else{
@@ -200,11 +203,14 @@ void gtr_simplexes_update_Q( SubstitutionModel *m ){
 
 void nuc_sym_update_Q_unnormalized( SubstitutionModel *m, double* mat ){
 	double temp;
+	// slot runs over the exchangeabilities (AC, AG, ..., GT); the reference rate
+	// (relativeTo) is fixed at 1 and has no entry in m->rates
+	int slot = 0;
 	int index = 0;
 	const double* freqs = m->get_frequencies(m);
 	for ( int i = 0; i < 4; i++ )  {
-		for ( int j = i + 1; j < 4; j++ ) {
-			if(m->relativeTo != index){
+		for ( int j = i + 1; j < 4; j++, slot++ ) {
+			if(m->relativeTo != slot){
 				temp = Parameters_value(m->rates, index++);
 			}
 			else{
@@ -236,12 +242,15 @@ void gtr_setup_rates(double* Q, const double* rates, size_t dim){
 }
 
 void gtr_setup_rates_relative(double* Q, Parameters* rates, size_t dim, size_t relativeTo){
+	// slot runs over the exchangeabilities (AC, AG, ..., GT); the reference rate
+	// (relativeTo) is fixed at 1 and has no entry in rates
+	size_t slot = 0;
 	size_t index = 0;
 	double rate;
 	for (size_t i = 0; i < dim; i++) {
 		Q[i*dim+i] = 0;
-		for (size_t j = i + 1; j < dim; j++) {
-			if(relativeTo != index){
+		for (size_t j = i + 1; j < dim; j++, slot++) {
+			if(relativeTo != slot){
 				rate = Parameters_value(rates, index++);
 			}
 			else{
@@ -263,28 +272,30 @@ static void _gtr_dQdp(SubstitutionModel *m, Parameter* parameter, size_t index){
 	const double* frequencies = Parameter_values(m->simplex);
 	double norm = m->norm;
 	double dnorm = 0;
-	size_t K = Parameter_size(m->rates_simplex);
 
 	Parameter* freqx = NULL;
 	Parameter* rateSimplex = NULL;
 	Parameter* rate = NULL;
 	Parameter* ratex = NULL;
+	// slot of the rate parameter among the 6 exchangeabilities (AC..GT)
+	size_t rateSlot = 0;
 	if(m->simplex == parameter || (m->simplex->transform != NULL && m->simplex->transform->parameter == parameter)){
 		freqx = parameter;
 	}
-	else if(m->rates_simplex == parameter || (m->rates_simplex->transform != NULL && m->rates_simplex->transform->parameter == parameter)){
+	else if(m->rates_simplex != NULL &&
+	        (m->rates_simplex == parameter || (m->rates_simplex->transform != NULL && m->rates_simplex->transform->parameter == parameter))){
 		rateSimplex = parameter;
 	}
 	else{
 		for(size_t i = 0; i <Parameters_count(m->rates); i++){
 			Parameter* p = Parameters_at(m->rates, i);
-			if(p == parameter){
-				rate = ratex = parameter;
-				break;
-			}
-			else if(p->transform != NULL && p->transform->parameter == parameter){
+			if(p == parameter || (p->transform != NULL && p->transform->parameter == parameter)){
 				rate = p;
 				ratex = parameter;
+				// every rate parameter is a scalar, so `index` is always 0: the
+				// slot comes from the position in m->rates, which skips the
+				// reference rate fixed at 1
+				rateSlot = i + (m->relativeTo >= 0 && i >= (size_t)m->relativeTo ? 1 : 0);
 				break;
 			}
 		}
@@ -307,10 +318,9 @@ static void _gtr_dQdp(SubstitutionModel *m, Parameter* parameter, size_t index){
 	}
 	else if(ratex != NULL){
 		double dR[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-		dR[index] = 1.0;
+		dR[rateSlot] = 1.0;
 		if(ratex != rate){
-            double jac = 0;
-            rate->transform->jacobian(rate->transform, dR + index);
+            rate->transform->jacobian(rate->transform, dR + rateSlot);
         }
 		gtr_setup_rates(dQ, dR, stateCount);
 		build_Q_flat(dQ, frequencies, stateCount);
