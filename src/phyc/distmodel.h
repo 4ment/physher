@@ -117,8 +117,6 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* am
 // submodel) is left NULL for that type's own clone to fill in.
 Model* DistributionModel_clone_model(Model* self, Hashtable* hash);
 
-void distmodel_get_parameters(json_node* parameters_node, Hashtable* hash, Parameters* parameters);
-
 Parameters* distmodel_get_x(const char* who, json_node* node, Hashtable* hash);
 
 Parameter* distmodel_parse_parameter(json_node* parameter_node, Hashtable* hash, const char* id, double lower, double upper);

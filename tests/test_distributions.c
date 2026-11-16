@@ -6,6 +6,10 @@
 #include <gsl/gsl_sf_gamma.h>
 
 #include "minunit.h"
+#include "phyc/compoundmodel.h"
+#include "phyc/filereader.h"
+#include "phyc/hashtable.h"
+#include "phyc/mjson.h"
 #include "phyc/distdirichlet.h"
 #include "phyc/distexp.h"
 #include "phyc/distgamma.h"
@@ -2059,12 +2063,43 @@ char* test_log_densities_in_the_tail() {
     return NULL;
 }
 
+// "x" may be a parameter object, a list of them, a reference or a list of
+// references. data/distribution-x-forms.json gives one form to each of the beta,
+// beta prime, Kumaraswamy and Cauchy distributions, whose log densities are
+// compared with values computed independently (in "expected").
+char* test_distribution_x_forms() {
+    Hashtable* hash = new_Hashtable_string(10);
+    hashtable_set_key_ownership(hash, false);
+    hashtable_set_value_ownership(hash, false);
+    char* content = load_file("distribution-x-forms.json");
+    json_node* json = create_json_tree(content);
+    free(content);
+
+    Model* model = new_CompoundModel_from_json(get_json_node(json, "model"), hash);
+    CompoundModel* cm = model->obj;
+    json_node* expected = get_json_node(json, "expected");
+    mu_assert(cm->count == expected->child_count, "one expected value per distribution");
+    for (int i = 0; i < cm->count; i++) {
+        Model* m = cm->models[i];
+        double want = get_json_node_value_double(expected, m->name, NAN);
+        double logP = m->logP(m);
+        printf("%s: %f (expected %f)\n", m->name, logP, want);
+        mu_assert(fabs(logP - want) < 1e-10, "log density of an \"x\" form not matching");
+    }
+
+    model->free(model);
+    json_free_tree(json);
+    free_Hashtable(hash);
+    return NULL;
+}
+
 char* all_tests() {
     mu_suite_start();
     mu_run_test(test_exponential_distribution);
     mu_run_test(test_exponential_distribution_prior);
     mu_run_test(test_exponential_distribution_mean);
     mu_run_test(test_exponential_distribution_mean_prior);
+    mu_run_test(test_distribution_x_forms);
 
     mu_run_test(test_normal_distribution);
     mu_run_test(test_normal_distribution_prior);

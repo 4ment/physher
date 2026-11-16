@@ -148,7 +148,7 @@ Model* new_DirichletDistributionModel_from_json(json_node* node, Hashtable* hash
         Hashtable_add(hash, Parameter_name(xx), xx);
         Parameters_move(x, xx);
     }
-    // distmodel_get_parameters(x_node, hash, x);
+
     if(Parameters_count(x) != 1){
         fprintf(stderr, "%s - Dirichlet distribution should have one x (%zu)\n", id, Parameters_count(x));
         exit(13);

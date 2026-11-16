@@ -114,8 +114,7 @@ Model* new_BetaPrimeDistributionModel_from_json(json_node* node, Hashtable* hash
     char* id = get_json_node_value_string(node, "id");
     
     json_node* x_node = get_json_node(node, "x");
-    Parameters* x = new_Parameters(1);
-    distmodel_get_parameters(x_node, hash, x);
+    Parameters* x = distmodel_get_x(id, x_node, hash);
     
     char* file = get_json_node_value_string(node, "file");
     Parameters* parameters = new_Parameters(2);

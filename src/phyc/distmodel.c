@@ -325,38 +325,6 @@ Model* new_DistributionModel3(const char* name, DistributionModel* dm, Model* am
 	return model;
 }
 
-void distmodel_get_parameters(json_node* parameters_node, Hashtable* hash, Parameters* parameters){
-    for (size_t i = 0; i < parameters_node->child_count; i++) {
-        json_node* p_node = parameters_node->children[i];
-        // it is a reference
-        if(p_node->node_type == MJSON_STRING){
-            char* ref = p_node->value;
-            if(ref[0] == '&' || ref[0] == '%'){
-                get_parameter_reference(ref, hash, parameters);
-            }
-            else{
-                fprintf(stderr, "Distribution only accepts Parameter, Parameters or a list of them\n");
-                exit(1);
-            }
-        }
-		else if(p_node->node_type == MJSON_ARRAY){
-			for (size_t i = 0; i < p_node->child_count; i++) {
-        		json_node* c_node = p_node->children[i];
-				distmodel_get_parameters(c_node, hash, parameters);
-			}
-		}
-        else if(p_node->node_type == MJSON_OBJECT &&  strcmp(get_json_node_value_string(p_node, "type"), "parameter") == 0){
-            Parameter* parameter = new_Parameter_from_json(p_node, hash);
-            Parameters_move(parameters, parameter);
-            Hashtable_add(hash, Parameter_name(parameter), parameter);
-        }
-        else{
-            fprintf(stderr, "Distribution only accepts Parameter, Parameters or a list of them\n");
-            exit(1);
-        }
-    }
-}
-
 void distmodel_get_ref(const char* ref, Hashtable* hash, Parameters* parameters){
 	get_parameter_reference(ref, hash, parameters);
 	// simplex
@@ -387,10 +355,21 @@ Parameters* distmodel_get_x(const char* who, json_node* node, Hashtable* hash){
 			free(values);
 		}
 		else{
+			// a list of references and/or parameter objects
 			for (int i = 0; i < node->child_count; i++) {
 				json_node* child = node->children[i];
-				char* ref = (char*)child->value;
-				distmodel_get_ref(ref, hash, parameters);
+				if (child->node_type == MJSON_STRING) {
+					distmodel_get_ref((char*)child->value, hash, parameters);
+				}
+				else if (child->node_type == MJSON_OBJECT) {
+					Parameter* p = new_Parameter_from_json(child, hash);
+					Parameters_move(parameters, p);
+					Hashtable_add(hash, Parameter_name(p), p);
+				}
+				else {
+					fprintf(stderr, "%s: \"x\" should list parameters or references\n", who);
+					exit(1);
+				}
 			}
 		}
 	}
