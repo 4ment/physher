@@ -53,6 +53,9 @@ target_link_libraries(test_cat phyc)
 add_executable(test_crossvalidation test_crossvalidation.c)
 target_link_libraries(test_crossvalidation phyc)
 
+add_executable(test_laplace test_laplace.c)
+target_link_libraries(test_laplace phyc)
+
 # C++ wrapper
 if(TARGET phycpp)
 	add_executable(test_phycpp test_phycpp.cpp)
@@ -83,6 +86,10 @@ add_custom_target(test_data ALL
 add_test (NAME Test_crossvalidation
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
 		COMMAND test_crossvalidation)
+
+add_test (NAME Test_laplace
+		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"
+		COMMAND test_laplace)
 
 add_test (NAME Test_json
 		WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data"

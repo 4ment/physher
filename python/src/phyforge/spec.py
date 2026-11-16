@@ -363,7 +363,7 @@ class PriorSpec:
     branch_lengths_mean: float = 0.1
     #: prior on the strict clock rate: "ctmcscale" or "exponential"
     clock: str = "ctmcscale"
-    clock_mean: float = 1000.0
+    clock_mean: float = 0.001
     #: prior on the site model shape parameter
     shape_mean: float = 1.0
 

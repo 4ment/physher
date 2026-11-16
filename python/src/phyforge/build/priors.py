@@ -86,7 +86,7 @@ def _clock_prior(context: BuildContext, writer: PriorWriter) -> List[dict]:
         # The CTMC scale reference prior, which needs the tree to scale itself.
         default = PriorChoice("ctmcscale")
     elif spec.clock == "exponential":
-        default = PriorChoice("exponential", {"lambda": spec.clock_mean})
+        default = PriorChoice("exponential", {"lambda": 1.0 / spec.clock_mean})
     else:
         raise ValueError(f"unsupported clock prior {spec.clock!r}")
     return writer.write(context.by_role(ROLE_RATE), "prior.rate", default)

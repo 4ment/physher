@@ -19,8 +19,12 @@
 
 #pragma region Exponential Distribution
 
-char* test_exponential_distribution_aux(Parameter* x, Parameter* lambda,
-                                        double* dlogPdx, double* dlogPdlambda) {
+// `lambda` is the rate, or the mean 1/rate when parameterization is
+// DISTRIBUTION_EXPONENTIAL_MEAN; dlogPdlambda is the gradient wrt that parameter.
+char* test_exponential_distribution_aux2(Parameter* x, Parameter* lambda,
+                                         double* dlogPdx, double* dlogPdlambda,
+                                         distribution_parameterization parameterization) {
+    bool mean = parameterization == DISTRIBUTION_EXPONENTIAL_MEAN;
     const double* lambdaValues = Parameter_values(lambda);
     const double* xValues = Parameter_values(x);
 
@@ -31,18 +35,20 @@ char* test_exponential_distribution_aux(Parameter* x, Parameter* lambda,
     Parameters_move(parameters, lambda);
 
     DistributionModel* dm = new_ExponentialDistributionModel_with_parameters(
-        parameters, xs, DISTRIBUTION_EXPONENTIAL_RATE);
+        parameters, xs, parameterization);
     Model* model = new_DistributionModel2("dist", dm);
 
     double logP = model->logP(model);
     double logP2 = 0;
     if (Parameter_size(lambda) > 1) {
         for (size_t i = 0; i < Parameter_size(x); i++) {
-            logP2 += log(gsl_ran_exponential_pdf(xValues[i], 1 / lambdaValues[i]));
+            double scale = mean ? lambdaValues[i] : 1 / lambdaValues[i];
+            logP2 += log(gsl_ran_exponential_pdf(xValues[i], scale));
         }
     } else {
         for (size_t i = 0; i < 3; i++) {
-            logP2 += log(gsl_ran_exponential_pdf(xValues[i], 1 / lambdaValues[0]));
+            double scale = mean ? lambdaValues[0] : 1 / lambdaValues[0];
+            logP2 += log(gsl_ran_exponential_pdf(xValues[i], scale));
         }
     }
     mu_assert(fabs(logP2 - logP) < 1e-10 * (1.0 + fabs(logP)), "logP not matching");
@@ -75,6 +81,12 @@ char* test_exponential_distribution_aux(Parameter* x, Parameter* lambda,
     return NULL;
 }
 
+char* test_exponential_distribution_aux(Parameter* x, Parameter* lambda,
+                                        double* dlogPdx, double* dlogPdlambda) {
+    return test_exponential_distribution_aux2(x, lambda, dlogPdx, dlogPdlambda,
+                                              DISTRIBUTION_EXPONENTIAL_RATE);
+}
+
 char* test_exponential_distribution_prior() {
     double xValues[] = {2.0, 0.5, 0.01};
     Parameter* x = new_Parameter2("x", xValues, 3, new_Constraint(0, INFINITY));
@@ -101,6 +113,33 @@ char* test_exponential_distribution() {
     double dlogPdlambda[3] = {8.0, 0.5, 0.49};
 
     return test_exponential_distribution_aux(x, lambda, dlogPdx, dlogPdlambda);
+}
+
+// Same densities as above, parameterized by the mean 1/lambda:
+// dlogP/dmean = x/mean^2 - 1/mean
+char* test_exponential_distribution_mean_prior() {
+    double xValues[] = {2.0, 0.5, 0.01};
+    Parameter* x = new_Parameter2("x", xValues, 3, new_Constraint(0, INFINITY));
+    Parameter* m = new_Parameter("mean", 0.5, new_Constraint(0, INFINITY));
+
+    double dlogPdx[3] = {-2.0, -2.0, -2.0};
+    double dlogPdmean = 4.04;
+
+    return test_exponential_distribution_aux2(x, m, dlogPdx, &dlogPdmean,
+                                              DISTRIBUTION_EXPONENTIAL_MEAN);
+}
+
+char* test_exponential_distribution_mean() {
+    double xValues[] = {2.0, 0.5, 0.01};
+    Parameter* x = new_Parameter2("x", xValues, 3, new_Constraint(0, INFINITY));
+    double meanValues[] = {10.0, 1.0, 0.5};
+    Parameter* m = new_Parameter2("mean", meanValues, 3, new_Constraint(0, INFINITY));
+
+    double dlogPdx[3] = {-0.1, -1.0, -2.0};
+    double dlogPdmean[3] = {-0.08, -0.5, -1.96};
+
+    return test_exponential_distribution_aux2(x, m, dlogPdx, dlogPdmean,
+                                              DISTRIBUTION_EXPONENTIAL_MEAN);
 }
 
 #pragma endregion
@@ -2024,6 +2063,8 @@ char* all_tests() {
     mu_suite_start();
     mu_run_test(test_exponential_distribution);
     mu_run_test(test_exponential_distribution_prior);
+    mu_run_test(test_exponential_distribution_mean);
+    mu_run_test(test_exponential_distribution_mean_prior);
 
     mu_run_test(test_normal_distribution);
     mu_run_test(test_normal_distribution_prior);

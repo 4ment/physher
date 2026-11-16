@@ -74,12 +74,27 @@ def check(spec: AnalysisSpec) -> List[SpecError]:
     problems.extend(_check_substitution(spec))
     problems.extend(_check_site(spec))
     problems.extend(_check_clock(spec))
+    problems.extend(_check_priors(spec))
     problems.extend(_check_coalescent(spec))
     problems.extend(_check_mcmc(spec))
     problems.extend(_check_marginal(spec))
     problems.extend(_check_bootstrap(spec))
     problems.extend(_check_parameters(spec))
     return problems
+
+
+def _check_priors(spec: AnalysisSpec) -> List[SpecError]:
+    # the exponential priors are written as lambda = 1 / mean
+    means = (
+        ("branch_lengths_mean", "the mean of the branch length prior"),
+        ("clock_mean", "the mean of the clock rate prior"),
+        ("shape_mean", "the mean of the shape prior"),
+    )
+    return [
+        SpecError(f"{label} must be positive", f"priors.{name}")
+        for name, label in means
+        if not getattr(spec.priors, name) > 0
+    ]
 
 
 def _check_mcmc(spec: AnalysisSpec) -> List[SpecError]:

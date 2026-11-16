@@ -327,9 +327,7 @@ def _add_priors(parser: argparse.ArgumentParser) -> None:
         choices=("ctmcscale", "exponential"),
         help="prior on the clock rate",
     )
-    group.add_argument(
-        "--clock-prior-mean", type=float, default=1000.0, help="its mean"
-    )
+    group.add_argument("--clock-prior-mean", type=float, default=0.001, help="its mean")
     group.add_argument(
         "--shape-prior-mean",
         type=float,

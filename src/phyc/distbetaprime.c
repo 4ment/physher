@@ -137,6 +137,8 @@ Model* new_BetaPrimeDistributionModel_from_json(json_node* node, Hashtable* hash
         }
         alpha = new_Parameter2("alpha", alphaValues, paramCount, new_Constraint(0, INFINITY));
         beta = new_Parameter2("beta", betaValues, paramCount, new_Constraint(0, INFINITY));
+        free(alphaValues);
+        free(betaValues);
     }
     else{
         json_node* parameters_node = get_json_node(node, "parameters");
@@ -151,7 +153,10 @@ Model* new_BetaPrimeDistributionModel_from_json(json_node* node, Hashtable* hash
         alpha = new_Parameter_from_json(alpha_node, hash);
         beta = new_Parameter_from_json(beta_node, hash);
     }
-    
+
+    Parameters_move(parameters, alpha);
+    Parameters_move(parameters, beta);
+
     DistributionModel* dm = new_BetaPrimeDistributionModel_with_parameters(parameters, x);
     
     dm->shift = get_json_node_value_double(node, "shift", dm->shift);

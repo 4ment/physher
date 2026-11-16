@@ -14,138 +14,85 @@
 #include "statistics.h"
 
 
-// parameter is lambda or mean
-static void _expand_parameters(distribution_parameterization parameterization, Parameter* x, Parameter* parameter, double* out){
-    size_t parameterSize = Parameter_size(parameter);
-    memcpy(out, Parameter_values(parameter), sizeof(double)*parameterSize);
-    if(parameterization == DISTRIBUTION_EXPONENTIAL_MEAN){
-        for(size_t k = 0; k < parameterSize; k++){
-            out[k] = 1.0/out[k];
-        }
-    }
-
-    if(parameterSize == 1){
-        size_t dim = Parameter_size(x);
-        if(dim > 1){
-            for(size_t k = 1; k < dim; k++){
-                out[k] = out[0];
-            }
-        }
-    }
+// The single distribution parameter is the rate lambda or the mean 1/lambda,
+// depending on dm->parameterization. It is a shared scalar (mask == 0, mode 1) or
+// one value per element of x (mask all-ones, mode 2); see distmodel.h.
+static inline double _exp_rate(const DistributionModel* dm, double value){
+    return dm->parameterization == DISTRIBUTION_EXPONENTIAL_MEAN ? 1.0/value : value;
 }
 
 double DistributionModel_log_exp(DistributionModel* dm){
     if(!dm->need_update) return dm->lp;
     dm->lp = 0.0;
-    Parameter* parameter = Parameters_at(dm->parameters, 0); // lambda or mean
-
-    size_t dimX = Parameters_count(dm->x);
-    for(size_t j = 0; j < dimX; j++){
-        Parameter* x = Parameters_at(dm->x, j);
-        // _expand_parameters(dm->parameterization, x, parameter, dm->tempp);
-        size_t dim = Parameter_size(x);
-        const double* values = Parameter_values(x);
-        if(Parameter_size(parameter) == 1){
-            double lambdaValue = Parameter_value(parameter);
-            for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(lambdaValue) - lambdaValue * values[i];
-            }
-        }
-        else{
-            const double* lambdaValues = Parameter_values(parameter);
-            for (size_t i = 0; i < dim; i++) {
-                dm->lp += log(lambdaValues[i]) - lambdaValues[i] * values[i];
-            }
+    Parameter* parameter = Parameters_at(dm->parameters, 0);
+    const double* values = Parameter_values(parameter);
+    size_t mask = -(Parameter_size(parameter) != 1);
+    size_t index = 0;
+    for(size_t k = 0; k < Parameters_count(dm->x); k++){
+        Parameter* x = Parameters_at(dm->x, k);
+        const double* xValues = Parameter_values(x);
+        for (size_t j = 0; j < Parameter_size(x); j++) {
+            double lambda = _exp_rate(dm, values[index & mask]);
+            dm->lp += log(lambda) - lambda * xValues[j];
+            index++;
         }
     }
-    
     dm->need_update = false;
     return dm->lp;
 }
 
 void DistributionModel_gradient_exp(DistributionModel* dm, Parameters* parameters){
-    size_t dimX = Parameters_count(dm->x);
-    Parameter* parameter = Parameters_at(dm->parameters, 0); // lambda or mean
+    Parameter* parameter = Parameters_at(dm->parameters, 0);
+    const double* values = Parameter_values(parameter);
+    size_t mask = -(Parameter_size(parameter) != 1);
 
-	for (size_t i = 0; i < dimX; i++) {
-        Parameter* x = Parameters_at(dm->x, i);
-        Parameter* xx = Parameters_depends(parameters, x); // check if it is x or x->transform->parameter
-        // x is constrained and matches support of distribution (e.g. branch lengths)
-        // xx is unconstrained (e.g. transformed branch lengths)
-		if (xx != NULL) {
-            // tempp contains lambda
-            // _expand_parameters(dm->parameterization, x, parameter, dm->tempp);
-            size_t sizeX = Parameter_size(x);
-            if(Parameter_size(parameter) == 1){
-                double lambdaValue = Parameter_value(parameter);
-                for (size_t j = 0; j < sizeX; j++) {
-                    dm->tempx[j] = -lambdaValue;
-                    x->grad[j] += dm->tempx[j];
-                }
-            }
-            else{
-                const double* lambdaValues = Parameter_values(parameter);
-                for (size_t j = 0; j < sizeX; j++) {
-                    dm->tempx[j] = -lambdaValues[j];
-                    x->grad[j] += dm->tempx[j];
-                }
+    // d/dx log p = -lambda
+    size_t index = 0;
+    for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+        Parameter* x = Parameters_at(dm->x, k);
+        size_t sizeX = Parameter_size(x);
+        // x is constrained and matches the support (e.g. branch lengths); xx may be
+        // its unconstrained leaf (e.g. transformed branch lengths)
+        Parameter* xx = Parameters_depends(parameters, x);
+        if (xx != NULL) {
+            for (size_t j = 0; j < sizeX; j++) {
+                dm->tempx[j] = -_exp_rate(dm, values[(index + j) & mask]);
+                x->grad[j] += dm->tempx[j];
             }
             if(xx != x){
                 x->transform->backward(x->transform, dm->tempx);
             }
-		}
-	}
+        }
+        index += sizeX;
+    }
+
+    // d/dlambda log p = 1/lambda - x;  d/dmean log p = x/mean^2 - 1/mean
+    // A shared scalar folds every element onto tempp[0] so that backward sees the
+    // full sum.
     Parameter* px = Parameters_depends(parameters, parameter);
     if(px != NULL){
-        for (size_t i = 0; i < dimX; i++) {
-            Parameter* x = Parameters_at(dm->x, i);
+        memset(dm->tempp, 0, Parameter_size(parameter) * sizeof(double));
+        index = 0;
+        for (size_t k = 0; k < Parameters_count(dm->x); k++) {
+            Parameter* x = Parameters_at(dm->x, k);
             const double* xValues = Parameter_values(x);
-            size_t sizeX = Parameter_size(x);
-            if(dm->parameterization == DISTRIBUTION_EXPONENTIAL_RATE){
-                // _expand_parameters(dm->parameterization, x, parameter, dm->tempp);
-                if(Parameter_size(parameter) == 1){
-                    double lambdaValue = Parameter_value(parameter);
-                    double d = 0;
-                    for (size_t j = 0; j < sizeX; j++) {
-                        d += 1.0/lambdaValue - xValues[j];
-                    }
-                    parameter->grad[0] += d;
+            for (size_t j = 0; j < Parameter_size(x); j++) {
+                size_t idx = index & mask;
+                double v = values[idx];
+                double g;
+                if(dm->parameterization == DISTRIBUTION_EXPONENTIAL_MEAN){
+                    g = xValues[j]/(v*v) - 1.0/v;
                 }
                 else{
-                    const double* lambdaValues = Parameter_values(parameter);
-                    for (size_t j = 0; j < sizeX; j++) {
-                        dm->tempx[j] = 1.0/lambdaValues[j] - xValues[j];
-                        parameter->grad[j] += dm->tempx[j];
-                    }
+                    g = 1.0/v - xValues[j];
                 }
+                dm->tempp[idx] += g;
+                parameter->grad[idx] += g;
+                index++;
             }
-            else {
-                // tempp contains mean
-                // _expand_parameters(DISTRIBUTION_EXPONENTIAL_RATE, x, parameter, dm->tempp);
-                if(Parameter_size(parameter) == 1){
-                    double meanValue = Parameter_value(parameter);
-                    double meanValue2 = meanValue * meanValue;
-                    double d = 0;
-                    for (size_t j = 0; j < sizeX; j++) {
-                        d += xValues[j]/meanValue2 + 1.0/meanValue;
-                    }
-                    parameter->grad[0] += d;
-                }
-                else{
-                    const double* meanValues = Parameter_values(parameter);
-                    for (size_t j = 0; j < sizeX; j++) {
-                        dm->tempx[j] = xValues[j]/(pow(meanValues[j], 2)) + 1.0/meanValues[j];
-                        parameter->grad[j] += dm->tempx[j];
-                    }
-                }
-                for (size_t j = 0; j < sizeX; j++) {
-                    dm->tempx[j] = xValues[j]/(pow(dm->tempp[j], 2)) + 1.0/dm->tempp[j];
-                    parameter->grad[j] += dm->tempx[j];
-                }
-            }
-            if(px != parameter){
-                parameter->transform->backward(parameter->transform, dm->tempx);
-            }
+        }
+        if(px != parameter){
+            parameter->transform->backward(parameter->transform, dm->tempp);
         }
     }
 }

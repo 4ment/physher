@@ -13,6 +13,7 @@ from phyforge.spec import (
     MarginalOptions,
     MCMCOptions,
     OptimizerOptions,
+    PriorSpec,
     SiteModelSpec,
     SubstitutionSpec,
 )
@@ -471,6 +472,22 @@ def test_map_targets_the_joint(alignment, tree_file):
     document = build(spec_for(alignment, tree_file, method="map"))
     assert document["joint"]["distributions"] == ["@treelikelihood", "@prior"]
     assert document["physher"][0]["target"] == "@joint"
+
+
+@pytest.mark.parametrize("mean", [0.001, 0.05])
+def test_exponential_clock_prior_is_given_its_mean(alignment, tree_file, mean):
+    document = build(
+        spec_for(
+            alignment,
+            tree_file,
+            method="map",
+            clock=ClockSpec(kind="strict"),
+            priors=PriorSpec(clock="exponential", clock_mean=mean),
+        )
+    )
+    prior = find(document, lambda node: node.get("id") == "prior.rate")
+    assert prior["distribution"] == "exponential"
+    assert prior["parameters"] == {"lambda": pytest.approx(1.0 / mean)}
 
 
 def test_map_has_no_jacobian(alignment, tree_file):

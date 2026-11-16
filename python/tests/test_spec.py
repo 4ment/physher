@@ -11,6 +11,7 @@ from phyforge.spec import (
     DataSpec,
     MarginalOptions,
     OptimizerOptions,
+    PriorSpec,
     SiteModelSpec,
     SubstitutionSpec,
 )
@@ -27,6 +28,14 @@ def test_round_trips_through_a_dict(alignment, tree_file):
 
 def test_valid_spec_has_no_problems(alignment, tree_file):
     assert check(base(alignment, tree_file)) == []
+
+
+@pytest.mark.parametrize("name", ["branch_lengths_mean", "clock_mean", "shape_mean"])
+@pytest.mark.parametrize("value", [0.0, -1.0])
+def test_prior_means_must_be_positive(alignment, tree_file, name, value):
+    spec = base(alignment, tree_file)
+    spec.priors = PriorSpec(**{name: value})
+    assert [problem.field for problem in check(spec)] == [f"priors.{name}"]
 
 
 def test_missing_alignment_is_reported(tree_file):
